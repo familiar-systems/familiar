@@ -1,4 +1,4 @@
-# AI Tabletop Notetaking App — Vision Document
+# Loreweaver — Vision Document
 
 ## The Problem
 
@@ -112,6 +112,8 @@ These are orthogonal. Every combination is valid:
 | **Retconned** | GM quietly abandoned a backstory detail players never learned | The table agreed to undo something ("actually, let's say that NPC survived") |
 
 This matters because secrets rarely align with entity boundaries. The NPC "Clericman the Good" is known to the party — his node is published. But the edge "secretly worships → Murdergod the God of Murder" is GM-only. And the block on Clericman's page describing his midnight rituals is GM-only, while everything else on the page is published. Both fields must be granular enough to handle this at the node, edge, and block level independently.
+
+Note that canonicity is _not_ for the initial release, but we note that it might become important.
 
 **How visibility applies:**
 
