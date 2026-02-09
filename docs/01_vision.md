@@ -90,51 +90,40 @@ Key behaviors:
 - **Source linking**: Blocks derived from audio transcription carry a reference back to the timestamp in the original recording. The GM can always trace a claim back to "what was actually said at the table."
 - **AI suggestions**: A suggested block is visually distinct — clearly marked as unvetted. The GM can accept, edit, or reject it inline.
 
-### Visibility & Canonicity
+### Status
 
-Two independent fields apply to **all three primitives** (nodes, edges, and blocks). They answer different questions and change at different times for different reasons.
+A single field on every primitive — nodes, edges, and blocks — that captures both visibility and canonicity in one concept. Three states, one mental model.
 
-**Visibility** answers: *who can see this?*
+**The states:**
 
-- **GM-only** — visible only to the GM. The default for all new content.
-- **Published** — visible to players. This is the "in-world knowledge" the party has access to.
+- **GM-only** — true and secret. Only the GM can see it. The AI uses it actively for context retrieval, suggestions, and consistency checking. This is the default for all new content.
+- **Known** — true and public. Visible to everyone. The AI uses it actively. This is the standard state for anything established in play and shared with the table.
+- **Retconned** — no longer true, but visible to everyone. The table established this in play and has since decided it didn't happen. The AI ignores it for connectivity and active world-state queries, but can reference it when asked ("what did we originally say about Kael's backstory?").
 
-**Canonicity** answers: *is this still true?*
+**The lifecycle:** Content starts GM-only, gets promoted to Known when revealed in play, and can be moved to Retconned if the table decides it didn't happen. If something is GM-only and the GM decides it never needed to exist, they just delete it — there's no history to preserve for something that never left the GM's head.
 
-- **Known** — established fact. The default. This is the current canonical state of the world.
-- **Retconned** — the table has decided this is no longer true. Retained in the graph for history, but excluded from the AI's active world model and visually struck through or dimmed.
+**Visual design:** The three states map directly to distinct visual treatments that are immediately learnable:
 
-These are orthogonal. Every combination is valid:
+- **GM-only** → dimmed, in a tinted/colored container (a "secret" feel)
+- **Known** → normal rendering, no adornment
+- **Retconned** → struck through or crossed out (clearly "this was here, but it's done")
 
-| | GM-only | Published |
-|---|---|---|
-| **Known** | A true secret ("Clericman worships Murdergod") | An established fact the party knows ("Kael is the blacksmith's son") |
-| **Retconned** | GM quietly abandoned a backstory detail players never learned | The table agreed to undo something ("actually, let's say that NPC survived") |
+No icons, no badges, no tooltips needed. The visual language is the same across nodes, edges, and blocks, so a GM scanning a page instantly knows the status of every piece of content.
 
-This matters because secrets rarely align with entity boundaries. The NPC "Clericman the Good" is known to the party — his node is published. But the edge "secretly worships → Murdergod the God of Murder" is GM-only. And the block on Clericman's page describing his midnight rituals is GM-only, while everything else on the page is published. Both fields must be granular enough to handle this at the node, edge, and block level independently.
+**How status applies across primitives:**
 
-Note that canonicity is _not_ for the initial release, but we note that it might become important.
-
-**How visibility applies:**
-
-- **Nodes**: A GM-only node is completely invisible to players — it doesn't appear in searches, references, or the published journal. A published node is visible, but individual blocks within it can still be GM-only.
-- **Edges**: An edge can be GM-only even if both nodes it connects are published. "Clericman the Good" and "Murdergod" can both be known entities, but the relationship between them is secret. Players viewing either node's relationship panel simply don't see that edge.
-- **Blocks**: Individual blocks within a published node can be GM-only. Clericman's page shows his public description, his role in the temple, his stat block — but the paragraph about his secret allegiance is hidden from the player view.
-
-**How canonicity applies:**
-
-- A retconned node is effectively soft-deleted from the active campaign. It still exists in the graph (journal entries that reference it remain intact), but it's excluded from AI suggestions, search results, and active context retrieval.
-- A retconned edge means the relationship is no longer true. "Kael was a member of the Thieves' Guild" can be retconned without retconning Kael or the guild — just the connection.
-- A retconned block preserves the history of what was once established while marking it as no longer canon. The original text stays, but it's clearly flagged.
+- **Nodes**: A GM-only node is completely invisible to players — it doesn't appear in searches, references, or the published journal. A Known node is visible, but individual blocks and edges within it can still be GM-only.
+- **Edges**: An edge can be GM-only even if both nodes it connects are Known. "Clericman the Good" and "Murdergod" can both be Known entities, but the relationship between them is GM-only. Players viewing either node's relationship panel simply don't see that edge.
+- **Blocks**: Individual blocks within a Known node can be GM-only. Clericman's page shows his public description, his role in the temple, his stat block — but the paragraph about his secret allegiance is hidden from the player view.
+- **Retconned** works at any level: a whole node can be retconned (a character who never existed), a single edge (a relationship that was undone), or a single block (a detail that was walked back).
 
 **Design principles:**
 
-- **Default to GM-only, known.** New content starts hidden and canonical. Both publishing and retconning are deliberate acts.
-- **Publishing is deliberate.** The GM can publish individual blocks, entire nodes, or batch-publish after a session ("everything that came up in tonight's journal is now player-visible"). It never happens automatically.
-- **The GM always sees everything.** The GM's view shows all visibility and canonicity states, with clear visual indicators. A toggle lets the GM preview "what do my players see?" without switching accounts.
-- **Visibility cascades down, not up.** If a node is GM-only, all its blocks and edges are implicitly GM-only. If a node is published, its blocks and edges can be independently set to either published or GM-only. A block cannot be published if its parent node is GM-only.
-- **Revealing is a narrative moment.** When the GM publishes a previously secret edge or block, the system can optionally note when it was revealed — "revealed in Session 14." Over time, this creates a record of the campaign's dramatic arc of discovery.
-- **Retconning preserves history.** Nothing is truly deleted. The campaign's history includes its contradictions and course corrections. The AI can reference retconned content when asked ("what did we originally establish about Kael's backstory?") but excludes it from active world-state queries.
+- **Default to GM-only.** New content — whether created manually or AI-suggested — starts as GM-only. Promoting to Known is a deliberate act. It's always safer to hide something the players should see than to reveal something they shouldn't.
+- **The GM always sees everything.** The GM's view shows all three states with clear visual differentiation. A toggle lets the GM preview "what do my players see?" without switching accounts.
+- **Status cascades down, not up.** If a node is GM-only, all its blocks and edges are implicitly GM-only. If a node is Known, its blocks and edges can be independently set to GM-only or Known. A block cannot be Known if its parent node is GM-only.
+- **Revealing is a narrative moment.** When the GM promotes a previously GM-only edge or block to Known, the system can optionally note when it was revealed — "revealed in Session 14." Over time, this creates a record of the campaign's dramatic arc of discovery.
+- **Retconning preserves history.** The campaign's history includes its contradictions and course corrections. Retconned content stays visible as a record of what was once established, but the AI treats it as inert.
 
 ---
 
