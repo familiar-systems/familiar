@@ -106,9 +106,34 @@ Key behaviors:
 - **Source linking**: Blocks derived from audio transcription carry a reference back to the timestamp in the original recording. The GM can always trace a claim back to "what was actually said at the table."
 - **AI suggestions**: A suggested block is visually distinct — clearly marked as unvetted. The GM can accept, edit, or reject it inline.
 
+### Edges
+
+The graph has two kinds of connections. Both are edges, but they serve different purposes, connect different things, and behave differently with respect to status.
+
+**Mentions** are **block-to-node or block-to-block** links. They're referential — "this content points to that entity or that content." The source is always a block (since blocks are the atomic content unit), but the target can be a node or another block.
+
+A block-to-node mention is an entity reference: a journal block says "Jormag and Linnea went to [The Wet Beer]," creating mentions to three things. A block-to-block mention is a content reference: a player character's page links to [a specific moment in Session 3's journal entry](block reference). Block-to-block mentions are what make transclusion work — a transcluded block is a mention that renders its target inline.
+
+Mentions are derived, not authored. They're created automatically when the AI detects entity references in text, or when the GM writes an inline reference. They carry no label (the connection is always "mentions"), no meaningful direction, and no independent status — a mention inherits status from the block it lives in. If the block is GM-only, its mentions are too.
+
+Mentions power backlinks ("where is this entity mentioned?"), context retrieval for the AI, and the clickable references throughout the graph.
+
+**Relationships** are **node-to-node** links. They're semantic — they describe how two entities in the campaign world are connected. "Clericman the Good" worships "Murdergod." Kael frequents the Rusty Anchor. The Silver Compact is allied with the Crown of Ashenmoor.
+
+Relationships are authored, not derived. The GM creates them directly, or the AI proposes them for review. They carry:
+
+- **A label** — freeform, semantic: "worships", "frequents", "rules over", "is allied with"
+- **An optional inverse label** — "worships" from one direction is "is worshipped by" from the other
+- **Direction** — relationships point from source to target; the inverse label lets both directions read naturally
+- **Independent status** — a relationship can be GM-only even when both nodes it connects are Known
+
+The relationship vocabulary is freeform and emerges over time. The GM doesn't predefine an ontology of allowed labels. The AI clusters and normalizes labels as the campaign grows — suggesting that "works for" and "employed by" might be the same relationship.
+
+**Mentions are the raw signal; relationships are the semantic interpretation.** When the AI processes "Jormag and Linnea went to Northport," the three mentions are automatic. The AI then *proposes* relationships from that context: "Jormag → traveled to → Northport", "Linnea → traveled to → Northport." Those proposals land in the review queue. The GM accepts, edits, or ignores them. Mentions are exhaustive; relationships are curated.
+
 ### Status
 
-A single field on every primitive — nodes, edges, and blocks — that captures both visibility and canonicity in one concept. Three states, one mental model.
+A single field on every primitive — nodes, relationships, and blocks — that captures both visibility and canonicity in one concept. Mentions don't carry independent status; they inherit from the block they belong to. Three states, one mental model.
 
 **The states:**
 
@@ -129,7 +154,7 @@ No icons, no badges, no tooltips needed. The visual language is the same across 
 **How status applies across primitives:**
 
 - **Nodes**: A GM-only node is completely invisible to players — it doesn't appear in searches, references, or the published journal. A Known node is visible, but individual blocks and edges within it can still be GM-only.
-- **Edges**: An edge can be GM-only even if both nodes it connects are Known. "Clericman the Good" and "Murdergod" can both be Known entities, but the relationship between them is GM-only. Players viewing either node's relationship panel simply don't see that edge.
+- **Relationships**: A relationship can be GM-only even if both nodes it connects are Known. "Clericman the Good" and "Murdergod" can both be Known entities, but the relationship between them is GM-only. Players viewing either node's relationship panel simply don't see that relationship.
 - **Blocks**: Individual blocks within a Known node can be GM-only. Clericman's page shows his public description, his role in the temple, his stat block — but the paragraph about his secret allegiance is hidden from the player view.
 - **Retconned** works at any level: a whole node can be retconned (a character who never existed), a single edge (a relationship that was undone), or a single block (a detail that was walked back).
 
