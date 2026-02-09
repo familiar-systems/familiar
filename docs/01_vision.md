@@ -21,9 +21,25 @@ A specialized, non-linear, AI-assisted campaign notebook. Two interlocking syste
 1. **The Journal** — captures what happened (sessions, recordings, narrative)
 2. **The Things** — captures what exists in the world (NPCs, locations, items, factions, lore)
 
-The AI is the connective tissue. It processes journal content, proposes new things and relationships, and keeps the campaign knowledge base growing with minimal GM effort.
+The AI is the connective tissue. It processes journal content, proposes new things and relationships, and keeps the campaign knowledge base growing with minimal GM effort. The AI layer connects to external language models — the hosted instance manages this; self-hosters configure their own provider.
 
 The underlying structure is a **graph**: every entity is a node, every relationship is an edge, and content is composed of blocks that can be referenced and embedded across the graph.
+
+### Distribution
+
+Loreweaver is a **web application**. The GM opens a browser, logs in, and works. No installation, no local setup, no file management. Players access the same application with their own accounts and see only what the GM has made visible.
+
+**Two deployment modes, one codebase:**
+
+- **Hosted (primary)** — We operate a multi-tenant instance for paying customers. This is the default experience and the path with the lowest barrier to entry. A GM who isn't technical should be able to sign up and start capturing their first session in minutes.
+
+- **Self-hosted** — The same application can be deployed by anyone on their own infrastructure. This serves enthusiasts who want control over their data, organizations with compliance requirements, and the open-source community. The [FSL-1.1-ALv2](https://fsl.software/) license makes this explicit: non-competing use is permitted immediately, and the code converts to Apache 2.0 after two years.
+
+**What this constrains:**
+
+- The application is a single deployable artifact that works in both modes. No hard dependency on proprietary cloud services that a self-hoster can't replace.
+- AI integration must be pluggable — the hosted instance uses managed API keys; self-hosters bring their own.
+- Storage must support both multi-tenant (hosted, many GMs on one instance) and single-tenant (self-hosted, one group's campaigns) without architectural divergence.
 
 ---
 
@@ -183,13 +199,16 @@ Between sessions, the GM might want to build out parts of the world that haven't
 
 This workflow is fully supported but never *required*. The system works even if the GM only ever interacts through the post-session loop.
 
-### Player-Facing Workflow (Future Consideration)
+### Player-Facing Workflow
+
+Player access is part of the core architecture. The features below are prioritized after the GM-facing workflows are solid.
 
 Players interact with the campaign knowledge base differently:
 
 - **Published journal**: Players see only published blocks of the session journal. The GM controls exactly which parts of the narrative are player-visible — entire entries can be published, or specific blocks can be withheld (e.g., a GM-only block noting "the party didn't notice the assassin watching from the rafters").
 - **Character ownership**: Players can edit their own character nodes — inventory, backstory, personal notes.
-- **Player recollections**: Players can submit their own notes or memories of a session, which feed into the raw journal as an additional source (multiple perspectives help the AI resolve ambiguity).
+- **Player recollections**: Players can submit their own notes or memories of a session, which feed into the session as an additional source (multiple perspectives help the AI resolve ambiguity).
+  - Player recollections aren't just AI input - they're part of the session's record. The final journal should include player-contributed blocks alongside the GM's own narrative, giving the session multiple voices.
 - **Filtered graph view**: Players see only published nodes, published edges, and published blocks. GM-only content is invisible — not redacted, not hinted at, simply absent. The player's view of an NPC page shows only what their characters would know, with no indication that hidden content exists.
 
 ---
