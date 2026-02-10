@@ -13,27 +13,32 @@ This document analyzes storage options for Loreweaver before any code is written
 The [vision doc](./01_vision.md) defines a **property graph with rich content**:
 
 - **Nodes**: Campaigns, Arcs, Sessions, Things (NPCs, locations, items, factions, etc.)
-- **Edges**: Labeled, directed relationships between any two nodes (e.g., Kael -> Rusty Anchor: "frequents")
 - **Blocks**: Rich content units nested inside nodes (text, headings, stat blocks, images, AI suggestions)
-- **Status**: Every primitive (node, edge, block) carries a status field: `gm_only | known | retconned`
-- **References**: Blocks can reference other blocks (transclusion), and journal entries contain entity mentions that link to thing nodes
+- **Two kinds of edges**:
+  - **Mentions**: Block-to-node or block-to-block links. Derived (not authored), carry no label, no meaningful direction, and **no independent status** — a mention inherits status from the block it lives in. These power backlinks, transclusion, and entity references in journal text.
+  - **Relationships**: Node-to-node links. Authored or AI-proposed. Carry a freeform label ("worships", "frequents"), an optional inverse label, direction, and **independent status**. A relationship can be GM-only even when both nodes it connects are Known.
+- **Status**: A single field on nodes, relationships, and blocks: `gm_only | known | retconned`. Mentions don't carry independent status; they inherit from their parent block. Status cascades down (a GM-only node makes all its contents implicitly GM-only) but not up.
+- **Session sources**: Sessions can have multiple raw sources — audio recordings, GM notes, and player recollections — each with its own author and type.
+- **Reveal tracking**: When content is promoted from GM-only to Known, the system can record when and in which session it was revealed (`revealed_at`, `revealed_in_session_id`).
 
 ## Query Patterns
 
-1. **Shallow graph traversal** -- "show me everything related to this NPC" (1-3 hops)
-2. **Status filtering** -- every query potentially filters by status (player view vs GM view)
-3. **Full-text search** -- "find all mentions of Grimhollow across journal entries and things"
-4. **Temporal ordering** -- sessions are chronologically ordered
-5. **Block resolution** -- fetch a specific block by ID for transclusion
-6. **AI context retrieval** -- find the most relevant nodes/blocks for a given query (semantic/vector search)
-7. **Bulk reads** -- render a thing page with all its blocks, edges, and transcluded content
+1. **Shallow graph traversal** -- "show me everything related to this NPC" (1-3 hops via relationships)
+2. **Status filtering** -- every query potentially filters by status (player view vs GM view). For nodes, relationships, and blocks this is a direct column check. For mentions, visibility requires joining to the parent block's status.
+3. **Backlink resolution** -- "where is this entity mentioned?" (query mentions by target node)
+4. **Full-text search** -- "find all mentions of Grimhollow across journal entries and things"
+5. **Temporal ordering** -- sessions are chronologically ordered
+6. **Block resolution** -- fetch a specific block by ID for transclusion
+7. **AI context retrieval** -- find the most relevant nodes/blocks for a given query (semantic/vector search)
+8. **Bulk reads** -- render a thing page with all its blocks, relationships, mentions, and transcluded content
 
 ## Scale Reality Check
 
 A single campaign is **small data**. Even a long-running campaign (100+ sessions over years) might have:
 
 - ~200-500 thing nodes
-- ~1,000-5,000 edges
+- ~500-2,000 relationships (curated, semantic links between nodes)
+- ~5,000-20,000 mentions (derived references from blocks to nodes/blocks)
 - ~5,000-20,000 blocks
 - ~100-200 session nodes
 
@@ -50,24 +55,56 @@ Store the graph as relational tables in a SQLite database. The campaign *is* a `
 **Schema sketch:**
 
 ```sql
-nodes      (id, type, template, status, properties JSON, created_at, updated_at)
-edges      (id, source_id, target_id, label, status, properties JSON, created_at, updated_at)
-blocks     (id, node_id, parent_block_id, type, position, status, content JSON, source_ref, created_at, updated_at)
-block_refs (id, from_block_id, to_block_id, ref_type)
+-- Graph structure
+nodes           (id, type, template, status, properties JSON,
+                 revealed_at, revealed_in_session_id,
+                 created_at, updated_at)
+
+relationships   (id, source_node_id, target_node_id,
+                 label, inverse_label, status, properties JSON,
+                 revealed_at, revealed_in_session_id,
+                 created_at, updated_at)
+
+-- Content
+blocks          (id, node_id, parent_block_id, type, position,
+                 status, content JSON, source_ref,
+                 revealed_at, revealed_in_session_id,
+                 created_at, updated_at)
+
+-- Derived references (no independent status -- inherits from source block)
+mentions        (id, source_block_id, target_node_id, target_block_id,
+                 created_at)
+                 -- target_node_id OR target_block_id is set, not both
+
+-- Session raw inputs
+session_sources (id, session_id, type, author_id, content,
+                 created_at, updated_at)
+                 -- type: 'audio' | 'gm_notes' | 'player_recollection'
 ```
 
-Graph traversals use recursive CTEs:
+Graph traversals (via relationships) use recursive CTEs:
 
 ```sql
 WITH RECURSIVE related AS (
-  SELECT target_id, label, 1 as depth
-  FROM edges WHERE source_id = ? AND status != 'retconned'
+  SELECT target_node_id, label, 1 as depth
+  FROM relationships WHERE source_node_id = ? AND status != 'retconned'
   UNION ALL
-  SELECT e.target_id, e.label, r.depth + 1
-  FROM edges e JOIN related r ON e.source_id = r.target_id
-  WHERE r.depth < 3 AND e.status != 'retconned'
+  SELECT r2.target_node_id, r2.label, r1.depth + 1
+  FROM relationships r2 JOIN related r1 ON r2.source_node_id = r1.target_node_id
+  WHERE r1.depth < 3 AND r2.status != 'retconned'
 )
 SELECT * FROM related;
+```
+
+Backlink queries (via mentions) join through blocks for visibility:
+
+```sql
+SELECT m.*, b.status AS block_status, b.node_id AS source_node_id
+FROM mentions m
+JOIN blocks b ON m.source_block_id = b.id
+WHERE m.target_node_id = ?
+  AND b.status != 'retconned';
+-- For player views, additionally filter: AND b.status = 'known'
 ```
 
 **Extensions:**
@@ -103,7 +140,7 @@ Standard relational tables with JSONB for flexible properties, hosted on a serve
 
 - [**pgvector**](https://github.com/pgvector/pgvector) for AI embeddings -- mature, widely deployed
 - Built-in full-text search via tsvector/tsquery
-- Row-level security (RLS) for GM-only/Known visibility filtering
+- Row-level security (RLS) for visibility filtering on nodes, relationships, and blocks
 - [**Apache AGE**](https://age.apache.org/) extension for Cypher graph queries if CTEs get unwieldy -- available on [Azure](https://learn.microsoft.com/en-us/azure/postgresql/azure-ai/generative-ai-age-overview), still maturing for self-hosted
 - Connection pooling and concurrent multi-user access
 - Every hosting provider: Supabase, Neon, RDS, Railway, etc.
@@ -113,7 +150,7 @@ Standard relational tables with JSONB for flexible properties, hosted on a serve
 - Requires a server from day one
 - Multi-tenancy means `campaign_id` on every table; isolation is your responsibility
 - Harder to migrate *from* if you later want local-first
-- RLS adds complexity but maps directly to the status model
+- RLS works cleanly for nodes, relationships, and blocks (direct status column check), but **mentions inherit status from their parent block**, so mention visibility requires a join. RLS policies that join across tables are possible but add complexity and can affect query plan performance. In practice, you may want RLS on the tables with independent status and handle mention filtering at the application/query layer.
 
 **Best for:** Server-hosted multi-user web app.
 
@@ -187,7 +224,7 @@ An architectural layer (not a database choice) that stores every change as an im
 - Massive implementation complexity for a greenfield project
 - Querying requires materializing views -- you're building two systems
 - The retcon use case is adequately served by a status field (`retconned`) -- no time-travel needed
-- "Revealed in Session 14" can be a `revealed_at` column
+- "Revealed in Session 14" is handled by `revealed_at` + `revealed_in_session_id` columns on nodes, relationships, and blocks
 - Can always add event sourcing to a specific hot path later
 
 **Verdict:** Borrow the pattern for specific features (the AI suggestion queue is naturally event-shaped), but don't build the whole system on it.
@@ -228,9 +265,9 @@ The default answer for server-hosted web apps.
 
 | Aspect | How PostgreSQL handles it |
 |---|---|
-| Graph storage | Adjacency tables (nodes, edges, blocks) with JSONB properties |
-| Graph traversal | Recursive CTEs; Apache AGE for Cypher if needed later |
-| Status filtering | Row-level security (RLS) maps directly to gm_only/known/retconned |
+| Graph storage | Separate tables: nodes, relationships, blocks, mentions (+ session_sources) with JSONB properties |
+| Graph traversal | Recursive CTEs over relationships; Apache AGE for Cypher if needed later |
+| Status filtering | RLS on nodes, relationships, blocks (direct status column). Mention visibility via join to parent block — handled at query layer. |
 | Full-text search | tsvector/tsquery (built-in) |
 | AI embeddings | pgvector (mature, widely deployed) |
 | Multi-user | Connection pooling, concurrent access, RLS |
@@ -244,6 +281,7 @@ The default answer for server-hosted web apps.
 3. pgvector + full-text search work out of the box
 4. Unmatched ecosystem -- every hosting provider, every ORM, every problem already solved
 5. The adjacency-table schema is portable to SQLite/Turso later if needed
+6. The split edge model (relationships + mentions) maps cleanly to separate tables with different schemas and access patterns
 
 ### Path 2: Turso / libSQL (the interesting alternative)
 
@@ -251,9 +289,9 @@ One database per campaign, hosted on Turso.
 
 | Aspect | How Turso handles it |
 |---|---|
-| Graph storage | Same adjacency tables, same SQL |
-| Graph traversal | Recursive CTEs (SQLite-compatible) |
-| Status filtering | Application-level filtering (no RLS equivalent) |
+| Graph storage | Same table split: nodes, relationships, blocks, mentions, session_sources |
+| Graph traversal | Recursive CTEs over relationships (SQLite-compatible) |
+| Status filtering | Application-level filtering (no RLS equivalent). Same join-through-block pattern for mention visibility. |
 | Full-text search | FTS5 (SQLite built-in) |
 | AI embeddings | Native libSQL vector search |
 | Multi-user | Application-level; one DB per campaign |
