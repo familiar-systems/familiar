@@ -1,5 +1,7 @@
 # Loreweaver — Project Structure Design
 
+> **Superseded.** This was the original project structure based on Next.js (SSR). The [SPA vs SSR analysis](./2026-02-14-spa-vs-ssr-design.md) concluded that SSR provides no meaningful benefit for an authenticated, editor-centric application. The current authoritative structure is the [SPA project structure](../plans/2026-02-14-project-structure-spa-design.md).
+
 ## Context
 
 Loreweaver is a web application with three workloads that have **different deployment lifecycles**:

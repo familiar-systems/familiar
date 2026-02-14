@@ -1,5 +1,7 @@
 # Loreweaver — SPA vs SSR Architecture Decision
 
+> **Decided: SPA.** This analysis evaluated SSR (Next.js) against SPA (Vite + React) for Loreweaver's requirements. The conclusion — SPA is a better fit — was adopted. The current project structure reflecting this decision is the [SPA project structure](../plans/2026-02-14-project-structure-spa-design.md).
+
 ## Context
 
 The [project structure design](./2026-02-14-project-structure-design.md) specifies Next.js App Router as the web layer. This document re-examines that choice against Loreweaver's actual requirements and proposes a **Single-Page Application (SPA)** architecture as an alternative.

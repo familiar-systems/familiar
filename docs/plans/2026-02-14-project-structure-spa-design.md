@@ -13,7 +13,7 @@ The API layer **enqueues** work; the worker **dequeues and processes** independe
 
 ### Why SPA over SSR?
 
-Loreweaver's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. Server-side rendering would produce HTML that React immediately takes over — compute spent on an HTML shell the user never sees without JavaScript. The SPA approach eliminates the server/client component boundary (no `'use client'` directives, no hydration bugs) and produces a cleaner dependency graph where the frontend structurally cannot import server-side code. See [SPA vs SSR analysis](./2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
+Loreweaver's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. Server-side rendering would produce HTML that React immediately takes over — compute spent on an HTML shell the user never sees without JavaScript. The SPA approach eliminates the server/client component boundary (no `'use client'` directives, no hydration bugs) and produces a cleaner dependency graph where the frontend structurally cannot import server-side code. See [SPA vs SSR analysis](../decisions/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
 
 ### Decisions made
 
@@ -21,14 +21,14 @@ Loreweaver's content is entirely behind authentication (no SEO), and the centerp
 |---|---|---|
 | Language | Full TypeScript (Stack A) | [stack_exploration.md](../discovery/stack/stack_exploration.md) |
 | Editor | TipTap (open-source, MIT) | [tiptap.md](../discovery/stack/editor/tiptap.md) |
-| Frontend | React (Vite SPA) | [SPA vs SSR analysis](./2026-02-14-spa-vs-ssr-design.md) |
-| Build tool | Vite | [SPA vs SSR analysis](./2026-02-14-spa-vs-ssr-design.md) |
+| Frontend | React (Vite SPA) | [SPA vs SSR analysis](../decisions/2026-02-14-spa-vs-ssr-design.md) |
+| Build tool | Vite | [SPA vs SSR analysis](../decisions/2026-02-14-spa-vs-ssr-design.md) |
 | API server | Hono + tRPC | This document |
 | Database | PostgreSQL | [storage_overview.md](../discovery/storage/storage_overview.md) |
 | ORM | Drizzle | [stack_exploration.md](../discovery/stack/stack_exploration.md) |
 | Collaboration | Hocuspocus (self-hosted Yjs server) | [tiptap.md](../discovery/stack/editor/tiptap.md) |
-| Job queue | PostgreSQL-backed (pg-boss or graphile-worker) | [project structure design](./2026-02-14-project-structure-design.md) |
-| Repo structure | pnpm monorepo with Turborepo | [project structure design](./2026-02-14-project-structure-design.md) |
+| Job queue | PostgreSQL-backed (pg-boss or graphile-worker) | [project structure design (SSR)](../decisions/2026-02-14-project-structure-design.md) |
+| Repo structure | pnpm monorepo with Turborepo | [project structure design (SSR)](../decisions/2026-02-14-project-structure-design.md) |
 
 ---
 
@@ -73,7 +73,7 @@ loreweaver/
 
 ## Packages
 
-All packages are unchanged from the [SSR design](./2026-02-14-project-structure-design.md). The SPA/SSR decision affects apps, not packages — this is the point of the separation.
+The package layer is shared across both the SPA and [SSR design](../decisions/2026-02-14-project-structure-design.md) — the SPA/SSR decision affects apps, not packages. This document reflects updates to `domain`, `db`, and `ai` packages to incorporate the [AI workflow primitives](./2026-02-14-ai-workflow-unification-design.md) (suggestions, conversations, CampaignContext, tool definitions).
 
 ### Dependency graph
 
@@ -126,6 +126,8 @@ Arrows point from consumer to dependency ("depends on"). Green = `domain` (found
 
 **Key structural difference from the SSR design:** `apps/web` depends on only 2 packages (`domain` and `editor`). It has no compile-time access to `db`, `auth`, `ai`, or `queue`. The client/server boundary is enforced by the dependency graph, not by convention.
 
+**AI layer split:** `apps/api` and `apps/worker` both depend on `@loreweaver/ai`, but for different purposes. `apps/api` uses it for interactive AI — streaming P&R and Q&A conversations through the agent window. `apps/worker` uses it for batch AI — the SessionIngest pipeline that processes audio and notes into journal drafts and entity proposals. Both use the shared `CampaignContext` interface for context retrieval with status filtering. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md) for the full design.
+
 ### `@loreweaver/domain` — Pure types, zero dependencies
 
 ```
@@ -136,10 +138,14 @@ packages/domain/src/
 ├── block.ts              # Block types, content variants
 ├── edge.ts               # Relationship + Mention types
 ├── status.ts             # Status enum (gm_only, known, retconned)
-└── user.ts               # User, Role, Permission types
+├── user.ts               # User, Role, Permission types
+├── suggestion.ts         # Suggestion, SuggestionBatch, suggestion status/type enums
+└── conversation.ts       # AgentConversation, ConversationMessage, conversation role enum
 ```
 
 Pure TypeScript types, enums, and status logic functions. No runtime dependencies. Every other package imports from here.
+
+The `suggestion.ts` module defines the `Suggestion` type as a discriminated union over suggestion types (`create_thing`, `update_blocks`, `create_relationship`, `journal_draft`, `contradiction`), along with `SuggestionBatch` and the suggestion status enum (`pending`, `accepted`, `rejected`, `dismissed`). The `conversation.ts` module defines `AgentConversation`, `ConversationMessage`, and the conversation role enum (`gm`, `player`, `system`). These are the core primitives of the [AI workflow](./2026-02-14-ai-workflow-unification-design.md).
 
 **Depends on:** nothing
 
@@ -155,7 +161,9 @@ packages/db/src/
 │   ├── mentions.ts
 │   ├── sessions.ts
 │   ├── campaigns.ts
-│   └── users.ts
+│   ├── users.ts
+│   ├── suggestions.ts    # suggestions + suggestion_batches tables
+│   └── conversations.ts  # agent_conversations + messages tables
 ├── queries/              # Reusable query helpers
 │   ├── graph.ts          # Traversals (recursive CTEs)
 │   ├── backlinks.ts      # Mention resolution
@@ -212,21 +220,29 @@ The `helpers/` directory enables server-side document manipulation: parsing docu
 packages/ai/src/
 ├── index.ts
 ├── client.ts             # LLM API client (pluggable provider)
-├── pipelines/
+├── provider.ts           # Provider abstraction (hosted = managed keys, self-hosted = BYO)
+├── context.ts            # CampaignContext interface: context retrieval + status filtering
+├── tools/                # Agent tool definitions (the AI's capabilities)
+│   ├── read.ts           # Search entities, get details, semantic search, session summaries
+│   └── write.ts          # Propose thing, propose blocks, propose relationship, flag contradiction
+├── pipelines/            # Batch processing (SessionIngest)
 │   ├── transcribe.ts     # Audio → text
 │   ├── journal-draft.ts  # Raw notes → structured journal draft
 │   ├── entity-extract.ts # Journal → proposed entities + relationships
 │   └── contradiction.ts  # Check new content against existing graph
-├── prompts/              # Prompt templates (separated from logic)
-│   ├── journal.ts
-│   ├── extraction.ts
-│   └── contradiction.ts
-└── provider.ts           # Provider abstraction (hosted = managed keys, self-hosted = BYO)
+└── prompts/              # Prompt templates (separated from logic)
+    ├── journal.ts
+    ├── extraction.ts
+    └── contradiction.ts
 ```
 
 The `provider.ts` abstraction handles the hosted vs. self-hosted requirement: the hosted instance configures managed API keys; self-hosters configure their own provider.
 
-Used by both `apps/api` (interactive AI streaming) and `apps/worker` (background pipeline jobs). See [interactive vs background AI analysis](../discovery/ai_workflows/interactive-vs-background.md) for the open question of unifying these two consumption patterns.
+The `context.ts` module defines the `CampaignContext` interface — the shared contract for how the AI retrieves campaign graph content with status filtering. Both `apps/api` (interactive AI) and `apps/worker` (batch AI) instantiate a `CampaignContext` appropriate to their execution environment.
+
+The `tools/` directory defines the agent's capabilities as tool functions. Read tools (available to all users) enable search, entity retrieval, and session summaries. Write tools (GM only) enable proposing things, relationships, block updates, and contradiction flags. The AI's behavior emerges from its tool set — Q&A uses read tools only; Planning & Refinement uses both. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md) for the full design.
+
+The `pipelines/` directory contains batch processing stages for SessionIngest — long-running jobs that run on `apps/worker`.
 
 **Depends on:** `@loreweaver/domain`, `@loreweaver/db`
 
@@ -274,7 +290,8 @@ apps/web/
 │   ├── components/
 │   │   ├── editor/                  # TipTap editor wrapper + toolbar
 │   │   ├── graph/                   # Graph visualization components
-│   │   ├── review/                  # AI suggestion review queue UI
+│   │   ├── agent/                   # Agent window (chat UI, streaming, @-references)
+│   │   ├── review/                  # Suggestion batch review queue UI
 │   │   └── ui/                      # Shared UI primitives
 │   └── lib/
 │       ├── trpc.ts                  # tRPC client (points to apps/api)
@@ -303,17 +320,20 @@ apps/api/src/
 │   ├── thing.ts                     # Thing CRUD
 │   ├── graph.ts                     # Relationship + mention queries
 │   ├── queue.ts                     # Job submission (enqueue background work)
-│   └── ai.ts                        # Interactive AI (streaming generation)
+│   ├── ai.ts                        # Interactive AI streaming (P&R, Q&A via agent window)
+│   ├── suggestion.ts                # Suggestion CRUD (accept, reject, dismiss, list pending)
+│   └── conversation.ts             # AgentConversation CRUD (create, list, get messages)
 ├── middleware/
 │   ├── auth.ts                      # Token verification via @loreweaver/auth
 │   └── cors.ts                      # CORS headers (dev only; production uses reverse proxy)
 └── config.ts                        # Server configuration (port, allowed origins)
 ```
 
-The API server handles two categories of work:
+The API server handles three categories of work:
 
 1. **Standard CRUD** — request/response tRPC procedures for campaigns, sessions, things, graph queries, and job submission
-2. **Interactive AI** — streaming tRPC subscriptions for content generation, entity suggestions, and context queries (see [interactive vs background AI](../discovery/ai_workflows/interactive-vs-background.md))
+2. **Interactive AI** — streaming tRPC procedures for the agent window: Planning & Refinement (GM produces suggestions interactively) and Q&A (GM or player asks questions about the campaign). The AI's behavior emerges from tool availability — GMs have read+write tools, players have read-only tools. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md).
+3. **Suggestion & conversation management** — CRUD for suggestions (accept, reject, dismiss, list pending, auto-rejection) and agent conversations (create, list history, get messages). These are the persistence layer for the AI workflow's durable primitives.
 
 Hono is a lightweight HTTP framework that runs on Node.js, Deno, Bun, and Cloudflare Workers. The tRPC adapter plugs into Hono as middleware. The entire server is thin wiring — all logic lives in the packages.
 
