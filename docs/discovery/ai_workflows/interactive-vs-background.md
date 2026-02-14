@@ -1,5 +1,7 @@
 # Loreweaver — Interactive vs Background AI Workflows
 
+> **Resolved.** The questions raised in this document are addressed in the [AI workflow unification design](../../plans/2026-02-14-ai-workflow-unification-design.md), which unifies interactive and background workflows through a shared suggestion primitive and a single agent interface.
+
 ## Context
 
 The [project structure design](../../plans/2026-02-14-project-structure-design.md) defines two places where AI work happens:

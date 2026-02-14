@@ -97,14 +97,13 @@ Things can also be created manually — the GM might want to pre-build a city be
 
 ### Block
 
-The atomic content unit. Everything inside a node — text, headings, stat blocks, images, AI suggestions — is a block. Blocks are the grain at which content is referenced, embedded, and transcluded.
+The atomic content unit. Everything inside a node — text, headings, stat blocks, images — is a block. Blocks are the grain at which content is referenced, embedded, and transcluded.
 
 Key behaviors:
 
 - **Block references**: Any block can be referenced from anywhere in the graph, like Notion or Logseq. "See the description of Grimhollow" can link to a specific paragraph on the Grimhollow page, not just the page itself.
 - **Transclusion**: A block from one node can be embedded live in another. The goblin stat block defined on the Goblin monster page can be transcluded into the NPC page for "Mr. Foo Bard" (who is, apparently, a goblin). Edit it in one place, it updates everywhere.
 - **Source linking**: Blocks derived from audio transcription carry a reference back to the timestamp in the original recording. The GM can always trace a claim back to "what was actually said at the table."
-- **AI suggestions**: A suggested block is visually distinct — clearly marked as unvetted. The GM can accept, edit, or reject it inline.
 
 ### Edges
 
@@ -166,6 +165,78 @@ No icons, no badges, no tooltips needed. The visual language is the same across 
 - **Revealing is a narrative moment.** When the GM promotes a previously GM-only edge or block to Known, the system can optionally note when it was revealed — "revealed in Session 14." Over time, this creates a record of the campaign's dramatic arc of discovery.
 - **Retconning preserves history.** The campaign's history includes its contradictions and course corrections. Retconned content stays visible as a record of what was once established, but the AI treats it as inert.
 
+### Suggestion
+
+A **suggestion** is a proposed mutation to the campaign graph. Every AI output that would modify the world — whether from session processing, interactive planning, or any other source — materializes as a suggestion. Suggestions are never applied automatically. The GM reviews and acts on each one.
+
+**Suggestion types:**
+
+- **Create thing** — a new node (NPC, location, item, etc.) with a template and initial blocks
+- **Update blocks** — new or modified blocks on an existing node
+- **Create relationship** — a new edge between two nodes, with label and optional inverse
+- **Journal draft** — proposed journal entry blocks for a session
+- **Contradiction** — a flag: "this content conflicts with established canon," with references to both sides
+
+**Key properties:**
+
+- **Always durable.** Suggestions are persisted the moment they're generated. If the GM closes the browser mid-session, every suggestion the AI has produced is still waiting when they come back.
+- **Grouped into batches.** Related suggestions (e.g., "the three NPCs and their relationships from a tavern scene") are grouped into a **SuggestionBatch** — the unit of review. The GM can act on a batch in bulk or expand it and review individual suggestions.
+- **Provenance.** Every suggestion links back to the conversation that produced it — the reasoning, the context, the GM's instructions. A suggestion is never context-free.
+- **Auto-rejection.** Suggestions not acted on within a configurable window (~7 days) are automatically rejected. This keeps the suggestion queue fresh and prevents unbounded accumulation. Auto-rejected suggestions remain visible in their conversation's history.
+- **Accepting creates real content.** When the GM accepts a suggestion, the system creates the corresponding node, blocks, or relationship with `gm_only` status (the default for all new content).
+
+### Agent Conversation
+
+An **agent conversation** is a persisted record of an AI interaction — what was said, what was proposed, and what decisions were made. Conversations are the provenance for suggestions.
+
+**Why conversations are persisted:** A suggestion without its originating conversation is context-free. "Create NPC: Mysterious Figure" means nothing without the conversation that explains why the AI proposed it. The conversation IS the provenance.
+
+**Conversation types:**
+
+- **GM-initiated** — the GM opens the agent window and collaborates with the AI (planning, refinement, world-building)
+- **Player-initiated** — a player opens the agent window and asks questions about the campaign
+- **System-initiated** — the session processing pipeline completes and creates a conversation with its proposals attached
+
+**Lifecycle:** Conversations with unresolved suggestions (pending status) surface prominently in the UI — they represent outstanding decisions. Once all suggestions are resolved (accepted, rejected, dismissed, or auto-rejected), the conversation fades from prominence but remains browsable in history.
+
+---
+
+## The Agent Window
+
+The agent window is the single interface for all AI interaction in Loreweaver. It is a conversational surface — the user talks, the AI responds, and when appropriate, the AI produces structured suggestions alongside its conversational output.
+
+### Focal Point
+
+When the agent window opens, its context is determined by **where the user opened it**:
+
+| Focal point | Context the AI starts with |
+|---|---|
+| Session page (post-processing) | Session transcript, extracted entities, journal draft, existing suggestions |
+| Session page (pre-session) | Recent session summaries, active plot threads, prep notes |
+| Thing page (NPC, location, etc.) | The thing's blocks, relationships, all mentions across sessions |
+| Campaign overview | High-level: arcs, major entities, open contradictions |
+
+The focal point determines the AI's initial context retrieval. The GM can always pull in additional context with `@`-references to specific nodes or blocks.
+
+### Tool Availability Determines Behavior
+
+The agent window does not have modes. Instead, the user's role determines what tools the AI has access to:
+
+- **Read tools** (all users): search entities, get entity details, get relationships, semantic search across content, session summaries
+- **Write tools** (GM only): propose creating things, propose block updates, propose relationships, flag contradictions
+
+When a player opens the agent window, the AI has only read tools and answers questions. When a GM opens it, the AI has both read and write tools. If the GM asks "tell me about Kael," the AI answers (Q&A). If the GM asks "flesh out Kael's backstory," the AI produces suggestions (planning & refinement). The tool set drives the behavior, not a mode flag.
+
+### Three Workflows, One Interface
+
+The agent window serves three use cases:
+
+1. **Session processing review** — the system processes uploaded audio/notes and presents its proposals as a system-initiated conversation. The GM reviews suggestions, then can "continue from here" to refine interactively.
+2. **Planning & refinement** — the GM opens the agent window and collaborates with the AI to build, expand, or refine campaign content. This works from any page — a session, an NPC, a location, the campaign overview.
+3. **Q&A** — a GM or player asks questions about the campaign. The AI queries the graph (filtered by role) and answers. No suggestions produced.
+
+These are not separate features. They are the same interface with different starting contexts and tool availability. See the [AI workflow unification design](plans/2026-02-14-ai-workflow-unification-design.md) for the full design.
+
 ---
 
 ## Workflows
@@ -177,49 +248,45 @@ This is the core loop. After every session, the GM goes through roughly this pro
 ```
 Record/capture session
         ↓
-Raw sources (audio + notes) land in the session
+Upload audio + notes to the session page, fill in metadata
         ↓
-AI transcribes audio, merges with notes into raw journal
+System processes the upload (transcription, entity extraction,
+journal drafting, proposal generation)
         ↓
-AI drafts journal entry using campaign graph for context
-  - Resolves entity references ("the blacksmith" → Tormund, the NPC)
-  - Suggests new entities detected in the narrative
-  - Flags potential contradictions with established canon
-        ↓
-GM reviews and edits the journal draft
-        ↓
-Journal is finalized
-        ↓
-AI generates a review queue:
+A system-initiated conversation appears on the session page:
+  - Journal draft as suggested blocks
   - New things to create (3 new NPCs detected)
   - New relationships to add (Kael → Rusty Anchor: "frequents")
   - Updates to existing things (Tormund's status: now deceased)
+  - Contradiction flags
         ↓
-GM reviews the queue (accept / edit / reject)
+GM reviews suggestions (accept / edit / reject / dismiss)
   - One-click accept for obvious ones
   - Inline edit for things that need adjustment
-  - Skipping is fine — unreviewed items stay as suggestions
-        ↓
-Campaign graph is updated
+  - "Continue from here" to refine interactively via the agent window
+  - Skipping is fine — unreviewed suggestions auto-reject after ~7 days
 ```
 
 The entire post-session process should take **15–30 minutes**, not hours. The AI does the heavy lifting; the GM does the judgment calls.
 
 ### Pre-Session Workflow (Prep)
 
-Before a session, the GM needs to prepare. The system supports this by:
+Before a session, the GM needs to prepare. The GM opens the agent window from the upcoming session page, where the AI has session-relevant context loaded:
 
 1. **Surfacing relevant context**: Based on where the last session ended, the AI pulls together relevant things — NPCs the party is likely to encounter, locations they're heading toward, unresolved plot threads
 2. **Highlighting gaps**: "You've established that the party is traveling to Grimhollow, but you haven't defined what's there yet. Want to flesh it out?"
 3. **Prep notes**: The GM writes plans, encounter ideas, secrets to reveal, and NPC motivations in a prep note attached to the upcoming session
-4. **Post-session diff**: After the session, the AI can compare prep notes to the actual journal — what happened vs. what was planned. The delta is where the most interesting world-state updates live (improvised NPCs, unexpected alliances, plans that went sideways)
+4. **Interactive planning**: The GM collaborates with the AI to flesh out locations, build encounters, develop NPCs — all through the agent window, with suggestions landing as durable proposals
+5. **Post-session diff**: After the session, the AI can compare prep notes to the actual journal — what happened vs. what was planned. The delta is where the most interesting world-state updates live (improvised NPCs, unexpected alliances, plans that went sideways)
 
 ### Ongoing World-Building Workflow
 
-Between sessions, the GM might want to build out parts of the world that haven't come up in play yet. This is traditional wiki-style authoring:
+Between sessions, the GM might want to build out parts of the world that haven't come up in play yet. The GM can author manually or open the agent window from any thing page to collaborate with the AI:
 
 - Create a new thing from a template
 - Fill in details, embed references to other things
+- Open the agent window: "Flesh out @Grimhollow — it should be a ruined fortress connected to @SilverCompact"
+- AI produces suggestions (new blocks, related entities, relationships) that the GM reviews
 - Everything starts GM-only by default; the GM publishes nodes, blocks, and edges as they're revealed in play
 
 This workflow is fully supported but never *required*. The system works even if the GM only ever interacts through the post-session loop.
@@ -234,6 +301,7 @@ Players interact with the campaign knowledge base differently:
 - **Character ownership**: Players can edit their own character nodes — inventory, backstory, personal notes.
 - **Player recollections**: Players can submit their own notes or memories of a session, which feed into the session as an additional source (multiple perspectives help the AI resolve ambiguity).
   - Player recollections aren't just AI input - they're part of the session's record. The final journal should include player-contributed blocks alongside the GM's own narrative, giving the session multiple voices.
+- **Q&A via the agent window**: Players can open the agent window and ask questions about the campaign — "What do we know about the Silver Compact?", "When did we last visit Grimhollow?", "What happened last session?" The AI answers using only Known content; GM-only information is structurally invisible to the player's agent.
 - **Filtered graph view**: Players see only published nodes, published edges, and published blocks. GM-only content is invisible — not redacted, not hinted at, simply absent. The player's view of an NPC page shows only what their characters would know, with no indication that hidden content exists.
 
 ---
@@ -246,11 +314,11 @@ The GM's primary activity is running the game and writing about it. The knowledg
 
 ### AI proposes, the GM disposes
 
-The AI is an editorial assistant, not an author. It suggests; the GM approves. Every suggestion links back to the source material that triggered it. The GM always has the final word.
+The AI is an editorial assistant, not an author. It produces suggestions — proposed mutations to the campaign graph — that the GM reviews and acts on. The AI cannot modify the graph directly; every change requires GM approval. Every suggestion links back to the conversation that produced it, so the GM can always trace why something was proposed.
 
 ### Tolerant of neglect
 
-Not every GM will review every suggestion. The system stays useful even with unvetted AI suggestions in the graph. Suggestions are visually distinct and carry a confidence tier (confirmed > accepted > suggested), but they're never invisible — they still power AI context retrieval and surface in searches.
+Not every GM will review every suggestion. The system stays useful even when the GM doesn't review everything. Suggestions that go unreviewed auto-reject after a configurable window (~7 days), keeping the suggestion queue fresh without punishing the GM for skipping a week. The system never piles up infinite unreviewed proposals — it assumes silence is "no" and moves on.
 
 ### Structure is discovered, not imposed
 
