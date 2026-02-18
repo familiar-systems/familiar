@@ -1,8 +1,10 @@
 # PostgreSQL vs Turso — Storage Re-evaluation
 
+> **Decided: PostgreSQL.** Turso (libSQL) offered structural campaign isolation and trivial `:memory:` testing, but is locked to AWS with no plans to expand to independent EU infrastructure. PostgreSQL is universally available across every EU provider (UpCloud, Scaleway, OVH, Exoscale, Hetzner, Ubicloud) and every managed platform (Railway, Render, Fly.io). Provider flexibility and ecosystem maturity won. See also [storage overview](./2026-02-14-storage-overview.md) for the initial analysis.
+
 ## Context
 
-The [storage overview](./storage_overview.md) evaluated storage options before any architectural decisions were made. It recommended PostgreSQL as the starting point, with Turso as an interesting alternative.
+The [storage overview](./2026-02-14-storage-overview.md) evaluated storage options before any architectural decisions were made. It recommended PostgreSQL as the starting point, with Turso as an interesting alternative.
 
 Since then, several architectural decisions have been made:
 

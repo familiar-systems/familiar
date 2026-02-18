@@ -13,7 +13,7 @@ The API layer **enqueues** work; the worker **dequeues and processes** independe
 
 ### Why SPA over SSR?
 
-Loreweaver's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. Server-side rendering would produce HTML that React immediately takes over — compute spent on an HTML shell the user never sees without JavaScript. The SPA approach eliminates the server/client component boundary (no `'use client'` directives, no hydration bugs) and produces a cleaner dependency graph where the frontend structurally cannot import server-side code. See [SPA vs SSR analysis](../decisions/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
+Loreweaver's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. Server-side rendering would produce HTML that React immediately takes over — compute spent on an HTML shell the user never sees without JavaScript. The SPA approach eliminates the server/client component boundary (no `'use client'` directives, no hydration bugs) and produces a cleaner dependency graph where the frontend structurally cannot import server-side code. See [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
 
 ### Decisions made
 
@@ -21,14 +21,14 @@ Loreweaver's content is entirely behind authentication (no SEO), and the centerp
 |---|---|---|
 | Language | Full TypeScript (Stack A) | [stack_exploration.md](../discovery/stack/stack_exploration.md) |
 | Editor | TipTap (open-source, MIT) | [tiptap.md](../discovery/stack/editor/tiptap.md) |
-| Frontend | React (Vite SPA) | [SPA vs SSR analysis](../decisions/2026-02-14-spa-vs-ssr-design.md) |
-| Build tool | Vite | [SPA vs SSR analysis](../decisions/2026-02-14-spa-vs-ssr-design.md) |
+| Frontend | React (Vite SPA) | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md) |
+| Build tool | Vite | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md) |
 | API server | Hono + tRPC | This document |
-| Database | PostgreSQL | [storage_overview.md](../discovery/storage/storage_overview.md) |
+| Database | PostgreSQL | [storage_overview.md](../discovery/archive/2026-02-14-storage-overview.md) |
 | ORM | Drizzle | [stack_exploration.md](../discovery/stack/stack_exploration.md) |
 | Collaboration | Hocuspocus (self-hosted Yjs server) | [tiptap.md](../discovery/stack/editor/tiptap.md) |
-| Job queue | PostgreSQL-backed (pg-boss or graphile-worker) | [project structure design (SSR)](../decisions/2026-02-14-project-structure-design.md) |
-| Repo structure | pnpm monorepo with Turborepo | [project structure design (SSR)](../decisions/2026-02-14-project-structure-design.md) |
+| Job queue | PostgreSQL-backed (pg-boss or graphile-worker) | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
+| Repo structure | pnpm monorepo with Turborepo | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
 
 ---
 
@@ -73,7 +73,7 @@ loreweaver/
 
 ## Packages
 
-The package layer is shared across both the SPA and [SSR design](../decisions/2026-02-14-project-structure-design.md) — the SPA/SSR decision affects apps, not packages. This document reflects updates to `domain`, `db`, and `ai` packages to incorporate the [AI workflow primitives](./2026-02-14-ai-workflow-unification-design.md) (suggestions, conversations, CampaignContext, tool definitions).
+The package layer is shared across both the SPA and [SSR design](./archive/2026-02-14-project-structure-design.md) — the SPA/SSR decision affects apps, not packages. This document reflects updates to `domain`, `db`, and `ai` packages to incorporate the [AI workflow primitives](./2026-02-14-ai-workflow-unification-design.md) (suggestions, conversations, CampaignContext, tool definitions).
 
 ### Dependency graph
 
