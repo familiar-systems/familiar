@@ -14,8 +14,11 @@ Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It
 - `docs/plans/2026-02-14-project-structure-spa-design.md` — **Authoritative** project structure and tech stack
 - `docs/plans/2026-02-14-ai-workflow-unification-design.md` — AI workflow architecture (SessionIngest, P&R, Q&A)
 - `docs/plans/2026-02-18-deployment-strategy.md` — Deployment strategy (local dev + one VPS, provider deferred)
+
+### Not Worth Reading On Startup
+
 - `docs/plans/archive/2026-02-14-spa-vs-ssr-design.md` — Why SPA over SSR (decided: SPA)
-- `docs/plans/archive/2026-02-14-project-structure-design.md` — **Superseded** by the SPA design
+- `docs/plans/archive/2026-02-14-project-structure-design.md` — **Superseded** by the SPA design. Likely not
 - `docs/discovery/archive/2026-02-18-postgres-vs-turso.md` — Why PostgreSQL over Turso/libSQL (decided: PostgreSQL)
 - `docs/discovery/archive/2026-02-14-storage-overview.md` — Initial storage architecture analysis
 

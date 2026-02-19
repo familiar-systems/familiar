@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+  - tooling/*
+catalog:
+  typescript: ^5.8
+onlyBuiltDependencies:
+  - esbuild

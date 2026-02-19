@@ -92,6 +92,10 @@ dist/
 coverage/
 .nyc_output/
 
+### Turborepo ###
+.turbo/
+*.tsbuildinfo
+
 ### Python ###
 __pycache__/
 *.py[cod]

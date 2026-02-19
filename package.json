@@ -1,0 +1,20 @@
+{
+  "name": "loreweaver",
+  "private": true,
+  "packageManager": "pnpm@10.11.0",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "format": "oxfmt .",
+    "typecheck": "turbo typecheck"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.33",
+    "oxlint": "^1.48",
+    "turbo": "^2.8",
+    "typescript": "^5.8",
+    "vitest": "^3"
+  }
+}
