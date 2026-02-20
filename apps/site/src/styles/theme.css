@@ -1,0 +1,25 @@
+/* Light Theme (Default) — Warm parchment */
+:root {
+  --background: #F8F4EC;
+  --foreground: #1C1917;
+  --muted: #EDE8DD;
+  --muted-foreground: #57534E;
+  --primary-foreground: #1C1917;
+}
+
+/* Dark Theme — Deep warm charcoal */
+.dark {
+  --background: #0F0D0A;
+  --foreground: #E7E5E4;
+  --color-primary: #D4A944;
+  --muted: #1C1917;
+  --muted-foreground: #A8A29E;
+  --primary-foreground: #0F0D0A;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: 'Crimson Pro', Georgia, serif;
+  transition: background-color 0.3s, color 0.3s;
+}

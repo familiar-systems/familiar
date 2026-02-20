@@ -1,0 +1,71 @@
+---
+import { siteConfig, ACTION_LINKS, FOOTER_LINKS } from '~/site.config';
+import { SiGithub as Github } from '~/components/icons/BrandIcons';
+import { defaultLang } from '~/i18n/ui';
+import { useTranslations } from '~/i18n/utils';
+
+const today = new Date();
+const { lang = defaultLang } = Astro.params;
+const t = useTranslations(lang);
+---
+
+<footer class="mt-auto border-t border-foreground/10 bg-background py-12">
+  <div class="max-w-7xl mx-auto px-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
+      <div class="col-span-1 md:col-span-2 flex flex-col items-start gap-4">
+        <div class="flex flex-col gap-2">
+          <span class="text-xl font-bold font-display tracking-tight">{siteConfig.name}</span>
+          <p class="text-sm text-muted-foreground/80 max-w-xs">
+            {t['footer.description']}
+          </p>
+        </div>
+      </div>
+
+      {Object.entries(FOOTER_LINKS).map(([key, section]) => (
+        <div>
+          <h3 class="font-semibold mb-4 text-foreground">{t[`footer.${key}` as keyof typeof t] || section.title}</h3>
+          <ul class="space-y-2 text-sm text-foreground/90">
+            {section.links.map((link: any) => {
+              const shouldLocalize = link.localize !== false;
+              const href = (!shouldLocalize)
+                ? link.href
+                : `/${lang}${link.href.startsWith('/') ? '' : '/'}${link.href}`.replace(/\/$/, '') || `/${lang}`;
+
+              return (
+                <li>
+                  <a
+                    href={href}
+                    class="hover:text-foreground transition-colors"
+                  >
+                    {t[`footer.${link.label.toLowerCase()}` as keyof typeof t] || link.label}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
+
+    <div class="pt-8 border-t border-foreground/10 flex flex-col md:flex-row justify-between items-center gap-4">
+      <div class="flex flex-col gap-1">
+        <div class="text-muted-foreground text-sm">
+          {(t['footer.copyright'] || '').replace('{year}', today.getFullYear().toString())}
+        </div>
+        {siteConfig.legal && (
+          <div class="text-muted-foreground/50 text-xs">
+            {siteConfig.legal.entityName} — Org. nr. {siteConfig.legal.orgNumber}
+          </div>
+        )}
+      </div>
+
+      <div class="flex gap-4">
+        {ACTION_LINKS.social.github && (
+          <a href={ACTION_LINKS.social.github} target="_blank" rel="noopener noreferrer" class="text-muted-foreground hover:text-foreground transition-colors" aria-label="GitHub">
+            <Github className="w-5 h-5" strokeWidth={1.5} />
+          </a>
+        )}
+      </div>
+    </div>
+  </div>
+</footer>

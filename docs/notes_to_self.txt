@@ -1,0 +1,4 @@
+* Astro theme starter point: https://astro.build/themes/details/astroplate-multilingual-astro-boilerplate/
+    * Make single-page-ish
+    * Move blog into frontmatter
+    * Logged in users see campaign react islands for their campaigns (when that's all set up)

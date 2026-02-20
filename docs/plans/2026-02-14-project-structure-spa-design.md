@@ -2,12 +2,13 @@
 
 ## Context
 
-Loreweaver is a web application with four workloads that have **different deployment lifecycles**:
+Loreweaver is a web application with five workloads that have **different deployment lifecycles**:
 
-1. **Frontend** (Vite + React SPA) — static files served from a CDN or file server. No server process. Deploy = upload new files.
-2. **API layer** (Hono + tRPC) — handles CRUD, interactive AI streaming, and job submission. Stateless, request-response (plus streaming for AI). Needs fast restarts and blue/green deploys.
-3. **Collaboration layer** (Hocuspocus) — holds persistent WebSocket connections for real-time document editing via Yjs CRDTs. Must be a separate process because WebSockets need long-lived connections.
-4. **Worker layer** (AI pipeline) — dequeues long-running jobs (audio transcription, entity extraction, journal drafting). A single job may run 10+ minutes. Must survive deploys of the other three layers.
+1. **Public site** (Astro) — static HTML for the landing page, blog, and public campaign showcase. No server process. Deploy = upload new files. Content changes deploy independently of the app.
+2. **Frontend** (Vite + React SPA) — the authenticated application. Static files served from a CDN or file server. No server process. Deploy = upload new files. Served under `/app/`.
+3. **API layer** (Hono + tRPC) — handles CRUD, interactive AI streaming, and job submission. Stateless, request-response (plus streaming for AI). Needs fast restarts and blue/green deploys.
+4. **Collaboration layer** (Hocuspocus) — holds persistent WebSocket connections for real-time document editing via Yjs CRDTs. Must be a separate process because WebSockets need long-lived connections.
+5. **Worker layer** (AI pipeline) — dequeues long-running jobs (audio transcription, entity extraction, journal drafting). A single job may run 10+ minutes. Must survive deploys of the other four layers.
 
 The API layer **enqueues** work; the worker **dequeues and processes** independently. Deploying the API server does not interrupt in-flight AI jobs. Deploying new static files does not affect any server process.
 
@@ -29,6 +30,7 @@ Loreweaver's content is entirely behind authentication (no SEO), and the centerp
 | Collaboration | Hocuspocus (self-hosted Yjs server) | [tiptap.md](../discovery/stack/editor/tiptap.md) |
 | Job queue | PostgreSQL-backed (pg-boss or graphile-worker) | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
 | Repo structure | pnpm monorepo with Turborepo | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
+| Public site | Astro (static site generator) | [Public site design](./2026-02-20-public-site-design.md) |
 
 ---
 
@@ -37,7 +39,8 @@ Loreweaver's content is entirely behind authentication (no SEO), and the centerp
 ```
 loreweaver/
 ├── apps/
-│   ├── web/              # Vite + React SPA (static files)
+│   ├── site/             # Astro — landing page, blog, public campaign pages
+│   ├── web/              # Vite + React SPA (static files, behind auth, served under /app/)
 │   ├── api/              # Hono + tRPC — CRUD, interactive AI, job submission
 │   ├── collab/           # Hocuspocus — WebSocket collaboration server
 │   └── worker/           # Job consumer — dequeues and runs AI pipeline
@@ -90,6 +93,8 @@ graph BT
     auth["@loreweaver/auth"] --> domain
     auth --> db
 
+    site["apps/site<br/><i>Astro (static HTML)</i>"] --> domain
+
     web["apps/web<br/><i>SPA (static files)</i>"] --> domain
     web --> editor
 
@@ -116,6 +121,7 @@ graph BT
     style ai fill:#69c,stroke:#333,color:#fff
     style queue fill:#69c,stroke:#333,color:#fff
     style auth fill:#69c,stroke:#333,color:#fff
+    style site fill:#c66,stroke:#333,color:#fff
     style web fill:#c66,stroke:#333,color:#fff
     style api fill:#c66,stroke:#333,color:#fff
     style collab fill:#c66,stroke:#333,color:#fff
@@ -124,7 +130,7 @@ graph BT
 
 Arrows point from consumer to dependency ("depends on"). Green = `domain` (foundation, zero deps). Blue = packages (shared logic). Red = apps (deployment targets).
 
-**Key structural difference from the SSR design:** `apps/web` depends on only 2 packages (`domain` and `editor`). It has no compile-time access to `db`, `auth`, `ai`, or `queue`. The client/server boundary is enforced by the dependency graph, not by convention.
+**Key structural difference from the SSR design:** `apps/web` depends on only 2 packages (`domain` and `editor`). It has no compile-time access to `db`, `auth`, `ai`, or `queue`. The client/server boundary is enforced by the dependency graph, not by convention. `apps/site` is even more minimal — it depends on `domain` only, for shared types used in public campaign pages.
 
 **AI layer split:** `apps/api` and `apps/worker` both depend on `@loreweaver/ai`, but for different purposes. `apps/api` uses it for interactive AI — streaming P&R and Q&A conversations through the agent window. `apps/worker` uses it for batch AI — the SessionIngest pipeline that processes audio and notes into journal drafts and entity proposals. Both use the shared `CampaignContext` interface for context retrieval with status filtering. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md) for the full design.
 
@@ -266,6 +272,39 @@ Defines typed job payloads and provides enqueue/dequeue functions backed by Post
 
 Apps are thin deployment targets that wire packages together. Domain logic, database queries, AI prompts, and editor schema belong in packages — not in apps.
 
+### `apps/site` — Astro (public site)
+
+```
+apps/site/
+├── astro.config.ts              # Astro configuration (React integration, site URL)
+├── src/
+│   ├── pages/
+│   │   ├── index.astro          # Landing page
+│   │   ├── blog/
+│   │   │   ├── index.astro      # Blog listing
+│   │   │   └── [...slug].astro  # Blog post (dynamic route from content collection)
+│   │   └── campaigns/
+│   │       ├── index.astro      # Campaign showcase listing
+│   │       └── [id].astro       # Individual public campaign page
+│   ├── content/
+│   │   ├── config.ts            # Content collection schemas (Zod)
+│   │   └── blog/                # Markdown blog posts
+│   ├── layouts/
+│   │   ├── Base.astro           # HTML shell (head, meta, footer)
+│   │   └── BlogPost.astro       # Blog post layout
+│   └── components/              # Astro components (Header, Footer, CampaignCard)
+├── public/                      # Static assets (images, favicon)
+└── tsconfig.json                # Extends tooling/tsconfig/base.json
+```
+
+The public-facing site: landing page, blog, and optional campaign showcase. Generates static HTML at build time — no server process, no JavaScript by default. Blog content lives as Markdown files in `src/content/blog/` using Astro's typed content collections (frontmatter validated by Zod).
+
+Public campaign pages are static snapshots: campaign data is fetched from `apps/api` at build time and rendered as HTML. This keeps pages fast and SEO-friendly without requiring a server runtime.
+
+Astro supports React "islands" — interactive components that hydrate on demand — enabling shared components with `apps/web` if needed, without shipping a full React bundle to every visitor.
+
+**Depends on:** `@loreweaver/domain`, `astro`
+
 ### `apps/web` — Vite + React SPA
 
 ```
@@ -385,51 +424,57 @@ A pg-boss consumer process. Each handler maps to a job type from `@loreweaver/qu
                     │    (nginx / Caddy)    │
                     └──────┬───────────────┘
                            │
-              ┌────────────┼────────────────┐
-              │            │                │
-              ▼            ▼                ▼
-     ┌────────────┐ ┌────────────┐  ┌────────────┐
-     │  apps/web  │ │  apps/api  │  │ apps/collab│
-     │  (static)  │ │  (tRPC)    │  │ (WebSocket)│
-     │  CDN/nginx │ │  :3001     │  │  :3002     │
-     └────────────┘ └─────┬──────┘  └─────┬──────┘
-                          │               │
-                          ▼               ▼
-                    ┌──────────────────────┐
-                    │     PostgreSQL        │
-                    └──────────────────────┘
-                          ▲
-                          │
-                    ┌─────┴──────┐
-                    │ apps/worker│
-                    │ (consumer) │
-                    └────────────┘
+         ┌─────────────────┼─────────────────┐
+         │        │        │                 │
+         ▼        ▼        ▼                 ▼
+  ┌──────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐
+  │apps/site │ │  apps/web  │ │  apps/api  │ │ apps/collab│
+  │ (static) │ │  (static)  │ │  (tRPC)    │ │ (WebSocket)│
+  │  /*      │ │  /app/*    │ │  :3001     │ │  :3002     │
+  └──────────┘ └────────────┘ └─────┬──────┘ └─────┬──────┘
+                                    │               │
+                                    ▼               ▼
+                              ┌──────────────────────┐
+                              │     PostgreSQL        │
+                              └──────────────────────┘
+                                    ▲
+                                    │
+                              ┌─────┴──────┐
+                              │ apps/worker│
+                              │ (consumer) │
+                              └────────────┘
 ```
 
-A reverse proxy (nginx or Caddy) sits in front and routes:
-- `/api/*` → `apps/api` (port 3001)
-- `/collab/*` → `apps/collab` (port 3002, WebSocket upgrade)
-- Everything else → `apps/web` static files (with SPA fallback: any unknown path serves `index.html`)
+A reverse proxy (nginx or Caddy) sits in front and routes (order matters — specific paths match first):
+- `/app/api/*` → `apps/api` (port 3001)
+- `/app/collab/*` → `apps/collab` (port 3002, WebSocket upgrade)
+- `/app/*` → `apps/web` static files (SPA fallback: unknown paths serve `/app/index.html`)
+- `/*` → `apps/site` static files (landing page, blog, public campaign pages)
 
-All four concerns share a single domain from the user's perspective. No CORS in production.
+All five concerns share a single domain from the user's perspective. No CORS in production. See [Public Site Design](./2026-02-20-public-site-design.md) for the routing rationale.
 
 ### Development
 
-In development, `vite dev` proxies API and collab requests to their respective dev servers:
+In development, each app runs its own dev server. The SPA proxies API and collab requests:
 
 ```typescript
 // apps/web/vite.config.ts
 export default defineConfig({
+  base: '/app/',
   server: {
     proxy: {
-      '/api': 'http://localhost:3001',
-      '/collab': { target: 'ws://localhost:3002', ws: true },
+      '/app/api': { target: 'http://localhost:3001', rewrite: (path) => path.replace(/^\/app/, '') },
+      '/app/collab': { target: 'ws://localhost:3002', ws: true, rewrite: (path) => path.replace(/^\/app/, '') },
     },
   },
 })
 ```
 
-All three servers run simultaneously (orchestrated by Turborepo: `turbo dev`). The developer opens `http://localhost:5173` and everything works through Vite's proxy — no CORS configuration needed.
+All servers run simultaneously (orchestrated by Turborepo: `turbo dev`):
+- `apps/site` (Astro): `http://localhost:4321` — landing page, blog
+- `apps/web` (Vite): `http://localhost:5173/app/` — the SPA
+- `apps/api` (Hono): `http://localhost:3001`
+- `apps/collab` (Hocuspocus): `ws://localhost:3002`
 
 ---
 

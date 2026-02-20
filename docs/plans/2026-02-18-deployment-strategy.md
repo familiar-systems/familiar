@@ -28,7 +28,7 @@ Two environments. No staging.
 
 Everything runs on the developer's machine:
 
-- **4 apps** via Docker Compose or `turbo dev`: `web` (Vite dev server), `api` (Hono), `collab` (Hocuspocus), `worker` (job consumer)
+- **5 apps** via Docker Compose or `turbo dev`: `site` (Astro dev server), `web` (Vite dev server), `api` (Hono), `collab` (Hocuspocus), `worker` (job consumer)
 - **PostgreSQL** in a Docker container (or native install)
 - **No remote dependencies** — development works fully offline
 
@@ -36,7 +36,7 @@ This is the primary working environment. All feature development, debugging, and
 
 ### Remote (production)
 
-A single server running the same 4 apps + PostgreSQL, accessible via a public domain. This server starts as a sandbox ("see it running outside localhost") and grows into production when there are real users.
+A single server running the same 5 apps + PostgreSQL, accessible via a public domain. This server starts as a sandbox ("see it running outside localhost") and grows into production when there are real users.
 
 - **Deploy method:** TBD. Docker Compose via SSH is the floor; Kamal or Coolify are the likely upgrades. See [solo dev deployment landscape](../discovery/deployment/solo_dev_deployment_landscape.md) for options.
 - **Provider:** TBD. An EU VPS provider (Hetzner, UpCloud, Scaleway, etc.) is the likely choice. See [EU provider comparison](../discovery/deployment/solo_dev_deployment_landscape.md#eu-native-provider-landscape).
@@ -87,7 +87,8 @@ The same codebase runs on customer infrastructure. The deployment strategy must 
 
 ```
 docker-compose.yml
-├── web       → nginx serving Vite build (port 80/443)
+├── site      → nginx serving Astro build (landing page, blog — port 80/443, /*)
+├── web       → nginx serving Vite build (SPA — /app/*)
 ├── api       → Hono container (port 3001)
 ├── collab    → Hocuspocus container (port 3002)
 ├── worker    → job consumer container

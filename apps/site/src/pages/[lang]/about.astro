@@ -1,0 +1,157 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import PageHeader from '~/components/layout/PageHeader.astro';
+import Section from '~/components/layout/Section.astro';
+import Container from '~/components/ui/Container.astro';
+import { SiGithub as Github, SiLinkedin as Linkedin, SiBluesky as Bluesky } from '~/components/icons/BrandIcons';
+import { languages } from '~/i18n/ui';
+import { Image } from 'astro:assets';
+import profileImage from '~/assets/about/profile.jpg';
+
+export async function getStaticPaths() {
+  return Object.keys(languages).map((lang) => ({ params: { lang } }));
+}
+
+const { lang } = Astro.params;
+---
+
+<Layout
+  title="About — Loreweaver"
+  description="Michael Grinshpon is an Applied AI Researcher and Developer with 15 years of experience, and the creator of Loreweaver."
+>
+  <PageHeader title="About" description="The person behind Loreweaver." />
+
+  <Section class="py-16 md:py-24">
+    <Container>
+      <div class="about-content max-w-4xl mx-auto">
+
+        <!-- ── Profile block ────────────────────────── -->
+        <div class="flex flex-col md:flex-row gap-10 md:gap-16 items-center md:items-start mb-20">
+
+          <!-- Photo -->
+          <div class="shrink-0">
+            <div class="relative w-52 h-52 md:w-64 md:h-64">
+              <div
+                class="absolute inset-0 rounded-full bg-primary/20 blur-2xl scale-110"
+                style="animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;"
+              ></div>
+              <Image
+                src={profileImage}
+                alt="Michael Grinshpon"
+                width={256}
+                height={256}
+                class="relative w-full h-full rounded-full object-cover border-2 border-primary/25 shadow-xl"
+                style="object-position: 40% 8%;"
+              />
+            </div>
+          </div>
+
+          <!-- Identity -->
+          <div class="text-center md:text-left flex-1">
+            <p class="text-primary text-xs font-medium tracking-[0.35em] uppercase mb-3">
+              Creator of Loreweaver
+            </p>
+            <h1 class="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-3 leading-[1.1]">
+              Michael Grinshpon
+            </h1>
+            <p class="text-muted-foreground text-lg mb-1">Applied AI Researcher &amp; Developer</p>
+            <p class="text-muted-foreground/60 text-sm mb-8">15 years building intelligent systems</p>
+
+            <!-- Social links -->
+            <div class="flex flex-row gap-3 justify-center md:justify-start flex-wrap">
+              <a
+                href="https://github.com/mgrinshpon"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="social-link inline-flex items-center gap-2 px-4 py-2 rounded-full border border-foreground/10 hover:border-primary/40 hover:bg-primary/5 text-sm text-muted-foreground hover:text-foreground transition-all duration-200"
+              >
+                <Github className="w-4 h-4 shrink-0" />
+                GitHub
+              </a>
+              <a
+                href="https://www.linkedin.com/in/mgrinshpon/"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="social-link inline-flex items-center gap-2 px-4 py-2 rounded-full border border-foreground/10 hover:border-primary/40 hover:bg-primary/5 text-sm text-muted-foreground hover:text-foreground transition-all duration-200"
+              >
+                <Linkedin className="w-4 h-4 shrink-0" />
+                LinkedIn
+              </a>
+              <a
+                href="https://bsky.app/profile/mgrinshpon.bsky.social"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="social-link inline-flex items-center gap-2 px-4 py-2 rounded-full border border-foreground/10 hover:border-primary/40 hover:bg-primary/5 text-sm text-muted-foreground hover:text-foreground transition-all duration-200"
+              >
+                <Bluesky className="w-4 h-4 shrink-0" />
+                Bluesky
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Decorative divider ─────────────────── -->
+        <div class="flex items-center gap-6 mb-20">
+          <div class="h-px flex-1 bg-gradient-to-r from-transparent to-primary/25"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-primary/40"></div>
+          <div class="h-px flex-1 bg-gradient-to-l from-transparent to-primary/25"></div>
+        </div>
+
+        <!-- ── Bio sections ───────────────────────── -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-10 mb-16">
+          <div>
+            <h2 class="font-display text-2xl font-semibold text-foreground mb-5">Research and Development</h2>
+            <p class="text-muted-foreground leading-relaxed text-[1.05rem]">
+              Fifteen years at the intersection of AI research, computer vision, and software engineering —
+              turning prototypes into production systems that work in the real world.
+              For assistance in your AI projects, please contact me at [email].
+              Able to work in either the EEA or the US.
+            </p>
+          </div>
+          <div>
+            <h2 class="font-display text-2xl font-semibold text-foreground mb-5">Why Loreweaver</h2>
+            <p class="text-muted-foreground leading-relaxed text-[1.05rem]">
+              I've been a tabletop RPG game master for years. The administrative overhead — tracking NPCs, locations,
+              relationships, continuity across dozens of sessions — is exactly the kind of problem AI should solve.
+              Loreweaver exists because I want to use it.
+            </p>
+          </div>
+        </div>
+
+        <!-- ── Pull quote ─────────────────────────── -->
+        <div class="relative p-8 rounded-2xl border border-primary/15 bg-primary/[0.03]">
+          <div
+            class="absolute top-4 left-7 font-display text-7xl leading-none select-none text-primary/15"
+            aria-hidden="true"
+          >
+            &ldquo;
+          </div>
+          <p class="text-lg text-muted-foreground leading-relaxed italic font-display relative z-10 pl-8 pr-4">
+            The best tools disappear into the work. Loreweaver should feel less like software and more like a
+            co-GM who was paying attention when you weren't.
+          </p>
+        </div>
+
+      </div>
+    </Container>
+  </Section>
+</Layout>
+
+<style>
+  .about-content {
+    animation: fadeUp 0.8s ease-out forwards;
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+</style>

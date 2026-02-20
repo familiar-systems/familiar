@@ -1,0 +1,17 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+@plugin "@tailwindcss/typography";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #C49A2B;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: 'Crimson Pro', Georgia, serif;
+  --font-display: 'Cinzel', Georgia, serif;
+}
+
+@import "./theme.css";
+@import "./typography.css";
+@import "./pagefind.css";
+@import "./components.css";
