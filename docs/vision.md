@@ -47,9 +47,9 @@ Loreweaver is a **web application**. The GM opens a browser, logs in, and works.
 
 ### Campaign
 
-The top-level container. A campaign holds everything: arcs, sessions, things, and the relationship graph that connects them. A GM might run multiple campaigns. Each campaign has its own graph, its own templates, and its own emergent vocabulary of relationships.
+The top-level container. A campaign holds everything: arcs, sessions, things, and the relationship graph that connects them. A GM might run multiple campaigns. Each campaign has its own graph, its own prototype things (templates), and its own emergent vocabulary of relationships.
 
-A campaign can ship with a **starter pack** — a set of node templates and suggested relationship labels appropriate to the game system (D&D 5e, Mothership, Blades in the Dark, etc.). These are defaults, not constraints. The GM can customize or ignore them.
+A campaign can ship with a **starter pack** — a set of prototype things (NPC, Location, Item, Faction, etc.) and suggested relationship labels appropriate to the game system (D&D 5e, Mothership, Blades in the Dark, etc.). Prototypes are themselves things — editable pages that define what a new NPC or location looks like when created. These are defaults, not constraints. The GM can customize or ignore them.
 
 ### Arc
 
@@ -85,7 +85,7 @@ The journal entry is composed of **blocks** (see below), and those blocks contai
 
 ### Things
 
-Things are the entities that make up the campaign world: NPCs, locations, items, factions, lore, monsters, player characters, and anything else the GM cares to track. Each thing is a node in the graph, defined by a **template** that gives it structure (an NPC has different fields than a location), and populated with **blocks** of content.
+Things are the entities that make up the campaign world: NPCs, locations, items, factions, lore, monsters, player characters, and anything else the GM cares to track. Each thing is a node in the graph, populated with **blocks** of content. A thing can be created from a **prototype** — another thing marked as a template — which provides its initial page layout and block structure (an NPC page looks different from a location page because they were cloned from different prototypes).
 
 Things are not authored in isolation. They emerge from play:
 
@@ -171,7 +171,7 @@ A **suggestion** is a proposed mutation to the campaign graph. Every AI output t
 
 **Suggestion types:**
 
-- **Create thing** — a new node (NPC, location, item, etc.) with a template and initial blocks
+- **Create thing** — a new node (NPC, location, item, etc.) cloned from a prototype thing, with initial blocks
 - **Update blocks** — new or modified blocks on an existing node
 - **Create relationship** — a new edge between two nodes, with label and optional inverse
 - **Journal draft** — proposed journal entry blocks for a session
@@ -283,7 +283,7 @@ Before a session, the GM needs to prepare. The GM opens the agent window from th
 
 Between sessions, the GM might want to build out parts of the world that haven't come up in play yet. The GM can author manually or open the agent window from any thing page to collaborate with the AI:
 
-- Create a new thing from a template
+- Create a new thing from a prototype (cloning its page layout and block structure)
 - Fill in details, embed references to other things
 - Open the agent window: "Flesh out @Grimhollow — it should be a ruined fortress connected to @SilverCompact"
 - AI produces suggestions (new blocks, related entities, relationships) that the GM reviews
@@ -322,7 +322,7 @@ Not every GM will review every suggestion. The system stays useful even when the
 
 ### Structure is discovered, not imposed
 
-The GM doesn't design an ontology before session 1. Node templates provide sensible defaults for page structure, but the relationship vocabulary between things is freeform and emerges over time. The AI clusters and normalizes labels as the campaign grows.
+The GM doesn't design an ontology before session 1. Prototype things provide sensible defaults for page layout, but the relationship vocabulary between things is freeform and emerges over time. The AI clusters and normalizes labels as the campaign grows.
 
 ### The journal is the source of truth
 

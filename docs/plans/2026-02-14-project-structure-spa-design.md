@@ -134,7 +134,7 @@ Arrows point from consumer to dependency ("depends on"). Green = `domain` (found
 packages/domain/src/
 ├── index.ts              # Public API — re-exports everything
 ├── campaign.ts           # Campaign, Arc, Session types
-├── node.ts               # Node (Thing) types, templates
+├── node.ts               # Node (Thing) types, prototype flag, prototypeId
 ├── block.ts              # Block types, content variants
 ├── edge.ts               # Relationship + Mention types
 ├── status.ts             # Status enum (gm_only, known, retconned)

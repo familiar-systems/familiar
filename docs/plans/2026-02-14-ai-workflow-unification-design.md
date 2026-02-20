@@ -150,7 +150,7 @@ A **Suggestion** is a proposed mutation to the campaign graph. Every AI output t
 
 | Type | What it proposes |
 |---|---|
-| `create_thing` | A new node (NPC, location, item, faction, etc.) with a template and initial blocks |
+| `create_thing` | A new node (NPC, location, item, faction, etc.) cloned from a prototype thing, with initial blocks |
 | `update_blocks` | New or modified blocks on an existing node |
 | `create_relationship` | A new edge between two nodes, with label and optional inverse label |
 | `update_relationship` | A modification to an existing relationship |
@@ -159,7 +159,7 @@ A **Suggestion** is a proposed mutation to the campaign graph. Every AI output t
 
 **Suggestion properties:**
 
-- **Type-specific payload**: Each suggestion type carries different data. A `create_thing` has a template and initial blocks. A `create_relationship` has source, target, label, and optional inverse. The payload is structured per type, not a generic blob.
+- **Type-specific payload**: Each suggestion type carries different data. A `create_thing` has a prototype reference (the ThingId of the prototype to clone from) and initial blocks. A `create_relationship` has source, target, label, and optional inverse. The payload is structured per type, not a generic blob.
 - **Target**: Which existing node this affects (null for `create_thing`).
 - **Source references**: Which content blocks triggered this suggestion — the AI's evidence for why it's proposing this.
 - **Status**: `pending` → `accepted` | `rejected` | `dismissed`.

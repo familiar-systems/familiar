@@ -13,6 +13,7 @@ Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It
 - `docs/vision.md` — Product vision, core concepts (Campaign, Session, Things, Blocks, Edges, Status, Suggestions)
 - `docs/plans/2026-02-14-project-structure-spa-design.md` — **Authoritative** project structure and tech stack
 - `docs/plans/2026-02-14-ai-workflow-unification-design.md` — AI workflow architecture (SessionIngest, P&R, Q&A)
+- `docs/plans/2026-02-20-templates-as-prototype-pages.md` — Templates are Things, not a separate entity. Categorization via `prototypeId` and tag-relationships.
 - `docs/plans/2026-02-18-deployment-strategy.md` — Deployment strategy (local dev + one VPS, provider deferred)
 
 ### Not Worth Reading On Startup
@@ -122,6 +123,7 @@ Maximum strictness, no exceptions:
 - **AgentConversation**: Persisted record of AI interactions. Provenance for suggestions. Roles: `gm`, `player`, `system`.
 - **Mentions** (block→node or block→block): Derived automatically, power backlinks and transclusion.
 - **Relationships** (node→node): Authored/curated, carry semantic labels. Freeform vocabulary.
+- **Prototypes (templates)**: A template is a Thing with `isTemplate: true`. No separate `Template` entity. Creating a thing from a template clones the prototype's block structure. `prototypeId?: ThingId` tracks lineage. Tags are Things connected via `tagged` relationships — no `tags: string[]` field.
 
 ## Development Notes
 

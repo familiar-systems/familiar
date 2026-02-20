@@ -45,7 +45,7 @@ When a GM creates "Graydalf the Wisened" from the NPC template, the system clone
 1. **Templates are Things.** A template is a Thing with a flag or role marking it as a prototype. There is no separate Template entity type.
 2. **The template editor IS the page editor.** GMs customize templates by editing them as pages. No separate template-builder UI. No field-type selectors. The GM sees a page and arranges it however they want.
 3. **Layout is content.** The arrangement of portrait, relationships, stat block, and narrative on the page is part of the page's block structure — not metadata on a schema entity. The page IS the layout.
-4. **GMs own their templates.** Templates are campaign-scoped, created and edited by GMs, cloned from starter packs. The original model already said this, but modeling templates as separate entities implied the template structure was somehow different from page content. It's not.
+4. **GMs own their templates.** Templates are campaign-scoped, created and edited by GMs, cloned from starter packs (or copied from our hosted content hub). The original model already said this, but modeling templates as separate entities implied the template structure was somehow different from page content. It's not.
 5. **No structured field schema needed.** The AI's semantic search (RAG) over block content IS the query layer. "Show me all chaotic evil NPCs" is a natural language query resolved by the AI against block content, not a SQL `WHERE` clause against typed field columns. This eliminates the entire category of structured-field machinery (field types, select options, validation rules, queryable indexes) that drove the original `TemplateField` design.
 
 ## How It Works
@@ -73,6 +73,10 @@ When the GM creates a new NPC, the system:
 
 A starter pack for D&D 5e ships a set of template Things: NPC, Location, Item, Faction, Monster, etc. These are cloned into the campaign when it's created. The GM can then edit them freely — the starter pack templates are just the starting point.
 
+### Template hub
+
+At some point, it makes sense to let users upload their own templates to a shared repository.
+
 ## What This Changes in the Domain Model
 
 ### Removed
@@ -85,7 +89,7 @@ A starter pack for D&D 5e ships a set of template Things: NPC, Location, Item, F
 ### Changed
 
 - `Thing` gains an `isTemplate: boolean` flag (or a role/kind field)
-- `Thing` may reference its source template via `prototypeId?: ThingId` (for lineage tracking — "this was cloned from that template")
+- `Thing` _may_ reference its source template via `prototypeId?: ThingId` (for lineage tracking — "this was cloned from that template")
 - Block structure may need to support nesting or rich layout (columns, widgets) — this is an editor-layer decision, not a domain-layer decision
 
 ### Unchanged
@@ -101,7 +105,7 @@ A starter pack for D&D 5e ships a set of template Things: NPC, Location, Item, F
 
 ### Cross-cutting tags: relationships to tag-Things
 
-`prototypeId` is single-valued — it answers "what template was this cloned from?" but not "this NPC is also a Villain, a Quest Giver, and Deceased." Cross-cutting tags use the existing graph:
+`prototypeId` is single-valued and possibly not even necessary — it answers "what template was this cloned from?" but not "this NPC is also a Villain, a Quest Giver, and Deceased." Cross-cutting tags use the existing graph:
 
 - A tag is a Thing (a page). The "Villain" tag is a page named "Villain." It can optionally have its own content ("what makes someone a villain in this campaign?"), or it can be a bare named node.
 - Tagging is a relationship: `Graydalf -[tagged]-> Villain`.
