@@ -14,6 +14,7 @@
   },
   "devDependencies": {
     "@loreweaver/tsconfig": "workspace:*",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "^3"
   }
 }

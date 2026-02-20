@@ -222,6 +222,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+      vitest:
+        specifier: ^3
+        version: 3.2.4(@types/node@22.19.11)(tsx@4.21.0)
 
   packages/editor:
     dependencies:
