@@ -2,3 +2,9 @@
     * Make single-page-ish
     * Move blog into frontmatter
     * Logged in users see campaign react islands for their campaigns (when that's all set up)
+
+* Other TODOs
+    - **OG image** — needs real Loreweaver artwork
+    - **SVG favicon** — `favicon.png` works; SVG is an enhancement
+    - **Author system / TeamSection interplay** — explore how blog authors + team pages could work (ref: astroplate). Separate feature.
+    - **Hanko social login privacy note** — privacy page may need a subsection once auth is implemented (Google/Apple social logins transfer data outside EU)

@@ -7,7 +7,7 @@ export const siteConfig = {
     alt: "Loreweaver Logo",
     strategy: "switch" as "invert" | "switch" | "static",
   },
-  ogImage: "/og-image.webp",
+  ogImage: "",
   primaryColor: "#C49A2B",
   search: {
     enabled: true,
@@ -23,7 +23,7 @@ export const siteConfig = {
   },
   legal: {
     entityName: "Grinshpon Consulting ENK",
-    orgNumber: "936 927 742",
+    orgNumber: "936 927 742 MVA",
   },
   contact: {
     email: {
@@ -67,6 +67,10 @@ export const siteConfig = {
 
 export const NAV_LINKS = [
   {
+    href: "/roadmap",
+    label: "Roadmap",
+  },
+  {
     href: "/blog",
     label: "Blog",
   },
@@ -87,6 +91,7 @@ export const FOOTER_LINKS = {
   project: {
     title: "Project",
     links: [
+      { href: "/roadmap", label: "Roadmap" },
       { href: "/blog", label: "Blog" },
       { href: "/about", label: "About" },
     ],
@@ -96,6 +101,7 @@ export const FOOTER_LINKS = {
     links: [
       { href: "/privacy", label: "Privacy", localize: false },
       { href: "/terms", label: "Terms", localize: false },
+      { href: "/license", label: "License", localize: false },
     ],
   },
 };

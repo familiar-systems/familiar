@@ -1,46 +1,21 @@
-# Cooper
+# Loreweaver
 
-> Premium Astro Boilerplate for SaaS, Startups, and Developers.
+Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters.
 
-## Summary
+It captures session content (audio, notes) and uses AI to assemble a campaign
+knowledge base — NPCs, locations, items, factions, and the relationships between
+them — as a graph that grows from play.
 
-This project is a high-performance, SEO-optimized starter built with Astro, Tailwind CSS, and React. It is designed to be the perfect foundation for modern web applications and marketing sites.
+## Status
 
-## Architecture
+Pre-launch. The public site is live; the application is under active development.
 
-- **Framework**: Astro (Static Site Generation by default)
-- **Styling**: Tailwind CSS + Custom Design System
-- **Interactivity**: React Islands (for complex components like Search, Forms)
-- **Content**: MDX (Docs, Blog, Changelog)
-- **Search**: Pagefind (Static, Client-side)
+## Links
 
-## Usage
+- Website: https://loreweaver.no
+- GitHub: https://github.com/loreweaver-no
+- License: FSL-1.1-Apache-2.0 (converts to Apache 2.0 after two years)
 
-To start a new project with this template, run:
+## Operator
 
-```bash
-npx create-astro@latest --template GladTek/astro-gladtek-template-v0
-```
-
-## Navigation
-
-- [Home](/) - The landing page demonstrating the "Bento Grid" layout and features.
-- [Documentation](/docs) - Comprehensive guides on using the boilerplate.
-- [Components](/docs/components) - A catalog of available UI components.
-- [Changelog](/changelog) - Version history and updates.
-- [Blog](/blog) - Articles and tutorials.
-- [Pricing](/pricing) - Example pricing tier layout.
-- [Contact](/contact) - Contact form with validation and global config integration.
-
-## Features
-
-- **Zero-JS by Default**: Static HTML first, hydration only when needed.
-- **Universal Search**: `Cmd+K` interface powered by Pagefind.
-- **Theme Support**: Built-in Dark/Light mode with persistence.
-- **RSS Feed**: Automatic feed generation at `/rss.xml`.
-- **Sitemap**: Intelligent sitemap generation excluding `noindex` pages.
-- **SEO**: JSON-LD structured data, meta tags, and Open Graph support.
-
-## Configuration
-
-Site-wide settings (name, description, features toggles, contact info) are managed in `src/site.config.ts`.
+Grinshpon Consulting ENK (Norway)

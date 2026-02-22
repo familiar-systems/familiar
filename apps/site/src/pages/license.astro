@@ -1,60 +1,69 @@
 ---
-import Layout from '~/layouts/Layout.astro';
+import UntranslatedLayout from '~/layouts/UntranslatedLayout.astro';
+import { siteConfig } from '~/site.config';
 ---
 
-<Layout title="License - Cooper" description="License information for Cooper.">
+<UntranslatedLayout title="License - Loreweaver" description="Loreweaver is licensed under FSL 1.1 (Apache 2.0 after two years).">
     <div class="pt-32 pb-24">
         <div class="max-w-4xl mx-auto px-6">
             <h1 class="text-4xl md:text-5xl font-bold mb-8">License</h1>
             <div class="prose dark:prose-invert max-w-none text-foreground/80">
                 <p class="text-lg mb-6">
-                    Cooper is released under the MIT License, which is a permissive license that is short and to the point. 
-                    It lets you do anything you want with the code as long as you provide attribution back to us and don’t hold us liable.
+                    Loreweaver is licensed under the
+                    <a href="https://fsl.software/FSL-1.1-Apache-2.0" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">Functional Source License 1.1 (FSL-1.1-Apache-2.0)</a>.
                 </p>
 
-                <div class="p-6 bg-foreground/5 rounded-xl border border-foreground/10 my-8">
-                    <h3 class="text-xl font-bold mb-4 font-mono text-foreground">The MIT License (MIT)</h3>
-                    <p class="mb-4 font-mono text-sm leading-relaxed">
-                        Copyright (c) 2025 Cooper
-                    </p>
-                    <p class="mb-4 font-mono text-sm leading-relaxed">
-                        Permission is hereby granted, free of charge, to any person obtaining a copy
-                        of this software and associated documentation files (the "Software"), to deal
-                        in the Software without restriction, including without limitation the rights
-                        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-                        copies of the Software, and to permit persons to whom the Software is
-                        furnished to do so, subject to the following conditions:
-                    </p>
-                    <p class="mb-4 font-mono text-sm leading-relaxed">
-                        The above copyright notice and this permission notice shall be included in all
-                        copies or substantial portions of the Software.
-                    </p>
-                    <p class="font-mono text-sm leading-relaxed">
-                        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-                        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-                        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-                        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-                        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-                        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-                        SOFTWARE.
-                    </p>
+                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">What does that mean?</h2>
+
+                <div class="p-6 bg-foreground/5 rounded-xl border border-foreground/10 my-8 space-y-4">
+                    <div class="flex items-start gap-3">
+                        <span class="text-green-500 font-bold text-lg leading-6">&#10003;</span>
+                        <div>
+                            <strong class="text-foreground">Read, use, and modify the code.</strong>
+                            <p class="mt-1 text-sm">You can read, run, and modify Loreweaver for any purpose — personal projects, learning, internal tools, contributing back.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <span class="text-green-500 font-bold text-lg leading-6">&#10003;</span>
+                        <div>
+                            <strong class="text-foreground">Becomes Apache 2.0 after two years.</strong>
+                            <p class="mt-1 text-sm">Each release automatically converts to the permissive <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">Apache 2.0</a> license two years after its release date. After that, there are no restrictions beyond standard Apache 2.0 terms.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <span class="text-red-500 font-bold text-lg leading-6">&#10007;</span>
+                        <div>
+                            <strong class="text-foreground">No competing hosted service.</strong>
+                            <p class="mt-1 text-sm">During the two-year period before conversion, you may not use the code to offer a hosted service that competes with Loreweaver. Self-hosting for your own use is fine.</p>
+                        </div>
+                    </div>
                 </div>
 
-                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">Can I use this for personal projects?</h2>
+                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">Why this license?</h2>
                 <p>
-                    Yes! You can use Cooper for as many personal projects as you like.
+                    We want the source code to be transparent and accessible while sustaining the project commercially.
+                    FSL 1.1 lets anyone inspect, learn from, and contribute to the code while preventing
+                    a third party from standing up a competing hosted copy of Loreweaver without contributing back.
                 </p>
-                
-                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">Can I use this for commercial projects?</h2>
                 <p>
-                    Yes! You can use Cooper for client work, commercial websites, and paid products.
+                    After two years, every release becomes fully open source under Apache 2.0 — no strings attached.
                 </p>
 
-                 <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">What can't I do?</h2>
+                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">Full license text</h2>
                 <p>
-                    You can redistribute or resell Cooper itself as standalone product.
+                    The full text of the FSL 1.1 license is available at
+                    <a href="https://fsl.software/FSL-1.1-Apache-2.0" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">fsl.software</a>.
+                    Each source file in the
+                    <a href="https://github.com/loreweaver-no" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">Loreweaver repository</a>
+                    includes the license header with the applicable change date.
+                </p>
+
+                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">Questions?</h2>
+                <p>
+                    If you have questions about what the license allows, reach us at
+                    <a href={`mailto:${siteConfig.contact?.email?.support}`} class="text-primary hover:underline">{siteConfig.contact?.email?.support}</a>.
                 </p>
             </div>
         </div>
     </div>
-</Layout>
+</UntranslatedLayout>

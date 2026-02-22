@@ -8,11 +8,12 @@ import { isRtl, useTranslations } from '~/i18n/utils';
 interface Props {
   title: string;
   description: string;
+  author: string;
   pubDate: Date;
   updatedDate?: Date;
   heroImage?: ImageMetadata;
   youtubeId?: string;
-  audioUrl?: string; // Add audioUrl prop
+  audioUrl?: string;
   isVideo?: boolean;
   children?: any;
   noindex?: boolean;
@@ -20,7 +21,7 @@ interface Props {
   availableLangs?: string[];
 }
 
-const { title, description, pubDate, updatedDate, heroImage, youtubeId, audioUrl, isVideo, noindex, nofollow, availableLangs } = Astro.props;
+const { title, description, author, pubDate, updatedDate, heroImage, youtubeId, audioUrl, isVideo, noindex, nofollow, availableLangs } = Astro.props;
 const { lang = defaultLang } = Astro.params;
 const t = useTranslations(lang);
 
@@ -34,8 +35,8 @@ const schema = {
   ...(heroImage && { "image": new URL(heroImage.src, Astro.site).toString() }),
   "author": {
       "@type": "Person",
-      "name": "Cooper Team",
-      "url": "https://cooper.example.com" // Replace with dynamic author if available
+      "name": author,
+      "url": Astro.site?.toString() ?? ""
   }
 };
 import ScrollProgress from '~/components/layout/ScrollProgress.astro';

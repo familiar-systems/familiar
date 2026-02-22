@@ -13,7 +13,7 @@ import { siteConfig } from '~/site.config';
 const canonicalURL = new URL(Astro.url.pathname, Astro.site).toString();
 
 const path = Astro.url.pathname.replace(/\/$/, '') || '/home';
-const ogImageUrl = image || siteConfig.ogImage;
+const ogImageUrl = image || siteConfig.ogImage || null;
 
 const robots = [
   noindex ? 'noindex' : 'index',
@@ -44,7 +44,7 @@ const robots = [
 <meta property="og:url" content={Astro.url.toString()} />
 <meta property="og:title" content={title} />
 <meta property="og:description" content={description} />
-<meta property="og:image" content={new URL(ogImageUrl, Astro.url).toString()} />
+{ogImageUrl && <meta property="og:image" content={new URL(ogImageUrl, Astro.url).toString()} />}
 <meta property="og:logo" content={new URL(siteConfig.logo.src, Astro.url).toString()} />
 
 <!-- Twitter -->
@@ -52,4 +52,4 @@ const robots = [
 <meta property="twitter:url" content={Astro.url.toString()} />
 <meta property="twitter:title" content={title} />
 <meta property="twitter:description" content={description} />
-<meta property="twitter:image" content={new URL(ogImageUrl, Astro.url).toString()} />
+{ogImageUrl && <meta property="twitter:image" content={new URL(ogImageUrl, Astro.url).toString()} />}
