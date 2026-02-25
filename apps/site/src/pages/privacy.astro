@@ -8,7 +8,7 @@ import { siteConfig } from '~/site.config';
         <div class="max-w-4xl mx-auto px-6">
             <h1 class="text-4xl md:text-5xl font-bold mb-8">Privacy Policy</h1>
             <div class="prose dark:prose-invert max-w-none text-foreground/80">
-                <p class="text-lg mb-6">Last updated: February 22, 2026</p>
+                <p class="text-lg mb-6">Last updated: February 25, 2026</p>
 
                 <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">1. Introduction</h2>
                 <p>
@@ -30,7 +30,7 @@ import { siteConfig } from '~/site.config';
 
                 <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">3. How We Use Your Data</h2>
                 <p>
-                    Your data is used for one purpose: delivering the service you pay for. That means storing your campaigns,
+                    Your data is used to deliver and improve the service you pay for. That means storing your campaigns,
                     processing your session audio, and running AI features against your content.
                 </p>
                 <p>
@@ -38,13 +38,44 @@ import { siteConfig } from '~/site.config';
                     serve ads, build advertising profiles, or share your information with third parties for marketing purposes.
                 </p>
 
-                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">4. Data Residency</h2>
+                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">4. Audio Data & Speech Recognition</h2>
+                <p>
+                    Tabletop RPG sessions present unique challenges for speech recognition. Players frequently code-switch
+                    mid-sentence — mixing their native language with English game terms, fantasy names, and system jargon.
+                    Multiple people may record the same session simultaneously from different devices. Current speech recognition
+                    models do not handle these scenarios well.
+                </p>
+                <p>
+                    To build transcription that actually works for tabletop gaming, we may use audio you upload to improve
+                    our speech recognition models. This means training and fine-tuning automatic speech recognition (ASR) models
+                    so that Loreweaver gets better at understanding the way people actually play.
+                </p>
+                <p>
+                    <strong>To be absolutely clear about what this does and does not include:</strong>
+                </p>
+                <ul class="list-disc pl-6 space-y-2 mt-4">
+                    <li>Audio may be used to improve our <strong>speech recognition models only</strong> — the models that convert sound into text.</li>
+                    <li>Audio is <strong>never</strong> used to train generative AI models such as large language models (LLMs). Your sessions, characters, and campaign content will never appear in another user's AI output.</li>
+                    <li>Audio is <strong>never</strong> sold, licensed, or shared with third parties.</li>
+                    <li>Models trained on your audio are <strong>used exclusively within Loreweaver</strong>. They are not sold, licensed, or made available to third parties in any form.</li>
+                </ul>
+                <p class="mt-4">
+                    You pay for Loreweaver to transcribe your sessions, and we want to do the best job we can for you.
+                    You are the customer, not the product.
+                </p>
+                <p class="mt-4">
+                    This is enabled by default. You can opt out at any time in your account settings — no explanation needed,
+                    no impact on the service you receive. Opting out means your audio is used solely for your own transcriptions
+                    and is not included in any model training.
+                </p>
+
+                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">5. Data Residency</h2>
                 <p>
                     All data is processed and stored on cloud infrastructure hosted exclusively within the EU/EEA.
                     Your data never leaves the EU/EEA.
                 </p>
 
-                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">5. Cookies & Analytics</h2>
+                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">6. Cookies & Analytics</h2>
                 <p>
                     We use cookies and lightweight product analytics exclusively to improve Loreweaver for paying customers.
                     For example: if an action you perform fails, we use that information to find and fix the problem.
@@ -55,7 +86,7 @@ import { siteConfig } from '~/site.config';
                     It exists for one reason: to make the product you pay for work better.
                 </p>
 
-                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">6. Your Rights</h2>
+                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">7. Your Rights</h2>
                 <p>
                     Under the GDPR, you have the right to:
                 </p>
@@ -64,13 +95,13 @@ import { siteConfig } from '~/site.config';
                     <li><strong>Correct</strong> inaccurate or incomplete data.</li>
                     <li><strong>Delete</strong> your data and account.</li>
                     <li><strong>Export</strong> your data in a portable format.</li>
-                    <li><strong>Object</strong> to processing of your data.</li>
+                    <li><strong>Object</strong> to processing based on legitimate interest. For speech recognition model training, use the opt-out in your account settings. For all other processing, you can delete your account at any time.</li>
                 </ul>
                 <p class="mt-4">
                     To exercise any of these rights, contact us at the address below.
                 </p>
 
-                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">7. Contact</h2>
+                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">8. Contact</h2>
                 <p>
                     Questions about this policy or your data? Reach us at
                     <a href={`mailto:${siteConfig.contact?.email?.support}`} class="text-primary hover:underline">{siteConfig.contact?.email?.support}</a>.

@@ -4,7 +4,7 @@
 
 **PostgreSQL, local-first development, one remote environment that grows into production.**
 
-Provider and tooling choices (Hetzner vs UpCloud, Coolify vs Kamal, etc.) are deliberately deferred. This document captures the deployment *strategy* — the shape of the environments and workflow — not the specific infrastructure. See [solo dev deployment landscape](../discovery/deployment/solo_dev_deployment_landscape.md) for the full provider/tool exploration.
+Provider and tooling choices (Hetzner vs UpCloud, Coolify vs Kamal, etc.) are deliberately deferred. This document captures the deployment _strategy_ — the shape of the environments and workflow — not the specific infrastructure. See [solo dev deployment landscape](../discovery/deployment/solo_dev_deployment_landscape.md) for the full provider/tool exploration.
 
 ---
 
@@ -107,15 +107,15 @@ docker-compose.yml
 
 These decisions are explicitly postponed until there's a reason to make them:
 
-| Decision | Deferred until |
-|---|---|
-| **VPS provider** (Hetzner, UpCloud, Scaleway, etc.) | First remote deployment |
-| **Deploy tool** (Kamal, Coolify, Docker Compose, etc.) | First remote deployment |
-| **Managed PostgreSQL** vs self-managed | Self-managed DB ops become friction |
-| **Database branching** (Neon) | `pg_dump` snapshots feel too slow |
-| **PR preview environments** | Team grows beyond solo dev |
-| **CDN for static assets** | User base grows beyond single-region |
-| **Multi-server architecture** | Single VPS becomes a bottleneck |
+| Decision                                               | Deferred until                       |
+| ------------------------------------------------------ | ------------------------------------ |
+| **VPS provider** (Hetzner, UpCloud, Scaleway, etc.)    | First remote deployment              |
+| **Deploy tool** (Kamal, Coolify, Docker Compose, etc.) | First remote deployment              |
+| **Managed PostgreSQL** vs self-managed                 | Self-managed DB ops become friction  |
+| **Database branching** (Neon)                          | `pg_dump` snapshots feel too slow    |
+| **PR preview environments**                            | Team grows beyond solo dev           |
+| **CDN for static assets**                              | User base grows beyond single-region |
+| **Multi-server architecture**                          | Single VPS becomes a bottleneck      |
 
 Each of these can be adopted independently without changing the application architecture. The strategy is designed so that the application code doesn't know or care which deployment tier it's running on.
 

@@ -1,6 +1,6 @@
 ---
 milestone: 2
-title: "Multi-Tenant"
+title: "Multiplayer"
 description: "Authentication, user accounts, and isolated campaign workspaces."
 status: "planned"
 ---
