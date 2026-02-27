@@ -1,0 +1,65 @@
+---
+import UntranslatedLayout from '~/layouts/UntranslatedLayout.astro';
+import { siteConfig } from '~/site.config';
+---
+
+<UntranslatedLayout title="Sub-processors - Loreweaver" description="Third-party service providers that process data on behalf of Loreweaver.">
+    <div class="pt-32 pb-24">
+        <div class="max-w-4xl mx-auto px-6">
+            <h1 class="text-4xl md:text-5xl font-bold mb-8">Sub-processors</h1>
+            <div class="prose dark:prose-invert max-w-none text-foreground/80">
+                <p class="text-lg mb-6">Last updated: February 25, 2026</p>
+
+                <p>
+                    Loreweaver uses a small number of third-party service providers ("sub-processors") to operate the service.
+                    All sub-processors are bound by data processing agreements and process data within the EU/EEA.
+                </p>
+
+                <div class="mt-10 overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-foreground/20">
+                                <th class="py-3 pr-6 font-bold text-foreground">Provider</th>
+                                <th class="py-3 pr-6 font-bold text-foreground">Purpose</th>
+                                <th class="py-3 font-bold text-foreground">Location</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="border-b border-foreground/10">
+                                <td class="py-3 pr-6"><a href="https://www.keila.io" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">Keila</a></td>
+                                <td class="py-3 pr-6">Email & newsletter delivery</td>
+                                <td class="py-3">EU</td>
+                            </tr>
+                            <tr class="border-b border-foreground/10">
+                                <td class="py-3 pr-6"><a href="https://www.hanko.io" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">Hanko</a></td>
+                                <td class="py-3 pr-6">Authentication</td>
+                                <td class="py-3">EU</td>
+                            </tr>
+                            <tr class="border-b border-foreground/10">
+                                <td class="py-3 pr-6"><a href="https://www.scaleway.com" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">Scaleway</a></td>
+                                <td class="py-3 pr-6">Cloud infrastructure (compute, storage)</td>
+                                <td class="py-3">EU (France, Netherlands, Poland)</td>
+                            </tr>
+                            <tr class="border-b border-foreground/10">
+                                <td class="py-3 pr-6"><a href="https://www.hetzner.com" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">Hetzner</a></td>
+                                <td class="py-3 pr-6">Cloud infrastructure (compute, storage)</td>
+                                <td class="py-3">EU (Germany, Finland)</td>
+                            </tr>
+                            <tr class="border-b border-foreground/10">
+                                <td class="py-3 pr-6"><a href="https://nebius.com" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">Nebius</a></td>
+                                <td class="py-3 pr-6">GPU compute (AI model inference & training)</td>
+                                <td class="py-3">EU (Finland)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">Questions?</h2>
+                <p>
+                    If you have questions about our sub-processors, reach us at
+                    <a href={`mailto:${siteConfig.contact?.email?.support}`} class="text-primary hover:underline">{siteConfig.contact?.email?.support}</a>.
+                </p>
+            </div>
+        </div>
+    </div>
+</UntranslatedLayout>

@@ -102,6 +102,7 @@ export const FOOTER_LINKS = {
       { href: "/privacy", label: "Privacy", localize: false },
       { href: "/terms", label: "Terms", localize: false },
       { href: "/license", label: "License", localize: false },
+      { href: "/sub-processors", label: "Sub-processors", localize: false },
     ],
   },
 };
