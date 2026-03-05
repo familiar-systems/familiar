@@ -2,9 +2,9 @@
 
 ## Context
 
-The [EU deployment landscape](./eu_deployment_landscape.md) mapped deployment options with team-scale assumptions: PR preview environments with database branching, automated CD pipelines, and isolated preview databases per pull request. That document is useful as a reference for where the project *could* go, but it doesn't reflect the current reality.
+The [EU deployment landscape](./eu_deployment_landscape.md) mapped deployment options with team-scale assumptions: PR preview environments with database branching, automated CD pipelines, and isolated preview databases per pull request. That document is useful as a reference for where the project _could_ go, but it doesn't reflect the current reality.
 
-**The current reality:** One developer. No team contention. No need for PR-based isolation. The expensive-test-data problem is real (audio transcription + AI entity extraction costs $2+ per session), but the *solution* doesn't require copy-on-write branching when there's only one person writing code.
+**The current reality:** One developer. No team contention. No need for PR-based isolation. The expensive-test-data problem is real (audio transcription + AI entity extraction costs $2+ per session), but the _solution_ doesn't require copy-on-write branching when there's only one person writing code.
 
 This document explores what deployment looks like when you strip away the team-scale assumptions and ask: what's the simplest, most pragmatic setup for a solo developer?
 
@@ -63,14 +63,14 @@ A single VPS (Hetzner, UpCloud, etc.) running Docker. You manage everything: the
 
 #### Deploy Methods on a VPS
 
-| Method | What it adds over SSH | Overhead | PR previews |
-|---|---|---|---|
-| `git pull && docker compose up -d` | Nothing. Manual SSH. | Zero | No |
-| **Kamal** (37signals) | Zero-downtime deploys via kamal-proxy, one-command deploy from laptop, rollback, auto-SSL. CLI-only, YAML config. | ~10MB (tiny proxy) | Scriptable via CI, not built-in |
-| **Coolify** (open source) | Web UI for deployments, auto-SSL (Traefik), log viewer, env var management, scheduled DB backups, self-updates. | ~500MB RAM | Built-in |
-| **Dokploy** (open source) | Similar to Coolify, simpler UI, some prefer it. Built-in monitoring/alerting. | ~400MB RAM | Built-in |
+| Method                             | What it adds over SSH                                                                                             | Overhead           | PR previews                     |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------- |
+| `git pull && docker compose up -d` | Nothing. Manual SSH.                                                                                              | Zero               | No                              |
+| **Kamal** (37signals)              | Zero-downtime deploys via kamal-proxy, one-command deploy from laptop, rollback, auto-SSL. CLI-only, YAML config. | ~10MB (tiny proxy) | Scriptable via CI, not built-in |
+| **Coolify** (open source)          | Web UI for deployments, auto-SSL (Traefik), log viewer, env var management, scheduled DB backups, self-updates.   | ~500MB RAM         | Built-in                        |
+| **Dokploy** (open source)          | Similar to Coolify, simpler UI, some prefer it. Built-in monitoring/alerting.                                     | ~400MB RAM         | Built-in                        |
 
-**Kamal** is a deployment *script* with best practices baked in. Nothing runs on your server except your apps and a tiny reverse proxy. It's what you'd do manually over SSH, automated and with zero-downtime as the default. 37signals uses it to deploy Basecamp and HEY.
+**Kamal** is a deployment _script_ with best practices baked in. Nothing runs on your server except your apps and a tiny reverse proxy. It's what you'd do manually over SSH, automated and with zero-downtime as the default. 37signals uses it to deploy Basecamp and HEY.
 
 **Coolify** is "Heroku on your own VPS." It gives you a web dashboard, git-push deploys, PR preview environments, and database management — but it consumes ~500MB RAM on your server and is another piece of software to maintain.
 
@@ -79,6 +79,7 @@ A single VPS (Hetzner, UpCloud, etc.) running Docker. You manage everything: the
 #### Monorepo Support
 
 All three handle Loreweaver's 4-app monorepo well:
+
 - **Kamal**: Each app gets its own deploy config. Multiple apps share one kamal-proxy on the same server. Path-based routing supported (`/api/*` → API container, `/collab/*` → WebSocket container).
 - **Coolify/Dokploy**: Each app is a separate "resource" pointing to the same repo with different build contexts/Dockerfiles.
 
@@ -98,12 +99,12 @@ Same as Tier 1, but you offload database management to the VPS provider. You run
 
 This is where the EU-native "mini-cloud" providers shine:
 
-| Provider | HQ | VPS (2 vCPU, 4GB) | Managed PostgreSQL | Total | EU Regions |
-|---|---|---|---|---|---|
-| **UpCloud** | Finland | ~€13/mo | ~€15/mo | ~€28/mo | Helsinki, Frankfurt, Amsterdam, London |
-| **Scaleway** | France | ~€10/mo | ~€11/mo | ~€21/mo | Paris, Amsterdam, Warsaw |
-| **OVH** | France | ~€7-12/mo | ~€14/mo | ~€21-26/mo | Strasbourg, Gravelines, London, Frankfurt, Warsaw |
-| **Exoscale** | Switzerland | ~€16/mo | ~€16/mo (via Aiven) | ~€32/mo | Vienna, Frankfurt, Zurich, Sofia |
+| Provider     | HQ          | VPS (2 vCPU, 4GB) | Managed PostgreSQL  | Total      | EU Regions                                        |
+| ------------ | ----------- | ----------------- | ------------------- | ---------- | ------------------------------------------------- |
+| **UpCloud**  | Finland     | ~€13/mo           | ~€15/mo             | ~€28/mo    | Helsinki, Frankfurt, Amsterdam, London            |
+| **Scaleway** | France      | ~€10/mo           | ~€11/mo             | ~€21/mo    | Paris, Amsterdam, Warsaw                          |
+| **OVH**      | France      | ~€7-12/mo         | ~€14/mo             | ~€21-26/mo | Strasbourg, Gravelines, London, Frankfurt, Warsaw |
+| **Exoscale** | Switzerland | ~€16/mo           | ~€16/mo (via Aiven) | ~€32/mo    | Vienna, Frankfurt, Zurich, Sofia                  |
 
 None of these offer database branching. You get traditional managed PostgreSQL: backups, PITR, updates handled for you.
 
@@ -119,18 +120,18 @@ Push code, it runs. No server to manage. These platforms handle building, deploy
 
 #### Railway (~$25-45/mo)
 
-| Aspect | Details |
-|---|---|
-| **HQ** | US |
-| **EU region** | Amsterdam (EU West) |
-| **Monorepo** | First-class. Auto-detects pnpm/npm workspaces, stages a service per package. |
-| **PR previews** | Built-in. Isolated environments per PR with all services, fresh databases, unique URLs, automatic cleanup. "Focused PR Environments" only deploy services affected by changed files. |
-| **WebSocket** | Native support (HTTP, TCP, gRPC, WebSocket handled automatically). |
-| **Long-running jobs** | No timeout limits on Pro plan. Workers run continuously. |
-| **Database** | Managed PostgreSQL included. Very cheap for light usage (~$1-3/mo). |
-| **Database branching** | No. PR environments get fresh (empty) databases, not snapshots. |
-| **Pricing** | Pro plan: $20/mo + usage. 4 services + PostgreSQL likely $25-45/mo depending on utilization. Idle services consume near-zero. |
-| **Lock-in** | Low-medium. Standard Docker containers underneath. Main lock-in is convenience. |
+| Aspect                 | Details                                                                                                                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **HQ**                 | US                                                                                                                                                                                   |
+| **EU region**          | Amsterdam (EU West)                                                                                                                                                                  |
+| **Monorepo**           | First-class. Auto-detects pnpm/npm workspaces, stages a service per package.                                                                                                         |
+| **PR previews**        | Built-in. Isolated environments per PR with all services, fresh databases, unique URLs, automatic cleanup. "Focused PR Environments" only deploy services affected by changed files. |
+| **WebSocket**          | Native support (HTTP, TCP, gRPC, WebSocket handled automatically).                                                                                                                   |
+| **Long-running jobs**  | No timeout limits on Pro plan. Workers run continuously.                                                                                                                             |
+| **Database**           | Managed PostgreSQL included. Very cheap for light usage (~$1-3/mo).                                                                                                                  |
+| **Database branching** | No. PR environments get fresh (empty) databases, not snapshots.                                                                                                                      |
+| **Pricing**            | Pro plan: $20/mo + usage. 4 services + PostgreSQL likely $25-45/mo depending on utilization. Idle services consume near-zero.                                                        |
+| **Lock-in**            | Low-medium. Standard Docker containers underneath. Main lock-in is convenience.                                                                                                      |
 
 **Strengths:** Best monorepo DX. PR preview environments are genuinely useful even for a solo dev (test a branch on your phone without running it locally). Closest to "Vercel for backends" at indie-hacker pricing.
 
@@ -138,18 +139,18 @@ Push code, it runs. No server to manage. These platforms handle building, deploy
 
 #### Render (~$28-41/mo)
 
-| Aspect | Details |
-|---|---|
-| **HQ** | US |
-| **EU region** | Frankfurt (on AWS eu-central-1) |
-| **Monorepo** | Supported — configure root directory per service. Less automated than Railway. |
-| **PR previews** | Yes, via "Preview Environments." |
-| **WebSocket** | Supported on web services. |
-| **Long-running jobs** | Background Worker is a first-class service type. Runs continuously on paid plans. |
-| **Database** | Managed PostgreSQL from ~$7/mo. PITR for 7 days on paid plans. |
-| **Database branching** | No. |
-| **Pricing** | 3 services at Starter ($7/mo each) + free static site + PostgreSQL (~$7-20/mo) = ~$28-41/mo. Fixed-price tiers — you pay even when idle. |
-| **Lock-in** | Low. Standard Docker containers or buildpack-based deploys. |
+| Aspect                 | Details                                                                                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **HQ**                 | US                                                                                                                                       |
+| **EU region**          | Frankfurt (on AWS eu-central-1)                                                                                                          |
+| **Monorepo**           | Supported — configure root directory per service. Less automated than Railway.                                                           |
+| **PR previews**        | Yes, via "Preview Environments."                                                                                                         |
+| **WebSocket**          | Supported on web services.                                                                                                               |
+| **Long-running jobs**  | Background Worker is a first-class service type. Runs continuously on paid plans.                                                        |
+| **Database**           | Managed PostgreSQL from ~$7/mo. PITR for 7 days on paid plans.                                                                           |
+| **Database branching** | No.                                                                                                                                      |
+| **Pricing**            | 3 services at Starter ($7/mo each) + free static site + PostgreSQL (~$7-20/mo) = ~$28-41/mo. Fixed-price tiers — you pay even when idle. |
+| **Lock-in**            | Low. Standard Docker containers or buildpack-based deploys.                                                                              |
 
 **Strengths:** Frankfurt region (closer to Hetzner if you ever co-locate). Background workers are a first-class concept. Fixed pricing is predictable.
 
@@ -157,18 +158,18 @@ Push code, it runs. No server to manage. These platforms handle building, deploy
 
 #### Fly.io (~$15-70/mo)
 
-| Aspect | Details |
-|---|---|
-| **HQ** | US |
-| **EU regions** | Amsterdam, Frankfurt, London, Paris, Stockholm, Warsaw, Madrid (excellent coverage) |
-| **Monorepo** | Manual — each service is a separate Fly app with its own `fly.toml`. |
-| **PR previews** | Not built-in (scriptable via CLI). |
-| **WebSocket** | Excellent — Fly was designed for edge-deployed, latency-sensitive apps. |
-| **Long-running jobs** | Machines can run indefinitely. Machines API lets you start/stop workers programmatically (pay only when running). |
-| **Database** | Self-managed Fly Postgres (~$4/mo) or Managed Postgres (starts at $38/mo — expensive). |
-| **Database branching** | No. |
-| **Pricing** | 4 small machines (~$8-28/mo) + Postgres ($4-38/mo). Wide range depending on choices. |
-| **Lock-in** | Low-medium. Standard Docker containers. `fly.toml` is Fly-specific but trivial to replace. |
+| Aspect                 | Details                                                                                                           |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **HQ**                 | US                                                                                                                |
+| **EU regions**         | Amsterdam, Frankfurt, London, Paris, Stockholm, Warsaw, Madrid (excellent coverage)                               |
+| **Monorepo**           | Manual — each service is a separate Fly app with its own `fly.toml`.                                              |
+| **PR previews**        | Not built-in (scriptable via CLI).                                                                                |
+| **WebSocket**          | Excellent — Fly was designed for edge-deployed, latency-sensitive apps.                                           |
+| **Long-running jobs**  | Machines can run indefinitely. Machines API lets you start/stop workers programmatically (pay only when running). |
+| **Database**           | Self-managed Fly Postgres (~$4/mo) or Managed Postgres (starts at $38/mo — expensive).                            |
+| **Database branching** | No.                                                                                                               |
+| **Pricing**            | 4 small machines (~$8-28/mo) + Postgres ($4-38/mo). Wide range depending on choices.                              |
+| **Lock-in**            | Low-medium. Standard Docker containers. `fly.toml` is Fly-specific but trivial to replace.                        |
 
 **Strengths:** Best EU region coverage. Best WebSocket story. Pay-per-use worker machines could save money (spin up for AI jobs, stop when done). Self-managed Postgres at $4/mo is very cheap.
 
@@ -182,24 +183,24 @@ Push code, it runs. No server to manage. These platforms handle building, deploy
 
 One EC2 instance running all 4 services + RDS PostgreSQL.
 
-| Item | Monthly |
-|---|---|
-| EC2 t4g.medium (2 vCPU, 4GB ARM) | ~$25 |
-| RDS db.t4g.micro (2 vCPU, 1GB) | ~$22 |
-| Storage (20GB gp3) | ~$2 |
-| **Total** | **~$49/mo** |
+| Item                             | Monthly     |
+| -------------------------------- | ----------- |
+| EC2 t4g.medium (2 vCPU, 4GB ARM) | ~$25        |
+| RDS db.t4g.micro (2 vCPU, 1GB)   | ~$22        |
+| Storage (20GB gp3)               | ~$2         |
+| **Total**                        | **~$49/mo** |
 
 This is functionally identical to Tier 1 (Docker Compose on a VPS) but on AWS. You get AWS's EU regions (Frankfurt, Ireland, Stockholm, Paris, Milan, Spain) and can co-locate with Neon if you want database branching later.
 
 #### Option B: ECS Fargate + RDS (managed containers)
 
-| Item | Monthly |
-|---|---|
-| 4 Fargate tasks (0.25 vCPU, 512MB each) | ~$36 |
-| RDS db.t4g.micro | ~$22 |
-| ALB (Application Load Balancer) | ~$16 |
-| NAT Gateway (if private subnets) | ~$32 |
-| **Total** | **~$75-110/mo** |
+| Item                                    | Monthly         |
+| --------------------------------------- | --------------- |
+| 4 Fargate tasks (0.25 vCPU, 512MB each) | ~$36            |
+| RDS db.t4g.micro                        | ~$22            |
+| ALB (Application Load Balancer)         | ~$16            |
+| NAT Gateway (if private subnets)        | ~$32            |
+| **Total**                               | **~$75-110/mo** |
 
 The ALB and NAT Gateway are the cost killers. You can avoid the NAT Gateway with public subnets (less secure) and avoid the ALB with a single Fargate task + nginx sidecar (defeats the purpose of independent deployment).
 
@@ -215,29 +216,29 @@ The ALB and NAT Gateway are the cost killers. You can avoid the NAT Gateway with
 
 **Pulumi**: General-purpose TypeScript IaC. Works with AWS, GCP, Azure, Hetzner, DigitalOcean, and many others. More verbose than SST (~50-80 lines for the same ECS service) but more flexible. Has a Hetzner provider. Free for individual use.
 
-Neither provides a deployment platform. They deploy *to* a platform. Relevant if you want infrastructure-as-code from day one, but arguably premature for a single VPS.
+Neither provides a deployment platform. They deploy _to_ a platform. Relevant if you want infrastructure-as-code from day one, but arguably premature for a single VPS.
 
 ---
 
 ## EU-Native Provider Landscape
 
-These providers are EU-headquartered. They sit underneath the tiers above — the tier is *how* you deploy; the provider is *where* the server lives.
+These providers are EU-headquartered. They sit underneath the tiers above — the tier is _how_ you deploy; the provider is _where_ the server lives.
 
 ### Compute-Only (VPS / Bare Metal)
 
-| Provider | HQ | Managed DB? | Compute (2 vCPU, 4GB) | Regions | Notes |
-|---|---|---|---|---|---|
-| **Hetzner** | Germany | No | ~€5/mo | Falkenstein, Nuremberg (DE), Helsinki (FI) | Cheapest. Compute only — no managed services. |
+| Provider    | HQ      | Managed DB? | Compute (2 vCPU, 4GB) | Regions                                    | Notes                                         |
+| ----------- | ------- | ----------- | --------------------- | ------------------------------------------ | --------------------------------------------- |
+| **Hetzner** | Germany | No          | ~€5/mo                | Falkenstein, Nuremberg (DE), Helsinki (FI) | Cheapest. Compute only — no managed services. |
 
 ### Mini-Clouds (VPS + Managed Services)
 
-| Provider | HQ | Managed PostgreSQL | Compute (2 vCPU, 4GB) | Regions | Notes |
-|---|---|---|---|---|---|
-| **UpCloud** | Finland | Yes (~€15/mo, PITR) | ~€13/mo | Helsinki, Frankfurt, Amsterdam, London, etc. | Good perf/price. Finnish data sovereignty. |
-| **Scaleway** | France | Yes (~€11/mo) | ~€10/mo | Paris, Amsterdam, Warsaw | Broadest EU service portfolio (serverless, K8s, object storage). French/Iliad group. |
-| **OVH** | France | Yes (~€14/mo) | ~€7-12/mo | Strasbourg, Gravelines, London, Frankfurt, Warsaw | Largest EU cloud. Rougher DX than Scaleway. |
-| **Exoscale** | Switzerland | Yes (~€16/mo, via Aiven) | ~€16/mo | Vienna, Frankfurt, Zurich, Sofia | Swiss data sovereignty. Premium pricing. |
-| **Elastx** | Sweden | Yes (managed K8s + PG) | Varies | Stockholm | Swedish data sovereignty. More enterprise-focused. |
+| Provider     | HQ          | Managed PostgreSQL       | Compute (2 vCPU, 4GB) | Regions                                           | Notes                                                                                |
+| ------------ | ----------- | ------------------------ | --------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **UpCloud**  | Finland     | Yes (~€15/mo, PITR)      | ~€13/mo               | Helsinki, Frankfurt, Amsterdam, London, etc.      | Good perf/price. Finnish data sovereignty.                                           |
+| **Scaleway** | France      | Yes (~€11/mo)            | ~€10/mo               | Paris, Amsterdam, Warsaw                          | Broadest EU service portfolio (serverless, K8s, object storage). French/Iliad group. |
+| **OVH**      | France      | Yes (~€14/mo)            | ~€7-12/mo             | Strasbourg, Gravelines, London, Frankfurt, Warsaw | Largest EU cloud. Rougher DX than Scaleway.                                          |
+| **Exoscale** | Switzerland | Yes (~€16/mo, via Aiven) | ~€16/mo               | Vienna, Frankfurt, Zurich, Sofia                  | Swiss data sovereignty. Premium pricing.                                             |
+| **Elastx**   | Sweden      | Yes (managed K8s + PG)   | Varies                | Stockholm                                         | Swedish data sovereignty. More enterprise-focused.                                   |
 
 ### Key Distinction
 
@@ -285,18 +286,18 @@ If `pg_dump`/`cp` starts feeling painful — likely when the database grows past
 
 ## Cost Comparison (Solo Dev, Development Phase)
 
-| Setup | Monthly | What you manage | DB branching |
-|---|---|---|---|
-| **Hetzner CX22 + Docker Compose** | ~€5 | Everything (OS, Docker, PG, backups, SSL) | pg_dump/cp |
-| **Hetzner CX22 + Coolify** | ~€5 | Server + Coolify | pg_dump/cp |
-| **Hetzner CX22 + Neon free** | ~€5 + $0 | Server + Coolify/Kamal. Neon manages DB. | Neon CoW branching |
-| **UpCloud VPS + UpCloud PG** | ~€28 | Apps only. DB managed by UpCloud. | pg_dump |
-| **Scaleway VPS + Scaleway PG** | ~€21 | Apps only. DB managed by Scaleway. | pg_dump |
-| **Railway (all-in)** | ~$25-45 | Nothing. Push code, it runs. | Fresh DBs per PR (not snapshots) |
-| **Render (all-in)** | ~$28-41 | Nothing. Push code, it runs. | No |
-| **Fly.io (self-managed PG)** | ~$15-30 | Postgres (backups, updates). | No |
-| **AWS EC2 + RDS** | ~$49 | EC2 instance, Docker, deploys. | RDS snapshots |
-| **AWS Fargate + RDS** | ~$75-110 | IAM, VPC, task definitions. | RDS snapshots |
+| Setup                             | Monthly  | What you manage                           | DB branching                     |
+| --------------------------------- | -------- | ----------------------------------------- | -------------------------------- |
+| **Hetzner CX22 + Docker Compose** | ~€5      | Everything (OS, Docker, PG, backups, SSL) | pg_dump/cp                       |
+| **Hetzner CX22 + Coolify**        | ~€5      | Server + Coolify                          | pg_dump/cp                       |
+| **Hetzner CX22 + Neon free**      | ~€5 + $0 | Server + Coolify/Kamal. Neon manages DB.  | Neon CoW branching               |
+| **UpCloud VPS + UpCloud PG**      | ~€28     | Apps only. DB managed by UpCloud.         | pg_dump                          |
+| **Scaleway VPS + Scaleway PG**    | ~€21     | Apps only. DB managed by Scaleway.        | pg_dump                          |
+| **Railway (all-in)**              | ~$25-45  | Nothing. Push code, it runs.              | Fresh DBs per PR (not snapshots) |
+| **Render (all-in)**               | ~$28-41  | Nothing. Push code, it runs.              | No                               |
+| **Fly.io (self-managed PG)**      | ~$15-30  | Postgres (backups, updates).              | No                               |
+| **AWS EC2 + RDS**                 | ~$49     | EC2 instance, Docker, deploys.            | RDS snapshots                    |
+| **AWS Fargate + RDS**             | ~$75-110 | IAM, VPC, task definitions.               | RDS snapshots                    |
 
 ---
 
@@ -317,6 +318,7 @@ If `pg_dump`/`cp` starts feeling painful — likely when the database grows past
 ## Sources
 
 ### Deployment Tools
+
 - [Kamal](https://kamal-deploy.org/) — CLI Docker deploys via SSH (37signals)
 - [Kamal 2: multiple apps on single server](https://www.honeybadger.io/blog/new-in-kamal-2/)
 - [Kamal review apps with destinations](https://dennmart.com/articles/review-apps-with-kamal-part-2-configuring-destinations/)
@@ -325,6 +327,7 @@ If `pg_dump`/`cp` starts feeling painful — likely when the database grows past
 - [Dokploy vs Coolify comparison](https://blog.logrocket.com/dokploy-vs-coolify-production/)
 
 ### Managed Platforms
+
 - [Railway pricing](https://railway.com/pricing)
 - [Railway monorepo guide](https://docs.railway.com/guides/monorepo)
 - [Railway deployment regions](https://docs.railway.com/reference/deployment-regions)
@@ -336,11 +339,13 @@ If `pg_dump`/`cp` starts feeling painful — likely when the database grows past
 - [Fly.io regions](https://fly.io/docs/reference/regions/)
 
 ### IaC Tools
+
 - [SST v3 — Hono on AWS](https://sst.dev/docs/start/aws/hono/)
 - [Pulumi Hetzner provider](https://www.pulumi.com/registry/packages/hcloud/)
 - [Terraform vs Pulumi vs SST analysis](https://www.gautierblandin.com/articles/terraform-pulumi-sst-tradeoff-analysis)
 
 ### EU Providers
+
 - [Hetzner Cloud](https://www.hetzner.com/cloud/) — German compute provider
 - [UpCloud managed PostgreSQL](https://upcloud.com/postgresql-managed-databases/) — Finnish cloud
 - [Scaleway managed databases](https://www.scaleway.com/en/managed-postgresql-mysql/) — French cloud
@@ -352,9 +357,11 @@ If `pg_dump`/`cp` starts feeling painful — likely when the database grows past
 - [Ubicloud pricing](https://www.ubicloud.com/docs/about/pricing)
 
 ### AWS
+
 - [AWS Fargate pricing](https://aws.amazon.com/fargate/pricing/)
 - [AWS RDS PostgreSQL pricing](https://aws.amazon.com/rds/postgresql/pricing/)
 
 ### Database Branching
+
 - [Neon pricing](https://neon.com/pricing) — PostgreSQL CoW branching
 - [Turso](https://turso.tech/) — libSQL CoW branching

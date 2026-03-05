@@ -1,25 +1,27 @@
 /* Light Theme (Default) — Warm parchment */
 :root {
-  --background: #F8F4EC;
-  --foreground: #1C1917;
-  --muted: #EDE8DD;
-  --muted-foreground: #57534E;
-  --primary-foreground: #1C1917;
+  --background: #f8f4ec;
+  --foreground: #1c1917;
+  --muted: #ede8dd;
+  --muted-foreground: #57534e;
+  --primary-foreground: #1c1917;
 }
 
 /* Dark Theme — Deep warm charcoal */
 .dark {
-  --background: #0F0D0A;
-  --foreground: #E7E5E4;
-  --color-primary: #D4A944;
-  --muted: #1C1917;
-  --muted-foreground: #A8A29E;
-  --primary-foreground: #0F0D0A;
+  --background: #0f0d0a;
+  --foreground: #e7e5e4;
+  --color-primary: #d4a944;
+  --muted: #1c1917;
+  --muted-foreground: #a8a29e;
+  --primary-foreground: #0f0d0a;
 }
 
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
-  font-family: 'Crimson Pro', Georgia, serif;
-  transition: background-color 0.3s, color 0.3s;
+  font-family: "Crimson Pro", Georgia, serif;
+  transition:
+    background-color 0.3s,
+    color 0.3s;
 }

@@ -14,12 +14,12 @@ The question: does Loreweaver benefit from server-side rendering?
 
 Server-side rendering means the server executes React components, produces HTML, and sends it to the browser. The browser then "hydrates" the HTML — attaching JavaScript event handlers so it becomes interactive. This is what Next.js App Router does by default.
 
-| SSR benefit | Relevant to Loreweaver? | Why / why not |
-|---|:-:|---|
-| **SEO** — search engines index server-rendered HTML | No | All content is behind authentication. No public pages need indexing. Campaign data is private by design. |
-| **First Contentful Paint** — users see content before JS loads | Marginal | The centerpiece is a TipTap editor — a large client-side JS application. The editor cannot render until its JavaScript loads regardless of SSR. SSR would show page chrome (nav, sidebar) slightly faster, but the content the user came for (the editor, the graph, the review queue) waits for JS either way. |
-| **Social previews / Open Graph** — link previews on Discord, Slack | No | Campaign content is private. Shared links would at most show a login page. |
-| **Streaming / progressive rendering** — show partial content while the rest loads | Marginal | Useful for data-heavy dashboards. Loreweaver's pages are editor-centric, not content-list-centric. The editor loads as a unit, not progressively. |
+| SSR benefit                                                                       | Relevant to Loreweaver? | Why / why not                                                                                                                                                                                                                                                                                                   |
+| --------------------------------------------------------------------------------- | :---------------------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SEO** — search engines index server-rendered HTML                               |           No            | All content is behind authentication. No public pages need indexing. Campaign data is private by design.                                                                                                                                                                                                        |
+| **First Contentful Paint** — users see content before JS loads                    |        Marginal         | The centerpiece is a TipTap editor — a large client-side JS application. The editor cannot render until its JavaScript loads regardless of SSR. SSR would show page chrome (nav, sidebar) slightly faster, but the content the user came for (the editor, the graph, the review queue) waits for JS either way. |
+| **Social previews / Open Graph** — link previews on Discord, Slack                |           No            | Campaign content is private. Shared links would at most show a login page.                                                                                                                                                                                                                                      |
+| **Streaming / progressive rendering** — show partial content while the rest loads |        Marginal         | Useful for data-heavy dashboards. Loreweaver's pages are editor-centric, not content-list-centric. The editor loads as a unit, not progressively.                                                                                                                                                               |
 
 **Conclusion:** The two primary motivations for SSR — SEO and first paint of content-heavy public pages — do not apply to an authenticated, editor-centric application.
 
@@ -43,7 +43,7 @@ The server component model is designed for pages where the server can do meaning
 
 ### Hydration bugs
 
-If the server-rendered HTML doesn't exactly match what React produces client-side, React throws hydration errors. These are notoriously difficult to debug — the error message tells you *that* a mismatch occurred, not *why*. Common causes: browser extensions modifying the DOM, locale-dependent formatting, time-dependent content.
+If the server-rendered HTML doesn't exactly match what React produces client-side, React throws hydration errors. These are notoriously difficult to debug — the error message tells you _that_ a mismatch occurred, not _why_. Common causes: browser extensions modifying the DOM, locale-dependent formatting, time-dependent content.
 
 For a developer learning React for the first time, hydration errors are a particularly hostile class of bug. They don't exist in SPAs.
 
@@ -84,11 +84,11 @@ The frontend is **static files** — HTML, JS, CSS. No server-side rendering. Th
 
 The `apps/web` directory splits into two concerns:
 
-| Current (Next.js) | Proposed (SPA) |
-|---|---|
-| `apps/web` — Next.js handles both UI rendering and API routes | `apps/web` — Vite + React (static files, client-only) |
-| tRPC routers live inside Next.js as API routes | `apps/api` — Standalone tRPC server (Hono or Fastify) |
-| One process serves pages and handles API calls | Two processes: static file server (or CDN) + API server |
+| Current (Next.js)                                             | Proposed (SPA)                                          |
+| ------------------------------------------------------------- | ------------------------------------------------------- |
+| `apps/web` — Next.js handles both UI rendering and API routes | `apps/web` — Vite + React (static files, client-only)   |
+| tRPC routers live inside Next.js as API routes                | `apps/api` — Standalone tRPC server (Hono or Fastify)   |
+| One process serves pages and handles API calls                | Two processes: static file server (or CDN) + API server |
 
 ### Revised deployment model
 

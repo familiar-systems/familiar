@@ -61,13 +61,13 @@ ProseMirror has **decorations** — visual overlays that style content without m
 
 Lexical doesn't have this concept. Its "decorator nodes" are actual nodes in the tree that mutate the document. The distinction matters for Loreweaver's specific requirements:
 
-| Requirement | ProseMirror/TipTap | Lexical |
-|---|---|---|
-| GM-only blocks dimmed | Decoration driven by block metadata | Must mix visual state into node properties or render DOM overlays manually |
-| Retconned blocks struck through | Decoration driven by status field | Same workaround |
-| Mention highlighting on hover | Decoration on matching mention nodes | Manual DOM calculation, scroll/resize listeners |
-| Source-link indicators | Decoration with timestamp metadata | Manual DOM overlay |
-| Collaborative cursors | Decoration (standard pattern) | Calculate cursor positions, draw HTML divs on top of text, listen to scroll/resize |
+| Requirement                     | ProseMirror/TipTap                   | Lexical                                                                            |
+| ------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------- |
+| GM-only blocks dimmed           | Decoration driven by block metadata  | Must mix visual state into node properties or render DOM overlays manually         |
+| Retconned blocks struck through | Decoration driven by status field    | Same workaround                                                                    |
+| Mention highlighting on hover   | Decoration on matching mention nodes | Manual DOM calculation, scroll/resize listeners                                    |
+| Source-link indicators          | Decoration with timestamp metadata   | Manual DOM overlay                                                                 |
+| Collaborative cursors           | Decoration (standard pattern)        | Calculate cursor positions, draw HTML divs on top of text, listen to scroll/resize |
 
 This is not a missing feature that will be added. It's an architectural choice — Lexical models the document as the single source of truth for both content and presentation. [The Liveblocks team](https://liveblocks.io/blog/which-rich-text-editor-framework-should-you-choose-in-2025) (who build collaborative editing infrastructure and spent months deep in both codebases) flagged this as a fundamental concern:
 

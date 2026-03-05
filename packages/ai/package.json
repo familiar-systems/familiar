@@ -10,11 +10,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@loreweaver/domain": "workspace:*",
-    "@loreweaver/db": "workspace:*"
+    "@loreweaver/db": "workspace:*",
+    "@loreweaver/domain": "workspace:*"
   },
   "devDependencies": {
     "@loreweaver/tsconfig": "workspace:*",

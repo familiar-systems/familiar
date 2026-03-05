@@ -14,17 +14,17 @@ The web layer **enqueues** work; the worker **dequeues and processes** independe
 
 ### Decisions made
 
-| Decision | Choice | Reference |
-|---|---|---|
-| Language | Full TypeScript (Stack A) | [stack_exploration.md](../../discovery/stack/stack_exploration.md) |
-| Editor | TipTap (open-source, MIT) | [tiptap.md](../../discovery/stack/editor/tiptap.md) |
-| Frontend | React (Next.js App Router) | [stack_exploration.md](../../discovery/stack/stack_exploration.md) |
-| Database | PostgreSQL | [storage_overview.md](../../discovery/archive/2026-02-14-storage-overview.md) |
-| API layer | tRPC (end-to-end type safety) | [stack_exploration.md](../../discovery/stack/stack_exploration.md) |
-| ORM | Drizzle | [stack_exploration.md](../../discovery/stack/stack_exploration.md) |
-| Collaboration | Hocuspocus (self-hosted Yjs server) | [tiptap.md](../../discovery/stack/editor/tiptap.md) |
-| Job queue | PostgreSQL-backed (pg-boss or graphile-worker) | This document |
-| Repo structure | pnpm monorepo with Turborepo | This document |
+| Decision       | Choice                                         | Reference                                                                     |
+| -------------- | ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| Language       | Full TypeScript (Stack A)                      | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
+| Editor         | TipTap (open-source, MIT)                      | [tiptap.md](../../discovery/stack/editor/tiptap.md)                           |
+| Frontend       | React (Next.js App Router)                     | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
+| Database       | PostgreSQL                                     | [storage_overview.md](../../discovery/archive/2026-02-14-storage-overview.md) |
+| API layer      | tRPC (end-to-end type safety)                  | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
+| ORM            | Drizzle                                        | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
+| Collaboration  | Hocuspocus (self-hosted Yjs server)            | [tiptap.md](../../discovery/stack/editor/tiptap.md)                           |
+| Job queue      | PostgreSQL-backed (pg-boss or graphile-worker) | This document                                                                 |
+| Repo structure | pnpm monorepo with Turborepo                   | This document                                                                 |
 
 ---
 
@@ -324,17 +324,17 @@ A pg-boss consumer process. Each handler maps to a job type from `@loreweaver/qu
 
 ## Tooling
 
-| Concern | Tool | Notes |
-|---|---|---|
-| Package manager | **pnpm** | Strict dependency resolution, native workspaces. Prevents phantom dependencies. |
-| Monorepo orchestration | **Turborepo** | Understands the package dependency graph. Caches unchanged builds. `turbo build` rebuilds only what changed. |
-| Type checking | **tsc** (`strict: true`) | The TypeScript compiler. Key flags: `strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `exactOptionalPropertyTypes`. |
-| Runtime validation | **Zod** | TypeScript types are erased at runtime. Zod validates data at system boundaries (API inputs, DB rows, env vars). |
-| Testing | **Vitest** | Native TypeScript support, fast, Jest-compatible API. |
-| Dev runner | **tsx** | Runs `.ts` files directly via esbuild. No compile step during development. |
-| Linting | **oxlint 1.0** | Rust-based, 520+ built-in rules, 50-100x faster than ESLint. Strictest config from day one. |
-| Type-aware linting | **tsgolint** (when stable) | Uses tsgo (Microsoft's official Go port of TypeScript). Real TS type system, not a reimplementation. Currently alpha — enable when it stabilizes. |
-| Formatting | **oxfmt** (alpha) | Rust-based, Prettier-compatible, 30x faster than Prettier. Fallback to Prettier if needed (compatible output). |
+| Concern                | Tool                       | Notes                                                                                                                                             |
+| ---------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Package manager        | **pnpm**                   | Strict dependency resolution, native workspaces. Prevents phantom dependencies.                                                                   |
+| Monorepo orchestration | **Turborepo**              | Understands the package dependency graph. Caches unchanged builds. `turbo build` rebuilds only what changed.                                      |
+| Type checking          | **tsc** (`strict: true`)   | The TypeScript compiler. Key flags: `strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `exactOptionalPropertyTypes`.   |
+| Runtime validation     | **Zod**                    | TypeScript types are erased at runtime. Zod validates data at system boundaries (API inputs, DB rows, env vars).                                  |
+| Testing                | **Vitest**                 | Native TypeScript support, fast, Jest-compatible API.                                                                                             |
+| Dev runner             | **tsx**                    | Runs `.ts` files directly via esbuild. No compile step during development.                                                                        |
+| Linting                | **oxlint 1.0**             | Rust-based, 520+ built-in rules, 50-100x faster than ESLint. Strictest config from day one.                                                       |
+| Type-aware linting     | **tsgolint** (when stable) | Uses tsgo (Microsoft's official Go port of TypeScript). Real TS type system, not a reimplementation. Currently alpha — enable when it stabilizes. |
+| Formatting             | **oxfmt** (alpha)          | Rust-based, Prettier-compatible, 30x faster than Prettier. Fallback to Prettier if needed (compatible output).                                    |
 
 ### Type checking strategy
 

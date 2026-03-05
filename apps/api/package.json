@@ -8,15 +8,15 @@
     "build": "tsup src/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@hono/node-server": "^1",
     "@loreweaver/ai": "workspace:*",
     "@loreweaver/auth": "workspace:*",
     "@loreweaver/db": "workspace:*",
     "@loreweaver/domain": "workspace:*",
     "@loreweaver/queue": "workspace:*",
-    "@hono/node-server": "^1",
     "hono": "^4"
   },
   "devDependencies": {

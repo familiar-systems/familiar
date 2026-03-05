@@ -25,7 +25,9 @@ Loreweaver is a web app. You open a browser, log in, and you're working. No soft
 This is the core loop — the thing you'd do after every session:
 
 1. **Upload your audio or video recording and/or notes** from the session
-  - **Optionally** players add their characters' notes, too 
+
+- **Optionally** players add their characters' notes, too
+
 2. **The AI processes everything** — it transcribes audio, figures out what happened, and drafts a write-up of the session
 3. **You get a list of proposals**: "I found 3 new NPCs. I think Kael frequents the Rusty Anchor. Tormund appears to be dead now. Here's a draft of what happened."
 4. **You review**: accept the ones that look right, tweak the ones that are close, skip the ones you don't care about
@@ -65,6 +67,7 @@ You control exactly what your players can see. By default, everything starts hid
 This means you can have secret notes on an NPC that your players can look up freely, without worrying they'll stumble on spoilers. The Good Cleric that worships the god of murder - spoilers! Their view of the wiki only shows what their characters would know.
 
 Players can also:
+
 - Look up what they know about NPCs, locations, and factions
 - Ask the AI questions like "What do we know about the Silver Compact?" (it only answers from information they've been shown)
 - Submit their own session recollections to help fill in gaps

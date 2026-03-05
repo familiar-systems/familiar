@@ -1,7 +1,6 @@
 {
   "name": "loreweaver",
   "private": true,
-  "packageManager": "pnpm@10.11.0",
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
@@ -16,5 +15,6 @@
     "turbo": "^2.8",
     "typescript": "^5.8",
     "vitest": "^3"
-  }
+  },
+  "packageManager": "pnpm@10.11.0"
 }

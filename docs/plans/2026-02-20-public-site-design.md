@@ -22,13 +22,13 @@ These problems are solved by treating the public site as its own deployment targ
 
 ## Why Astro
 
-| Criterion | Astro | Next.js | 11ty |
-|---|---|---|---|
-| Default output | Static HTML, zero JS | Requires Node.js server for SSR | Static HTML, zero JS |
-| React components | Yes (islands architecture) | Yes (full React) | No (template languages only) |
-| Content collections | First-class (typed Markdown/MDX) | Manual or plugin-based | First-class (data cascade) |
-| Interactive embeds | React islands hydrate on demand | Full hydration by default | Requires separate JS pipeline |
-| Complexity | Low — static by default, opt into interactivity | High — server runtime, hydration boundaries | Low — but no component framework |
+| Criterion           | Astro                                           | Next.js                                     | 11ty                             |
+| ------------------- | ----------------------------------------------- | ------------------------------------------- | -------------------------------- |
+| Default output      | Static HTML, zero JS                            | Requires Node.js server for SSR             | Static HTML, zero JS             |
+| React components    | Yes (islands architecture)                      | Yes (full React)                            | No (template languages only)     |
+| Content collections | First-class (typed Markdown/MDX)                | Manual or plugin-based                      | First-class (data cascade)       |
+| Interactive embeds  | React islands hydrate on demand                 | Full hydration by default                   | Requires separate JS pipeline    |
+| Complexity          | Low — static by default, opt into interactivity | High — server runtime, hydration boundaries | Low — but no component framework |
 
 **Astro is the sweet spot.** It generates static HTML by default (same deployment model as `apps/web` — just files), but supports React islands for interactive embeds like a live campaign preview widget. Next.js brings a server runtime we don't need. 11ty is simpler but can't embed React components from a shared component library.
 
@@ -150,13 +150,13 @@ graph BT
 
 ## What This Design Defers
 
-| Decision | Deferred until |
-|---|---|
-| Headless CMS for blog | Non-developer needs to author content |
-| Real-time public campaign pages | Static snapshots feel too stale |
+| Decision                               | Deferred until                                                                    |
+| -------------------------------------- | --------------------------------------------------------------------------------- |
+| Headless CMS for blog                  | Non-developer needs to author content                                             |
+| Real-time public campaign pages        | Static snapshots feel too stale                                                   |
 | Shared `packages/ui` component library | Enough shared components between `apps/web` and `apps/site` to justify extraction |
-| Analytics integration | Site has real traffic |
-| i18n | Demand from non-English users |
+| Analytics integration                  | Site has real traffic                                                             |
+| i18n                                   | Demand from non-English users                                                     |
 
 ---
 

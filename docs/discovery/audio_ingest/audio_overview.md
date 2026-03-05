@@ -154,7 +154,7 @@ This interface:
 
 ### Two Exposure Patterns
 
-**Internal (pipeline use) — push context.** The pipeline orchestrator calls the context interface directly, retrieves relevant data, and injects it into the LLM prompt as system context *before* the call. The orchestrator decides what's relevant. This is more token-efficient and reliable — you control exactly what the LLM sees.
+**Internal (pipeline use) — push context.** The pipeline orchestrator calls the context interface directly, retrieves relevant data, and injects it into the LLM prompt as system context _before_ the call. The orchestrator decides what's relevant. This is more token-efficient and reliable — you control exactly what the LLM sees.
 
 **External (MCP) — pull context.** The same interface, exposed as an MCP server, lets the GM use external AI tools (Claude, ChatGPT, etc.) with their campaign graph as live context. "I'm prepping for next session — what unresolved plot threads involve Kael?" The LLM decides what to fetch via tool calls.
 

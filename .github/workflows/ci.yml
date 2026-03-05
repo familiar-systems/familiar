@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DO_NOT_TRACK: 1
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [lint, typecheck, format, build, test]
+    name: ${{ matrix.check }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: rharkor/caching-for-turbo@v2.3.11
+
+      - name: lint
+        if: matrix.check == 'lint'
+        run: pnpm turbo lint
+
+      - name: typecheck
+        if: matrix.check == 'typecheck'
+        run: pnpm turbo typecheck
+
+      - name: format
+        if: matrix.check == 'format'
+        run: pnpm oxfmt --check .
+
+      - name: build
+        if: matrix.check == 'build'
+        run: pnpm turbo build
+
+      - name: test
+        if: matrix.check == 'test'
+        run: pnpm turbo test

@@ -40,7 +40,9 @@ This document unifies them. The core insight: **all three workflows converge on 
 
 1. The GM opens the agent window from wherever they are in the application
 2. The AI loads context based on the **focal point** — the page the GM is on
-  * _Nice to have:_ be able to remove the page's context
+
+- _Nice to have:_ be able to remove the page's context
+
 3. The GM describes what they want, `@`-referencing specific nodes or blocks for additional context
 4. The AI streams a response, producing suggestions as it goes — new things, block updates, relationships
 5. Suggestions appear in real-time and are immediately durable
@@ -91,12 +93,12 @@ The agent window is the single interface for all AI interaction. It is a convers
 
 When the agent window opens, its context is determined by **where the user opened it**:
 
-| Focal point | Context the AI starts with |
-|---|---|
-| Session page (post-ingest) | Session transcript, extracted entities, journal draft, existing suggestions from ingest |
-| Session page (pre-session) | Recent session summaries, active plot threads, prep notes, upcoming session metadata |
-| Thing page (NPC, location, etc.) | The thing's blocks, relationships, all mentions across sessions, connected entities |
-| Campaign overview | High-level: arcs, major entities, open contradictions, unresolved threads |
+| Focal point                      | Context the AI starts with                                                              |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| Session page (post-ingest)       | Session transcript, extracted entities, journal draft, existing suggestions from ingest |
+| Session page (pre-session)       | Recent session summaries, active plot threads, prep notes, upcoming session metadata    |
+| Thing page (NPC, location, etc.) | The thing's blocks, relationships, all mentions across sessions, connected entities     |
+| Campaign overview                | High-level: arcs, major entities, open contradictions, unresolved threads               |
 
 The focal point determines the AI's **initial context retrieval**, not its capabilities. The GM can always pull in additional context with `@`-references: "Flesh out @Grimhollow, connecting it to @SilverCompact and @Kael."
 
@@ -105,6 +107,7 @@ The focal point determines the AI's **initial context retrieval**, not its capab
 The agent window does not have modes. Instead, the user's role determines what tools the AI has access to:
 
 **Read tools** (available to all users):
+
 - Search entities by name, type, or description
 - Get full entity details (blocks, relationships)
 - Semantic search across content blocks
@@ -112,6 +115,7 @@ The agent window does not have modes. Instead, the user's role determines what t
 - Get relationship context for entities
 
 **Write tools** (GM only):
+
 - Propose creating a new thing
 - Propose updating blocks on an existing thing
 - Propose creating a relationship between things
@@ -127,7 +131,7 @@ In the future, we may want to add scoping by user to pages or block sections to 
 The campaign graph is filtered **at the retrieval layer** based on the user's role:
 
 - **GM:** Sees GM-only + Known content.
-  - _Nice to have_: Retconned content is excluded from active context but can be retrieved when explicitly asked ("what did we originally say about Kael's backstory?").
+    - _Nice to have_: Retconned content is excluded from active context but can be retrieved when explicitly asked ("what did we originally say about Kael's backstory?").
 - **Player:** Sees Known content only. GM-only content is invisible — not redacted, simply absent.
 
 This means the AI structurally cannot reveal GM-only information to players. The filter is applied before the AI sees any content, not after.
@@ -148,14 +152,14 @@ A **Suggestion** is a proposed mutation to the campaign graph. Every AI output t
 
 **Suggestion types:**
 
-| Type | What it proposes |
-|---|---|
-| `create_thing` | A new node (NPC, location, item, faction, etc.) cloned from a prototype thing, with initial blocks |
-| `update_blocks` | New or modified blocks on an existing node |
-| `create_relationship` | A new edge between two nodes, with label and optional inverse label |
-| `update_relationship` | A modification to an existing relationship |
-| `journal_draft` | Proposed journal entry blocks for a session |
-| `contradiction` | A flag: "this content conflicts with established canon," with references to both sides |
+| Type                  | What it proposes                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `create_thing`        | A new node (NPC, location, item, faction, etc.) cloned from a prototype thing, with initial blocks |
+| `update_blocks`       | New or modified blocks on an existing node                                                         |
+| `create_relationship` | A new edge between two nodes, with label and optional inverse label                                |
+| `update_relationship` | A modification to an existing relationship                                                         |
+| `journal_draft`       | Proposed journal entry blocks for a session                                                        |
+| `contradiction`       | A flag: "this content conflicts with established canon," with references to both sides             |
 
 **Suggestion properties:**
 
@@ -172,6 +176,7 @@ This section is not set in stone. It would be beneficial to have evals drive too
 Related suggestions are grouped into a **SuggestionBatch**. A batch represents a cohesive set of proposals that emerged from the same context — "everything the AI proposed about the tavern scene in Session 13" or "the three NPCs and their relationships from a P&R session about Grimhollow."
 
 Batches are the **unit of review** in the suggestion queue. The GM can:
+
 - Expand a batch and act on individual suggestions
 - Accept or reject a batch in bulk
 - Dismiss an entire batch ("that P&R conversation went nowhere")
@@ -211,7 +216,7 @@ The suggestion's status is updated to `accepted`. The real content it created ex
 
 Every AI interaction is an **AgentConversation** — a persisted record of what was said, what was proposed, and what decisions were made.
 
-**Why persist conversations?** Suggestions without their originating conversation are context-free. A suggestion saying "Create NPC: Mysterious Figure" is meaningless without the conversation that explains *why* — what the GM was exploring, what context the AI was working with, what alternatives were considered. The conversation IS the provenance.
+**Why persist conversations?** Suggestions without their originating conversation are context-free. A suggestion saying "Create NPC: Mysterious Figure" is meaningless without the conversation that explains _why_ — what the GM was exploring, what context the AI was working with, what alternatives were considered. The conversation IS the provenance.
 
 **Conversation properties:**
 

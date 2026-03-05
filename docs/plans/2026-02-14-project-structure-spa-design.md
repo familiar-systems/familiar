@@ -18,19 +18,19 @@ Loreweaver's content is entirely behind authentication (no SEO), and the centerp
 
 ### Decisions made
 
-| Decision | Choice | Reference |
-|---|---|---|
-| Language | Full TypeScript (Stack A) | [stack_exploration.md](../discovery/stack/stack_exploration.md) |
-| Editor | TipTap (open-source, MIT) | [tiptap.md](../discovery/stack/editor/tiptap.md) |
-| Frontend | React (Vite SPA) | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md) |
-| Build tool | Vite | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md) |
-| API server | Hono + tRPC | This document |
-| Database | PostgreSQL | [storage_overview.md](../discovery/archive/2026-02-14-storage-overview.md) |
-| ORM | Drizzle | [stack_exploration.md](../discovery/stack/stack_exploration.md) |
-| Collaboration | Hocuspocus (self-hosted Yjs server) | [tiptap.md](../discovery/stack/editor/tiptap.md) |
-| Job queue | PostgreSQL-backed (pg-boss or graphile-worker) | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
-| Repo structure | pnpm monorepo with Turborepo | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
-| Public site | Astro (static site generator) | [Public site design](./2026-02-20-public-site-design.md) |
+| Decision       | Choice                                         | Reference                                                                          |
+| -------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Language       | Full TypeScript (Stack A)                      | [stack_exploration.md](../discovery/stack/stack_exploration.md)                    |
+| Editor         | TipTap (open-source, MIT)                      | [tiptap.md](../discovery/stack/editor/tiptap.md)                                   |
+| Frontend       | React (Vite SPA)                               | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md)                   |
+| Build tool     | Vite                                           | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md)                   |
+| API server     | Hono + tRPC                                    | This document                                                                      |
+| Database       | PostgreSQL                                     | [storage_overview.md](../discovery/archive/2026-02-14-storage-overview.md)         |
+| ORM            | Drizzle                                        | [stack_exploration.md](../discovery/stack/stack_exploration.md)                    |
+| Collaboration  | Hocuspocus (self-hosted Yjs server)            | [tiptap.md](../discovery/stack/editor/tiptap.md)                                   |
+| Job queue      | PostgreSQL-backed (pg-boss or graphile-worker) | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
+| Repo structure | pnpm monorepo with Turborepo                   | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
+| Public site    | Astro (static site generator)                  | [Public site design](./2026-02-20-public-site-design.md)                           |
 
 ---
 
@@ -446,6 +446,7 @@ A pg-boss consumer process. Each handler maps to a job type from `@loreweaver/qu
 ```
 
 A reverse proxy (nginx or Caddy) sits in front and routes (order matters — specific paths match first):
+
 - `/app/api/*` → `apps/api` (port 3001)
 - `/app/collab/*` → `apps/collab` (port 3002, WebSocket upgrade)
 - `/app/*` → `apps/web` static files (SPA fallback: unknown paths serve `/app/index.html`)
@@ -460,17 +461,25 @@ In development, each app runs its own dev server. The SPA proxies API and collab
 ```typescript
 // apps/web/vite.config.ts
 export default defineConfig({
-  base: '/app/',
-  server: {
-    proxy: {
-      '/app/api': { target: 'http://localhost:3001', rewrite: (path) => path.replace(/^\/app/, '') },
-      '/app/collab': { target: 'ws://localhost:3002', ws: true, rewrite: (path) => path.replace(/^\/app/, '') },
+    base: "/app/",
+    server: {
+        proxy: {
+            "/app/api": {
+                target: "http://localhost:3001",
+                rewrite: (path) => path.replace(/^\/app/, ""),
+            },
+            "/app/collab": {
+                target: "ws://localhost:3002",
+                ws: true,
+                rewrite: (path) => path.replace(/^\/app/, ""),
+            },
+        },
     },
-  },
-})
+});
 ```
 
 All servers run simultaneously (orchestrated by Turborepo: `turbo dev`):
+
 - `apps/site` (Astro): `http://localhost:4321` — landing page, blog
 - `apps/web` (Vite): `http://localhost:5173/app/` — the SPA
 - `apps/api` (Hono): `http://localhost:3001`
@@ -480,18 +489,18 @@ All servers run simultaneously (orchestrated by Turborepo: `turbo dev`):
 
 ## Tooling
 
-| Concern | Tool | Notes |
-|---|---|---|
-| Package manager | **pnpm** | Strict dependency resolution, native workspaces. Prevents phantom dependencies. |
-| Monorepo orchestration | **Turborepo** | Understands the package dependency graph. Caches unchanged builds. `turbo build` rebuilds only what changed. |
-| Frontend build | **Vite** | Dev server with HMR, production build with content-hashed chunks. Part of the VoidZero ecosystem (same as Vitest, oxlint, oxfmt). |
-| Type checking | **tsc** (`strict: true`) | The TypeScript compiler. Key flags: `strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `exactOptionalPropertyTypes`. |
-| Runtime validation | **Zod** | TypeScript types are erased at runtime. Zod validates data at system boundaries (API inputs, DB rows, env vars). |
-| Testing | **Vitest** | Native TypeScript support, fast, Jest-compatible API. Shares Vite's transform pipeline. |
-| Dev runner | **tsx** | Runs `.ts` files directly via esbuild. No compile step during development. Used by `apps/api`, `apps/collab`, `apps/worker`. |
-| Linting | **oxlint 1.0** | Rust-based, 520+ built-in rules, 50-100x faster than ESLint. Strictest config from day one. |
-| Type-aware linting | **tsgolint** (when stable) | Uses tsgo (Microsoft's official Go port of TypeScript). Real TS type system, not a reimplementation. Currently alpha — enable when it stabilizes. |
-| Formatting | **oxfmt** (alpha) | Rust-based, Prettier-compatible, 30x faster than Prettier. Fallback to Prettier if needed (compatible output). |
+| Concern                | Tool                       | Notes                                                                                                                                             |
+| ---------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Package manager        | **pnpm**                   | Strict dependency resolution, native workspaces. Prevents phantom dependencies.                                                                   |
+| Monorepo orchestration | **Turborepo**              | Understands the package dependency graph. Caches unchanged builds. `turbo build` rebuilds only what changed.                                      |
+| Frontend build         | **Vite**                   | Dev server with HMR, production build with content-hashed chunks. Part of the VoidZero ecosystem (same as Vitest, oxlint, oxfmt).                 |
+| Type checking          | **tsc** (`strict: true`)   | The TypeScript compiler. Key flags: `strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `exactOptionalPropertyTypes`.   |
+| Runtime validation     | **Zod**                    | TypeScript types are erased at runtime. Zod validates data at system boundaries (API inputs, DB rows, env vars).                                  |
+| Testing                | **Vitest**                 | Native TypeScript support, fast, Jest-compatible API. Shares Vite's transform pipeline.                                                           |
+| Dev runner             | **tsx**                    | Runs `.ts` files directly via esbuild. No compile step during development. Used by `apps/api`, `apps/collab`, `apps/worker`.                      |
+| Linting                | **oxlint 1.0**             | Rust-based, 520+ built-in rules, 50-100x faster than ESLint. Strictest config from day one.                                                       |
+| Type-aware linting     | **tsgolint** (when stable) | Uses tsgo (Microsoft's official Go port of TypeScript). Real TS type system, not a reimplementation. Currently alpha — enable when it stabilizes. |
+| Formatting             | **oxfmt** (alpha)          | Rust-based, Prettier-compatible, 30x faster than Prettier. Fallback to Prettier if needed (compatible output).                                    |
 
 ### Type checking strategy
 
