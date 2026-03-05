@@ -34,20 +34,20 @@ jobs:
 
       - name: lint
         if: matrix.check == 'lint'
-        run: turbo lint
+        run: pnpm turbo lint
 
       - name: typecheck
         if: matrix.check == 'typecheck'
-        run: turbo typecheck
+        run: pnpm turbo typecheck
 
       - name: format
         if: matrix.check == 'format'
-        run: oxfmt --check .
+        run: pnpm oxfmt --check .
 
       - name: build
         if: matrix.check == 'build'
-        run: turbo build
+        run: pnpm turbo build
 
       - name: test
         if: matrix.check == 'test'
-        run: turbo test
+        run: pnpm turbo test
