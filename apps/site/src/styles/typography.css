@@ -14,11 +14,16 @@
   .prose img {
     margin-top: 2rem;
     margin-bottom: 2rem;
-    border-radius: 0.75rem; 
+    border-radius: 0.75rem;
   }
 
-  .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
-    font-family: 'Cinzel', Georgia, serif;
+  .prose h1,
+  .prose h2,
+  .prose h3,
+  .prose h4,
+  .prose h5,
+  .prose h6 {
+    font-family: "Cinzel", Georgia, serif;
     letter-spacing: -0.02em;
     scroll-margin-top: 6rem;
     position: relative;
@@ -128,8 +133,8 @@
   .prose tbody tr:hover {
     background-color: color-mix(in srgb, var(--color-foreground), transparent 98%);
   }
-  
+
   .prose tbody tr:hover td {
-      color: var(--color-foreground);
+    color: var(--color-foreground);
   }
 }

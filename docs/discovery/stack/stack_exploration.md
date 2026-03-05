@@ -70,7 +70,7 @@ BlockNote is worth evaluating if the Notion-style UX (slash commands, drag handl
 
 **The editor is TypeScript/JavaScript regardless of what the backend is.** ProseMirror, TipTap, BlockNote, and Lexical are all TypeScript libraries. There is no server-side shortcut — HTMX, Phoenix LiveView, and server-rendered templates cannot help with the editor. You will write TypeScript for this part of the application.
 
-The question is: how much TypeScript do you write *beyond* the editor?
+The question is: how much TypeScript do you write _beyond_ the editor?
 
 ---
 

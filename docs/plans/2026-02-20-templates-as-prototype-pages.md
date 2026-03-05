@@ -26,7 +26,7 @@ Template defines the schema. Thing holds the data. Block holds the content. Thre
 Walking through "Graydalf the Wisened" (an NPC) makes the problem concrete:
 
 - **Portrait** on the right — is this a template field? A block? A layout instruction?
-- **Relationship list** — married to Sabrina (deceased), dean of Hogwurtz — this is graph data, but the GM put it *here on the page* and might want it above or below the stat block
+- **Relationship list** — married to Sabrina (deceased), dean of Hogwurtz — this is graph data, but the GM put it _here on the page_ and might want it above or below the stat block
 - **Transcluded stat block** from the Archmage template — a reference to another Thing's content, embedded inline
 - **Freeform narrative** below — the blurb about Graydalf
 
@@ -121,12 +121,12 @@ At some point, it makes sense to let users upload their own templates to a share
 
 Both `prototypeId` and tag-relationships use labels to distinguish structural from narrative connections:
 
-| Query | Mechanism |
-|---|---|
-| "Show me all NPCs" | `prototypeId = NPC template ThingId` |
-| "Show me all Villains" | Relationship where `label = 'tagged'` and `targetId = Villain ThingId` |
-| "Who is Graydalf married to?" | Relationship where `label = 'married to'` |
-| "What are Graydalf's tags?" | Relationships where `label = 'tagged'` |
+| Query                         | Mechanism                                                              |
+| ----------------------------- | ---------------------------------------------------------------------- |
+| "Show me all NPCs"            | `prototypeId = NPC template ThingId`                                   |
+| "Show me all Villains"        | Relationship where `label = 'tagged'` and `targetId = Villain ThingId` |
+| "Who is Graydalf married to?" | Relationship where `label = 'married to'`                              |
+| "What are Graydalf's tags?"   | Relationships where `label = 'tagged'`                                 |
 
 No new domain primitives. The graph handles everything.
 

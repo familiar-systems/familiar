@@ -56,6 +56,7 @@ packages/queue   — pg-boss job type definitions, producer/consumer
 ### Five Deployment Targets
 
 Each app has a different lifecycle — deploying one must not affect the others:
+
 1. **site** — Static HTML (CDN/nginx). Public-facing. Content changes deploy independently of the app.
 2. **web** — Static files (CDN/nginx). The authenticated SPA, served under `/app/`.
 3. **api** — Stateless HTTP. Fast restarts, blue/green deploys.
@@ -65,6 +66,7 @@ Each app has a different lifecycle — deploying one must not affect the others:
 ### AI Architecture
 
 Two execution paths, same output primitives:
+
 - **Interactive** (apps/api): P&R and Q&A via the agent window. Streaming, latency-sensitive.
 - **Batch** (apps/worker): SessionIngest pipeline. Long-running, survives deploys.
 
@@ -74,25 +76,25 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 
 ## Tech Stack
 
-| Concern | Choice |
-|---|---|
-| Language | TypeScript (full stack) |
-| Public site | Astro (static site generator, React islands) |
-| Frontend | React (Vite SPA) |
-| Editor | TipTap (on ProseMirror) |
-| Routing | TanStack Router or React Router (not yet decided) |
-| API | Hono + tRPC |
-| Database | PostgreSQL |
-| ORM | Drizzle |
-| Collaboration | Hocuspocus (Yjs CRDT server) |
-| Job queue | pg-boss (PostgreSQL-backed) |
-| Validation | Zod (at all system boundaries) |
-| Testing | Vitest |
-| Dev runner | tsx (server-side), Vite dev server (frontend) |
-| Linting | oxlint (strictest config) |
-| Formatting | oxfmt (alpha, Prettier fallback) |
-| Package manager | pnpm (strict dependency resolution) |
-| Monorepo | Turborepo |
+| Concern         | Choice                                            |
+| --------------- | ------------------------------------------------- |
+| Language        | TypeScript (full stack)                           |
+| Public site     | Astro (static site generator, React islands)      |
+| Frontend        | React (Vite SPA)                                  |
+| Editor          | TipTap (on ProseMirror)                           |
+| Routing         | TanStack Router or React Router (not yet decided) |
+| API             | Hono + tRPC                                       |
+| Database        | PostgreSQL                                        |
+| ORM             | Drizzle                                           |
+| Collaboration   | Hocuspocus (Yjs CRDT server)                      |
+| Job queue       | pg-boss (PostgreSQL-backed)                       |
+| Validation      | Zod (at all system boundaries)                    |
+| Testing         | Vitest                                            |
+| Dev runner      | tsx (server-side), Vite dev server (frontend)     |
+| Linting         | oxlint (strictest config)                         |
+| Formatting      | oxfmt (alpha, Prettier fallback)                  |
+| Package manager | pnpm (strict dependency resolution)               |
+| Monorepo        | Turborepo                                         |
 
 ## Commands (planned)
 
@@ -114,6 +116,7 @@ pnpm --filter @loreweaver/db test
 ## TypeScript Strictness
 
 Maximum strictness, no exceptions:
+
 - `strict: true`
 - `noUncheckedIndexedAccess` — array indexing returns `T | undefined`
 - `exactOptionalPropertyTypes` — distinguishes `undefined` from missing

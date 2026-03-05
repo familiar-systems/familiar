@@ -12,7 +12,7 @@ World-building tools like WorldAnvil and Kanka exist, but they treat the wiki as
 
 The primary artifact of a TTRPG campaign is not a wiki. It's the **session** — what happened at the table. Everything else (the NPCs, the locations, the factions, the lore) is derived from that lived experience.
 
-If we can capture what happens at the table — through audio recording, transcription, and the GM's own notes — then the knowledge base should **assemble itself** from that activity. The GM's job shifts from *authoring a wiki* to *running their game and reviewing what the AI extracted*.
+If we can capture what happens at the table — through audio recording, transcription, and the GM's own notes — then the knowledge base should **assemble itself** from that activity. The GM's job shifts from _authoring a wiki_ to _running their game and reviewing what the AI extracted_.
 
 ## The Product
 
@@ -93,7 +93,7 @@ Things are not authored in isolation. They emerge from play:
 - The GM confirms, and the thing is created with whatever context the journal provides
 - Over subsequent sessions, the thing accumulates more references, more detail, and more relationships
 
-Things can also be created manually — the GM might want to pre-build a city before the party arrives. But the system should never *require* upfront authoring. A thing can start as nothing more than a name and a single journal reference, and grow organically.
+Things can also be created manually — the GM might want to pre-build a city before the party arrives. But the system should never _require_ upfront authoring. A thing can start as nothing more than a name and a single journal reference, and grow organically.
 
 ### Block
 
@@ -128,7 +128,7 @@ Relationships are authored, not derived. The GM creates them directly, or the AI
 
 The relationship vocabulary is freeform and emerges over time. The GM doesn't predefine an ontology of allowed labels. The AI clusters and normalizes labels as the campaign grows — suggesting that "works for" and "employed by" might be the same relationship.
 
-**Mentions are the raw signal; relationships are the semantic interpretation.** When the AI processes "Jormag and Linnea went to Northport," the three mentions are automatic. The AI then *proposes* relationships from that context: "Jormag → traveled to → Northport", "Linnea → traveled to → Northport." Those proposals land in the review queue. The GM accepts, edits, or ignores them. Mentions are exhaustive; relationships are curated.
+**Mentions are the raw signal; relationships are the semantic interpretation.** When the AI processes "Jormag and Linnea went to Northport," the three mentions are automatic. The AI then _proposes_ relationships from that context: "Jormag → traveled to → Northport", "Linnea → traveled to → Northport." Those proposals land in the review queue. The GM accepts, edits, or ignores them. Mentions are exhaustive; relationships are curated.
 
 ### Status
 
@@ -209,12 +209,12 @@ The agent window is the single interface for all AI interaction in Loreweaver. I
 
 When the agent window opens, its context is determined by **where the user opened it**:
 
-| Focal point | Context the AI starts with |
-|---|---|
-| Session page (post-processing) | Session transcript, extracted entities, journal draft, existing suggestions |
-| Session page (pre-session) | Recent session summaries, active plot threads, prep notes |
-| Thing page (NPC, location, etc.) | The thing's blocks, relationships, all mentions across sessions |
-| Campaign overview | High-level: arcs, major entities, open contradictions |
+| Focal point                      | Context the AI starts with                                                  |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| Session page (post-processing)   | Session transcript, extracted entities, journal draft, existing suggestions |
+| Session page (pre-session)       | Recent session summaries, active plot threads, prep notes                   |
+| Thing page (NPC, location, etc.) | The thing's blocks, relationships, all mentions across sessions             |
+| Campaign overview                | High-level: arcs, major entities, open contradictions                       |
 
 The focal point determines the AI's initial context retrieval. The GM can always pull in additional context with `@`-references to specific nodes or blocks.
 
@@ -289,7 +289,7 @@ Between sessions, the GM might want to build out parts of the world that haven't
 - AI produces suggestions (new blocks, related entities, relationships) that the GM reviews
 - Everything starts GM-only by default; the GM publishes nodes, blocks, and edges as they're revealed in play
 
-This workflow is fully supported but never *required*. The system works even if the GM only ever interacts through the post-session loop.
+This workflow is fully supported but never _required_. The system works even if the GM only ever interacts through the post-session loop.
 
 ### Player-Facing Workflow
 
@@ -300,7 +300,7 @@ Players interact with the campaign knowledge base differently:
 - **Published journal**: Players see only published blocks of the session journal. The GM controls exactly which parts of the narrative are player-visible — entire entries can be published, or specific blocks can be withheld (e.g., a GM-only block noting "the party didn't notice the assassin watching from the rafters").
 - **Character ownership**: Players can edit their own character nodes — inventory, backstory, personal notes.
 - **Player recollections**: Players can submit their own notes or memories of a session, which feed into the session as an additional source (multiple perspectives help the AI resolve ambiguity).
-  - Player recollections aren't just AI input - they're part of the session's record. The final journal should include player-contributed blocks alongside the GM's own narrative, giving the session multiple voices.
+    - Player recollections aren't just AI input - they're part of the session's record. The final journal should include player-contributed blocks alongside the GM's own narrative, giving the session multiple voices.
 - **Q&A via the agent window**: Players can open the agent window and ask questions about the campaign — "What do we know about the Silver Compact?", "When did we last visit Grimhollow?", "What happened last session?" The AI answers using only Known content; GM-only information is structurally invisible to the player's agent.
 - **Filtered graph view**: Players see only published nodes, published edges, and published blocks. GM-only content is invisible — not redacted, not hinted at, simply absent. The player's view of an NPC page shows only what their characters would know, with no indication that hidden content exists.
 

@@ -78,17 +78,17 @@ This is BlockNote's primary selling point. The document model is inherently bloc
 
 ```typescript
 const document = [
-  { type: "heading", props: { level: 2 }, content: "The Rusty Anchor" },
-  {
-    type: "paragraph",
-    content: [
-      { type: "text", text: "The party met " },
-      { type: "mention", props: { id: "npc:kael" } },
-      { type: "text", text: " at the bar." },
-    ],
-  },
-  { type: "statBlock", props: { entityId: "npc:kael" } },
-]
+    { type: "heading", props: { level: 2 }, content: "The Rusty Anchor" },
+    {
+        type: "paragraph",
+        content: [
+            { type: "text", text: "The party met " },
+            { type: "mention", props: { id: "npc:kael" } },
+            { type: "text", text: " at the bar." },
+        ],
+    },
+    { type: "statBlock", props: { entityId: "npc:kael" } },
+];
 ```
 
 Each block is a typed JSON object with props and content. Custom blocks are defined with `createReactBlockSpec`:
@@ -150,14 +150,14 @@ BlockNote uses Yjs (same as TipTap's Collaboration extension). Same self-hosted 
 
 The honest answer: **pre-built UI**.
 
-| Feature | TipTap | BlockNote |
-|---|---|---|
-| Slash menu | Build it yourself (or use a community package) | Built-in, animated, filterable |
-| Drag handles | Build it yourself | Built-in |
-| Block type switching | Build it yourself | Built-in (click block type to change) |
-| Formatting toolbar | Build it yourself (or use TipTap's starter kit) | Built-in, positioned automatically |
-| Side menu | Build it yourself | Built-in |
-| Theming | CSS yourself | Mantine or shadcn/ui integration out of the box |
+| Feature              | TipTap                                          | BlockNote                                       |
+| -------------------- | ----------------------------------------------- | ----------------------------------------------- |
+| Slash menu           | Build it yourself (or use a community package)  | Built-in, animated, filterable                  |
+| Drag handles         | Build it yourself                               | Built-in                                        |
+| Block type switching | Build it yourself                               | Built-in (click block type to change)           |
+| Formatting toolbar   | Build it yourself (or use TipTap's starter kit) | Built-in, positioned automatically              |
+| Side menu            | Build it yourself                               | Built-in                                        |
+| Theming              | CSS yourself                                    | Mantine or shadcn/ui integration out of the box |
 
 For a developer who has never done frontend, these UI components save real time. Building a slash menu with keyboard navigation, proper positioning, and animation from scratch in TipTap is a day or two of work. BlockNote gives it to you for free.
 
@@ -202,12 +202,14 @@ This is not "BlockNote vs TipTap" in the abstract. It's a specific question:
 **Is the pre-built UI (slash menu, drag handles, formatting toolbar) worth the cost of an extra abstraction layer between you and the ProseMirror features Loreweaver needs?**
 
 Arguments for BlockNote:
+
 - Dramatically faster to a working prototype. Slash menu, drag handles, block reordering — all free.
 - The Notion-style UX is exactly what a campaign notebook should feel like.
 - You've never done frontend. Pre-built components reduce the surface area you need to learn.
 - The core is MPL-2.0 and free. No licensing issues.
 
 Arguments for raw TipTap:
+
 - Status decorations are a first-class concept, not an escape hatch.
 - When you need custom ProseMirror behavior (and you will, regularly), there's one layer of abstraction, not two.
 - Larger community, more stable API, more documented solutions to edge cases.

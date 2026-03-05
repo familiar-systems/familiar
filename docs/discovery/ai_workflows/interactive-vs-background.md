@@ -34,6 +34,7 @@ GM uploads audio for session 13
 ```
 
 **Characteristics:**
+
 - Fire-and-forget from the user's perspective
 - Multi-stage pipeline (output of one stage feeds the next)
 - Total duration: 10+ minutes for a 3-hour recording
@@ -59,6 +60,7 @@ GM is prepping session 14, clicks "Help me flesh out @Holeinthegroundmurder"
 ```
 
 **Characteristics:**
+
 - Synchronous from the user's perspective (they're watching)
 - Single LLM call with assembled context
 - Duration: 5-15 seconds
@@ -69,16 +71,16 @@ GM is prepping session 14, clicks "Help me flesh out @Holeinthegroundmurder"
 
 ## Where They Differ
 
-| Dimension | Background | Interactive |
-|---|---|---|
-| Trigger | Event (upload, finalize) | User action (button click, prompt) |
-| User expectation | "I'll come back" | "I'm watching this now" |
-| Duration | Minutes | Seconds |
-| Stages | Multi-stage pipeline | Single context-gather + LLM call |
-| Result destination | Database (review queue) | Browser (streaming tokens) |
-| Failure mode | Retry silently, notify when done | Show error immediately |
-| Deploy sensitivity | Must survive restarts | Short-lived, restart is fine |
-| Context assembly | Same | Same |
+| Dimension          | Background                       | Interactive                        |
+| ------------------ | -------------------------------- | ---------------------------------- |
+| Trigger            | Event (upload, finalize)         | User action (button click, prompt) |
+| User expectation   | "I'll come back"                 | "I'm watching this now"            |
+| Duration           | Minutes                          | Seconds                            |
+| Stages             | Multi-stage pipeline             | Single context-gather + LLM call   |
+| Result destination | Database (review queue)          | Browser (streaming tokens)         |
+| Failure mode       | Retry silently, notify when done | Show error immediately             |
+| Deploy sensitivity | Must survive restarts            | Short-lived, restart is fine       |
+| Context assembly   | Same                             | Same                               |
 
 ---
 
@@ -94,6 +96,7 @@ Both workflows share the same core operation at their heart:
 The context assembly (step 1) and prompt building (step 2) are identical. The LLM call (step 3) differs only in whether the response is streamed to a browser or consumed server-side. The result handling (step 4) is where the real divergence lives.
 
 The background pipeline is really just **multiple interactive-style operations chained together**, where:
+
 - Each stage's output feeds the next stage's context
 - The user isn't watching, so there's no streaming
 - The intermediate results are persisted between stages (for recovery and auditability)
@@ -103,6 +106,7 @@ The background pipeline is really just **multiple interactive-style operations c
 ## Open Question: Can These Be Unified?
 
 The current design has two separate code paths for AI work:
+
 - `@loreweaver/ai` (pipelines + prompts) used by `apps/worker`
 - Interactive tRPC procedures in `apps/api` that also call LLM providers
 
@@ -129,6 +133,7 @@ This blurs the line between "background" and "interactive" — it's the same job
 ### D. The pipeline is always the same, the delivery channel varies
 
 Define every AI operation as a pipeline of steps. The pipeline doesn't know or care whether someone is watching. A "delivery channel" adapter handles the output:
+
 - **Streaming channel**: pipes tokens to a WebSocket/SSE connection if someone is listening
 - **Persistence channel**: writes results to the database
 - Both can be active simultaneously

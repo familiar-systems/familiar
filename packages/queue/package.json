@@ -13,8 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@loreweaver/domain": "workspace:*",
-    "@loreweaver/db": "workspace:*"
+    "@loreweaver/db": "workspace:*",
+    "@loreweaver/domain": "workspace:*"
   },
   "devDependencies": {
     "@loreweaver/tsconfig": "workspace:*",

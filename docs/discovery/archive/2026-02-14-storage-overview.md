@@ -15,8 +15,8 @@ The [vision doc](./01_vision.md) defines a **property graph with rich content**:
 - **Nodes**: Campaigns, Arcs, Sessions, Things (NPCs, locations, items, factions, etc.)
 - **Blocks**: Rich content units nested inside nodes (text, headings, stat blocks, images, AI suggestions)
 - **Two kinds of edges**:
-  - **Mentions**: Block-to-node or block-to-block links. Derived (not authored), carry no label, no meaningful direction, and **no independent status** — a mention inherits status from the block it lives in. These power backlinks, transclusion, and entity references in journal text.
-  - **Relationships**: Node-to-node links. Authored or AI-proposed. Carry a freeform label ("worships", "frequents"), an optional inverse label, direction, and **independent status**. A relationship can be GM-only even when both nodes it connects are Known.
+    - **Mentions**: Block-to-node or block-to-block links. Derived (not authored), carry no label, no meaningful direction, and **no independent status** — a mention inherits status from the block it lives in. These power backlinks, transclusion, and entity references in journal text.
+    - **Relationships**: Node-to-node links. Authored or AI-proposed. Carry a freeform label ("worships", "frequents"), an optional inverse label, direction, and **independent status**. A relationship can be GM-only even when both nodes it connects are Known.
 - **Status**: A single field on nodes, relationships, and blocks: `gm_only | known | retconned`. Mentions don't carry independent status; they inherit from their parent block. Status cascades down (a GM-only node makes all its contents implicitly GM-only) but not up.
 - **Session sources**: Sessions can have multiple raw sources — audio recordings, GM notes, and player recollections — each with its own author and type.
 - **Reveal tracking**: When content is promoted from GM-only to Known, the system can record when and in which session it was revealed (`revealed_at`, `revealed_in_session_id`).
@@ -50,7 +50,7 @@ This is trivially small for any database engine. The challenge is **flexibility 
 
 ### Option A: SQLite (local-first)
 
-Store the graph as relational tables in a SQLite database. The campaign *is* a `.db` file.
+Store the graph as relational tables in a SQLite database. The campaign _is_ a `.db` file.
 
 **Schema sketch:**
 
@@ -149,7 +149,7 @@ Standard relational tables with JSONB for flexible properties, hosted on a serve
 
 - Requires a server from day one
 - Multi-tenancy means `campaign_id` on every table; isolation is your responsibility
-- Harder to migrate *from* if you later want local-first
+- Harder to migrate _from_ if you later want local-first
 - RLS works cleanly for nodes, relationships, and blocks (direct status column check), but **mentions inherit status from their parent block**, so mention visibility requires a join. RLS policies that join across tables are possible but add complexity and can affect query plan performance. In practice, you may want RLS on the tables with independent status and handle mention filtering at the application/query layer.
 
 **Best for:** Server-hosted multi-user web app.
@@ -263,16 +263,16 @@ An architectural layer (not a database choice) that stores every change as an im
 
 The default answer for server-hosted web apps.
 
-| Aspect | How PostgreSQL handles it |
-|---|---|
-| Graph storage | Separate tables: nodes, relationships, blocks, mentions (+ session_sources) with JSONB properties |
-| Graph traversal | Recursive CTEs over relationships; Apache AGE for Cypher if needed later |
-| Status filtering | RLS on nodes, relationships, blocks (direct status column). Mention visibility via join to parent block — handled at query layer. |
-| Full-text search | tsvector/tsquery (built-in) |
-| AI embeddings | pgvector (mature, widely deployed) |
-| Multi-user | Connection pooling, concurrent access, RLS |
-| Hosting | Supabase, Neon, RDS, Railway, etc. |
-| Campaign isolation | `campaign_id` column on every table; RLS for enforcement |
+| Aspect             | How PostgreSQL handles it                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Graph storage      | Separate tables: nodes, relationships, blocks, mentions (+ session_sources) with JSONB properties                                 |
+| Graph traversal    | Recursive CTEs over relationships; Apache AGE for Cypher if needed later                                                          |
+| Status filtering   | RLS on nodes, relationships, blocks (direct status column). Mention visibility via join to parent block — handled at query layer. |
+| Full-text search   | tsvector/tsquery (built-in)                                                                                                       |
+| AI embeddings      | pgvector (mature, widely deployed)                                                                                                |
+| Multi-user         | Connection pooling, concurrent access, RLS                                                                                        |
+| Hosting            | Supabase, Neon, RDS, Railway, etc.                                                                                                |
+| Campaign isolation | `campaign_id` column on every table; RLS for enforcement                                                                          |
 
 **Start here because:**
 
@@ -287,16 +287,16 @@ The default answer for server-hosted web apps.
 
 One database per campaign, hosted on Turso.
 
-| Aspect | How Turso handles it |
-|---|---|
-| Graph storage | Same table split: nodes, relationships, blocks, mentions, session_sources |
-| Graph traversal | Recursive CTEs over relationships (SQLite-compatible) |
-| Status filtering | Application-level filtering (no RLS equivalent). Same join-through-block pattern for mention visibility. |
-| Full-text search | FTS5 (SQLite built-in) |
-| AI embeddings | Native libSQL vector search |
-| Multi-user | Application-level; one DB per campaign |
-| Hosting | Turso platform or self-hosted libSQL |
-| Campaign isolation | Architectural -- each campaign IS a database |
+| Aspect             | How Turso handles it                                                                                     |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| Graph storage      | Same table split: nodes, relationships, blocks, mentions, session_sources                                |
+| Graph traversal    | Recursive CTEs over relationships (SQLite-compatible)                                                    |
+| Status filtering   | Application-level filtering (no RLS equivalent). Same join-through-block pattern for mention visibility. |
+| Full-text search   | FTS5 (SQLite built-in)                                                                                   |
+| AI embeddings      | Native libSQL vector search                                                                              |
+| Multi-user         | Application-level; one DB per campaign                                                                   |
+| Hosting            | Turso platform or self-hosted libSQL                                                                     |
+| Campaign isolation | Architectural -- each campaign IS a database                                                             |
 
 **Consider this if:**
 

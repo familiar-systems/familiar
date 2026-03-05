@@ -42,6 +42,7 @@ The SPA project structure specified **pg-boss** (PostgreSQL-backed job queue) an
 Standard single-database multi-tenancy. All campaigns share one database with `campaign_id` on every table.
 
 **Production deployment:**
+
 ```
 UpCloud (or any cloud)
 ┌─────────────────────────────────────┐
@@ -58,6 +59,7 @@ UpCloud (or any cloud)
 ```
 
 **Development workflow:**
+
 - Local: Docker + PostgreSQL container
 - Testing: testcontainers (spin up PostgreSQL per test suite, ~2-3s startup)
 - Branching: Neon free tier (unlimited branches) or dump/restore
@@ -66,6 +68,7 @@ UpCloud (or any cloud)
 **Self-hosted:** Run PostgreSQL. Universal — every cloud, every VPS, Docker Compose. Well-documented, massive community.
 
 **What it gives you:**
+
 - The most conventional path. Fewest surprises. Largest ecosystem.
 - Every ORM, migration tool, hosting provider, tutorial assumes PostgreSQL.
 - pgvector is the most mature SQL-native vector search.
@@ -73,6 +76,7 @@ UpCloud (or any cloud)
 - pg-boss is a turnkey job queue.
 
 **What it costs you:**
+
 - `campaign_id` on every table, every query, every join, every RLS policy. Miss it once → data leak.
 - RLS policies that span tables (e.g., mention visibility requires joining to parent block's status) add complexity and can affect query performance.
 - Testing requires Docker or an external PostgreSQL instance. No `:memory:` option.
@@ -83,6 +87,7 @@ UpCloud (or any cloud)
 Each campaign gets its own database. A separate platform database holds cross-campaign concerns.
 
 **Production deployment:**
+
 ```
 UpCloud (or any cloud)
 ┌─────────────────────────────────────────────────┐
@@ -106,17 +111,18 @@ UpCloud (or any cloud)
 
 **Two-tier architecture:**
 
-| Platform database (one) | Campaign databases (many) |
-|---|---|
-| Users, authentication | Nodes, blocks, edges |
-| Campaign metadata (name, owner, memberships) | Sessions, journal entries |
-| Job queue | Suggestions, suggestion batches |
-| Billing | Agent conversations |
-| Cross-campaign search index (if needed) | Session sources |
+| Platform database (one)                      | Campaign databases (many)       |
+| -------------------------------------------- | ------------------------------- |
+| Users, authentication                        | Nodes, blocks, edges            |
+| Campaign metadata (name, owner, memberships) | Sessions, journal entries       |
+| Job queue                                    | Suggestions, suggestion batches |
+| Billing                                      | Agent conversations             |
+| Cross-campaign search index (if needed)      | Session sources                 |
 
 The platform database is standard — one database, no per-campaign isolation needed. Campaign databases hold all graph content. The application routes to the correct campaign database based on the request.
 
 **Development workflow:**
+
 - Local: libSQL or SQLite files. No Docker needed.
 - Testing: `:memory:` databases — instant, in-process, zero config.
 - Branching: Native copy-on-write branching (Turso) or just copy a file (libSQL/SQLite).
@@ -125,6 +131,7 @@ The platform database is standard — one database, no per-campaign isolation ne
 **Self-hosted:** Run libSQL server, or for a single-GM setup, use SQLite files directly. Less mainstream than PostgreSQL but fully open source.
 
 **What it gives you:**
+
 - **Structural campaign isolation.** Cross-campaign data leaks are impossible — the wrong data doesn't exist in the database you're querying.
 - **Trivial testing.** `:memory:` databases with zero setup, instant creation, no Docker.
 - **Native branching.** Copy-on-write database branches for development and CI.
@@ -132,6 +139,7 @@ The platform database is standard — one database, no per-campaign isolation ne
 - **Simpler per-campaign queries.** No `WHERE campaign_id = ?` anywhere. Every query is campaign-scoped by definition.
 
 **What it costs you:**
+
 - **Two-tier architecture.** Two connection patterns, two migration targets, routing logic to pick the right database.
 - **Cross-campaign queries are harder.** "Show me all my campaigns" queries the platform database. "Search across all my campaigns" requires either ATTACH (currently read-only on Turso) or application-level aggregation.
 - **Connection management.** Each campaign is a separate connection. Turso's HTTP-based client mitigates this (no persistent connection pool needed), but it's a different pattern than a single PostgreSQL connection pool.
@@ -142,21 +150,21 @@ The platform database is standard — one database, no per-campaign isolation ne
 
 ## Head-to-Head Comparison
 
-| Concern | PostgreSQL | Turso / libSQL |
-|---|---|---|
-| **Campaign isolation** | Convention (`campaign_id` + RLS). Discipline-dependent. | Structural (database-per-campaign). Cannot leak. |
-| **Testing** | Docker + testcontainers (~2-3s startup). CI needs service config. | `:memory:` — instant, in-process, zero config. |
-| **Database branching** | Neon (external service, free tier) or dump/restore. | Native copy-on-write. Instant. |
-| **AI embeddings** | pgvector — mature, battle-tested. Overkill at Loreweaver's scale. | libSQL vector search — adequate at Loreweaver's scale. Newer. |
-| **Full-text search** | tsvector/tsquery — powerful, built-in. | FTS5 — powerful, built-in. Roughly equivalent. |
-| **Job queue** | pg-boss — turnkey, PostgreSQL-native. | Simple polling table. Fine at Loreweaver's scale. |
-| **Cross-campaign queries** | Trivial: `WHERE user_id = ?` | ATTACH (read-only) or application-level aggregation. |
-| **Schema migrations** | Run against one database. Standard. | Propagate across N databases. Turso automates this; self-hosted needs scripting. |
-| **Connection management** | Single connection pool. Standard. | Connection-per-campaign. HTTP client mitigates pooling concerns. |
-| **Self-hosted simplicity** | Run PostgreSQL. Universal knowledge. | Run libSQL. Less mainstream but arguably simpler (no server config for basic use). |
-| **ORM support** | Drizzle's primary target. Best documentation. | Drizzle supports libSQL/Turso. Works, but PostgreSQL gets more ecosystem attention. |
-| **Ecosystem** | Massive. Every problem already solved. | Smaller. Growing. Turso invests heavily in developer experience. |
-| **Risk profile** | Low. You cannot go wrong with PostgreSQL. | Medium. Less beaten path. libSQL is open source and SQLite-compatible, limiting downside. |
+| Concern                    | PostgreSQL                                                        | Turso / libSQL                                                                            |
+| -------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Campaign isolation**     | Convention (`campaign_id` + RLS). Discipline-dependent.           | Structural (database-per-campaign). Cannot leak.                                          |
+| **Testing**                | Docker + testcontainers (~2-3s startup). CI needs service config. | `:memory:` — instant, in-process, zero config.                                            |
+| **Database branching**     | Neon (external service, free tier) or dump/restore.               | Native copy-on-write. Instant.                                                            |
+| **AI embeddings**          | pgvector — mature, battle-tested. Overkill at Loreweaver's scale. | libSQL vector search — adequate at Loreweaver's scale. Newer.                             |
+| **Full-text search**       | tsvector/tsquery — powerful, built-in.                            | FTS5 — powerful, built-in. Roughly equivalent.                                            |
+| **Job queue**              | pg-boss — turnkey, PostgreSQL-native.                             | Simple polling table. Fine at Loreweaver's scale.                                         |
+| **Cross-campaign queries** | Trivial: `WHERE user_id = ?`                                      | ATTACH (read-only) or application-level aggregation.                                      |
+| **Schema migrations**      | Run against one database. Standard.                               | Propagate across N databases. Turso automates this; self-hosted needs scripting.          |
+| **Connection management**  | Single connection pool. Standard.                                 | Connection-per-campaign. HTTP client mitigates pooling concerns.                          |
+| **Self-hosted simplicity** | Run PostgreSQL. Universal knowledge.                              | Run libSQL. Less mainstream but arguably simpler (no server config for basic use).        |
+| **ORM support**            | Drizzle's primary target. Best documentation.                     | Drizzle supports libSQL/Turso. Works, but PostgreSQL gets more ecosystem attention.       |
+| **Ecosystem**              | Massive. Every problem already solved.                            | Smaller. Growing. Turso invests heavily in developer experience.                          |
+| **Risk profile**           | Low. You cannot go wrong with PostgreSQL.                         | Medium. Less beaten path. libSQL is open source and SQLite-compatible, limiting downside. |
 
 ---
 
@@ -215,7 +223,7 @@ SELECT c.* FROM campaigns c
   WHERE cm.user_id = ?;
 ```
 
-The cross-campaign query difference only matters for operations that need to *aggregate content across campaigns* — e.g., "search all my campaigns for mentions of 'dragon'". This is a rare operation that could be solved by a search index in the platform database.
+The cross-campaign query difference only matters for operations that need to _aggregate content across campaigns_ — e.g., "search all my campaigns for mentions of 'dragon'". This is a rare operation that could be solved by a search index in the platform database.
 
 ---
 
@@ -223,10 +231,10 @@ The cross-campaign query difference only matters for operations that need to *ag
 
 Every Turso database has two identifiers:
 
-| Field | Example | Purpose |
-|---|---|---|
-| **Name** | `campaign-7f3a2b` | Human-readable, unique per organization. Lowercase, numbers, dashes. Max 64 chars. |
-| **DbId** | `a1b2c3d4-e5f6-...` | UUID. Immutable internal identifier. |
+| Field    | Example             | Purpose                                                                            |
+| -------- | ------------------- | ---------------------------------------------------------------------------------- |
+| **Name** | `campaign-7f3a2b`   | Human-readable, unique per organization. Lowercase, numbers, dashes. Max 64 chars. |
+| **DbId** | `a1b2c3d4-e5f6-...` | UUID. Immutable internal identifier.                                               |
 
 The connection URL is derived from the name: `libsql://campaign-7f3a2b-yourorg.turso.io`
 
@@ -234,17 +242,14 @@ Databases are created programmatically via the [Turso Platform API](https://docs
 
 ```typescript
 // When a GM creates a new campaign
-const response = await fetch(
-  `https://api.turso.tech/v1/organizations/${org}/databases`,
-  {
+const response = await fetch(`https://api.turso.tech/v1/organizations/${org}/databases`, {
     method: "POST",
     headers: { Authorization: `Bearer ${TURSO_API_TOKEN}` },
     body: JSON.stringify({
-      name: `campaign-${campaignId}`,
-      group: "default",
+        name: `campaign-${campaignId}`,
+        group: "default",
     }),
-  }
-);
+});
 // Returns: { DbId: "uuid", Hostname: "...", Name: "campaign-..." }
 ```
 
@@ -414,13 +419,13 @@ await seed(platformDb, campaignDb);
 
 ### Branching comparison
 
-| | PostgreSQL + Neon | Turso |
-|---|---|---|
+|                          | PostgreSQL + Neon                 | Turso                                                                                      |
+| ------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------ |
 | **Branch a preview env** | One command. Everything included. | Branch platform DB + selected campaign DBs. More commands, but you choose what to include. |
-| **Routing in preview** | Change `DATABASE_URL` | Branch platform DB and rewrite `db_name` pointers |
-| **Automated tests** | testcontainers (~2-3s) | `:memory:` (instant) |
-| **Cleanup** | Delete one branch | Delete N branches (scriptable) |
-| **Granularity** | All-or-nothing | Pick which campaigns to branch |
+| **Routing in preview**   | Change `DATABASE_URL`             | Branch platform DB and rewrite `db_name` pointers                                          |
+| **Automated tests**      | testcontainers (~2-3s)            | `:memory:` (instant)                                                                       |
+| **Cleanup**              | Delete one branch                 | Delete N branches (scriptable)                                                             |
+| **Granularity**          | All-or-nothing                    | Pick which campaigns to branch                                                             |
 
 ---
 
@@ -443,6 +448,7 @@ These would need to be resolved before committing to Turso:
 ## Sources
 
 ### PostgreSQL
+
 - [pgvector — open-source vector similarity search](https://github.com/pgvector/pgvector)
 - [pgvector 0.8.0 performance improvements](https://www.instaclustr.com/education/vector-database/pgvector-key-features-tutorial-and-pros-and-cons-2026-guide/)
 - [UpCloud managed PostgreSQL](https://upcloud.com/postgresql-managed-databases/)
@@ -450,6 +456,7 @@ These would need to be resolved before committing to Turso:
 - [Neon — open source serverless PostgreSQL](https://github.com/neondatabase/neon)
 
 ### Turso / libSQL
+
 - [Turso pricing](https://turso.tech/pricing)
 - [Turso database-per-tenant architecture](https://turso.tech/blog/database-per-tenant-architectures-get-production-friendly-improvements)
 - [Turso read-only ATTACH](https://turso.tech/blog/introducing-read-only-database-attach-in-turso)
@@ -459,10 +466,12 @@ These would need to be resolved before committing to Turso:
 - [Turso multi-tenancy overview](https://turso.tech/multi-tenancy)
 
 ### Turso Platform API
+
 - [Create database](https://docs.turso.tech/api-reference/databases/create)
 - [List databases](https://docs.turso.tech/api-reference/databases/list)
 - [Turso concepts — database](https://docs.turso.tech/concepts)
 
 ### Testing & Development Workflow
+
 - [Neon free tier — unlimited branches](https://neon.com/docs/introduction/plans)
 - [PostgreSQL branching comparison (Xata vs Neon vs Supabase)](https://xata.io/blog/neon-vs-supabase-vs-xata-postgres-branching-part-2)

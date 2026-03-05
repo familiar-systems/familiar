@@ -42,19 +42,19 @@ The schema is **strict by design**: content that doesn't match the schema is rej
 ```typescript
 // A session journal: contains blocks
 const SessionJournal = Node.create({
-  name: 'sessionJournal',
-  content: '(paragraph | heading | statBlock | transcludedBlock | aiSuggestion)+',
-})
+    name: "sessionJournal",
+    content: "(paragraph | heading | statBlock | transcludedBlock | aiSuggestion)+",
+});
 
 // A stat block: leaf node, renders as React component
 const StatBlock = Node.create({
-  name: 'statBlock',
-  group: 'block',
-  atom: true, // cannot be edited inline; click to open
-  addNodeView() {
-    return ReactNodeViewRenderer(StatBlockComponent)
-  },
-})
+    name: "statBlock",
+    group: "block",
+    atom: true, // cannot be edited inline; click to open
+    addNodeView() {
+        return ReactNodeViewRenderer(StatBlockComponent);
+    },
+});
 ```
 
 **Assessment:** Direct fit. Loreweaver's block types (text, headings, stat blocks, transcluded blocks, AI suggestions) map 1:1 to TipTap node extensions. The schema enforces structural validity — you can't accidentally nest a stat block inside a heading.
@@ -70,18 +70,22 @@ TipTap ships a [Mention extension](https://tiptap.dev/docs/editor/extensions/nod
 
 ```typescript
 Mention.configure({
-  suggestion: {
-    items: async ({ query }) => {
-      return await searchEntities(query)
+    suggestion: {
+        items: async ({ query }) => {
+            return await searchEntities(query);
+        },
+        render: () => {
+            // Return popup component for autocomplete
+        },
     },
-    render: () => {
-      // Return popup component for autocomplete
+    renderHTML({ node }) {
+        return [
+            "span",
+            { "data-entity-id": node.attrs.id, class: "entity-mention" },
+            node.attrs.label,
+        ];
     },
-  },
-  renderHTML({ node }) {
-    return ['span', { 'data-entity-id': node.attrs.id, class: 'entity-mention' }, node.attrs.label]
-  },
-})
+});
 ```
 
 **Assessment:** Production-ready out of the box. The autocomplete drives entity resolution, and each mention node carries the entity ID as an attribute — which becomes the `mention` record in the database. This is the strongest advantage over Lexical, where mentions are a playground reference implementation requiring substantial work.
@@ -97,16 +101,16 @@ No built-in extension, but well-supported by the architecture. A transcluded blo
 
 ```typescript
 const TranscludedBlock = Node.create({
-  name: 'transcludedBlock',
-  group: 'block',
-  atom: true,
-  addAttributes() {
-    return { blockId: { default: null } }
-  },
-  addNodeView() {
-    return ReactNodeViewRenderer(TranscludedBlockView)
-  },
-})
+    name: "transcludedBlock",
+    group: "block",
+    atom: true,
+    addAttributes() {
+        return { blockId: { default: null } };
+    },
+    addNodeView() {
+        return ReactNodeViewRenderer(TranscludedBlockView);
+    },
+});
 ```
 
 The React component (`TranscludedBlockView`) fetches the referenced block and renders it read-only.
@@ -119,41 +123,47 @@ This is where TipTap's ProseMirror foundation pays off. ProseMirror has **decora
 
 Three types of decoration, all useful for Loreweaver:
 
-| Decoration type | Use case | Example |
-|---|---|---|
-| **Node decoration** | Style an entire block based on metadata | Dim a GM-only paragraph, strike through a retconned block |
-| **Inline decoration** | Highlight a range of text | Highlight all mentions of a hovered entity |
-| **Widget decoration** | Insert a visual element at a position | Source-link timestamp indicator at block start |
+| Decoration type       | Use case                                | Example                                                   |
+| --------------------- | --------------------------------------- | --------------------------------------------------------- |
+| **Node decoration**   | Style an entire block based on metadata | Dim a GM-only paragraph, strike through a retconned block |
+| **Inline decoration** | Highlight a range of text               | Highlight all mentions of a hovered entity                |
+| **Widget decoration** | Insert a visual element at a position   | Source-link timestamp indicator at block start            |
 
 ```typescript
 // Plugin that adds status decorations to blocks
 const StatusDecorationPlugin = new Plugin({
-  props: {
-    decorations(state) {
-      const decorations: Decoration[] = []
-      state.doc.descendants((node, pos) => {
-        if (node.attrs.status === 'gm_only') {
-          decorations.push(
-            Decoration.node(pos, pos + node.nodeSize, { class: 'block-gm-only' })
-          )
-        }
-        if (node.attrs.status === 'retconned') {
-          decorations.push(
-            Decoration.node(pos, pos + node.nodeSize, { class: 'block-retconned' })
-          )
-        }
-      })
-      return DecorationSet.create(state.doc, decorations)
+    props: {
+        decorations(state) {
+            const decorations: Decoration[] = [];
+            state.doc.descendants((node, pos) => {
+                if (node.attrs.status === "gm_only") {
+                    decorations.push(
+                        Decoration.node(pos, pos + node.nodeSize, { class: "block-gm-only" }),
+                    );
+                }
+                if (node.attrs.status === "retconned") {
+                    decorations.push(
+                        Decoration.node(pos, pos + node.nodeSize, { class: "block-retconned" }),
+                    );
+                }
+            });
+            return DecorationSet.create(state.doc, decorations);
+        },
     },
-  },
-})
+});
 ```
 
 The CSS does the visual work:
 
 ```css
-.block-gm-only { opacity: 0.6; background: var(--gm-only-tint); }
-.block-retconned { text-decoration: line-through; opacity: 0.5; }
+.block-gm-only {
+    opacity: 0.6;
+    background: var(--gm-only-tint);
+}
+.block-retconned {
+    text-decoration: line-through;
+    opacity: 0.5;
+}
 ```
 
 **Assessment:** This is the single strongest reason to choose TipTap over Lexical. Status visualization, mention highlighting, and source-link indicators are all decorations — they drive visual presentation from metadata without touching the document model. Lexical cannot do this (see [lexical.md](./lexical.md)).
@@ -164,13 +174,13 @@ Each block node can carry arbitrary attributes. A `sourceRef` attribute stores t
 
 ```typescript
 const JournalParagraph = Paragraph.extend({
-  addAttributes() {
-    return {
-      sourceRef: { default: null },     // e.g. "audio:session-42:1:23:45"
-      status: { default: 'gm_only' },
-    }
-  },
-})
+    addAttributes() {
+        return {
+            sourceRef: { default: null }, // e.g. "audio:session-42:1:23:45"
+            status: { default: "gm_only" },
+        };
+    },
+});
 ```
 
 A widget decoration at the start of each sourced block renders a clickable timestamp indicator. The indicator is visual-only — it doesn't exist in the document model.
@@ -188,19 +198,17 @@ TipTap's [Collaboration extension](https://tiptap.dev/docs/editor/extensions/fun
 - SQLite or custom storage backends
 
 ```typescript
-import Collaboration from '@tiptap/extension-collaboration'
-import { HocuspocusProvider } from '@hocuspocus/provider'
+import Collaboration from "@tiptap/extension-collaboration";
+import { HocuspocusProvider } from "@hocuspocus/provider";
 
 const provider = new HocuspocusProvider({
-  url: 'ws://localhost:1234',
-  name: `session-${sessionId}`,
-})
+    url: "ws://localhost:1234",
+    name: `session-${sessionId}`,
+});
 
 const editor = new Editor({
-  extensions: [
-    Collaboration.configure({ document: provider.document }),
-  ],
-})
+    extensions: [Collaboration.configure({ document: provider.document })],
+});
 ```
 
 **Assessment:** Collaboration is not a launch requirement (the GM is the primary editor), but the path exists and is fully self-hostable. When player editing (character sheets, recollections) is added, the infrastructure is ready.
@@ -213,7 +221,7 @@ const editor = new Editor({
 
 TipTap's schema is strict. Content that doesn't match the current schema is **silently stripped by default**. For a campaign notebook where data is long-lived (years of sessions) and loss is catastrophic, this needs explicit handling.
 
-The scenario: You ship with paragraph, heading, and mention nodes. Six months later you add a stat block node — old documents load fine, they don't contain stat blocks. But if you *remove* or *rename* a node type, or change its content rules, existing documents silently lose content on load.
+The scenario: You ship with paragraph, heading, and mention nodes. Six months later you add a stat block node — old documents load fine, they don't contain stat blocks. But if you _remove_ or _rename_ a node type, or change its content rules, existing documents silently lose content on load.
 
 **Mitigations:**
 

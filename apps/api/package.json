@@ -11,12 +11,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@hono/node-server": "^1",
     "@loreweaver/ai": "workspace:*",
     "@loreweaver/auth": "workspace:*",
     "@loreweaver/db": "workspace:*",
     "@loreweaver/domain": "workspace:*",
     "@loreweaver/queue": "workspace:*",
-    "@hono/node-server": "^1",
     "hono": "^4"
   },
   "devDependencies": {

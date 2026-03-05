@@ -14,16 +14,16 @@ export default function Search({ placeholder = "Search...", devModalLabels, lang
   const [open, setOpen] = useState(false);
 
   // Localize links
-  const localizedLinks = POPULAR_LINKS.map(link => {
+  const localizedLinks = POPULAR_LINKS.map((link) => {
     // Return explicit non-localized or external links as is
-    if (link.localize === false || link.href.startsWith('http')) {
-        return link;
+    if (link.localize === false || link.href.startsWith("http")) {
+      return link;
     }
-    
+
     // Otherwise localize
     return {
-        ...link,
-        href: `/${lang}${link.href}`.replace(/\/+/g, '/')
+      ...link,
+      href: `/${lang}${link.href}`.replace(/\/+/g, "/"),
     };
   });
 
@@ -33,20 +33,20 @@ export default function Search({ placeholder = "Search...", devModalLabels, lang
 
     return new Promise((resolve, reject) => {
       // 1. Load CSS
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = '/pagefind/pagefind-ui.css';
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "/pagefind/pagefind-ui.css";
       document.head.appendChild(link);
 
       // 2. Load JS
-      const script = document.createElement('script');
-      script.src = '/pagefind/pagefind-ui.js';
+      const script = document.createElement("script");
+      script.src = "/pagefind/pagefind-ui.js";
       script.async = true;
       script.onload = () => {
         if (window.PagefindUI) resolve(true);
-        else reject(new Error('PagefindUI failed to load'));
+        else reject(new Error("PagefindUI failed to load"));
       };
-      script.onerror = () => reject(new Error('Failed to load Pagefind scripts'));
+      script.onerror = () => reject(new Error("Failed to load Pagefind scripts"));
       document.head.appendChild(script);
     });
   };
@@ -76,22 +76,22 @@ export default function Search({ placeholder = "Search...", devModalLabels, lang
               const container = document.getElementById("search-container");
               if (container) {
                 container.innerHTML = "";
-                new PagefindUI({ 
-                  element: "#search-container", 
+                new PagefindUI({
+                  element: "#search-container",
                   showSubResults: true,
                   autofocus: true,
                   baseUrl: "/",
                   bundlePath: "/pagefind/",
                   showImages: true,
                   translations: {
-                    placeholder: placeholder
-                  }
+                    placeholder: placeholder,
+                  },
                 });
               }
             }
           }, 50);
         } catch (error) {
-          console.error('Search initialization failed:', error);
+          console.error("Search initialization failed:", error);
         }
       };
       initSearch();
@@ -115,27 +115,27 @@ export default function Search({ placeholder = "Search...", devModalLabels, lang
       <AnimatePresence>
         {open && (
           <div className="fixed inset-0 z-100 flex items-start justify-center p-4 sm:p-6 md:p-20">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/75 shadow-2xl" 
+              className="absolute inset-0 bg-black/75 shadow-2xl"
               onClick={() => setOpen(false)}
             />
-            
-            <motion.div 
+
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: -20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -20 }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-background border border-foreground/20 rounded-2xl shadow-2xl ring-1 ring-foreground/20" 
+              className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-background border border-foreground/20 rounded-2xl shadow-2xl ring-1 ring-foreground/20"
               onClick={(e) => e.stopPropagation()}
             >
               {import.meta.env.DEV ? (
                 <DevSearchModal onClose={() => setOpen(false)} labels={devModalLabels} />
               ) : (
                 <div className="relative">
-                  <button 
+                  <button
                     onClick={() => setOpen(false)}
                     className="absolute right-4 top-4 p-2 rounded-full text-foreground hover:bg-foreground/10 transition-colors z-20"
                     aria-label="Close Search"
@@ -153,18 +153,20 @@ export default function Search({ placeholder = "Search...", devModalLabels, lang
                       Popular Links
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                       {localizedLinks.map((link) => (
-                         <a 
-                            key={link.href}
-                            href={link.href}
-                            className="flex items-center gap-3 p-3 rounded-xl bg-foreground/5 hover:bg-foreground/10 transition-colors border border-foreground/5 group"
-                         >
-                            <div className="w-8 h-8 rounded-lg bg-background border border-foreground/10 flex items-center justify-center text-foreground group-hover:text-primary transition-colors">
-                               <link.icon size={16} />
-                            </div>
-                            <span className="text-sm font-bold text-foreground group-hover:text-primary">{link.label}</span>
-                         </a>
-                       ))}
+                      {localizedLinks.map((link) => (
+                        <a
+                          key={link.href}
+                          href={link.href}
+                          className="flex items-center gap-3 p-3 rounded-xl bg-foreground/5 hover:bg-foreground/10 transition-colors border border-foreground/5 group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-background border border-foreground/10 flex items-center justify-center text-foreground group-hover:text-primary transition-colors">
+                            <link.icon size={16} />
+                          </div>
+                          <span className="text-sm font-bold text-foreground group-hover:text-primary">
+                            {link.label}
+                          </span>
+                        </a>
+                      ))}
                     </div>
                   </div>
                 </div>
