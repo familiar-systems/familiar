@@ -1,0 +1,6 @@
+name: loreweaver-cloud
+runtime:
+  name: python
+  options:
+    toolchain: uv
+description: Loreweaver cloud infrastructure
