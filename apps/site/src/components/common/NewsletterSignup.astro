@@ -1,0 +1,71 @@
+---
+import { defaultLang } from '~/i18n/ui';
+import { useTranslations } from '~/i18n/utils';
+
+interface Props {
+  lang?: string;
+  variant?: 'inline' | 'hero';
+}
+
+const { lang = defaultLang, variant = 'inline' } = Astro.props;
+const t = useTranslations(lang);
+
+const isHero = variant === 'hero';
+---
+
+<div class:list={[
+  !isHero && 'border-l-2 border-primary/30 pl-6',
+]}>
+  {!isHero && (
+    <h3 class="font-display font-semibold text-foreground mb-2">
+      {t['footer.newsletter']}
+    </h3>
+    <p class="text-sm text-muted-foreground/80 mb-4">
+      {t['footer.newsletter.description']}
+    </p>
+  )}
+
+  <form
+    action="https://app.keila.io/forms/nfrm_PRGK2qRj"
+    method="post"
+    class:list={[
+      'flex',
+      isHero ? 'max-w-md mx-auto flex-col sm:flex-row gap-3' : 'flex-col sm:flex-row gap-2',
+    ]}
+  >
+    <!-- Honeypot -->
+    <input
+      aria-hidden="true"
+      autocomplete="off"
+      name="h[url]"
+      tabindex="-1"
+      class="sr-only"
+    />
+
+    <input
+      type="email"
+      name="contact[email]"
+      autocomplete="email"
+      required
+      placeholder={t['footer.newsletter.placeholder']}
+      class:list={[
+        'border border-foreground/10 bg-foreground/5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors',
+        isHero
+          ? 'px-5 py-3 text-base rounded-xl flex-1'
+          : 'px-4 py-2.5 text-sm rounded-lg flex-1',
+      ]}
+    />
+
+    <button
+      type="submit"
+      class:list={[
+        'bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/25 font-medium transition-colors whitespace-nowrap',
+        isHero
+          ? 'px-8 py-3 text-base rounded-xl'
+          : 'px-6 py-2.5 text-sm rounded-lg',
+      ]}
+    >
+      {t['footer.newsletter.submit']}
+    </button>
+  </form>
+</div>
