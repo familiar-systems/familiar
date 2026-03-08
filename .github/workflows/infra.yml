@@ -1,0 +1,118 @@
+name: Infrastructure
+
+on:
+  pull_request:
+    branches: [main]
+    paths: [infra/pulumi-cloud/**]
+  push:
+    branches: [main]
+    paths: [infra/pulumi-cloud/**]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WORKING_DIR: infra/pulumi-cloud
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: ruff check
+        run: uv run ruff check --output-format=github .
+
+      - name: ruff format
+        run: uv run ruff format --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: ty check
+        run: uv run ty check
+
+  preview:
+    if: github.event_name == 'pull_request'
+    needs: [lint, typecheck]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v6
+
+      - uses: scaleway/action-scw@v0
+        with:
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - uses: ./.github/actions/fetch-scw-secret
+        id: passphrase
+        with:
+          secret-name: pulumi-config-passphrase
+
+      - uses: pulumi/actions@v6
+        with:
+          command: preview
+          stack-name: prod
+          cloud-url: s3://loreweaver-pulumi-state?endpoint=s3.fr-par.scw.cloud&region=fr-par
+          work-dir: ${{ env.WORKING_DIR }}
+          comment-on-pr: true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          PULUMI_CONFIG_PASSPHRASE: ${{ steps.passphrase.outputs.value }}
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: [lint, typecheck]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v6
+
+      - uses: scaleway/action-scw@v0
+        with:
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - uses: ./.github/actions/fetch-scw-secret
+        id: passphrase
+        with:
+          secret-name: pulumi-config-passphrase
+
+      - uses: pulumi/actions@v6
+        with:
+          command: up
+          stack-name: prod
+          cloud-url: s3://loreweaver-pulumi-state?endpoint=s3.fr-par.scw.cloud&region=fr-par
+          work-dir: ${{ env.WORKING_DIR }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          PULUMI_CONFIG_PASSPHRASE: ${{ steps.passphrase.outputs.value }}

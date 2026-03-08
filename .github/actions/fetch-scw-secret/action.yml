@@ -1,0 +1,31 @@
+name: Fetch Scaleway Secret
+description: Resolves a Scaleway Secret Manager secret by name and returns its latest value
+
+inputs:
+  secret-name:
+    description: Name of the secret in Scaleway Secret Manager
+    required: true
+  region:
+    description: Scaleway region
+    required: false
+    default: fr-par
+
+outputs:
+  value:
+    description: The secret value (masked in logs)
+    value: ${{ steps.fetch.outputs.value }}
+
+runs:
+  using: composite
+  steps:
+    - id: fetch
+      shell: bash
+      run: |
+        SECRET_ID=$(scw secret secret list name=${{ inputs.secret-name }} region=${{ inputs.region }} -o json | jq -r '.[0].id')
+        if [ "$SECRET_ID" = "null" ] || [ -z "$SECRET_ID" ]; then
+          echo "::error::Secret '${{ inputs.secret-name }}' not found in region ${{ inputs.region }}"
+          exit 1
+        fi
+        VALUE=$(scw secret version access "$SECRET_ID" revision=latest region=${{ inputs.region }} -o json | jq -r '.data' | base64 -d)
+        echo "::add-mask::${VALUE}"
+        echo "value=${VALUE}" >> "$GITHUB_OUTPUT"
