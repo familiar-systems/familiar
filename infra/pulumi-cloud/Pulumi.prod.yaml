@@ -1,1 +1,4 @@
-config: {}
+encryptionsalt: v1:w/yQO/IPxcE=:v1:ASdTNjlz6xqiKIgh:tkgdTDTqzqF1vPgS667AmtE7JGmjvw==
+config:
+  hcloud:token:
+    secure: v1:jVaEZB9DA6ALMwsp:J/oo1aUijy3iINKnun3BtqwMWO7gIF4LBmlwLGjafPT+mq1j5OaZ7rATU8sP61yrrUejR39B4LXsbfPFNLsdbUmVWUkGbzRY+BElyFNDfP0=
