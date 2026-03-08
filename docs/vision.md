@@ -33,7 +33,7 @@ Loreweaver is a **web application**. The GM opens a browser, logs in, and works.
 
 - **Hosted (primary)** — We operate a multi-tenant instance for paying customers. This is the default experience and the path with the lowest barrier to entry. A GM who isn't technical should be able to sign up and start capturing their first session in minutes.
 
-- **Self-hosted** — The same application can be deployed by anyone on their own infrastructure. This serves enthusiasts who want control over their data, organizations with compliance requirements, and the open-source community. The [FSL-1.1-ALv2](https://fsl.software/) license makes this explicit: non-competing use is permitted immediately, and the code converts to Apache 2.0 after two years.
+- **Self-hosted** — The same application can be deployed by anyone on their own infrastructure. This serves enthusiasts who want control over their data, organizations with compliance requirements, and the open-source community. The [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) license makes this explicit: the code is free to use, modify, and redistribute, provided modifications are shared under the same license.
 
 **What this constrains:**
 
