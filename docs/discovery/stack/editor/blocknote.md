@@ -10,11 +10,11 @@ This document evaluates BlockNote against Loreweaver's specific editor requireme
 
 ## Licensing: What's Actually Free
 
-BlockNote has a split licensing model. This matters because Loreweaver uses [FSL-1.1-ALv2](https://fsl.software/), which is neither GPL-3.0 nor a permissive open-source license.
+BlockNote has a split licensing model. This matters because Loreweaver uses [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html), which is GPL-3.0 compatible (AGPL is a superset of GPL-3.0).
 
 ### Core packages — MPL-2.0
 
-The core editor (`@blocknote/core`, `@blocknote/react`, `@blocknote/mantine`, `@blocknote/shadcn`) is licensed under MPL-2.0. This is file-level copyleft: you can use BlockNote in a larger FSL-licensed project, but modifications to BlockNote's own source files must be shared. Unmodified use is fine. Using BlockNote as a dependency without forking it has zero licensing friction.
+The core editor (`@blocknote/core`, `@blocknote/react`, `@blocknote/mantine`, `@blocknote/shadcn`) is licensed under MPL-2.0. This is file-level copyleft: you can use BlockNote in a larger AGPL-licensed project, but modifications to BlockNote's own source files must be shared. Unmodified use is fine. Using BlockNote as a dependency without forking it has zero licensing friction.
 
 **What the core gives you:**
 
@@ -40,7 +40,7 @@ The XL packages (`@blocknote/xl-*`) are dual-licensed: GPL-3.0 (free for GPL-3.0
 - Multi-column layouts
 - PDF, DOCX, ODT export
 
-**FSL-1.1-ALv2 is not GPL-3.0 compatible.** Loreweaver cannot use XL packages under the GPL grant. The commercial license at $390/month is the only option. For a solo part-time developer, that's a hard cost to justify — especially because the AI features aren't the right AI for Loreweaver anyway (see below).
+**AGPL-3.0 is GPL-3.0 compatible**, so Loreweaver could technically use the XL packages under the GPL-3.0 grant. However, the $390/month commercial license remains the alternative. For a solo part-time developer, neither the cost nor the features justify adopting XL — especially because the AI features aren't the right AI for Loreweaver anyway (see below).
 
 ### The AI licensing question specifically
 
@@ -222,7 +222,7 @@ Arguments for raw TipTap:
 
 **BlockNote's core (free, MPL-2.0) is a legitimate option**, especially for accelerating early development. The Notion-style UX out of the box is genuinely valuable for a solo developer learning frontend.
 
-**The XL packages are irrelevant.** The $390/month license is unjustifiable for a solo part-time developer on FSL. And the AI features solve a different problem than Loreweaver's campaign-aware AI pipeline. Ignore them.
+**The XL packages are irrelevant.** Although AGPL-3.0 is GPL-compatible (making the XL GPL grant usable), the AI features solve a different problem than Loreweaver's campaign-aware AI pipeline. Ignore them.
 
 **The risk is the abstraction tax.** Loreweaver's editor is not a standard notes app. Status visualization via decorations, custom mention behavior wired to the campaign graph, source-linking to audio timestamps — these are ProseMirror-level features. With BlockNote, you'd use the nice UI for the standard parts and break through the abstraction for the custom parts. Whether that's sustainable depends on how much of the editor ends up being custom.
 
