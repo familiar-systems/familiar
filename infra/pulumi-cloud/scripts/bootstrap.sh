@@ -28,12 +28,10 @@ if ! command -v direnv > /dev/null 2>&1; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 BUCKET_NAME="loreweaver-pulumi-state"
 REGION="fr-par"
 SECRET_NAME="pulumi-config-passphrase"
-S3_ENDPOINT="s3.${REGION}.scw.cloud"
 
 # --- Bucket ---
 echo "==> Creating Object Storage bucket: ${BUCKET_NAME} (${REGION})"
