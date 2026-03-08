@@ -50,10 +50,10 @@ pulumi config set --secret <key> <value>   # Add an encrypted config value
 
 ## Scripts
 
-| Script | Purpose |
-|---|---|
+| Script                 | Purpose                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------- |
 | `scripts/bootstrap.sh` | One-time: creates Scaleway bucket + passphrase secret, then calls `setup.sh` |
-| `scripts/setup.sh` | Per-machine: generates `.envrc` from existing Scaleway resources |
+| `scripts/setup.sh`     | Per-machine: generates `.envrc` from existing Scaleway resources             |
 
 ## How credentials flow
 

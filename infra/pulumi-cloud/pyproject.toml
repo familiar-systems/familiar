@@ -3,16 +3,10 @@ name = "loreweaver-cloud"
 version = "0.1.0"
 description = "Loreweaver cloud infrastructure"
 requires-python = ">=3.12"
-dependencies = [
-    "pulumi>=3",
-    "pulumi-hcloud>=1",
-]
+dependencies = ["pulumi>=3", "pulumi-hcloud>=1"]
 
 [dependency-groups]
-dev = [
-    "ruff>=0.11",
-    "ty>=0.0.1a7",
-]
+dev = ["ruff>=0.11", "ty>=0.0.1a7"]
 
 [tool.ruff]
 line-length = 100
@@ -20,7 +14,7 @@ line-length = 100
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "D",       # pydocstyle — no forced docstrings
-    "COM812",  # trailing comma (conflicts with formatter)
-    "ISC001",  # implicit string concat (conflicts with formatter)
+  "D", # pydocstyle — no forced docstrings
+  "COM812", # trailing comma (conflicts with formatter)
+  "ISC001", # implicit string concat (conflicts with formatter)
 ]
