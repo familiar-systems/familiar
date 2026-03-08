@@ -66,11 +66,10 @@ jobs:
           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
 
-      - name: Fetch Pulumi passphrase
-        run: |
-          PASSPHRASE=$(scw secret version access pulumi-config-passphrase revision=latest region=fr-par -o json | jq -r '.data' | base64 -d)
-          echo "::add-mask::${PASSPHRASE}"
-          echo "PULUMI_CONFIG_PASSPHRASE=${PASSPHRASE}" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/fetch-scw-secret
+        id: passphrase
+        with:
+          secret-name: pulumi-config-passphrase
 
       - uses: pulumi/actions@v6
         with:
@@ -82,6 +81,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          PULUMI_CONFIG_PASSPHRASE: ${{ steps.passphrase.outputs.value }}
 
   deploy:
     if: github.event_name == 'push'
@@ -101,11 +101,10 @@ jobs:
           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
 
-      - name: Fetch Pulumi passphrase
-        run: |
-          PASSPHRASE=$(scw secret version access pulumi-config-passphrase revision=latest region=fr-par -o json | jq -r '.data' | base64 -d)
-          echo "::add-mask::${PASSPHRASE}"
-          echo "PULUMI_CONFIG_PASSPHRASE=${PASSPHRASE}" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/fetch-scw-secret
+        id: passphrase
+        with:
+          secret-name: pulumi-config-passphrase
 
       - uses: pulumi/actions@v6
         with:
@@ -116,3 +115,4 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          PULUMI_CONFIG_PASSPHRASE: ${{ steps.passphrase.outputs.value }}
