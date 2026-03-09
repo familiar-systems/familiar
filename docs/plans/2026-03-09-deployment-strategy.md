@@ -43,7 +43,7 @@ A single Hetzner VPS running Coolify with 5 containerized apps. All apps mount t
 
 ### PR preview environments
 
-Coolify's built-in PR preview feature deploys a preview for every PR at `pr-{id}.preview.loreweaver.app`.
+Coolify's built-in PR preview feature deploys a preview for every PR at `pr-{id}.preview.loreweaver.no`.
 
 **Database branching via file copy:**
 

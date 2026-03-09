@@ -29,7 +29,7 @@ This document explores what deployment looks like when you strip away the team-s
 
 ## What Deployment Tools Actually Do
 
-Before comparing options, it helps to understand the problem these tools solve. You have code on your machine. You want it running on a server at `https://loreweaver.app`. Between those two states:
+Before comparing options, it helps to understand the problem these tools solve. You have code on your machine. You want it running on a server at `https://loreweaver.no`. Between those two states:
 
 1. **Build** your code into something runnable (Docker images, static files)
 2. **Transfer** that artifact to the server
