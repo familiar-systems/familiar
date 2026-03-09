@@ -1,3 +1,5 @@
+> **Superseded** by [2026-03-09-deployment-strategy.md](../2026-03-09-deployment-strategy.md). This document assumed PostgreSQL and deferred provider/tool decisions that are now made (Coolify on Hetzner, libSQL database-per-campaign). See also [libSQL over PostgreSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md).
+
 # Loreweaver — Deployment Strategy
 
 ## Decision

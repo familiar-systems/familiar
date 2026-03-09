@@ -18,19 +18,19 @@ Loreweaver's content is entirely behind authentication (no SEO), and the centerp
 
 ### Decisions made
 
-| Decision       | Choice                                         | Reference                                                                          |
-| -------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Language       | Full TypeScript (Stack A)                      | [stack_exploration.md](../discovery/stack/stack_exploration.md)                    |
-| Editor         | TipTap (open-source, MIT)                      | [tiptap.md](../discovery/stack/editor/tiptap.md)                                   |
-| Frontend       | React (Vite SPA)                               | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md)                   |
-| Build tool     | Vite                                           | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md)                   |
-| API server     | Hono + tRPC                                    | This document                                                                      |
-| Database       | PostgreSQL                                     | [storage_overview.md](../discovery/archive/2026-02-14-storage-overview.md)         |
-| ORM            | Drizzle                                        | [stack_exploration.md](../discovery/stack/stack_exploration.md)                    |
-| Collaboration  | Hocuspocus (self-hosted Yjs server)            | [tiptap.md](../discovery/stack/editor/tiptap.md)                                   |
-| Job queue      | PostgreSQL-backed (pg-boss or graphile-worker) | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
-| Repo structure | pnpm monorepo with Turborepo                   | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
-| Public site    | Astro (static site generator)                  | [Public site design](./2026-02-20-public-site-design.md)                           |
+| Decision       | Choice                                                      | Reference                                                                          |
+| -------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Language       | Full TypeScript (Stack A)                                   | [stack_exploration.md](../discovery/stack/stack_exploration.md)                    |
+| Editor         | TipTap (open-source, MIT)                                   | [tiptap.md](../discovery/stack/editor/tiptap.md)                                   |
+| Frontend       | React (Vite SPA)                                            | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md)                   |
+| Build tool     | Vite                                                        | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md)                   |
+| API server     | Hono + tRPC                                                 | This document                                                                      |
+| Database       | libSQL (database-per-campaign, Turso Database upgrade path) | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)        |
+| ORM            | Drizzle                                                     | [stack_exploration.md](../discovery/stack/stack_exploration.md)                    |
+| Collaboration  | Hocuspocus (self-hosted Yjs server)                         | [tiptap.md](../discovery/stack/editor/tiptap.md)                                   |
+| Job queue      | libSQL-backed polling table                                 | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)        |
+| Repo structure | pnpm monorepo with Turborepo                                | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
+| Public site    | Astro (static site generator)                               | [Public site design](./2026-02-20-public-site-design.md)                           |
 
 ---
 
@@ -50,7 +50,7 @@ loreweaver/
 │   ├── auth/             # Token verification, permissions, session management
 │   ├── editor/           # TipTap/ProseMirror schema + custom extensions
 │   ├── ai/               # LLM client, prompt templates, entity extraction
-│   └── queue/            # Job type definitions, pg-boss wrapper
+│   └── queue/            # Job type definitions, polling-based producer/consumer
 ├── tooling/
 │   ├── tsconfig/         # Shared TypeScript compiler configs
 │   │   ├── base.json     # Strictness, target, module settings
@@ -180,7 +180,9 @@ packages/db/src/
 
 Drizzle ORM schema definitions and typed query helpers. Migration files (generated SQL) live in a `drizzle/` directory at the package root.
 
-**Depends on:** `@loreweaver/domain`, `drizzle-orm`, `postgres`
+**Depends on:** `@loreweaver/domain`, `drizzle-orm`, `@libsql/client`
+
+The database layer uses a two-tier architecture: one platform database (`platform.db`) for users, campaigns, memberships, and the job queue, plus a separate database per campaign (`campaigns/*.db`) for all graph content. The application routes to the correct campaign database based on the request context. See [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md) for the full architecture.
 
 ### `@loreweaver/auth` — Authentication + authorization
 
@@ -262,9 +264,9 @@ packages/queue/src/
 └── consumer.ts           # Job handler registry — used by apps/worker
 ```
 
-Defines typed job payloads and provides enqueue/dequeue functions backed by PostgreSQL (via pg-boss or graphile-worker). The API server imports `producer` to enqueue; the worker imports `consumer` to dequeue and dispatch.
+Defines typed job payloads and provides enqueue/dequeue functions backed by a polling job table in platform.db. The API server imports `producer` to enqueue; the worker imports `consumer` to dequeue and dispatch.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`, `pg-boss`
+**Depends on:** `@loreweaver/domain`, `@loreweaver/db`
 
 ---
 
@@ -408,7 +410,7 @@ apps/worker/src/
 └── config.ts                     # Worker config (concurrency, poll interval)
 ```
 
-A pg-boss consumer process. Each handler maps to a job type from `@loreweaver/queue`, calls the corresponding pipeline from `@loreweaver/ai`, and writes results back through `@loreweaver/db` and `@loreweaver/editor`.
+A polling-based job consumer process. Each handler maps to a job type from `@loreweaver/queue`, calls the corresponding pipeline from `@loreweaver/ai`, and writes results back through `@loreweaver/db` and `@loreweaver/editor`.
 
 **Depends on:** `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/ai`, `@loreweaver/queue`, `@loreweaver/editor`
 
@@ -421,7 +423,7 @@ A pg-boss consumer process. Each handler maps to a job type from `@loreweaver/qu
 ```
                     ┌──────────────────────┐
                     │    Reverse Proxy      │
-                    │    (nginx / Caddy)    │
+                    │  Traefik (via Coolify)│
                     └──────┬───────────────┘
                            │
          ┌─────────────────┼─────────────────┐
@@ -435,7 +437,7 @@ A pg-boss consumer process. Each handler maps to a job type from `@loreweaver/qu
                                     │               │
                                     ▼               ▼
                               ┌──────────────────────┐
-                              │     PostgreSQL        │
+                              │  libSQL files (/data/)│
                               └──────────────────────┘
                                     ▲
                                     │
@@ -445,7 +447,7 @@ A pg-boss consumer process. Each handler maps to a job type from `@loreweaver/qu
                               └────────────┘
 ```
 
-A reverse proxy (nginx or Caddy) sits in front and routes (order matters — specific paths match first):
+Traefik (via Coolify) sits in front and routes (order matters — specific paths match first):
 
 - `/app/api/*` → `apps/api` (port 3001)
 - `/app/collab/*` → `apps/collab` (port 3002, WebSocket upgrade)
