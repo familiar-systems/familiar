@@ -10,16 +10,16 @@ This supersedes the [previous deployment strategy](./archive/2026-02-18-deployme
 
 ## Infrastructure
 
-| Component | Choice | Notes |
-|---|---|---|
-| **Compute** | Hetzner Cloud VPS | German data center (Falkenstein/Nuremberg) |
-| **Storage** | Hetzner Volume mounted at `/data/` | libSQL database files, survives VPS replacement |
-| **Backups** | Hetzner Object Storage | libSQL files synced on schedule |
-| **Deployment tool** | Coolify (self-hosted on VPS) | Web UI, PR preview deploys, auto-SSL |
-| **Reverse proxy** | Traefik (via Coolify) | Path-based routing, WebSocket support, SSL termination |
-| **IaC** | Pulumi | At `infra/pulumi-cloud/` |
-| **Authentication** | Hanko | Same instance for production and previews |
-| **Long-term direction** | k3s | When single-VPS becomes a bottleneck |
+| Component               | Choice                             | Notes                                                  |
+| ----------------------- | ---------------------------------- | ------------------------------------------------------ |
+| **Compute**             | Hetzner Cloud VPS                  | German data center (Falkenstein/Nuremberg)             |
+| **Storage**             | Hetzner Volume mounted at `/data/` | libSQL database files, survives VPS replacement        |
+| **Backups**             | Hetzner Object Storage             | libSQL files synced on schedule                        |
+| **Deployment tool**     | Coolify (self-hosted on VPS)       | Web UI, PR preview deploys, auto-SSL                   |
+| **Reverse proxy**       | Traefik (via Coolify)              | Path-based routing, WebSocket support, SSL termination |
+| **IaC**                 | Pulumi                             | At `infra/pulumi-cloud/`                               |
+| **Authentication**      | Hanko                              | Same instance for production and previews              |
+| **Long-term direction** | k3s                                | When single-VPS becomes a bottleneck                   |
 
 ---
 
@@ -86,6 +86,7 @@ Hetzner Volume mounted at /data/
 ```
 
 **Required PRAGMAs** (set once per connection in `@loreweaver/db`):
+
 ```sql
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
@@ -112,13 +113,13 @@ No CORS in production. All five deployment targets share one domain.
 
 Each app has a different lifecycle — deploying one does not affect the others. Each is a separate Coolify resource.
 
-| Target | Runtime | Deploy | Notes |
-|---|---|---|---|
-| **site** | Static files (Traefik serves) | Coolify builds Astro → static HTML | Content changes deploy independently |
-| **web** | Static files (Traefik serves) | Coolify builds Vite → content-hashed chunks | Served under `/app/` |
-| **api** | Hono container | Coolify rolling deploy | Stateless, fast restarts |
-| **collab** | Hocuspocus container | Coolify rolling deploy | Long-lived WebSocket connections. Must not restart on api deploys. |
-| **worker** | Job consumer container | Coolify rolling deploy | Long-running jobs (10+ min). Must survive deploys of everything else. |
+| Target     | Runtime                       | Deploy                                      | Notes                                                                 |
+| ---------- | ----------------------------- | ------------------------------------------- | --------------------------------------------------------------------- |
+| **site**   | Static files (Traefik serves) | Coolify builds Astro → static HTML          | Content changes deploy independently                                  |
+| **web**    | Static files (Traefik serves) | Coolify builds Vite → content-hashed chunks | Served under `/app/`                                                  |
+| **api**    | Hono container                | Coolify rolling deploy                      | Stateless, fast restarts                                              |
+| **collab** | Hocuspocus container          | Coolify rolling deploy                      | Long-lived WebSocket connections. Must not restart on api deploys.    |
+| **worker** | Job consumer container        | Coolify rolling deploy                      | Long-running jobs (10+ min). Must survive deploys of everything else. |
 
 ---
 
@@ -140,6 +141,7 @@ volumes:
 ```
 
 All containers mount the data directory. A self-hoster's experience:
+
 - No PostgreSQL to install, configure, or maintain
 - Backup = copy files
 - The application code is identical — just file paths
@@ -160,22 +162,22 @@ Campaign databases are independent files — individual campaigns can be backed 
 
 ## Upgrade Paths
 
-| Upgrade | How | Impact |
-|---|---|---|
-| **Bigger VPS** | Detach Volume → attach to new VPS → reassign floating IP | Zero-downtime cutover. Data lifetime independent of server lifetime. |
-| **Turso Database** | Swap `@libsql/client` for `@tursodatabase/database` in `@loreweaver/db` | Same files, better engine. Driver swap, not migration. |
-| **k3s** | Long-term direction when single-VPS becomes a bottleneck | Pulumi IaC already in place at `infra/pulumi-cloud/` |
+| Upgrade            | How                                                                     | Impact                                                               |
+| ------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| **Bigger VPS**     | Detach Volume → attach to new VPS → reassign floating IP                | Zero-downtime cutover. Data lifetime independent of server lifetime. |
+| **Turso Database** | Swap `@libsql/client` for `@tursodatabase/database` in `@loreweaver/db` | Same files, better engine. Driver swap, not migration.               |
+| **k3s**            | Long-term direction when single-VPS becomes a bottleneck                | Pulumi IaC already in place at `infra/pulumi-cloud/`                 |
 
 ---
 
 ## What This Strategy Defers
 
-| Decision | Deferred until |
-|---|---|
-| **CDN for static assets** | User base grows beyond single-region |
-| **Multi-server architecture** | Single VPS becomes a bottleneck |
-| **Monitoring/observability** | First production users |
-| **CI/CD pipeline specifics** | Implementation phase |
+| Decision                      | Deferred until                       |
+| ----------------------------- | ------------------------------------ |
+| **CDN for static assets**     | User base grows beyond single-region |
+| **Multi-server architecture** | Single VPS becomes a bottleneck      |
+| **Monitoring/observability**  | First production users               |
+| **CI/CD pipeline specifics**  | Implementation phase                 |
 
 ---
 

@@ -80,25 +80,25 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 
 ## Tech Stack
 
-| Concern         | Choice                                            |
-| --------------- | ------------------------------------------------- |
-| Language        | TypeScript (full stack)                           |
-| Public site     | Astro (static site generator, React islands)      |
-| Frontend        | React (Vite SPA)                                  |
-| Editor          | TipTap (on ProseMirror)                           |
-| Routing         | TanStack Router or React Router (not yet decided) |
-| API             | Hono + tRPC                                       |
+| Concern         | Choice                                                      |
+| --------------- | ----------------------------------------------------------- |
+| Language        | TypeScript (full stack)                                     |
+| Public site     | Astro (static site generator, React islands)                |
+| Frontend        | React (Vite SPA)                                            |
+| Editor          | TipTap (on ProseMirror)                                     |
+| Routing         | TanStack Router or React Router (not yet decided)           |
+| API             | Hono + tRPC                                                 |
 | Database        | libSQL (database-per-campaign), Turso Database upgrade path |
-| ORM             | Drizzle                                           |
-| Collaboration   | Hocuspocus (Yjs CRDT server)                      |
-| Job queue       | libSQL-backed polling table                       |
-| Validation      | Zod (at all system boundaries)                    |
-| Testing         | Vitest                                            |
-| Dev runner      | tsx (server-side), Vite dev server (frontend)     |
-| Linting         | oxlint (strictest config)                         |
-| Formatting      | oxfmt (alpha, Prettier fallback)                  |
-| Package manager | pnpm (strict dependency resolution)               |
-| Monorepo        | Turborepo                                         |
+| ORM             | Drizzle                                                     |
+| Collaboration   | Hocuspocus (Yjs CRDT server)                                |
+| Job queue       | libSQL-backed polling table                                 |
+| Validation      | Zod (at all system boundaries)                              |
+| Testing         | Vitest                                                      |
+| Dev runner      | tsx (server-side), Vite dev server (frontend)               |
+| Linting         | oxlint (strictest config)                                   |
+| Formatting      | oxfmt (alpha, Prettier fallback)                            |
+| Package manager | pnpm (strict dependency resolution)                         |
+| Monorepo        | Turborepo                                                   |
 
 ## Commands (planned)
 

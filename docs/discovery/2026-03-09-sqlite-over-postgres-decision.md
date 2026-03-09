@@ -19,6 +19,7 @@ That decision also explicitly deferred PR preview environments ("deferred until 
 The deployment strategy shifted to Coolify on Hetzner with PR preview environments as a core workflow — not a deferred luxury. This was motivated by the value of deployment integration testing for a multi-service architecture (Traefik proxying, WebSocket routing, container networking) that works locally but can break in deployment. Branch deploys catch these issues before merge.
 
 With PostgreSQL, PR preview database branching requires either:
+
 - **Neon** (US company, AWS-only, $5+/mo for branching, external dependency) — exactly the kind of managed service dependency the project wants to avoid.
 - **`pg_dump`/`pg_restore`** — works, but slow for larger databases, requires PostgreSQL tooling in CI, and produces a full copy rather than a lightweight branch.
 
@@ -55,6 +56,7 @@ The previous analysis flagged SQLite's single-writer limitation as a potential p
 SQLite's internal locking is battle-tested across billions of deployments. No application-level mutex (Node.js lock, file lock, etc.) should be implemented — it would be redundant with SQLite's own locking and introduces deadlock/crash-recovery risks that SQLite already handles correctly.
 
 **Required PRAGMAs** (set once per connection in `@loreweaver/db`):
+
 ```sql
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
