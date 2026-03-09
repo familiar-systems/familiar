@@ -1,3 +1,5 @@
+> **Superseded.** Deployment decided: Coolify on Hetzner with libSQL database-per-campaign. See [deployment strategy](../../plans/2026-03-09-deployment-strategy.md). This document's research informed that decision.
+
 # Loreweaver — EU Deployment & Development Lifecycle Landscape
 
 ## Context
