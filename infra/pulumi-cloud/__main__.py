@@ -33,7 +33,7 @@ config = pulumi.Config()
 personal_ssh_key = config.require("personal-ssh-public-key")
 deploy_ssh_key = config.require("deploy-ssh-public-key")
 
-LOCATION = "fsn1"
+LOCATION = "hel1"
 SERVER_TYPE = "cax11"
 IMAGE = "ubuntu-24.04"
 LABELS = {"project": "loreweaver", "managed-by": "pulumi"}
