@@ -42,8 +42,8 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
 
-      - name: ty check
-        run: uv run ty check
+      - name: basedpyright
+        run: uv run basedpyright
 
   preview:
     if: github.event_name == 'pull_request'
