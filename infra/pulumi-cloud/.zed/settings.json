@@ -1,20 +1,12 @@
 {
   "languages": {
     "Python": {
-      "language_servers": ["ruff", "ty", "!basedpyright"],
+      "language_servers": ["ruff", "!ty", "basedpyright"],
       "code_actions_on_format": {
         // Organize imports
         "source.organizeImports.ruff": true,
         // Fix all auto-fixable lint violations
         "source.fixAll.ruff": true
-      }
-    }
-  },
-  "lsp": {
-    "ty": {
-      "binary": {
-        "path": "infra/pulumi-cloud/.venv/bin/ty",
-        "arguments": ["server"]
       }
     }
   }
