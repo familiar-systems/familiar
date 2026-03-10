@@ -127,6 +127,11 @@ cloud_init = pulumi.Output.format(
 #cloud-config
 package_update: true
 package_upgrade: true
+apt:
+  conf: |
+    APT::Get::Assume-Yes "true";
+    DPkg::Options:: "--force-confdef";
+    DPkg::Options:: "--force-confold";
 write_files:
   - path: /etc/network/interfaces.d/60-floating-ip.cfg
     content: |
@@ -137,12 +142,18 @@ write_files:
   - path: /etc/fstab
     append: true
     content: "{1} /data ext4 defaults,nofail 0 2"
+  - path: /opt/install-coolify.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      export DEBIAN_FRONTEND=noninteractive
+      curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 runcmd:
   - ip addr add {0}/32 dev lo
   - mkdir -p /data
   - mount /data || true
   - mkdir -p /data/campaigns /data/previews
-  - curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+  - /opt/install-coolify.sh
 """,
     floating_ip.ip_address,
     volume.linux_device,
