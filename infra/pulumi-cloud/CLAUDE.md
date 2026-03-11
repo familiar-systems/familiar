@@ -15,20 +15,20 @@ Pulumi Python project for Loreweaver's cloud infrastructure on Hetzner Cloud + S
 
 ## Infrastructure Resources (14)
 
-| #   | Resource                 | Type                          | Purpose                                     |
-| --- | ------------------------ | ----------------------------- | ------------------------------------------- |
-| 1   | `ssh-key`                | `hcloud.SshKey`               | Personal SSH key for server access          |
-| 2   | `floating-ip`            | `hcloud.FloatingIp`           | Static IPv4 (survives server replacement)   |
-| 3   | `data-volume`            | `hcloud.Volume`               | 10GB ext4, persistent data at `/data`       |
-| 4   | `firewall`               | `hcloud.Firewall`             | Inbound TCP 22/80/443 + ICMP                |
-| 5   | `server`                 | `hcloud.Server`               | CX22 x86, cloud-init provisions everything  |
-| 6   | `floating-ip-assignment` | `hcloud.FloatingIpAssignment` | Links Floating IP → Server                  |
-| 7   | `volume-attachment`      | `hcloud.VolumeAttachment`     | Links Volume → Server (no automount)        |
-| 8   | `container-registry`     | `scaleway.registry.Namespace` | Private container registry in fr-par        |
-| 9   | `deploy-ssh-secret`      | `scaleway.secrets.Secret`     | Break-glass SSH private key (empty shell)   |
-| 10  | `coolify-api-token`      | `scaleway.secrets.Secret`     | Coolify API bearer token for deploys        |
-| 11  | `coolify-site-webhook`   | `scaleway.secrets.Secret`     | Coolify deploy webhook URL for site         |
-| 12  | `bunny-api-key`          | `scaleway.secrets.Secret`     | bunny.net API key for DNS-01 ACME           |
+| #   | Resource                 | Type                          | Purpose                                    |
+| --- | ------------------------ | ----------------------------- | ------------------------------------------ |
+| 1   | `ssh-key`                | `hcloud.SshKey`               | Personal SSH key for server access         |
+| 2   | `floating-ip`            | `hcloud.FloatingIp`           | Static IPv4 (survives server replacement)  |
+| 3   | `data-volume`            | `hcloud.Volume`               | 10GB ext4, persistent data at `/data`      |
+| 4   | `firewall`               | `hcloud.Firewall`             | Inbound TCP 22/80/443 + ICMP               |
+| 5   | `server`                 | `hcloud.Server`               | CX22 x86, cloud-init provisions everything |
+| 6   | `floating-ip-assignment` | `hcloud.FloatingIpAssignment` | Links Floating IP → Server                 |
+| 7   | `volume-attachment`      | `hcloud.VolumeAttachment`     | Links Volume → Server (no automount)       |
+| 8   | `container-registry`     | `scaleway.registry.Namespace` | Private container registry in fr-par       |
+| 9   | `deploy-ssh-secret`      | `scaleway.secrets.Secret`     | Break-glass SSH private key (empty shell)  |
+| 10  | `coolify-api-token`      | `scaleway.secrets.Secret`     | Coolify API bearer token for deploys       |
+| 11  | `coolify-site-webhook`   | `scaleway.secrets.Secret`     | Coolify deploy webhook URL for site        |
+| 12  | `bunny-api-key`          | `scaleway.secrets.Secret`     | bunny.net API key for DNS-01 ACME          |
 
 ### Three-Resource Dependency Pattern
 
@@ -77,18 +77,18 @@ ssh -L 8000:localhost:8000 root@<server_ip>
 
 ## Pulumi Exports
 
-| Export                | Used By                                 |
-| --------------------- | --------------------------------------- |
-| `floating_ip`         | DNS A record (bunny.net)                |
-| `server_ip`           | Direct SSH access                       |
-| `server_id`           | Reference                               |
-| `volume_id`           | Reference                               |
-| `volume_linux_device` | Reference                               |
-| `registry_endpoint`   | GHA deploy workflow (image push target) |
-| `deploy_ssh_secret_id`          | Reference                               |
-| `coolify_api_token_secret_id`   | CD workflow (Coolify API auth)          |
-| `coolify_site_webhook_secret_id`| CD workflow (deploy trigger)            |
-| `bunny_api_key_secret_id`       | Coolify Traefik DNS-01 config           |
+| Export                           | Used By                                 |
+| -------------------------------- | --------------------------------------- |
+| `floating_ip`                    | DNS A record (bunny.net)                |
+| `server_ip`                      | Direct SSH access                       |
+| `server_id`                      | Reference                               |
+| `volume_id`                      | Reference                               |
+| `volume_linux_device`            | Reference                               |
+| `registry_endpoint`              | GHA deploy workflow (image push target) |
+| `deploy_ssh_secret_id`           | Reference                               |
+| `coolify_api_token_secret_id`    | CD workflow (Coolify API auth)          |
+| `coolify_site_webhook_secret_id` | CD workflow (deploy trigger)            |
+| `bunny_api_key_secret_id`        | Coolify Traefik DNS-01 config           |
 
 ## Commands
 
