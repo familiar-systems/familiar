@@ -1,0 +1,101 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: [CI, Infrastructure]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy-site:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Verify all workflows passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha }}"
+
+          # Check each workflow that might have run for this commit
+          for WORKFLOW in ci.yml infra.yml; do
+            RUN_JSON=$(gh run list \
+              --repo "${{ github.repository }}" \
+              --workflow="$WORKFLOW" \
+              --commit="$SHA" \
+              --json status,conclusion \
+              --jq '.[0]' 2>/dev/null || echo 'null')
+
+            if [ "$RUN_JSON" = "null" ] || [ -z "$RUN_JSON" ]; then
+              echo "$WORKFLOW: not triggered for this commit (no matching path filter) — OK"
+              continue
+            fi
+
+            STATUS=$(echo "$RUN_JSON" | jq -r '.status')
+            CONCLUSION=$(echo "$RUN_JSON" | jq -r '.conclusion')
+
+            if [ "$STATUS" != "completed" ]; then
+              echo "$WORKFLOW: still running — exiting. CD will re-trigger when it completes."
+              exit 0
+            fi
+
+            if [ "$CONCLUSION" != "success" ]; then
+              echo "::error::$WORKFLOW failed — aborting deploy"
+              exit 1
+            fi
+
+            echo "$WORKFLOW: passed ✓"
+          done
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: scaleway/action-scw@v0
+        with:
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - uses: ./.github/actions/fetch-scw-secret
+        id: coolify-token
+        with:
+          secret-name: coolify-api-token
+
+      - uses: ./.github/actions/fetch-scw-secret
+        id: coolify-webhook
+        with:
+          secret-name: coolify-site-webhook
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: rg.fr-par.scw.cloud
+          username: nologin
+          password: ${{ secrets.SCW_SECRET_KEY }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/site/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            rg.fr-par.scw.cloud/loreweaver/site:${{ github.sha }}
+            rg.fr-par.scw.cloud/loreweaver/site:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trigger Coolify deploy
+        run: |
+          curl --fail --silent --show-error \
+            --request GET \
+            "${{ steps.coolify-webhook.outputs.value }}" \
+            --header "Authorization: Bearer ${{ steps.coolify-token.outputs.value }}"

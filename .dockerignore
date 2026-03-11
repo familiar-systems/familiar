@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/dist
+**/.turbo
+**/.astro
+**/coverage
+infra/
+.claude/
+deploy-plan.md
+deploy-plan_group-2.md
+docs/
