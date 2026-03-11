@@ -2,18 +2,18 @@
 
 ## What This Is
 
-Pulumi Python project for Loreweaver's cloud infrastructure on Hetzner Cloud + Scaleway Container Registry. State is stored in Scaleway Object Storage, secrets are encrypted with a passphrase from Scaleway Secrets Manager.
+Pulumi Python project for Loreweaver's cloud infrastructure on Hetzner Cloud + Scaleway Container Registry + Scaleway Secrets Manager. State is stored in Scaleway Object Storage, secrets are encrypted with a passphrase from Scaleway Secrets Manager.
 
 ## Key Files
 
-- `__main__.py` — Pulumi entrypoint. All 9 infrastructure resources defined here.
+- `__main__.py` — Pulumi entrypoint. All 14 infrastructure resources defined here.
 - `Pulumi.yaml` — Project config. Runtime is Python via uv toolchain.
 - `Pulumi.prod.yaml` — Stack config for `prod`. Contains encrypted secrets + SSH public key.
 - `pyproject.toml` — Python dependencies: pulumi, pulumi-hcloud, pulumiverse-scaleway.
 - `scripts/bootstrap.sh` — One-time setup: creates Scaleway bucket + passphrase secret.
 - `scripts/setup.sh` — Per-machine setup: generates `.envrc` from existing Scaleway resources.
 
-## Infrastructure Resources (9)
+## Infrastructure Resources (14)
 
 | #   | Resource                 | Type                          | Purpose                                     |
 | --- | ------------------------ | ----------------------------- | ------------------------------------------- |
@@ -21,10 +21,14 @@ Pulumi Python project for Loreweaver's cloud infrastructure on Hetzner Cloud + S
 | 2   | `floating-ip`            | `hcloud.FloatingIp`           | Static IPv4 (survives server replacement)   |
 | 3   | `data-volume`            | `hcloud.Volume`               | 10GB ext4, persistent data at `/data`       |
 | 4   | `firewall`               | `hcloud.Firewall`             | Inbound TCP 22/80/443 + ICMP                |
-| 5   | `server`                 | `hcloud.Server`               | CAX11 ARM, cloud-init provisions everything |
+| 5   | `server`                 | `hcloud.Server`               | CX22 x86, cloud-init provisions everything  |
 | 6   | `floating-ip-assignment` | `hcloud.FloatingIpAssignment` | Links Floating IP → Server                  |
 | 7   | `volume-attachment`      | `hcloud.VolumeAttachment`     | Links Volume → Server (no automount)        |
 | 8   | `container-registry`     | `scaleway.registry.Namespace` | Private container registry in fr-par        |
+| 9   | `deploy-ssh-secret`      | `scaleway.secrets.Secret`     | Break-glass SSH private key (empty shell)   |
+| 10  | `coolify-api-token`      | `scaleway.secrets.Secret`     | Coolify API bearer token for deploys        |
+| 11  | `coolify-site-webhook`   | `scaleway.secrets.Secret`     | Coolify deploy webhook URL for site         |
+| 12  | `bunny-api-key`          | `scaleway.secrets.Secret`     | bunny.net API key for DNS-01 ACME           |
 
 ### Three-Resource Dependency Pattern
 
@@ -81,6 +85,10 @@ ssh -L 8000:localhost:8000 root@<server_ip>
 | `volume_id`           | Reference                               |
 | `volume_linux_device` | Reference                               |
 | `registry_endpoint`   | GHA deploy workflow (image push target) |
+| `deploy_ssh_secret_id`          | Reference                               |
+| `coolify_api_token_secret_id`   | CD workflow (Coolify API auth)          |
+| `coolify_site_webhook_secret_id`| CD workflow (deploy trigger)            |
+| `bunny_api_key_secret_id`       | Coolify Traefik DNS-01 config           |
 
 ## Commands
 

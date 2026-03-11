@@ -3,17 +3,20 @@
 Provisions Hetzner Cloud VPS with Coolify, Floating IP, Volume,
 and Scaleway Container Registry for image storage.
 
-Resources (11):
+Resources (14):
   1a. SshKey (personal) — Desktop SSH key for daily access
   1b. SshKey (deploy)   — Break-glass key, private key in Scaleway SM
   2. FloatingIp         — IPv4 in fsn1 (zero-downtime server replacement)
   3. Volume             — 10GB ext4 for persistent data (/data)
   4. Firewall           — Inbound TCP 22/80/443 + ICMP
-  5. Server             — CAX11 (ARM) with cloud-init (fstab, loopback IP, Coolify)
+  5. Server             — CX22 (x86) with cloud-init (fstab, loopback IP, Coolify)
   6. FloatingIpAssignment — Links Floating IP → Server
   7. VolumeAttachment   — Links Volume → Server (no automount)
   8. RegistryNamespace  — Scaleway Container Registry (private, fr-par)
-  9. Secret             — Empty shell for deploy SSH private key (you fill it)
+  9. Secret (deploy-ssh-key)       — Empty shell for deploy SSH private key
+ 10. Secret (coolify-api-token)    — Coolify API bearer token for deploys
+ 11. Secret (coolify-site-webhook) — Coolify deploy webhook URL for site
+ 12. Secret (bunny-api-key)        — bunny.net API key for DNS-01 ACME
 
 Dependency graph (no cycles):
   FloatingIp ──→ Server ←── Volume    (cloud-init reads ip_address / linux_device)
@@ -34,7 +37,7 @@ personal_ssh_key = config.require("personal-ssh-public-key")
 deploy_ssh_key = config.require("deploy-ssh-public-key")
 
 LOCATION = "hel1"
-SERVER_TYPE = "cax11"
+SERVER_TYPE = "cx22"
 IMAGE = "ubuntu-24.04"
 LABELS = {"project": "loreweaver", "managed-by": "pulumi"}
 
@@ -214,6 +217,31 @@ deploy_ssh_secret = scaleway.secrets.Secret(
 )
 
 # ---------------------------------------------------------------------------
+# 10-12. Scaleway Secrets (deploy pipeline)
+#    Pulumi owns the resources; you fill them manually. See CLAUDE.md.
+# ---------------------------------------------------------------------------
+coolify_api_token_secret = scaleway.secrets.Secret(
+    "coolify-api-token-secret",
+    name="coolify-api-token",
+    description="Coolify API bearer token for deploy webhook auth",
+    region="fr-par",
+)
+
+coolify_site_webhook_secret = scaleway.secrets.Secret(
+    "coolify-site-webhook-secret",
+    name="coolify-site-webhook",
+    description="Coolify deploy webhook URL for the site resource",
+    region="fr-par",
+)
+
+bunny_api_key_secret = scaleway.secrets.Secret(
+    "bunny-api-key-secret",
+    name="bunny-api-key",
+    description="bunny.net API key for Traefik DNS-01 ACME challenges",
+    region="fr-par",
+)
+
+# ---------------------------------------------------------------------------
 # Exports
 # ---------------------------------------------------------------------------
 pulumi.export("floating_ip", floating_ip.ip_address)
@@ -223,3 +251,6 @@ pulumi.export("volume_id", volume.id)
 pulumi.export("volume_linux_device", volume.linux_device)
 pulumi.export("registry_endpoint", registry.endpoint)
 pulumi.export("deploy_ssh_secret_id", deploy_ssh_secret.id)
+pulumi.export("coolify_api_token_secret_id", coolify_api_token_secret.id)
+pulumi.export("coolify_site_webhook_secret_id", coolify_site_webhook_secret.id)
+pulumi.export("bunny_api_key_secret_id", bunny_api_key_secret.id)
