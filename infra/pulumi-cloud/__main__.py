@@ -145,6 +145,16 @@ write_files:
   - path: /etc/fstab
     append: true
     content: "{1} /data ext4 defaults,nofail 0 2"
+  # Ubuntu 24.04 ships Docker 27.0.3 which has a broken IPv6 parser
+  # that prevents Coolify's proxy from starting. Install from the
+  # official repo first to get a working version.
+  # https://github.com/coollabsio/coolify/issues/8649#issuecomment-3997077565
+  - path: /opt/install-docker.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      export DEBIAN_FRONTEND=noninteractive
+      curl -fsSL https://get.docker.com | sh
   - path: /opt/install-coolify.sh
     permissions: "0755"
     content: |
@@ -156,6 +166,7 @@ runcmd:
   - mkdir -p /data
   - mount /data || true
   - mkdir -p /data/campaigns /data/previews
+  - /opt/install-docker.sh
   - /opt/install-coolify.sh
 """,
     floating_ip.ip_address,
