@@ -9,7 +9,7 @@ Resources (14):
   2. FloatingIp         — IPv4 in fsn1 (zero-downtime server replacement)
   3. Volume             — 10GB ext4 for persistent data (/data)
   4. Firewall           — Inbound TCP 22/80/443 + ICMP
-  5. Server             — CX22 (x86) with cloud-init (fstab, loopback IP, Coolify)
+  5. Server             — CX23 (x86) with cloud-init (fstab, loopback IP, Coolify)
   6. FloatingIpAssignment — Links Floating IP → Server
   7. VolumeAttachment   — Links Volume → Server (no automount)
   8. RegistryNamespace  — Scaleway Container Registry (private, fr-par)
@@ -37,7 +37,7 @@ personal_ssh_key = config.require("personal-ssh-public-key")
 deploy_ssh_key = config.require("deploy-ssh-public-key")
 
 LOCATION = "hel1"
-SERVER_TYPE = "cx22"
+SERVER_TYPE = "cx23"
 IMAGE = "ubuntu-24.04"
 LABELS = {"project": "loreweaver", "managed-by": "pulumi"}
 

@@ -21,7 +21,7 @@ Pulumi Python project for Loreweaver's cloud infrastructure on Hetzner Cloud + S
 | 2   | `floating-ip`            | `hcloud.FloatingIp`           | Static IPv4 (survives server replacement)  |
 | 3   | `data-volume`            | `hcloud.Volume`               | 10GB ext4, persistent data at `/data`      |
 | 4   | `firewall`               | `hcloud.Firewall`             | Inbound TCP 22/80/443 + ICMP               |
-| 5   | `server`                 | `hcloud.Server`               | CX22 x86, cloud-init provisions everything |
+| 5   | `server`                 | `hcloud.Server`               | CX23 x86, cloud-init provisions everything |
 | 6   | `floating-ip-assignment` | `hcloud.FloatingIpAssignment` | Links Floating IP → Server                 |
 | 7   | `volume-attachment`      | `hcloud.VolumeAttachment`     | Links Volume → Server (no automount)       |
 | 8   | `container-registry`     | `scaleway.registry.Namespace` | Private container registry in fr-par       |
