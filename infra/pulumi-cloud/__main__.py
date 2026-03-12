@@ -9,7 +9,7 @@ Resources (14):
   2. FloatingIp         — IPv4 in fsn1 (zero-downtime server replacement)
   3. Volume             — 10GB ext4 for persistent data (/data)
   4. Firewall           — Inbound TCP 22/80/443 + ICMP
-  5. Server             — CX22 (x86) with cloud-init (fstab, loopback IP, Coolify)
+  5. Server             — CX23 (x86) with cloud-init (fstab, loopback IP, Coolify)
   6. FloatingIpAssignment — Links Floating IP → Server
   7. VolumeAttachment   — Links Volume → Server (no automount)
   8. RegistryNamespace  — Scaleway Container Registry (private, fr-par)
@@ -37,7 +37,7 @@ personal_ssh_key = config.require("personal-ssh-public-key")
 deploy_ssh_key = config.require("deploy-ssh-public-key")
 
 LOCATION = "hel1"
-SERVER_TYPE = "cx22"
+SERVER_TYPE = "cx23"
 IMAGE = "ubuntu-24.04"
 LABELS = {"project": "loreweaver", "managed-by": "pulumi"}
 
@@ -145,6 +145,16 @@ write_files:
   - path: /etc/fstab
     append: true
     content: "{1} /data ext4 defaults,nofail 0 2"
+  # Ubuntu 24.04 ships Docker 27.0.3 which has a broken IPv6 parser
+  # that prevents Coolify's proxy from starting. Install from the
+  # official repo first to get a working version.
+  # https://github.com/coollabsio/coolify/issues/8649#issuecomment-3997077565
+  - path: /opt/install-docker.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      export DEBIAN_FRONTEND=noninteractive
+      curl -fsSL https://get.docker.com | sh
   - path: /opt/install-coolify.sh
     permissions: "0755"
     content: |
@@ -156,6 +166,7 @@ runcmd:
   - mkdir -p /data
   - mount /data || true
   - mkdir -p /data/campaigns /data/previews
+  - /opt/install-docker.sh
   - /opt/install-coolify.sh
 """,
     floating_ip.ip_address,
