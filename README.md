@@ -44,14 +44,14 @@ See [project structure](docs/plans/2026-02-14-project-structure-spa-design.md) f
 - **Database:** libSQL (database-per-campaign), Turso Database as upgrade path
 - **ORM:** Drizzle
 - **Public site:** Astro
-- **Cloud Infrastructure:** Coolify on Hetzner, Pulumi IaC
+- **Cloud Infrastructure:** k3s on Hetzner, Pulumi IaC
 - **Self-Hosted:** TBD
 
 ## Infrastructure
 
-libSQL files on a Hetzner Volume — one platform database plus a separate database per campaign. No database server process. PR preview environments branch via file copy. Coolify handles deployment orchestration with Traefik for routing and SSL.
+libSQL files on a Hetzner Volume — one platform database plus a separate database per campaign. No database server process. PR preview environments branch via file copy. k3s handles deployment orchestration with Traefik Ingress for routing and SSL.
 
-See [deployment strategy](docs/plans/2026-03-09-deployment-strategy.md) and [libSQL over PostgreSQL decision](docs/discovery/2026-03-09-sqlite-over-postgres-decision.md) for the rationale.
+See [deployment strategy](docs/plans/2026-03-12-deployment-strategy.md) and [libSQL over PostgreSQL decision](docs/discovery/2026-03-09-sqlite-over-postgres-decision.md) for the rationale.
 
 ## Design documents
 
@@ -59,7 +59,7 @@ See [deployment strategy](docs/plans/2026-03-09-deployment-strategy.md) and [lib
 - [Project structure](docs/plans/2026-02-14-project-structure-spa-design.md) — monorepo architecture (authoritative)
 - [AI workflow](docs/plans/2026-02-14-ai-workflow-unification-design.md) — interactive and batch AI design
 - [AI PRD](docs/plans/2026-02-22-ai-prd.md) — full AI system requirements
-- [Deployment strategy](docs/plans/2026-03-09-deployment-strategy.md) — Coolify + Hetzner + libSQL
+- [Deployment strategy](docs/plans/2026-03-12-deployment-strategy.md) — k3s + Hetzner + libSQL
 - [Database decision](docs/discovery/2026-03-09-sqlite-over-postgres-decision.md) — why libSQL over PostgreSQL
 - [Templates](docs/plans/2026-02-20-templates-as-prototype-pages.md) — templates are Things, not a separate entity
 - [Public site](docs/plans/2026-02-20-public-site-design.md) — Astro static site design

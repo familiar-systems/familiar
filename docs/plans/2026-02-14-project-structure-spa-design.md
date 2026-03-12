@@ -423,7 +423,7 @@ A polling-based job consumer process. Each handler maps to a job type from `@lor
 ```
                     ┌──────────────────────┐
                     │    Reverse Proxy      │
-                    │  Traefik (via Coolify)│
+                    │ Traefik (k3s Ingress) │
                     └──────┬───────────────┘
                            │
          ┌─────────────────┼─────────────────┐
@@ -447,7 +447,7 @@ A polling-based job consumer process. Each handler maps to a job type from `@lor
                               └────────────┘
 ```
 
-Traefik (via Coolify) sits in front and routes (order matters — specific paths match first):
+Traefik (via k3s Ingress) sits in front and routes (order matters — specific paths match first):
 
 - `/app/api/*` → `apps/api` (port 3001)
 - `/app/collab/*` → `apps/collab` (port 3002, WebSocket upgrade)
