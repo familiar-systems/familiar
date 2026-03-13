@@ -128,6 +128,11 @@ firewall = hcloud.Firewall(
 
 # ---------------------------------------------------------------------------
 # 5. Server (cloud-init interpolates Floating IP + Volume device)
+#
+# TODO(k3s-migration): Replace Docker + Coolify install with k3s install: # noqa: FIX002, TD003
+#   curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="..." sh -
+#   (--data-dir /data/k3s --tls-san <fip> --node-external-ip <fip>)
+# See docs/plans/2026-03-12-deployment-strategy.md
 # ---------------------------------------------------------------------------
 cloud_init = pulumi.Output.format(
     """\
@@ -149,11 +154,6 @@ write_files:
   - path: /etc/fstab
     append: true
     content: "{1} /data ext4 defaults,nofail 0 2"
-  # TODO(k3s-migration): Replace Docker + Coolify install with k3s install:
-  #   curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="..." sh -
-  #   (--data-dir /data/k3s --tls-san <fip> --node-external-ip <fip>)
-  # See docs/plans/2026-03-12-deployment-strategy.md
-  #
   # Ubuntu 24.04 ships Docker 27.0.3 which has a broken IPv6 parser
   # that prevents Coolify's proxy from starting. Install from the
   # official repo first to get a working version.
