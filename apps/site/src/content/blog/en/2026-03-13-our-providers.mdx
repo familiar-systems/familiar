@@ -1,0 +1,106 @@
+---
+title: "Our Providers"
+description: "Every service Loreweaver depends on, and why we chose them."
+author: "Michael Grinshpon"
+pubDate: 2026-03-13
+heroImage: "~/assets/blog/2026-03-13-eea-flags.png"
+tags: ["about", "infrastructure"]
+---
+
+This post lists every third-party service that Loreweaver depends on. Not just the ones that touch your data (that's the [sub-processors page](/sub-processors)), but everything: compute, DNS, email, authentication, deployment. The full stack.
+
+This was heavily inspired by [Coinerella's "Made in EU" post](https://www.coinerella.com/made-in-eu-it-was-harder-than-i-thought/). Their conclusion matched my experience: building on European infrastructure is mostly doable, but it takes deliberate effort. The defaults in this industry pull toward American services, and resisting that pull means making active choices at every layer.
+
+Every provider listed here is based in the EU or EEA. Your data never leaves this jurisdiction.
+
+## Why bother?
+
+1. **GDPR is consumer-friendly.** Yes, it's harder to build on European infrastructure but it's also better for you, the customer. Whenever I buy something, I want to know how things are being used and how they could be used. I am the person that reads the EULA. As an aside, please read ours - we've put in some effort to make them human readable and there should be nothing objectionable in them.
+2. **The US CLOUD Act** requires American tech companies to comply with US government surveillance requests, regardless of where their users are located. If there are no American tech companies in the stack, then there's no risk of your data being accessed by the US government. People are trusting us with some of their most intimate data - friends and family gathered around the dining table.
+
+## Infrastructure
+
+These are the services that make up Loreweaver's physical infrastructure: where the code runs, where the data lives, and how it all gets deployed.
+
+### Hetzner Cloud
+
+[Hetzner](https://www.hetzner.com) provides the compute server, persistent storage volume, floating IP, and firewall. They're a German company with data centers in Germany and Finland. At time of writing, our compute is in Finland.
+
+Hetzner is the obvious choice for EU-hosted compute if you care about price-to-performance. A CX23 server with a 10GB volume costs less per month than a comparable setup on any of the hyperscalers, and the networking is straightforward. No hidden egress fees, no surprise bandwidth charges.
+
+### Scaleway
+
+[Scaleway](https://www.scaleway.com) handles container registry, secrets management, and object storage (where Pulumi stores its state). They're a French company with data centers in France, the Netherlands, and Poland. Loreweaver's Scaleway resources run on their Paris data center since it produces the lowest CO2 emissions per unit of compute courtesy of French nuclear power and renewables investment.
+
+Why split between Hetzner and Scaleway? Hetzner's strength is raw compute and storage. Scaleway fills the gaps with managed services that Hetzner doesn't offer: a container registry with vulnerability scanning, a secrets manager with versioning, and a few other odds and ends. Hetzner really is the bulk of what we use.
+
+Beyond that, Scaleway [requires personal identity authentication](https://www.scaleway.com/en/docs/account/how-to/verify-identity/) via [jumio.com](https://www.jumio.com/privacy-center/privacy-notices/online-services-notice/). This US company has one of the most onerous privacy policies I've ever read. I'm not interested in having my core identity documents sold for advertising for the next 3 years. If anyone from Scaleway ever reads this, please pick literally anything less awful. No identity verification? Massively lower compute levels.
+
+### Coolify (being replaced by k3s)
+
+[Coolify](https://coolify.io) is a self-hosted, open-source deployment platform. It currently runs on the Hetzner server and handles container orchestration, reverse proxying (via Traefik), and SSL certificate management. Coolify occupies the space where you'd otherwise use Heroku, Railway, or Vercel. The difference is that it runs on your own server, so the data never touches a third party's infrastructure. For a solo developer who wants push-to-deploy without giving up control, it got us live quickly.
+
+As an aside, the work that [coollabs.io](https://coollabs.io/) does is really impressive and great for the open-source community. Definitely check them out.
+
+That said, we're migrating to [k3s](https://k3s.io) (a lightweight Kubernetes distribution by SUSE, a German company). Coolify's state lives in a Postgres database inside a Docker named volume, which makes server replacement fragile. Its proxy configuration is managed through a UI with no API, and application migration between servers requires manual re-creation. None of this is codifiable or testable.
+
+k3s changes the dependency envelope in a meaningful way. Coolify is a third-party application that manages your containers for you. k3s is a container orchestrator that _you_ manage through declarative manifests stored in git. The entire cluster state lives on the Hetzner Volume, so server replacement becomes "provision a new server, attach the same volume, run k3s." No dashboard to reconfigure, no applications to re-create. It also unlocks PR preview environments (namespace-per-PR with a wildcard SSL cert), which Coolify couldn't do.
+
+The trade-off is operational complexity. Kubernetes has a learning curve that Coolify deliberately hides from you. But for a project that needs independent deployment of five different services (static site, SPA, API, WebSocket server, worker), that complexity is going to show up somewhere. Better to have it in typed, version-controlled Python (via Pulumi) than in a UI.
+
+k3s can also run locally and it'll be the pathway for anyone who is masochistic enough to try self-hosting this beast in the near future.
+
+### Pulumi
+
+[Pulumi](https://www.pulumi.com) is the infrastructure-as-code tool that provisions everything above. The entire infrastructure definition is open source: [github.com/loreweaver-no/loreweaver/tree/main/infra/pulumi-cloud](https://github.com/loreweaver-no/loreweaver/tree/main/infra/pulumi-cloud)
+
+You can read exactly what gets created, how it's configured, and why. No secrets in the repo (those live in Scaleway Secrets Manager), but the structure is all there. Pulumi itself is an American company, but nothing runs through their servers. Their open source, self-hosted model powers Loreweaver's infrastructure-as-code. The state backend is [Scaleway Object Storage in the EU](https://github.com/loreweaver-no/loreweaver/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/infra/pulumi-cloud/scripts/bootstrap.sh).
+
+One of the frustrating things about Pulumi is the lack of integration of Pulumi with Scaleway's secrets manager. We have yet to properly integrate with it using [the external provider](https://www.pulumi.com/docs/esc/integrations/dynamic-secrets/external/) but it's somewhere on the roadmap.
+
+## Services
+
+These are external SaaS dependencies that Loreweaver delegates specific functions to.
+
+### Hanko
+
+[Hanko](https://www.hanko.io) handles authentication and logins. They're a German company focused on passkey-first authentication.
+
+Hanko was chosen over Auth0, Clerk, and other auth providers because it's EU-based, open source, and supports social logins. The reality is that people expect social logins - Apple and Google at the minimum.
+
+### Keila
+
+[Keila](https://www.keila.io) handles marketing emails and newsletters. It's an open-source, EU-based alternative to Mailchimp. Keila is self-hostable but we pay keila.io to never bother with dealing with that ourselves. Email is _hard_.
+
+### bunny.net
+
+[bunny.net](https://bunny.net) provides DNS. They're a Slovenian company. In the future, they'll provide CDN, too.
+
+### mailbox.org
+
+[mailbox.org](https://mailbox.org) handles sending and receiving non-transactional emails (the `hello@loreweaver.no` address). They're a German company focused on privacy.
+
+This is the "regular email" provider, not the marketing email system. Support inquiries, business communication, that sort of thing. mailbox.org was chosen because it's EU-based, privacy-focused, and has fair and reasonable pricing.
+
+## What's Missing
+
+### EU-based git forge
+
+We have one very explicit U.S. dependency - GitHub. GitHub hosts the source code and CI/CD. There is no serious EU-based alternative for a Git forge.
+
+Beyond that, there are social network effects. Having a place for users to have open discussions with one another is important. "I want this feature," or "could you please change how this bit works?" There are no good, slow-moving, EU-only alternatives. The era of forums is over, unfortunately. Discord's discussion is closed off from the world (and it's a U.S. company to boot).
+
+If this changes, we'll migrate.
+
+### Branching databases
+
+A branching database lets users create branches of their databases on request. New pull requests can then have preview environments allowing developers to test the entire site all at once without impacting production. When the pull request is merged, the branch, and the associated data for that branch, is deleted.
+
+There are no easily usable EU-sovereign branching databases. Certainly none that I'm comfortable with.
+
+- [simplyblock/vela](https://github.com/simplyblock/vela) is an open-source, self-hostable serverless PostgreSQL database built by Simplyblock GmbH. I am not comfortable with running and managing this on my own.
+- [Managed vela](https://vela.simplyblock.io/) is vela managed by Simplyblock but it's only available on American hyper-scalers and the pricing is opaque. I'm not interested in talking to sales because I'm not interested in negotiating. Tell me the best price you can offer and I'll choose if it's worth it.
+- [neon.tech](https://neon.tech) is a serverless PostgreSQL database. It's US-based.
+- [turso.tech](https://turso.tech) are the people behind [libSQL](https://github.com/tursodatabase/libsql) and [turso](https://github.com/tursodatabase/turso). They're an American company. Their copy-on-branch model for SQLite is what we based our database strategy on but they are AWS-only right now with no EU-based alternatives.
+
+Our workaround is using [a database-per-campaign strategy](https://github.com/loreweaver-no/loreweaver/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/docs/discovery/2026-03-09-sqlite-over-postgres-decision.md) via libSQL and copy-on-deploy [preview environments via k3s](https://github.com/loreweaver-no/loreweaver/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/docs/plans/2026-03-12-deployment-strategy.md).
