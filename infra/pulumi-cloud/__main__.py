@@ -150,7 +150,8 @@ write_files:
     append: true
     content: "{1} /data ext4 defaults,nofail 0 2"
   # TODO(k3s-migration): Replace Docker + Coolify install with k3s install:
-  #   curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--data-dir /data/k3s --tls-san <floating-ip> --node-external-ip <floating-ip>" sh -
+  #   curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="..." sh -
+  #   (--data-dir /data/k3s --tls-san <fip> --node-external-ip <fip>)
   # See docs/plans/2026-03-12-deployment-strategy.md
   #
   # Ubuntu 24.04 ships Docker 27.0.3 which has a broken IPv6 parser
@@ -238,7 +239,7 @@ deploy_ssh_secret = scaleway.secrets.Secret(
 # ---------------------------------------------------------------------------
 # 10-12. Scaleway Secrets (deploy pipeline)
 #    Pulumi owns the resources; you fill them manually. See CLAUDE.md.
-# TODO(k3s-migration): Remove coolify secrets, add k3s-kubeconfig secret
+# TODO(k3s-migration): Remove coolify secrets, add k3s-kubeconfig secret # noqa:FIX002, TD003
 # ---------------------------------------------------------------------------
 coolify_api_token_secret = scaleway.secrets.Secret(
     "coolify-api-token-secret",

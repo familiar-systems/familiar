@@ -1,6 +1,6 @@
 # CLAUDE.md — infra/pulumi-cloud
 
-> **Migration pending:** This infra currently provisions Coolify on the server via cloud-init. It will be updated to provision k3s instead during Phase 2 of the k3s migration. See `docs/plans/2026-03-12-deployment-strategy.md` for the full plan. The documentation below reflects the *current* (Coolify) state.
+> **Migration pending:** This infra currently provisions Coolify on the server via cloud-init. It will be updated to provision k3s instead during Phase 2 of the k3s migration. See `docs/plans/2026-03-12-deployment-strategy.md` for the full plan. The documentation below reflects the _current_ (Coolify) state.
 
 ## What This Is
 
