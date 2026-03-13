@@ -33,7 +33,7 @@ const { lang } = Astro.params;
 const t = useTranslations(lang);
 ---
 
-<Layout title="Blog - Astro Boilerplate" description="Read our latest articles">
+<Layout title={`${t['blog.hero.title']} - ${t['brand.name']}`} description={t['blog.hero.subtitle']}>
   <PageHeader 
       title={t['blog.hero.title']}
       description={t['blog.hero.subtitle']}
