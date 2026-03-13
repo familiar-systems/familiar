@@ -15,7 +15,7 @@ Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It
 - `docs/plans/2026-02-14-ai-workflow-unification-design.md` — AI workflow architecture (SessionIngest, P&R, Q&A)
 - `docs/plans/2026-02-20-templates-as-prototype-pages.md` — Templates are Things, not a separate entity. Categorization via `prototypeId` and tag-relationships.
 - `docs/plans/2026-02-20-public-site-design.md` — Public site (Astro): landing page, blog, public campaign pages. Path-based routing.
-- `docs/plans/2026-03-09-deployment-strategy.md` — Deployment strategy (Coolify on Hetzner, libSQL files on Volume)
+- `docs/plans/2026-03-12-deployment-strategy.md` — Deployment strategy (k3s on Hetzner, phased migration from Coolify, libSQL files on Volume)
 - `docs/discovery/2026-03-09-sqlite-over-postgres-decision.md` — libSQL over PostgreSQL decision (database-per-campaign, Turso Database upgrade path)
 
 ### Not Worth Reading On Startup
@@ -25,7 +25,8 @@ Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It
 - `docs/discovery/archive/2026-02-18-postgres-vs-turso.md` — Original PostgreSQL decision (superseded by libSQL decision)
 - `docs/discovery/archive/2026-02-14-storage-overview.md` — Initial storage architecture analysis
 - `docs/plans/archive/2026-02-18-deployment-strategy.md` — Previous deployment strategy (superseded by 2026-03-09 version)
-- `docs/discovery/archive/2026-02-18-solo-dev-deployment-landscape.md` — Deployment exploration (decided: Coolify + Hetzner)
+- `docs/plans/archive/2026-03-09-deployment-strategy.md` — Previous deployment strategy (superseded by k3s deployment strategy)
+- `docs/discovery/archive/2026-02-18-solo-dev-deployment-landscape.md` — Deployment exploration (decided: Hetzner)
 - `docs/discovery/archive/2026-02-18-eu-deployment-landscape.md` — EU deployment exploration (decided: Hetzner)
 
 Read the SPA project structure doc before making architectural decisions — it is the source of truth.
@@ -141,7 +142,7 @@ Maximum strictness, no exceptions:
 
 - Path-based routing: `apps/site` owns `/` (landing, blog), `apps/web` is served under `/app/`
 - In dev, Vite proxies `/app/api/*` → localhost:3001 and `/app/collab/*` → ws://localhost:3002 (no CORS needed). Astro dev server runs independently on port 4321.
-- In production, Traefik (via Coolify) routes all traffic through a single domain: `/app/api/*` → api, `/app/collab/*` → collab, `/app/*` → web SPA, `/*` → site
+- In production, Traefik (via k3s Ingress) routes all traffic through a single domain: `/app/api/*` → api, `/app/collab/*` → collab, `/app/*` → web SPA, `/*` → site
 - The `@loreweaver/editor` package is the most architecturally important — it defines the TipTap schema shared between browser (apps/web) and server (apps/worker for document manipulation)
 - LLM provider is pluggable: hosted instance uses managed keys, self-hosters bring their own
 - No Docker database container needed for local development. libSQL files on disk. `:memory:` databases for tests.

@@ -1,6 +1,6 @@
 # SQLite over PostgreSQL — Database Re-evaluation
 
-> **Decided: SQLite files (database-per-campaign), with [Turso Database](https://github.com/tursodatabase/turso) as the upgrade path.** This supersedes the [previous PostgreSQL decision](./archive/2026-02-18-postgres-vs-turso.md). The original decision was sound given its assumptions, but those assumptions changed when PR preview environments became a priority and the deployment infrastructure crystallized around Hetzner + Coolify.
+> **Decided: SQLite files (database-per-campaign), with [Turso Database](https://github.com/tursodatabase/turso) as the upgrade path.** This supersedes the [previous PostgreSQL decision](./archive/2026-02-18-postgres-vs-turso.md). The original decision was sound given its assumptions, but those assumptions changed when PR preview environments became a priority and the deployment infrastructure crystallized around Hetzner + k3s.
 
 ## Context
 
@@ -16,7 +16,7 @@ That decision also explicitly deferred PR preview environments ("deferred until 
 
 ### PR preview deploys are happening now, not later
 
-The deployment strategy shifted to Coolify on Hetzner with PR preview environments as a core workflow — not a deferred luxury. This was motivated by the value of deployment integration testing for a multi-service architecture (Traefik proxying, WebSocket routing, container networking) that works locally but can break in deployment. Branch deploys catch these issues before merge.
+The deployment strategy shifted to k3s on Hetzner with PR preview environments as a core workflow — not a deferred luxury. This was motivated by the value of deployment integration testing for a multi-service architecture (Traefik proxying, WebSocket routing, container networking) that works locally but can break in deployment. Branch deploys catch these issues before merge.
 
 With PostgreSQL, PR preview database branching requires either:
 
@@ -94,7 +94,7 @@ Hetzner Volume mounted at /data/
 
 Preview environments contain copied production data and must be restricted to contributors. Three layers of protection:
 
-**Traefik basic auth on preview subdomains.** Coolify's Traefik integration supports basic auth middleware via container labels. Shared credentials that all contributors know. This is the outer gate — keeps random visitors out.
+**Traefik basic auth on preview subdomains.** Traefik on k3s supports basic auth middleware via Ingress annotations. Shared credentials that all contributors know. This is the outer gate — keeps random visitors out.
 
 **Hanko authentication.** Preview environments run the same application code, which requires Hanko login. The preview points at the same Hanko instance as production, so contributors authenticate with their real accounts.
 
@@ -173,9 +173,8 @@ All containers mount the data directory. No database server to install, configur
 - [Previous PostgreSQL decision](./archive/2026-02-18-postgres-vs-turso.md) — superseded by this document
 - [Turso Database (Rust SQLite rewrite)](https://github.com/tursodatabase/turso) — MIT licensed, in-process, SQLite-compatible
 - [Turso Database JavaScript binding](https://www.npmjs.com/package/@tursodatabase/database)
-- [Coolify on Hetzner deployment strategy](../../plans/2026-03-09-deployment-strategy.md) — deployment infrastructure this decision integrates with
-- [Coolify Traefik basic auth middleware](https://coolify.io/docs/knowledge-base/proxy/traefik/basic-auth) — preview environment access control
+- [k3s on Hetzner deployment strategy](../../plans/2026-03-12-deployment-strategy.md) — deployment infrastructure this decision integrates with
 - [Hanko](https://www.hanko.io/) — authentication provider for Loreweaver
 - [SQLite WAL mode](https://www.sqlite.org/wal.html) — write-ahead logging for concurrent read/write
-- [Deployment strategy (archived)](../../plans/archive/2026-02-18-deployment-strategy.md) — superseded; see [current deployment strategy](../../plans/2026-03-09-deployment-strategy.md)
+- [Deployment strategy (archived)](../../plans/archive/2026-02-18-deployment-strategy.md) — superseded; see [current deployment strategy](../../plans/2026-03-12-deployment-strategy.md)
 - [Storage overview](./archive/2026-02-14-storage-overview.md) — original storage analysis

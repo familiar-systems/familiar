@@ -1,7 +1,11 @@
 """Loreweaver cloud infrastructure.
 
-Provisions Hetzner Cloud VPS with Coolify, Floating IP, Volume,
+Provisions Hetzner Cloud VPS with Floating IP, Volume,
 and Scaleway Container Registry for image storage.
+
+NOTE: cloud-init currently installs Coolify. This will be replaced with k3s
+installation during Phase 2 of the k3s migration plan.
+See docs/plans/2026-03-12-deployment-strategy.md.
 
 Resources (14):
   1a. SshKey (personal) — Desktop SSH key for daily access
@@ -9,13 +13,13 @@ Resources (14):
   2. FloatingIp         — IPv4 in fsn1 (zero-downtime server replacement)
   3. Volume             — 10GB ext4 for persistent data (/data)
   4. Firewall           — Inbound TCP 22/80/443 + ICMP
-  5. Server             — CX23 (x86) with cloud-init (fstab, loopback IP, Coolify)
+  5. Server             — CX23 (x86) with cloud-init (fstab, loopback IP, Coolify → k3s)
   6. FloatingIpAssignment — Links Floating IP → Server
   7. VolumeAttachment   — Links Volume → Server (no automount)
   8. RegistryNamespace  — Scaleway Container Registry (private, fr-par)
   9. Secret (deploy-ssh-key)       — Empty shell for deploy SSH private key
- 10. Secret (coolify-api-token)    — Coolify API bearer token for deploys
- 11. Secret (coolify-site-webhook) — Coolify deploy webhook URL for site
+ 10. Secret (coolify-api-token)    — TODO(k3s-migration): Remove, replaced by k3s-kubeconfig
+ 11. Secret (coolify-site-webhook) — TODO(k3s-migration): Remove, no longer needed
  12. Secret (bunny-api-key)        — bunny.net API key for DNS-01 ACME
 
 Dependency graph (no cycles):
@@ -124,6 +128,11 @@ firewall = hcloud.Firewall(
 
 # ---------------------------------------------------------------------------
 # 5. Server (cloud-init interpolates Floating IP + Volume device)
+#
+# TODO(k3s-migration): Replace Docker + Coolify install with k3s install: # noqa: FIX002, TD003
+#   curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="..." sh -
+#   (--data-dir /data/k3s --tls-san <fip> --node-external-ip <fip>)
+# See docs/plans/2026-03-12-deployment-strategy.md
 # ---------------------------------------------------------------------------
 cloud_init = pulumi.Output.format(
     """\
@@ -230,6 +239,7 @@ deploy_ssh_secret = scaleway.secrets.Secret(
 # ---------------------------------------------------------------------------
 # 10-12. Scaleway Secrets (deploy pipeline)
 #    Pulumi owns the resources; you fill them manually. See CLAUDE.md.
+# TODO(k3s-migration): Remove coolify secrets, add k3s-kubeconfig secret # noqa:FIX002, TD003
 # ---------------------------------------------------------------------------
 coolify_api_token_secret = scaleway.secrets.Secret(
     "coolify-api-token-secret",
