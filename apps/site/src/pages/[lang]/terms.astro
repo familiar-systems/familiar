@@ -1,6 +1,13 @@
 ---
 import UntranslatedLayout from '~/layouts/UntranslatedLayout.astro';
 import { siteConfig } from '~/site.config';
+import { languages } from '~/i18n/ui';
+
+export async function getStaticPaths() {
+  return Object.keys(languages).map((lang) => ({ params: { lang } }));
+}
+
+const { lang } = Astro.params;
 ---
 
 <UntranslatedLayout title="Terms of Service - Loreweaver" description="Terms of service for Loreweaver.">
@@ -45,14 +52,14 @@ import { siteConfig } from '~/site.config';
                     exclusively within Loreweaver and are never sold or licensed to third parties. Your audio and campaign
                     content are never used to train generative AI models (such as large language models), and will never
                     appear in another user's experience. You can opt out of speech recognition training at any time in your
-                    account settings. See our <a href="/privacy" class="text-primary hover:underline">Privacy Policy</a> for details.
+                    account settings. See our <a href={`/${lang}/privacy`} class="text-primary hover:underline">Privacy Policy</a> for details.
                 </p>
 
                 <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">5. Account & Authentication</h2>
                 <p>
                     You need an account to use Loreweaver. Authentication is handled by a third-party provider (Hanko).
                     If you choose to sign in via Google or Apple, some account data may be processed outside the EU/EEA
-                    by those providers. See our <a href="/privacy" class="text-primary hover:underline">Privacy Policy</a> for details.
+                    by those providers. See our <a href={`/${lang}/privacy`} class="text-primary hover:underline">Privacy Policy</a> for details.
                 </p>
 
                 <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">6. Acceptable Use</h2>

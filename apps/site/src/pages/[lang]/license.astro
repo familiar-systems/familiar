@@ -1,6 +1,11 @@
 ---
 import UntranslatedLayout from '~/layouts/UntranslatedLayout.astro';
 import { siteConfig } from '~/site.config';
+import { languages } from '~/i18n/ui';
+
+export async function getStaticPaths() {
+  return Object.keys(languages).map((lang) => ({ params: { lang } }));
+}
 ---
 
 <UntranslatedLayout title="License - Loreweaver" description="Loreweaver is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).">

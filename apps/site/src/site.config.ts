@@ -99,10 +99,10 @@ export const FOOTER_LINKS = {
   legal: {
     title: "Legal",
     links: [
-      { href: "/privacy", label: "Privacy", localize: false },
-      { href: "/terms", label: "Terms", localize: false },
-      { href: "/license", label: "License", localize: false },
-      { href: "/sub-processors", label: "Sub-processors", localize: false },
+      { href: "/privacy", label: "Privacy" },
+      { href: "/terms", label: "Terms" },
+      { href: "/license", label: "License" },
+      { href: "/sub-processors", label: "Sub-processors" },
     ],
   },
 };
