@@ -1,0 +1,318 @@
+---
+import { useTranslations } from '~/i18n/utils';
+import Section from '~/components/layout/Section.astro';
+import LatestPosts from '~/components/sections/LatestPosts.astro';
+import Button from '~/components/ui/Button.astro';
+import NewsletterSignup from '~/components/common/NewsletterSignup.astro';
+import { BookOpen, Upload, Sparkles, CheckCircle, ScrollText, MapPin, Users, Swords, Link2, Eye, Clock, MessageSquare, ShieldCheck, GitFork } from 'lucide-react';
+
+interface Props {
+  lang: string;
+}
+
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+---
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- HERO                                        -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="min-h-[90vh] flex items-center justify-center relative overflow-hidden pt-20 bg-background">
+    <!-- Ambient glow -->
+    <div class="absolute inset-0 z-0 opacity-30">
+      <div class="absolute top-[15%] left-[25%] w-[500px] h-[500px] bg-primary/40 rounded-full blur-[140px] animate-pulse"></div>
+      <div class="absolute bottom-[20%] right-[15%] w-[400px] h-[400px] bg-amber-700/30 rounded-full blur-[120px] animate-pulse" style="animation-delay: 3s;"></div>
+    </div>
+
+    <!-- Subtle texture overlay -->
+    <div class="absolute inset-0 z-0 opacity-[0.03] dark:opacity-[0.05]" style="background-image: url('data:image/svg+xml,%3Csvg width=&quot;60&quot; height=&quot;60&quot; viewBox=&quot;0 0 60 60&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;%3E%3Cg fill=&quot;none&quot; fill-rule=&quot;evenodd&quot;%3E%3Cg fill=&quot;%23000000&quot; fill-opacity=&quot;0.4&quot;%3E%3Cpath d=&quot;M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z&quot;/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
+
+    <div class="container mx-auto px-6 relative z-10 text-center">
+      <div class="hero-content opacity-0 translate-y-5">
+        <p class="inline-block text-sm font-medium tracking-[0.2em] uppercase text-primary mb-8 border border-primary/20 rounded-full px-5 py-2">
+          {t['hero.badge']}
+        </p>
+        <h1 class="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-8 text-foreground leading-[1.1]">
+          {t['hero.title']}<br />
+          <span class="text-primary">{t['hero.highlight']}</span>
+        </h1>
+        <p class="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-12 leading-relaxed">
+          {t['hero.subtitle']}
+        </p>
+
+        <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <Button
+            href={`/${lang}/blog/2026-02-20-the-vision`}
+            class="px-8 py-4 rounded-full text-base"
+          >
+            {t['hero.getStarted']}
+          </Button>
+          <Button
+            href="https://github.com/loreweaver-no"
+            variant="secondary"
+            class="px-8 py-4 rounded-full text-base backdrop-blur-sm"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t['hero.learnMore']}
+          </Button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- THE CORE LOOP                               -->
+  <!-- ═══════════════════════════════════════════ -->
+  <Section class="py-24 md:py-32">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-4">After Every Session</h2>
+      <p class="text-center text-muted-foreground text-lg mb-16 max-w-2xl mx-auto">
+        The core loop takes 15 minutes, not hours. You played the game - let the AI do the bookkeeping.
+      </p>
+
+      <div class="relative">
+        <!-- Vertical connector line -->
+        <div class="absolute left-8 md:left-10 top-0 bottom-0 w-px bg-gradient-to-b from-primary/0 via-primary/30 to-primary/0 hidden md:block"></div>
+
+        <div class="space-y-12">
+          <!-- Step 1 -->
+          <div class="flex gap-6 md:gap-8 items-start group">
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
+              <Upload className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+            </div>
+            <div class="pt-2 md:pt-4">
+              <h3 class="text-xl font-bold mb-2">Upload your recording or notes</h3>
+              <p class="text-muted-foreground leading-relaxed">Audio, video, or written notes from the session. Players can add their characters' perspectives too.</p>
+            </div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="flex gap-6 md:gap-8 items-start group">
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
+              <Sparkles className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+            </div>
+            <div class="pt-2 md:pt-4">
+              <h3 class="text-xl font-bold mb-2">Loreweaver processes everything</h3>
+              <p class="text-muted-foreground leading-relaxed">It transcribes audio, identifies what happened, extracts NPCs, locations, and events, and drafts a session write-up.</p>
+            </div>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="flex gap-6 md:gap-8 items-start group">
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
+              <ScrollText className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+            </div>
+            <div class="pt-2 md:pt-4">
+              <h3 class="text-xl font-bold mb-2">You get a list of proposals</h3>
+              <p class="text-muted-foreground leading-relaxed">"I found 3 new NPCs. Kael frequents the Rusty Anchor. Tormund appears to be dead. Here's a draft of what happened."</p>
+            </div>
+          </div>
+
+          <!-- Step 4 -->
+          <div class="flex gap-6 md:gap-8 items-start group">
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
+              <CheckCircle className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+            </div>
+            <div class="pt-2 md:pt-4">
+              <h3 class="text-xl font-bold mb-2">Review and approve</h3>
+              <p class="text-muted-foreground leading-relaxed">Accept what looks right, tweak what's close, skip what you don't care about. The AI never changes your world without your say-so.</p>
+            </div>
+          </div>
+
+          <!-- Step 5 -->
+          <div class="flex gap-6 md:gap-8 items-start group">
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
+              <BookOpen className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+            </div>
+            <div class="pt-2 md:pt-4">
+              <h3 class="text-xl font-bold mb-2">Done. Your wiki just grew.</h3>
+              <p class="text-muted-foreground leading-relaxed">15 minutes instead of hours. Everything linked, searchable, and ready for next session's prep.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- YOUR CAMPAIGN WIKI                          -->
+  <!-- ═══════════════════════════════════════════ -->
+  <Section class="py-24 md:py-32 bg-foreground/[0.02]">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-4">A Wiki That Grows From Play</h2>
+      <p class="text-center text-muted-foreground text-lg mb-16 max-w-2xl mx-auto">
+        Every session adds detail. An NPC can start as a name mentioned once and grow into a fully realized character over time.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Sessions -->
+        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
+          <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
+            <ScrollText className="w-6 h-6 text-primary" />
+          </div>
+          <h3 class="text-xl font-bold mb-3">Sessions</h3>
+          <p class="text-muted-foreground leading-relaxed">Write-ups of what happened each time you played, organized chronologically. The living history of your campaign.</p>
+        </div>
+
+        <!-- Things -->
+        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
+          <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
+            <Users className="w-6 h-6 text-primary" />
+          </div>
+          <h3 class="text-xl font-bold mb-3">Things</h3>
+          <p class="text-muted-foreground leading-relaxed">Every entity in your world: NPCs, locations, items, factions, monsters, lore. Each one has its own page that accumulates detail over time.</p>
+        </div>
+
+        <!-- Connections -->
+        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
+          <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
+            <Link2 className="w-6 h-6 text-primary" />
+          </div>
+          <h3 class="text-xl font-bold mb-3">Connections</h3>
+          <p class="text-muted-foreground leading-relaxed">How things relate: "Kael frequents the Rusty Anchor," "The Silver Compact is allied with the Crown of Ashenmoor." A living graph of your world.</p>
+        </div>
+
+        <!-- Player Visibility -->
+        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
+          <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
+            <Eye className="w-6 h-6 text-primary" />
+          </div>
+          <h3 class="text-xl font-bold mb-3">Player Visibility</h3>
+          <p class="text-muted-foreground leading-relaxed">You control what players see. Secret notes stay secret. The Good Cleric's dark patron remains hidden until you're ready to reveal it.</p>
+        </div>
+      </div>
+    </div>
+  </Section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- WHAT MAKES IT DIFFERENT                     -->
+  <!-- ═══════════════════════════════════════════ -->
+  <Section class="py-24 md:py-32">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-16">Built for How GMs Actually Work</h2>
+
+      <div class="space-y-16">
+        <!-- Meets you where you are -->
+        <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
+          <div class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+            <MapPin className="w-7 h-7 text-primary" />
+          </div>
+          <div>
+            <h3 class="text-xl font-bold mb-3">It meets you where you are</h3>
+            <p class="text-muted-foreground leading-relaxed text-lg">You don't have to build a wiki before session 1. An NPC can start as nothing more than a name mentioned once in a session, and grow into a fully detailed character over time as they keep showing up.</p>
+          </div>
+        </div>
+
+        <!-- Tolerant of neglect -->
+        <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
+          <div class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+            <Clock className="w-7 h-7 text-primary" />
+          </div>
+          <div>
+            <h3 class="text-xl font-bold mb-3">Tolerant of neglect</h3>
+            <p class="text-muted-foreground leading-relaxed text-lg">Skip a week of reviews? That's fine. Unreviewed suggestions expire quietly. The system never buries you under an infinite pile of homework.</p>
+          </div>
+        </div>
+
+        <!-- AI proposes, you decide -->
+        <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
+          <div class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+            <MessageSquare className="w-7 h-7 text-primary" />
+          </div>
+          <div>
+            <h3 class="text-xl font-bold mb-3">The AI proposes, you decide</h3>
+            <p class="text-muted-foreground leading-relaxed text-lg">The AI never changes your world on its own. Every suggestion needs your approval, and every suggestion comes with reasoning so you can see why it was proposed.</p>
+          </div>
+        </div>
+
+        <!-- Captures the mess -->
+        <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
+          <div class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+            <Swords className="w-7 h-7 text-primary" />
+          </div>
+          <div>
+            <h3 class="text-xl font-bold mb-3">It captures the mess</h3>
+            <p class="text-muted-foreground leading-relaxed text-lg">Retconned something? No problem. Mark things as "established in play but since retconned." The history is preserved, but Loreweaver stops treating it as current. Your campaign's contradictions are part of the story.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SELF-HOSTING + OPEN SOURCE                  -->
+  <!-- ═══════════════════════════════════════════ -->
+  <Section class="py-20 md:py-24 bg-foreground/[0.02]">
+    <div class="max-w-3xl mx-auto text-center">
+      <div class="inline-flex items-center gap-3 mb-6">
+        <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+          <GitFork className="w-5 h-5 text-primary" />
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+          <ShieldCheck className="w-5 h-5 text-primary" />
+        </div>
+      </div>
+      <h2 class="font-display text-3xl md:text-4xl font-bold mb-6">Open Source. Self-Hostable.</h2>
+      <p class="text-muted-foreground text-lg leading-relaxed mb-8">
+        Loreweaver is open source. Use the hosted version to get started instantly, or run it on your own server with your own AI provider. Your campaign data is yours - we never sell it nor anything that comes from it.
+      </p>
+      <Button
+        href="https://github.com/loreweaver-no"
+        variant="secondary"
+        class="px-8 py-4 rounded-full text-base"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        View on GitHub
+      </Button>
+    </div>
+  </Section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- LATEST POSTS                                -->
+  <!-- ═══════════════════════════════════════════ -->
+  <LatestPosts count={3} />
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- CTA                                         -->
+  <!-- ═══════════════════════════════════════════ -->
+  <Section class="py-24 md:py-32">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="font-display text-3xl md:text-5xl font-bold mb-6">
+        Stop taking notes.<br />
+        <span class="text-primary">Start playing.</span>
+      </h2>
+      <p class="text-muted-foreground text-lg mb-10 max-w-xl mx-auto">
+        Loreweaver is in early development. Subscribe to get updates when things ship.
+      </p>
+      <NewsletterSignup lang={lang} variant="hero" />
+      <p class="mt-8">
+        <a
+          href="https://github.com/loreweaver-no"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          View on GitHub
+        </a>
+      </p>
+    </div>
+  </Section>
+
+<style>
+  .hero-content {
+    animation: fadeUp 0.8s ease-out forwards;
+  }
+
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+</style>

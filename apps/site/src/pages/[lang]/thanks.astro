@@ -1,8 +1,12 @@
 ---
 import UntranslatedLayout from '~/layouts/UntranslatedLayout.astro';
 import Button from '~/components/ui/Button.astro';
-import { defaultLang } from '~/i18n/ui';
+import { languages, defaultLang } from '~/i18n/ui';
 import { Mail } from 'lucide-react';
+
+export async function getStaticPaths() {
+  return Object.keys(languages).map((lang) => ({ params: { lang } }));
+}
 ---
 
 <UntranslatedLayout title="Check Your Inbox - Loreweaver" description="Confirm your newsletter subscription.">

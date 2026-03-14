@@ -1,6 +1,13 @@
 ---
 import UntranslatedLayout from '~/layouts/UntranslatedLayout.astro';
 import { siteConfig } from '~/site.config';
+import { languages } from '~/i18n/ui';
+
+export async function getStaticPaths() {
+  return Object.keys(languages).map((lang) => ({ params: { lang } }));
+}
+
+const { lang } = Astro.params;
 ---
 
 <UntranslatedLayout title="Privacy Policy - Loreweaver" description="How Loreweaver handles your data.">
@@ -83,7 +90,7 @@ import { siteConfig } from '~/site.config';
                 <p>
                     We use a small number of service providers to run Loreweaver. All of them process data
                     within the EU/EEA. A current list is available at
-                    <a href="/sub-processors" class="text-primary hover:underline">Sub-processors</a>.
+                    <a href={`/${lang}/sub-processors`} class="text-primary hover:underline">Sub-processors</a>.
                 </p>
 
                 <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">6. Cookies & Analytics</h2>

@@ -110,6 +110,7 @@ export default defineConfig({
     locales: ["en"],
     routing: {
       prefixDefaultLocale: true,
+      redirectToDefaultLocale: false,
     },
   },
 });

@@ -1,5 +1,12 @@
 ---
-import { defaultLang } from '../i18n/ui';
+import { defaultLang } from '~/i18n/ui';
+import Layout from '~/layouts/Layout.astro';
+import HomePage from '~/components/pages/HomePage.astro';
 ---
 
-<meta http-equiv="refresh" content={`0;url=/${defaultLang}/`} />
+<Layout
+  title="Loreweaver - AI-Assisted Campaign Notebook"
+  description="Capture your tabletop RPG sessions and build a living campaign wiki, automatically. You run the game. Loreweaver takes notes."
+>
+  <HomePage lang={defaultLang} />
+</Layout>
