@@ -1,277 +1,79 @@
 """Loreweaver cloud infrastructure.
 
-Provisions Hetzner Cloud VPS with Floating IP, Volume,
-and Scaleway Container Registry for image storage.
+Provisions:
+  - Coolify server on Hetzner (Phase 1, production)
+  - k3s cluster on Hetzner (Phase 2, preview)
+  - Scaleway Container Registry + Secrets Manager
 
-NOTE: cloud-init currently installs Coolify. This will be replaced with k3s
-installation during Phase 2 of the k3s migration plan.
-See docs/plans/2026-03-12-deployment-strategy.md.
-
-Resources (14):
-  1a. SshKey (personal) — Desktop SSH key for daily access
-  1b. SshKey (deploy)   — Break-glass key, private key in Scaleway SM
-  2. FloatingIp         — IPv4 in fsn1 (zero-downtime server replacement)
-  3. Volume             — 10GB ext4 for persistent data (/data)
-  4. Firewall           — Inbound TCP 22/80/443 + ICMP
-  5. Server             — CX23 (x86) with cloud-init (fstab, loopback IP, Coolify → k3s)
-  6. FloatingIpAssignment — Links Floating IP → Server
-  7. VolumeAttachment   — Links Volume → Server (no automount)
-  8. RegistryNamespace  — Scaleway Container Registry (private, fr-par)
-  9. Secret (deploy-ssh-key)       — Empty shell for deploy SSH private key
- 10. Secret (coolify-api-token)    — TODO(k3s-migration): Remove, replaced by k3s-kubeconfig
- 11. Secret (coolify-site-webhook) — TODO(k3s-migration): Remove, no longer needed
- 12. Secret (bunny-api-key)        — bunny.net API key for DNS-01 ACME
-
-Dependency graph (no cycles):
-  FloatingIp ──→ Server ←── Volume    (cloud-init reads ip_address / linux_device)
-  SshKeys ───────→ Server ←── Firewall
-  FloatingIp + Server ──→ FloatingIpAssignment
-  Volume + Server ──→ VolumeAttachment
+See cloud.py for Coolify-era Hetzner + Scaleway resources.
+See k3s_cluster.py for the K3sCluster ComponentResource.
+See config.py for shared constants.
 """
 
 import pulumi
-import pulumi_hcloud as hcloud
-import pulumiverse_scaleway as scaleway
+
+import cloud as loreweaver_cloud
+
+# import config as loreweaver_config
+# from k3s_cluster import K3sCluster
+# from k8s import create_k8s_resources
 
 # ---------------------------------------------------------------------------
-# Config
+# k3s cluster (Phase 2: preview subdomain)
+# Uncomment after Scaleway SM secrets are populated (Phase B).
 # ---------------------------------------------------------------------------
-config = pulumi.Config()
-personal_ssh_key = config.require("personal-ssh-public-key")
-deploy_ssh_key = config.require("deploy-ssh-public-key")
-
-LOCATION = "hel1"
-SERVER_TYPE = "cx23"
-IMAGE = "ubuntu-24.04"
-LABELS = {"project": "loreweaver", "managed-by": "pulumi"}
-
-
-# ---------------------------------------------------------------------------
-# 1. SSH Keys (both registered — personal for desktop, deploy for break-glass)
-# ---------------------------------------------------------------------------
-personal_key = hcloud.SshKey(
-    "personal-ssh-key",
-    name="loreweaver-personal",
-    public_key=personal_ssh_key,
-    labels=LABELS,
-)
-
-deploy_key = hcloud.SshKey(
-    "deploy-ssh-key",
-    name="loreweaver-deploy",
-    public_key=deploy_ssh_key,
-    labels=LABELS,
-)
+# k3s = K3sCluster(
+#     "k3s",
+#     location=loreweaver_config.LOCATION,
+#     server_type=loreweaver_config.SERVER_TYPE,
+#     image=loreweaver_config.IMAGE,
+#     ssh_keys=[loreweaver_cloud.personal_key.name, loreweaver_cloud.deploy_key.name],
+#     firewall_id=loreweaver_cloud.firewall.id.apply(int),
+#     deploy_private_key=loreweaver_config.read_secret("loreweaver-deploy-ssh-key"),
+#     labels=loreweaver_config.LABELS,
+#     extra_tls_sans=[loreweaver_cloud.coolify_floating_ip.ip_address],
+# )
 
 # ---------------------------------------------------------------------------
-# 2. Floating IP (location only — no server_id, avoids circular dep)
+# Kubernetes resources on the k3s cluster
+# Uncomment after Scaleway SM secrets are populated (Phase B).
 # ---------------------------------------------------------------------------
-floating_ip = hcloud.FloatingIp(
-    "floating-ip",
-    type="ipv4",
-    home_location=LOCATION,
-    description="Loreweaver production IP",
-    labels=LABELS,
-)
-
-# ---------------------------------------------------------------------------
-# 3. Volume (location only — no server_id, avoids circular dep)
-# ---------------------------------------------------------------------------
-volume = hcloud.Volume(
-    "data-volume",
-    name="loreweaver-data",
-    size=10,
-    location=LOCATION,
-    format="ext4",
-    delete_protection=True,
-    labels=LABELS,
-)
-
-# ---------------------------------------------------------------------------
-# 4. Firewall
-# ---------------------------------------------------------------------------
-firewall = hcloud.Firewall(
-    "firewall",
-    name="loreweaver-fw",
-    rules=[
-        hcloud.FirewallRuleArgs(
-            direction="in",
-            protocol="icmp",
-            source_ips=["0.0.0.0/0", "::/0"],
-            description="Allow ping",
-        ),
-        hcloud.FirewallRuleArgs(
-            direction="in",
-            protocol="tcp",
-            port="22",
-            source_ips=["0.0.0.0/0", "::/0"],
-            description="Allow SSH",
-        ),
-        hcloud.FirewallRuleArgs(
-            direction="in",
-            protocol="tcp",
-            port="80",
-            source_ips=["0.0.0.0/0", "::/0"],
-            description="Allow HTTP",
-        ),
-        hcloud.FirewallRuleArgs(
-            direction="in",
-            protocol="tcp",
-            port="443",
-            source_ips=["0.0.0.0/0", "::/0"],
-            description="Allow HTTPS",
-        ),
-    ],
-    labels=LABELS,
-)
-
-
-# ---------------------------------------------------------------------------
-# 5. Server (cloud-init interpolates Floating IP + Volume device)
-#
-# TODO(k3s-migration): Replace Docker + Coolify install with k3s install: # noqa: FIX002, TD003
-#   curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="..." sh -
-#   (--data-dir /data/k3s --tls-san <fip> --node-external-ip <fip>)
-# See docs/plans/2026-03-12-deployment-strategy.md
-# ---------------------------------------------------------------------------
-cloud_init = pulumi.Output.format(
-    """\
-#cloud-config
-package_update: true
-package_upgrade: true
-apt:
-  conf: |
-    APT::Get::Assume-Yes "true";
-    DPkg::Options:: "--force-confdef";
-    DPkg::Options:: "--force-confold";
-write_files:
-  - path: /etc/network/interfaces.d/60-floating-ip.cfg
-    content: |
-      auto lo:1
-      iface lo:1 inet static
-        address {0}
-        netmask 255.255.255.255
-  - path: /etc/fstab
-    append: true
-    content: "{1} /data ext4 defaults,nofail 0 2"
-  # Ubuntu 24.04 ships Docker 27.0.3 which has a broken IPv6 parser
-  # that prevents Coolify's proxy from starting. Install from the
-  # official repo first to get a working version.
-  # https://github.com/coollabsio/coolify/issues/8649#issuecomment-3997077565
-  - path: /opt/install-docker.sh
-    permissions: "0755"
-    content: |
-      #!/bin/bash
-      export DEBIAN_FRONTEND=noninteractive
-      curl -fsSL https://get.docker.com | sh
-  - path: /opt/install-coolify.sh
-    permissions: "0755"
-    content: |
-      #!/bin/bash
-      export DEBIAN_FRONTEND=noninteractive
-      curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
-runcmd:
-  - ip addr add {0}/32 dev lo
-  - mkdir -p /data
-  - mount /data || true
-  - mkdir -p /data/campaigns /data/previews
-  - /opt/install-docker.sh
-  - /opt/install-coolify.sh
-""",
-    floating_ip.ip_address,
-    volume.linux_device,
-)
-
-server = hcloud.Server(
-    "server",
-    name="loreweaver",
-    server_type=SERVER_TYPE,
-    image=IMAGE,
-    location=LOCATION,
-    ssh_keys=[personal_key.name, deploy_key.name],
-    firewall_ids=[firewall.id.apply(int)],
-    user_data=cloud_init,
-    labels=LABELS,
-)
-
-# ---------------------------------------------------------------------------
-# 6. Floating IP Assignment (links floating_ip → server)
-# ---------------------------------------------------------------------------
-_ = hcloud.FloatingIpAssignment(
-    "floating-ip-assignment",
-    floating_ip_id=floating_ip.id.apply(int),
-    server_id=server.id.apply(int),
-)
-
-# ---------------------------------------------------------------------------
-# 7. Volume Attachment (links volume → server, no automount)
-# ---------------------------------------------------------------------------
-_ = hcloud.VolumeAttachment(
-    "volume-attachment",
-    volume_id=volume.id.apply(int),
-    server_id=server.id.apply(int),
-    automount=False,
-)
-
-# ---------------------------------------------------------------------------
-# 8. Scaleway Container Registry
-# ---------------------------------------------------------------------------
-registry = scaleway.registry.Namespace(
-    "container-registry",
-    name="loreweaver",
-    description="Loreweaver container images",
-    is_public=False,
-    region="fr-par",
-)
-
-# ---------------------------------------------------------------------------
-# 9. Scaleway Secret (empty container for deploy SSH private key)
-#    Pulumi owns the resource; you fill it manually. See CLAUDE.md.
-# ---------------------------------------------------------------------------
-deploy_ssh_secret = scaleway.secrets.Secret(
-    "deploy-ssh-secret",
-    name="loreweaver-deploy-ssh-key",
-    description="Break-glass SSH private key for server access",
-    region="fr-par",
-    protected=True,
-)
-
-# ---------------------------------------------------------------------------
-# 10-12. Scaleway Secrets (deploy pipeline)
-#    Pulumi owns the resources; you fill them manually. See CLAUDE.md.
-# TODO(k3s-migration): Remove coolify secrets, add k3s-kubeconfig secret # noqa:FIX002, TD003
-# ---------------------------------------------------------------------------
-coolify_api_token_secret = scaleway.secrets.Secret(
-    "coolify-api-token-secret",
-    name="coolify-api-token",
-    description="Coolify API bearer token for deploy webhook auth",
-    region="fr-par",
-)
-
-coolify_site_webhook_secret = scaleway.secrets.Secret(
-    "coolify-site-webhook-secret",
-    name="coolify-site-webhook",
-    description="Coolify deploy webhook URL for the site resource",
-    region="fr-par",
-)
-
-bunny_api_key_secret = scaleway.secrets.Secret(
-    "bunny-api-key-secret",
-    name="bunny-api-key",
-    description="bunny.net API key for Traefik DNS-01 ACME challenges",
-    region="fr-par",
-)
+# create_k8s_resources(
+#     kubeconfig=k3s.kubeconfig,
+#     registry_endpoint=loreweaver_cloud.registry.endpoint,
+#     registry_login=loreweaver_config.read_secret("scaleway-registry-login"),
+#     registry_password=loreweaver_config.read_secret("scaleway-registry-password"),
+#     bunny_api_key=loreweaver_config.read_secret("bunny-api-key"),
+#     acme_email=loreweaver_config.config.require("acme-email"),
+# )
 
 # ---------------------------------------------------------------------------
 # Exports
 # ---------------------------------------------------------------------------
-pulumi.export("floating_ip", floating_ip.ip_address)
-pulumi.export("server_ip", server.ipv4_address)
-pulumi.export("server_id", server.id)
-pulumi.export("volume_id", volume.id)
-pulumi.export("volume_linux_device", volume.linux_device)
-pulumi.export("registry_endpoint", registry.endpoint)
-pulumi.export("deploy_ssh_secret_id", deploy_ssh_secret.id)
-pulumi.export("coolify_api_token_secret_id", coolify_api_token_secret.id)
-pulumi.export("coolify_site_webhook_secret_id", coolify_site_webhook_secret.id)
-pulumi.export("bunny_api_key_secret_id", bunny_api_key_secret.id)
+# Coolify (Phase 1)
+pulumi.export("floating_ip", loreweaver_cloud.coolify_floating_ip.ip_address)
+pulumi.export("server_ip", loreweaver_cloud.coolify_server.ipv4_address)
+pulumi.export("server_id", loreweaver_cloud.coolify_server.id)
+pulumi.export("volume_id", loreweaver_cloud.coolify_volume.id)
+pulumi.export("volume_linux_device", loreweaver_cloud.coolify_volume.linux_device)
+
+# Scaleway
+pulumi.export("registry_endpoint", loreweaver_cloud.registry.endpoint)
+pulumi.export("deploy_ssh_secret_id", loreweaver_cloud.deploy_ssh_secret.id)
+pulumi.export("coolify_api_token_secret_id", loreweaver_cloud.coolify_api_token_secret.id)
+pulumi.export("coolify_site_webhook_secret_id", loreweaver_cloud.coolify_site_webhook_secret.id)
+pulumi.export("bunny_api_key_secret_id", loreweaver_cloud.bunny_api_key_secret.id)
+pulumi.export("k3s_kubeconfig_secret_id", loreweaver_cloud.k3s_kubeconfig_secret.id)
+pulumi.export(
+    "scaleway_registry_login_secret_id",
+    loreweaver_cloud.scaleway_registry_login_secret.id,
+)
+pulumi.export(
+    "scaleway_registry_password_secret_id",
+    loreweaver_cloud.scaleway_registry_password_secret.id,
+)
+
+# k3s (Phase 2) -- uncomment with the k3s block above
+# pulumi.export("k3s_floating_ip", k3s.floating_ip_address)
+# pulumi.export("k3s_server_ip", k3s.server_ip)
+# pulumi.export("k3s_kubeconfig", k3s.kubeconfig)

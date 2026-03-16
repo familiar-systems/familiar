@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.astro
+**/.turbo
+**/.venv
+.git
+infra
+docs
+*.md
+!pnpm-workspace.yaml

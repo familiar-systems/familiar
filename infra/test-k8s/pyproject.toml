@@ -1,0 +1,22 @@
+[project]
+name = "loreweaver-k8s-test"
+version = "0.0.0"
+description = "Local k3d test harness for k8s resources"
+requires-python = ">=3.12"
+dependencies = [
+  "loreweaver-cloud",
+  "pulumi>=3",
+  "pulumi-kubernetes>=4",
+]
+
+[tool.uv.sources]
+loreweaver-cloud = { path = "../pulumi-cloud", editable = true }
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.38.2",
+    "ruff>=0.15.6",
+]
+
+[tool.ruff]
+extend = "../ruff.toml"

@@ -1,0 +1,284 @@
+# name: Deploy Preview
+
+# on:
+#   push:
+#     branches: [main]
+#     paths:
+#       - apps/site/**
+#       - .github/workflows/deploy-preview.yml
+#   pull_request:
+#     types: [opened, synchronize, closed]
+#     paths:
+#       - apps/site/**
+#       - .github/workflows/deploy-preview.yml
+
+# concurrency:
+#   group: deploy-preview-${{ github.event.pull_request.number || 'main' }}
+#   cancel-in-progress: true
+
+# env:
+#   REGISTRY: rg.fr-par.scw.cloud/loreweaver
+#   IMAGE_NAME: site
+#   DO_NOT_TRACK: 1
+#   TURBO_TELEMETRY_DISABLED: 1
+
+# jobs:
+#   build-and-push:
+#     if: github.event.action != 'closed'
+#     runs-on: ubuntu-latest
+#     outputs:
+#       image-tag: ${{ steps.meta.outputs.tag }}
+#     steps:
+#       - uses: actions/checkout@v6
+
+#       - name: Compute image tag
+#         id: meta
+#         run: |
+#           if [ "${{ github.event_name }}" = "pull_request" ]; then
+#             echo "tag=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+#           else
+#             echo "tag=latest" >> "$GITHUB_OUTPUT"
+#           fi
+
+#       - uses: scaleway/action-scw@v0
+#         with:
+#           save-config: true
+#           export-config: true
+#           access-key: ${{ secrets.SCW_ACCESS_KEY }}
+#           secret-key: ${{ secrets.SCW_SECRET_KEY }}
+#           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+#           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+#       - name: Log in to Scaleway Container Registry
+#         run: scw cr login
+
+#       - name: Build and push
+#         run: |
+#           docker build \
+#             -f apps/site/Dockerfile \
+#             --build-arg SITE_URL=https://preview.loreweaver.no \
+#             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }} \
+#             .
+#           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+
+#   deploy-site:
+#     if: github.event_name == 'push'
+#     needs: build-and-push
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v6
+
+#       - uses: scaleway/action-scw@v0
+#         with:
+#           save-config: true
+#           export-config: true
+#           access-key: ${{ secrets.SCW_ACCESS_KEY }}
+#           secret-key: ${{ secrets.SCW_SECRET_KEY }}
+#           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+#           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+#       - uses: ./.github/actions/fetch-scw-secret
+#         id: kubeconfig
+#         with:
+#           secret-name: k3s-kubeconfig
+
+#       - name: Deploy to preview cluster
+#         run: |
+#           echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
+#           kubectl set image deployment/site \
+#             site=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+#             --kubeconfig /tmp/kubeconfig.yaml \
+#             --namespace default
+#           kubectl rollout status deployment/site \
+#             --kubeconfig /tmp/kubeconfig.yaml \
+#             --namespace default \
+#             --timeout=120s
+#           rm /tmp/kubeconfig.yaml
+
+#   deploy-pr-preview:
+#     if: github.event_name == 'pull_request' && github.event.action != 'closed'
+#     needs: build-and-push
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v6
+
+#       - uses: scaleway/action-scw@v0
+#         with:
+#           save-config: true
+#           export-config: true
+#           access-key: ${{ secrets.SCW_ACCESS_KEY }}
+#           secret-key: ${{ secrets.SCW_SECRET_KEY }}
+#           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+#           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+#       - uses: ./.github/actions/fetch-scw-secret
+#         id: kubeconfig
+#         with:
+#           secret-name: k3s-kubeconfig
+
+#       - uses: ./.github/actions/fetch-scw-secret
+#         id: registry-login
+#         with:
+#           secret-name: scaleway-registry-login
+
+#       - uses: ./.github/actions/fetch-scw-secret
+#         id: registry-password
+#         with:
+#           secret-name: scaleway-registry-password
+
+#       - name: Deploy PR preview
+#         env:
+#           KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
+#           PR_NUMBER: ${{ github.event.pull_request.number }}
+#           IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+#           REGISTRY_LOGIN: ${{ steps.registry-login.outputs.value }}
+#           REGISTRY_PASSWORD: ${{ steps.registry-password.outputs.value }}
+#         run: |
+#           echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
+#           export KUBECONFIG=/tmp/kubeconfig.yaml
+#           NS="preview-pr-${PR_NUMBER}"
+
+#           # Create namespace
+#           kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
+
+#           # Copy imagePullSecret into PR namespace
+#           kubectl create secret docker-registry scaleway-registry \
+#             --namespace "$NS" \
+#             --docker-server="${{ env.REGISTRY }}" \
+#             --docker-username="$REGISTRY_LOGIN" \
+#             --docker-password="$REGISTRY_PASSWORD" \
+#             --dry-run=client -o yaml | kubectl apply -f -
+
+#           # Apply deployment, service, ingress
+#           cat <<EOF | kubectl apply -f -
+#           apiVersion: apps/v1
+#           kind: Deployment
+#           metadata:
+#             name: site
+#             namespace: $NS
+#           spec:
+#             replicas: 1
+#             selector:
+#               matchLabels:
+#                 app: site
+#             template:
+#               metadata:
+#                 labels:
+#                   app: site
+#               spec:
+#                 imagePullSecrets:
+#                   - name: scaleway-registry
+#                 containers:
+#                   - name: site
+#                     image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+#                     imagePullPolicy: IfNotPresent
+#                     ports:
+#                       - containerPort: 80
+#                     resources:
+#                       requests:
+#                         cpu: 10m
+#                         memory: 32Mi
+#                       limits:
+#                         memory: 64Mi
+#           ---
+#           apiVersion: v1
+#           kind: Service
+#           metadata:
+#             name: site
+#             namespace: $NS
+#           spec:
+#             selector:
+#               app: site
+#             ports:
+#               - port: 80
+#                 targetPort: 80
+#           ---
+#           apiVersion: networking.k8s.io/v1
+#           kind: Ingress
+#           metadata:
+#             name: site
+#             namespace: $NS
+#             annotations:
+#               traefik.ingress.kubernetes.io/router.entrypoints: websecure
+#           spec:
+#             tls:
+#               - hosts:
+#                   - pr-${PR_NUMBER}.preview.loreweaver.no
+#                 secretName: preview-wildcard-tls
+#             rules:
+#               - host: pr-${PR_NUMBER}.preview.loreweaver.no
+#                 http:
+#                   paths:
+#                     - path: /
+#                       pathType: Prefix
+#                       backend:
+#                         service:
+#                           name: site
+#                           port:
+#                             number: 80
+#           EOF
+
+#           kubectl rollout status deployment/site \
+#             --namespace "$NS" \
+#             --timeout=120s
+
+#           rm /tmp/kubeconfig.yaml
+
+#       - name: Comment PR URL
+#         uses: actions/github-script@v7
+#         with:
+#           script: |
+#             const prNumber = context.payload.pull_request.number;
+#             const url = `https://pr-${prNumber}.preview.loreweaver.no`;
+#             const body = `Preview deployed: ${url}`;
+
+#             // Update or create comment
+#             const { data: comments } = await github.rest.issues.listComments({
+#               owner: context.repo.owner,
+#               repo: context.repo.repo,
+#               issue_number: prNumber,
+#             });
+#             const existing = comments.find(c => c.body.startsWith('Preview deployed:'));
+#             if (existing) {
+#               await github.rest.issues.updateComment({
+#                 owner: context.repo.owner,
+#                 repo: context.repo.repo,
+#                 comment_id: existing.id,
+#                 body,
+#               });
+#             } else {
+#               await github.rest.issues.createComment({
+#                 owner: context.repo.owner,
+#                 repo: context.repo.repo,
+#                 issue_number: prNumber,
+#                 body,
+#               });
+#             }
+
+#   cleanup-pr-preview:
+#     if: github.event_name == 'pull_request' && github.event.action == 'closed'
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v6
+
+#       - uses: scaleway/action-scw@v0
+#         with:
+#           save-config: true
+#           export-config: true
+#           access-key: ${{ secrets.SCW_ACCESS_KEY }}
+#           secret-key: ${{ secrets.SCW_SECRET_KEY }}
+#           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+#           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+#       - uses: ./.github/actions/fetch-scw-secret
+#         id: kubeconfig
+#         with:
+#           secret-name: k3s-kubeconfig
+
+#       - name: Delete PR namespace
+#         run: |
+#           echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
+#           kubectl delete namespace "preview-pr-${{ github.event.pull_request.number }}" \
+#             --kubeconfig /tmp/kubeconfig.yaml \
+#             --ignore-not-found
+#           rm /tmp/kubeconfig.yaml
