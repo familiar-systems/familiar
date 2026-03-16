@@ -7,7 +7,7 @@ Loreweaver is a web application with five workloads that have **different deploy
 1. **Public site** (Astro) — static HTML for the landing page, blog, and public campaign showcase. No server process. Deploy = upload new files. Content changes deploy independently of the app.
 2. **Frontend** (Vite + React SPA) — the authenticated application. Static files served from a CDN or file server. No server process. Deploy = upload new files. Served under `/app/`.
 3. **API layer** (Hono + tRPC) — handles CRUD, interactive AI streaming, and job submission. Stateless, request-response (plus streaming for AI). Needs fast restarts and blue/green deploys.
-4. **Collaboration layer** (Hocuspocus) — holds persistent WebSocket connections for real-time document editing via Yjs CRDTs. Must be a separate process because WebSockets need long-lived connections.
+4. **Collaboration layer** (Hocuspocus) -- holds persistent WebSocket connections for real-time document editing via Yjs CRDTs. Note: the [Hocuspocus Architecture ADR](./2026-03-14-hocuspocus-architecture.md) co-locates Hono and Hocuspocus in the same Node.js process per server, with campaign-pinning eliminating the separate-lifecycle requirement.
 5. **Worker layer** (AI pipeline) — dequeues long-running jobs (audio transcription, entity extraction, journal drafting). A single job may run 10+ minutes. Must survive deploys of the other four layers.
 
 The API layer **enqueues** work; the worker **dequeues and processes** independently. Deploying the API server does not interrupt in-flight AI jobs. Deploying new static files does not affect any server process.
@@ -27,7 +27,7 @@ Loreweaver's content is entirely behind authentication (no SEO), and the centerp
 | API server     | Hono + tRPC                                                 | This document                                                                      |
 | Database       | libSQL (database-per-campaign, Turso Database upgrade path) | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)        |
 | ORM            | Drizzle                                                     | [stack_exploration.md](../discovery/stack/stack_exploration.md)                    |
-| Collaboration  | Hocuspocus (self-hosted Yjs server)                         | [tiptap.md](../discovery/stack/editor/tiptap.md)                                   |
+| Collaboration  | Hocuspocus (self-hosted Yjs server)                         | [tiptap.md](../discovery/stack/editor/tiptap.md), [Hocuspocus ADR](./2026-03-14-hocuspocus-architecture.md) |
 | Job queue      | libSQL-backed polling table                                 | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)        |
 | Repo structure | pnpm monorepo with Turborepo                                | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md) |
 | Public site    | Astro (static site generator)                               | [Public site design](./2026-02-20-public-site-design.md)                           |
@@ -390,10 +390,10 @@ apps/collab/src/
 │   ├── load.ts           # onLoadDocument — load Y.Doc from DB
 │   ├── store.ts          # onStoreDocument — persist Y.Doc to DB
 │   └── change.ts         # onChange — validation, mention extraction trigger
-└── config.ts             # Server configuration (port, Redis for scaling)
+└── config.ts             # Server configuration (port)
 ```
 
-The thinnest app. A Hocuspocus server with 4 lifecycle hooks, each delegating to the packages. The entire app may be ~200 lines of code.
+A Hocuspocus server with 4 lifecycle hooks, each delegating to the packages. The [Hocuspocus Architecture ADR](./2026-03-14-hocuspocus-architecture.md) expands this design: Hono and Hocuspocus run co-located in the same process, with HTTP endpoints for document status and agent writes alongside the WebSocket server. Campaign-pinning eliminates the need for Redis scaling.
 
 **Depends on:** `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/editor`, `@hocuspocus/server`, `yjs`
 
