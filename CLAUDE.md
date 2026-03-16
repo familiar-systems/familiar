@@ -16,6 +16,7 @@ Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It
 - `docs/plans/2026-02-20-templates-as-prototype-pages.md` — Templates are Things, not a separate entity. Categorization via `prototypeId` and tag-relationships.
 - `docs/plans/2026-02-20-public-site-design.md` — Public site (Astro): landing page, blog, public campaign pages. Path-based routing.
 - `docs/plans/2026-03-12-deployment-strategy.md` — Deployment strategy (k3s on Hetzner, phased migration from Coolify, libSQL files on Volume)
+- `docs/plans/2026-03-14-hocuspocus-architecture.md` — Document-centric campaign architecture (Hocuspocus, campaign checkout/checkin, object storage, AI agent as collab participant, scaling model)
 - `docs/discovery/2026-03-09-sqlite-over-postgres-decision.md` — libSQL over PostgreSQL decision (database-per-campaign, Turso Database upgrade path)
 
 ### Not Worth Reading On Startup
@@ -39,7 +40,7 @@ Read the SPA project structure doc before making architectural decisions — it 
 apps/site     — Astro static site (landing page, blog, public campaign pages)
 apps/web      — Vite + React SPA (the app, behind auth, served under /app/)
 apps/api      — Hono + tRPC server (CRUD, interactive AI streaming, job submission)
-apps/collab   — Hocuspocus WebSocket server (real-time collaborative editing via Yjs)
+apps/collab   — Hono + Hocuspocus (HTTP API + WebSocket collaboration, co-located per campaign-pinning architecture)
 apps/worker   — Job consumer (polling libSQL job table) (batch AI: transcription, entity extraction, journal drafting)
 
 packages/domain  — Pure types, zero dependencies. Everything depends on this.
@@ -65,7 +66,7 @@ Each app has a different lifecycle — deploying one must not affect the others:
 1. **site** — Static HTML (CDN/nginx). Public-facing. Content changes deploy independently of the app.
 2. **web** — Static files (CDN/nginx). The authenticated SPA, served under `/app/`.
 3. **api** — Stateless HTTP. Fast restarts, blue/green deploys.
-4. **collab** — Long-lived WebSocket connections. Must not restart on web/api deploys.
+4. **collab** — Hono + Hocuspocus co-located in one process. Campaign-pinning routes all traffic for a campaign to the same server. See [Hocuspocus Architecture ADR](docs/plans/2026-03-14-hocuspocus-architecture.md).
 5. **worker** — Long-running jobs (10+ minutes). Must survive deploys of everything else.
 
 ### AI Architecture
@@ -76,6 +77,8 @@ Two execution paths, same output primitives:
 - **Batch** (apps/worker): SessionIngest pipeline. Long-running, survives deploys.
 
 Both produce **Suggestions** — proposed mutations to the campaign graph. AI never modifies the graph directly; every change requires GM approval. Suggestions are always durable (persisted immediately). Both use the shared `CampaignContext` interface for status-filtered graph retrieval.
+
+The AI agent writes to documents as a Hocuspocus participant (WebSocket for active pages, HTTP/DirectConnection for inactive pages). Document-level proposals use tagged CRDT blocks; graph-level proposals use the suggestion queue.
 
 Tool availability determines AI behavior (no mode toggles): GMs get read+write tools, players get read-only tools.
 
@@ -92,6 +95,7 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 | Database        | libSQL (database-per-campaign), Turso Database upgrade path |
 | ORM             | Drizzle                                                     |
 | Collaboration   | Hocuspocus (Yjs CRDT server)                                |
+| Object Storage  | Hetzner Object Storage (campaign DB source of truth)        |
 | Job queue       | libSQL-backed polling table                                 |
 | Validation      | Zod (at all system boundaries)                              |
 | Testing         | Vitest                                                      |

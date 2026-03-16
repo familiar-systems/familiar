@@ -163,5 +163,5 @@ graph BT
 ## References
 
 - [SPA project structure](./2026-02-14-project-structure-spa-design.md) — the 5-app architecture this design extends
-- [Deployment strategy](./2026-02-18-deployment-strategy.md) — how apps are deployed
+- [Deployment strategy](./2026-03-12-deployment-strategy.md) -- how apps are deployed
 - [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md) — why the core app is an SPA (the reasoning that creates the need for a separate public site)

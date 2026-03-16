@@ -16,7 +16,7 @@ k3s replaces all of this with declarative manifests in git. Everything is code, 
 │                                                      │
 │  Volume /data:                                       │
 │    /data/k3s          ← k3s server state (etcd/SQLite)│
-│    /data/campaigns    ← libsql campaign databases     │
+│    /data/campaigns    ← libsql campaign databases (local cache; source of truth is Object Storage, see Hocuspocus ADR) │
 │    /data/preview      ← PR preview db copies          │
 │                                                      │
 │  Pulumi manages: server, volume, floating IP,        │
@@ -408,7 +408,7 @@ campaign_pvc = k8s.core.v1.PersistentVolumeClaim("campaigns",
 )
 ```
 
-Backups: a CronJob that copies campaign databases to Hetzner Object Storage nightly. Declared in Pulumi, runs as a Kubernetes CronJob — no external cron needed.
+**Note:** The [Hocuspocus Architecture ADR](./2026-03-14-hocuspocus-architecture.md) supersedes this data persistence model. Object Storage is the source of truth for campaign databases, with the Volume serving as a local working cache. Writeback to Object Storage happens every ~30 seconds during active use, not nightly. The PV/PVC definitions above remain relevant (the Volume is the local cache), but the nightly CronJob backup is replaced by continuous writeback.
 
 ---
 

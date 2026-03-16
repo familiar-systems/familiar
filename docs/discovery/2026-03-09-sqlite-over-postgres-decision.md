@@ -129,7 +129,7 @@ The list of contributor emails lives in a version-controlled `contributors.sql` 
 
 **Schema migrations across N databases.** Adding a column to a campaign table requires running the migration against every campaign database. Drizzle can handle this, but the "iterate over all campaign DBs" runner needs to be built. Turso's managed platform automates this via parent→child propagation, but that's not available in the self-hosted path.
 
-**Hocuspocus storage adapter.** Hocuspocus has a PostgreSQL adapter. A SQLite adapter needs to be written or found. This is a one-time cost.
+**Hocuspocus storage adapter.** ~~Hocuspocus has a PostgreSQL adapter. A SQLite adapter needs to be written or found.~~ Resolved: the [Hocuspocus Architecture ADR](../plans/2026-03-14-hocuspocus-architecture.md) stores Y.Doc blobs as a nullable BLOB column in the campaign database, materialized to relational tables via `onStoreDocument`. No separate adapter needed.
 
 **Less mainstream for self-hosters.** "Run PostgreSQL" is universal knowledge. "Your campaigns are SQLite files" is less familiar, though arguably simpler in practice.
 
@@ -139,7 +139,7 @@ The list of contributor emails lives in a version-controlled `contributors.sql` 
 
 **Tier 2 (when Turso Database exits beta):** Swap in Turso Database. Same files, better engine. `BEGIN CONCURRENT` available if needed. No infrastructure changes — only the database driver in `@loreweaver/db` changes.
 
-Both tiers use the same file-on-disk model. The Hetzner Volume, the Object Storage backup scripts, the PR preview copy logic, and the Pulumi infrastructure don't change between tiers.
+Both tiers use the same file-on-disk model. The Hetzner Volume, the PR preview copy logic, and the Pulumi infrastructure don't change between tiers. Note: the [Hocuspocus Architecture ADR](../plans/2026-03-14-hocuspocus-architecture.md) makes Object Storage the source of truth with local disk as a working cache (campaign checkout/checkin lifecycle with ~30-second writeback).
 
 ## Self-hosting story
 
@@ -160,7 +160,7 @@ All containers mount the data directory. No database server to install, configur
 
 ## Open questions
 
-1. **Hocuspocus SQLite storage adapter.** Does one exist, or does it need to be written? The Y.Doc state could live in the platform database or in the campaign database — this affects whether Hocuspocus needs access to one database or many.
+1. ~~**Hocuspocus SQLite storage adapter.** Does one exist, or does it need to be written?~~ Resolved: Y.Doc blobs live as a nullable BLOB column in the campaign database, materialized to relational tables via `onStoreDocument`. No separate adapter needed. See [Hocuspocus Architecture ADR](../plans/2026-03-14-hocuspocus-architecture.md).
 
 2. **Drizzle multi-database ergonomics.** The "resolve campaign ID → get database client → run query" pattern needs a clean abstraction. Turso has a [starter template with Drizzle](https://turso.tech/blog/creating-a-multitenant-saas-service-with-turso-remix-and-drizzle-6205cf47) that demonstrates this for their managed service — the pattern should transfer to local files.
 
