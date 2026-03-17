@@ -1,96 +1,124 @@
-# CLAUDE.md — infra/pulumi-cloud
-
-> **Migration pending:** This infra currently provisions Coolify on the server via cloud-init. It will be updated to provision k3s instead during Phase 2 of the k3s migration. See `docs/plans/2026-03-12-deployment-strategy.md` for the full plan. The documentation below reflects the _current_ (Coolify) state.
+# CLAUDE.md -- infra/pulumi-cloud
 
 ## What This Is
 
 Pulumi Python project for Loreweaver's cloud infrastructure on Hetzner Cloud + Scaleway Container Registry + Scaleway Secrets Manager. State is stored in Scaleway Object Storage, secrets are encrypted with a passphrase from Scaleway Secrets Manager.
 
+Two deployment targets coexist during migration:
+
+- **Coolify server** (Phase 1, production at `loreweaver.no`)
+- **k3s cluster** (Phase 2, preview at `preview.loreweaver.no`)
+
 ## Key Files
 
-- `__main__.py` — Pulumi entrypoint. All 14 infrastructure resources defined here.
-- `Pulumi.yaml` — Project config. Runtime is Python via uv toolchain.
-- `Pulumi.prod.yaml` — Stack config for `prod`. Contains encrypted secrets + SSH public key.
-- `pyproject.toml` — Python dependencies: pulumi, pulumi-hcloud, pulumiverse-scaleway.
-- `scripts/bootstrap.sh` — One-time setup: creates Scaleway bucket + passphrase secret.
-- `scripts/setup.sh` — Per-machine setup: generates `.envrc` from existing Scaleway resources.
+| File                   | Purpose                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `__main__.py`          | Pulumi entrypoint. Wires together modules, declares exports.                                                                   |
+| `config.py`            | Shared constants: `LOCATION`, `SERVER_TYPE`, `IMAGE`, `LABELS`, `config` object.                                               |
+| `cloud.py`             | All Coolify-era Hetzner resources (SSH keys, floating IP, volume, firewall, server) + Scaleway resources (registry, secrets).  |
+| `k3s_cluster.py`       | `K3sCluster` ComponentResource: provisions k3s server with automated kubeconfig extraction via `pulumi-command`.               |
+| `k8s.py`               | Kubernetes resources on the k3s cluster: cert-manager, webhook-bunny, ClusterIssuer, wildcard cert, site deployment + ingress. |
+| `Pulumi.yaml`          | Project config. Runtime is Python via uv toolchain.                                                                            |
+| `Pulumi.prod.yaml`     | Stack config for `prod`. Contains encrypted secrets + SSH public keys.                                                         |
+| `pyproject.toml`       | Python deps: pulumi, pulumi-hcloud, pulumi-command, pulumi-kubernetes, pulumiverse-scaleway.                                   |
+| `scripts/bootstrap.sh` | One-time setup: creates Scaleway bucket + passphrase secret.                                                                   |
+| `scripts/setup.sh`     | Per-machine setup: generates `.envrc` from existing Scaleway resources.                                                        |
 
-## Infrastructure Resources (14)
+## Architecture
 
-| #   | Resource                 | Type                          | Purpose                                    |
-| --- | ------------------------ | ----------------------------- | ------------------------------------------ |
-| 1   | `ssh-key`                | `hcloud.SshKey`               | Personal SSH key for server access         |
-| 2   | `floating-ip`            | `hcloud.FloatingIp`           | Static IPv4 (survives server replacement)  |
-| 3   | `data-volume`            | `hcloud.Volume`               | 10GB ext4, persistent data at `/data`      |
-| 4   | `firewall`               | `hcloud.Firewall`             | Inbound TCP 22/80/443 + ICMP               |
-| 5   | `server`                 | `hcloud.Server`               | CX23 x86, cloud-init provisions everything |
-| 6   | `floating-ip-assignment` | `hcloud.FloatingIpAssignment` | Links Floating IP → Server                 |
-| 7   | `volume-attachment`      | `hcloud.VolumeAttachment`     | Links Volume → Server (no automount)       |
-| 8   | `container-registry`     | `scaleway.registry.Namespace` | Private container registry in fr-par       |
-| 9   | `deploy-ssh-secret`      | `scaleway.secrets.Secret`     | Break-glass SSH private key (empty shell)  |
-| 10  | `coolify-api-token`      | `scaleway.secrets.Secret`     | Coolify API bearer token for deploys       |
-| 11  | `coolify-site-webhook`   | `scaleway.secrets.Secret`     | Coolify deploy webhook URL for site        |
-| 12  | `bunny-api-key`          | `scaleway.secrets.Secret`     | bunny.net API key for DNS-01 ACME          |
+### Coolify (cloud.py) -- Phase 1, production
+
+14 resources: SSH keys, floating IP, volume, firewall, server (cloud-init installs Coolify), assignments, Scaleway registry + 4 secrets. Being removed in Phase 3.
+
+### k3s (k3s_cluster.py + k8s.py) -- Phase 2, preview
+
+`K3sCluster` ComponentResource encapsulates:
+
+- Floating IP (creates its own, or adopts an existing one for Phase 3 cutover)
+- Volume (10GB, `/data/k3s`, `/data/campaigns`, `/data/preview`)
+- Server with k3s cloud-init (`--tls-san` includes both k3s + Coolify floating IPs for Phase 3)
+- Automated kubeconfig extraction via `pulumi-command` (SSH, waits for cloud-init)
+
+`k8s.py` declares all Kubernetes resources using the extracted kubeconfig:
+
+- cert-manager (Jetstack Helm chart, v1.17.2)
+- cert-manager-webhook-bunny (DNS-01 for bunny.net)
+- ClusterIssuer + wildcard Certificate for `*.preview.loreweaver.no`
+- Site Deployment + Service + Ingress
+
+CRDs (ClusterIssuer, Certificate) use `pulumi_kubernetes.apiextensions.CustomResource` -- not `ConfigGroup`, which can't resolve CRD schemas before cert-manager is installed.
+
+**Important:** CRD specs (ClusterIssuer, Certificate) and webhook solver configs are untyped dicts. Always read the upstream docs/source before writing or modifying them:
+
+- cert-manager CRDs: https://cert-manager.io/docs/reference/api-docs/
+- cert-manager-webhook-bunny config schema (Go struct in main.go): https://github.com/davidhidvegi/cert-manager-webhook-bunny
+- cert-manager-webhook-bunny Helm values: `helm show values cert-manager-webhook-bunny --repo https://davidhidvegi.github.io/cert-manager-webhook-bunny/charts/`
+- The webhook's solver `config` block is opaque to cert-manager -- each webhook defines its own schema. Do NOT assume cert-manager conventions (e.g. `apiKeySecretRef`) apply to webhook configs.
 
 ### Three-Resource Dependency Pattern
 
 Volume and Floating IP use a three-resource pattern to avoid circular dependencies:
 
 ```
-FloatingIp (location only) ──→ ip_address ──→ Server (cloud-init configures loopback)
-         │                                          │
-         └──────── FloatingIpAssignment ────────────┘
+FloatingIp (location only) --> ip_address --> Server (cloud-init configures loopback)
+         |                                          |
+         +-------- FloatingIpAssignment ------------+
 
-Volume (location only) ──→ linux_device ──→ Server (cloud-init writes fstab)
-         │                                        │
-         └──────── VolumeAttachment ──────────────┘
-```
-
-On server replacement: Pulumi creates new server (with correct cloud-init), updates Assignment/Attachment to point at it, deletes old server. Zero downtime for Floating IP.
-
-### Cloud-Init Behavior
-
-The server's `user_data` is a cloud-init config that:
-
-1. Writes Floating IP config to `/etc/network/interfaces.d/60-floating-ip.cfg`
-2. Appends Volume fstab entry with `nofail` (boot succeeds even if volume not yet attached)
-3. Adds Floating IP to loopback immediately
-4. Creates `/data/campaigns` and `/data/previews` directories
-5. Installs Coolify (last — longest step)
-
-### Coolify Dashboard Access
-
-Coolify listens on port 8000 but it's not exposed in the firewall. Access via SSH tunnel:
-
-```bash
-ssh -L 8000:localhost:8000 root@<server_ip>
-# Then open http://localhost:8000
+Volume (location only) --> linux_device --> Server (cloud-init writes fstab)
+         |                                        |
+         +-------- VolumeAttachment --------------+
 ```
 
 ## Credentials Architecture
 
+- **Scaleway Secrets Manager** is the single source of truth for all application secrets. Never store secret values in Pulumi config or GitHub Actions secrets.
 - **Scaleway** is the control plane: stores Pulumi state (Object Storage), secrets (Secrets Manager), and container registry.
 - **Hetzner** is the data plane: where infrastructure is provisioned.
 - Scaleway credentials come from `~/.config/scw/config.yaml` (via `scw init`).
 - `.envrc` (generated by `setup.sh`, gitignored) maps Scaleway creds to `AWS_*` env vars for Pulumi's S3 backend and exports `SCW_ACCESS_KEY`/`SCW_SECRET_KEY` for the Scaleway provider.
-- Provider credentials (e.g. `hcloud:token`) are encrypted in `Pulumi.prod.yaml` using the passphrase.
-- `ssh-public-key` is in Pulumi config (not secret — it's a public key).
-- GitHub Actions secrets: `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, `SCW_DEFAULT_ORGANIZATION_ID`, `SCW_DEFAULT_PROJECT_ID`.
+- GitHub Actions secrets: `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, `SCW_DEFAULT_ORGANIZATION_ID`, `SCW_DEFAULT_PROJECT_ID` (provider credentials only).
+
+### How secrets flow
+
+Pulumi reads secrets from Scaleway SM at deploy time via `config.read_secret(name)`, which wraps `pulumiverse_scaleway.secrets.get_version_output()`. GHA reads the same secrets via `.github/actions/fetch-scw-secret/`.
+
+### Required Scaleway SM Secrets
+
+| Secret Name                 | Purpose                                                         |
+| --------------------------- | --------------------------------------------------------------- |
+| `loreweaver-deploy-ssh-key` | SSH private key for `pulumi-command` to extract k3s kubeconfig  |
+| `bunny-api-key`             | bunny.net API key for DNS-01 ACME (deployed as k8s Secret)      |
+| `k3s-kubeconfig`            | k3s kubeconfig for GHA deploys (written by Pulumi, read by GHA) |
+
+Registry auth uses `nologin` + `SCW_SECRET_KEY` directly (no SM secret needed).
+
+### Pulumi Config (non-secret)
+
+| Key                       | Purpose                                                     |
+| ------------------------- | ----------------------------------------------------------- |
+| `hcloud:token`            | Hetzner provider credential (encrypted in Pulumi.prod.yaml) |
+| `acme-email`              | Email for Let's Encrypt registration (not a secret)         |
+| `personal-ssh-public-key` | SSH public key (not a secret)                               |
+| `deploy-ssh-public-key`   | SSH public key (not a secret)                               |
 
 ## Pulumi Exports
 
-| Export                           | Used By                                 |
-| -------------------------------- | --------------------------------------- |
-| `floating_ip`                    | DNS A record (bunny.net)                |
-| `server_ip`                      | Direct SSH access                       |
-| `server_id`                      | Reference                               |
-| `volume_id`                      | Reference                               |
-| `volume_linux_device`            | Reference                               |
-| `registry_endpoint`              | GHA deploy workflow (image push target) |
-| `deploy_ssh_secret_id`           | Reference                               |
-| `coolify_api_token_secret_id`    | CD workflow (Coolify API auth)          |
-| `coolify_site_webhook_secret_id` | CD workflow (deploy trigger)            |
-| `bunny_api_key_secret_id`        | Coolify Traefik DNS-01 config           |
+| Export                           | Used By                                      |
+| -------------------------------- | -------------------------------------------- |
+| `floating_ip`                    | DNS A record for `loreweaver.no` (bunny.net) |
+| `server_ip`                      | Direct SSH access to Coolify server          |
+| `server_id`                      | Reference                                    |
+| `volume_id`                      | Reference                                    |
+| `volume_linux_device`            | Reference                                    |
+| `registry_endpoint`              | GHA deploy workflow (image push target)      |
+| `deploy_ssh_secret_id`           | Reference                                    |
+| `coolify_api_token_secret_id`    | CD workflow (Coolify API auth)               |
+| `coolify_site_webhook_secret_id` | CD workflow (deploy trigger)                 |
+| `bunny_api_key_secret_id`        | Reference                                    |
+| `k3s_kubeconfig_secret_id`       | GHA deploy-preview workflow                  |
+| `k3s_floating_ip`                | DNS A record for `preview.loreweaver.no`     |
+| `k3s_server_ip`                  | Direct SSH access to k3s server              |
+| `k3s_kubeconfig`                 | k8s Provider + GHA workflows                 |
 
 ## Commands
 
@@ -100,18 +128,21 @@ source .envrc
 
 pulumi preview        # Dry-run
 pulumi up             # Apply
-pulumi stack output floating_ip    # Get Floating IP for DNS
-pulumi stack output registry_endpoint  # Get CR endpoint for GHA
+pulumi stack output k3s_floating_ip    # Get k3s IP for DNS
+pulumi stack output k3s_kubeconfig --show-secrets > /tmp/k3s.yaml  # Get kubeconfig
 
-pulumi config set ssh-public-key "ssh-ed25519 AAAA..."  # Set SSH key (not --secret)
 pulumi config set --secret <key> <value>  # Add encrypted config
 ```
+
+## Local k8s Testing
+
+See `../test-k8s/README.md` for a k3d-based smoke test of the Kubernetes resources.
 
 ## Rules
 
 - Never commit `.env`, `.envrc`, or any file containing raw credentials.
-- Provider credentials belong in Pulumi config (`pulumi config set --secret`), not in Scaleway Secrets Manager. Scaleway SM is only for the Pulumi passphrase.
-- The `encryptionsalt` in `Pulumi.prod.yaml` is safe to commit — it's not a secret.
+- All application secrets live in Scaleway Secrets Manager. Only provider credentials (e.g. `hcloud:token`) belong in Pulumi config.
+- The `encryptionsalt` in `Pulumi.prod.yaml` is safe to commit -- it's not a secret.
 - Python: ruff for linting/formatting, basedpyright for type checking. Strict config in `pyproject.toml`.
 - **Lint/format/check command**: `uv run ruff check --fix . && uv run ruff format . && uv run basedpyright` (fix + format + typecheck in one pass).
-- Volume has `delete_protection=True`. Must be disabled before Pulumi can destroy it (intentional friction).
+- Both volumes have `delete_protection=True`. Must be disabled before Pulumi can destroy them (intentional friction).

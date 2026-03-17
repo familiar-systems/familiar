@@ -3,18 +3,26 @@ name = "loreweaver-cloud"
 version = "0.1.0"
 description = "Loreweaver cloud infrastructure"
 requires-python = ">=3.12"
-dependencies = ["pulumi>=3", "pulumi-hcloud>=1", "pulumiverse-scaleway>=1"]
+dependencies = [
+  "pulumi>=3",
+  "pulumi-hcloud>=1",
+  "pulumi-command>=1",
+  "pulumi-kubernetes>=4",
+  "pulumiverse-scaleway>=1",
+]
 
 [dependency-groups]
 dev = ["ruff>=0.11", "basedpyright>=1"]
 
-[tool.ruff]
-line-length = 100
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.ruff.lint]
-select = ["ALL"]
-ignore = [
-  "D", # pydocstyle — no forced docstrings
-  "COM812", # trailing comma (conflicts with formatter)
-  "ISC001", # implicit string concat (conflicts with formatter)
-]
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+exclude = ["__main__.py"]
+# Excluding main is really for cosmetic purposes for test-k8s packaging.
+# We should never use the main harness directly, so we prevent that from happening.
+
+[tool.ruff]
+extend = "../ruff.toml"

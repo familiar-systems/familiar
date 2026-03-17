@@ -3,24 +3,24 @@ name: Infrastructure
 on:
   pull_request:
     branches: [main]
-    paths: [infra/pulumi-cloud/**]
+    paths: [infra/pulumi-cloud/**, infra/test-k8s/**]
   push:
     branches: [main]
-    paths: [infra/pulumi-cloud/**]
+    paths: [infra/pulumi-cloud/**, infra/test-k8s/**]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  WORKING_DIR: infra/pulumi-cloud
-
 jobs:
   lint:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [infra/pulumi-cloud, infra/test-k8s]
     defaults:
       run:
-        working-directory: ${{ env.WORKING_DIR }}
+        working-directory: ${{ matrix.dir }}
     steps:
       - uses: actions/checkout@v6
 
@@ -34,9 +34,12 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [infra/pulumi-cloud, infra/test-k8s]
     defaults:
       run:
-        working-directory: ${{ env.WORKING_DIR }}
+        working-directory: ${{ matrix.dir }}
     steps:
       - uses: actions/checkout@v6
 
@@ -76,7 +79,7 @@ jobs:
           command: preview
           stack-name: prod
           cloud-url: s3://loreweaver-pulumi-state?endpoint=s3.fr-par.scw.cloud&region=fr-par
-          work-dir: ${{ env.WORKING_DIR }}
+          work-dir: infra/pulumi-cloud
           comment-on-pr: true
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
@@ -111,7 +114,7 @@ jobs:
           command: up
           stack-name: prod
           cloud-url: s3://loreweaver-pulumi-state?endpoint=s3.fr-par.scw.cloud&region=fr-par
-          work-dir: ${{ env.WORKING_DIR }}
+          work-dir: infra/pulumi-cloud
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}

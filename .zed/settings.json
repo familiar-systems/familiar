@@ -1,4 +1,7 @@
 {
+  "file_types": {
+    "GitHub Actions": [".github/workflows/*.yml", ".github/workflows/*.yaml"]
+  },
   "lsp": {
     "oxlint": {
       "initialization_options": {
