@@ -1,273 +1,302 @@
-# name: Deploy Preview
+name: Deploy Preview
 
-# on:
-#   push:
-#     branches: [main]
-#     paths:
-#       - apps/site/**
-#       - .github/workflows/deploy-preview.yml
-#   pull_request:
-#     types: [opened, synchronize, closed]
-#     paths:
-#       - apps/site/**
-#       - .github/workflows/deploy-preview.yml
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/site/**
+      - .github/workflows/deploy-preview.yml
+  pull_request:
+    types: [opened, synchronize, closed]
+    paths:
+      - apps/site/**
+      - .github/workflows/deploy-preview.yml
 
-# concurrency:
-#   group: deploy-preview-${{ github.event.pull_request.number || 'main' }}
-#   cancel-in-progress: true
+concurrency:
+  group: deploy-preview-${{ github.event.pull_request.number || 'main' }}
+  cancel-in-progress: true
 
-# env:
-#   REGISTRY: rg.fr-par.scw.cloud/loreweaver
-#   IMAGE_NAME: site
-#   DO_NOT_TRACK: 1
-#   TURBO_TELEMETRY_DISABLED: 1
+env:
+  REGISTRY: rg.fr-par.scw.cloud/loreweaver
+  IMAGE_NAME: site
+  DO_NOT_TRACK: 1
+  TURBO_TELEMETRY_DISABLED: 1
 
-# jobs:
-#   build-and-push:
-#     if: github.event.action != 'closed'
-#     runs-on: ubuntu-latest
-#     outputs:
-#       image-tag: ${{ steps.meta.outputs.tag }}
-#     steps:
-#       - uses: actions/checkout@v6
+jobs:
+  build-and-push:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tag }}
+      sha: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
 
-#       - name: Compute image tag
-#         id: meta
-#         run: |
-#           if [ "${{ github.event_name }}" = "pull_request" ]; then
-#             echo "tag=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-#           else
-#             echo "tag=latest" >> "$GITHUB_OUTPUT"
-#           fi
+      - name: Compute image tags
+        id: meta
+        run: |
+          SHA="${GITHUB_SHA:0:7}"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "tag=pr-${{ github.event.pull_request.number }}/$SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$SHA" >> "$GITHUB_OUTPUT"
+          fi
 
-#       - uses: scaleway/action-scw@v0
-#         with:
-#           save-config: true
-#           export-config: true
-#           access-key: ${{ secrets.SCW_ACCESS_KEY }}
-#           secret-key: ${{ secrets.SCW_SECRET_KEY }}
-#           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
-#           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+      - uses: scaleway/action-scw@v0
+        with:
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
 
-#       - name: Log in to Scaleway Container Registry
-#         run: scw cr login
+      - name: Log in to Scaleway Container Registry
+        run: scw cr login
 
-#       - name: Build and push
-#         run: |
-#           docker build \
-#             -f apps/site/Dockerfile \
-#             --build-arg SITE_URL=https://preview.loreweaver.no \
-#             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }} \
-#             .
-#           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+      - name: Build and push
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          SHA_TAG="${{ steps.meta.outputs.sha }}"
+          FULL_TAG="${{ steps.meta.outputs.tag }}"
 
-#   deploy-site:
-#     if: github.event_name == 'push'
-#     needs: build-and-push
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v6
+          docker build \
+            -f apps/site/Dockerfile \
+            --build-arg SITE_URL=https://preview.loreweaver.no \
+            -t "$IMAGE:$SHA_TAG" \
+            -t "$IMAGE:$FULL_TAG" \
+            .
+          docker push "$IMAGE:$SHA_TAG"
+          docker push "$IMAGE:$FULL_TAG"
 
-#       - uses: scaleway/action-scw@v0
-#         with:
-#           save-config: true
-#           export-config: true
-#           access-key: ${{ secrets.SCW_ACCESS_KEY }}
-#           secret-key: ${{ secrets.SCW_SECRET_KEY }}
-#           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
-#           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+  deploy-site:
+    if: github.event_name == 'push'
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
 
-#       - uses: ./.github/actions/fetch-scw-secret
-#         id: kubeconfig
-#         with:
-#           secret-name: k3s-kubeconfig
+      - uses: scaleway/action-scw@v0
+        with:
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
 
-#       - name: Deploy to preview cluster
-#         run: |
-#           echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
-#           kubectl set image deployment/site \
-#             site=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-#             --kubeconfig /tmp/kubeconfig.yaml \
-#             --namespace default
-#           kubectl rollout status deployment/site \
-#             --kubeconfig /tmp/kubeconfig.yaml \
-#             --namespace default \
-#             --timeout=120s
-#           rm /tmp/kubeconfig.yaml
+      - uses: ./.github/actions/fetch-scw-secret
+        id: kubeconfig
+        with:
+          secret-name: k3s-kubeconfig
 
-#   deploy-pr-preview:
-#     if: github.event_name == 'pull_request' && github.event.action != 'closed'
-#     needs: build-and-push
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v6
+      - name: Deploy to preview cluster
+        run: |
+          echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
+          kubectl set image deployment/site \
+            site=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.sha }} \
+            --kubeconfig /tmp/kubeconfig.yaml \
+            --namespace default
+          kubectl rollout status deployment/site \
+            --kubeconfig /tmp/kubeconfig.yaml \
+            --namespace default \
+            --timeout=120s
+          rm /tmp/kubeconfig.yaml
 
-#       - uses: scaleway/action-scw@v0
-#         with:
-#           save-config: true
-#           export-config: true
-#           access-key: ${{ secrets.SCW_ACCESS_KEY }}
-#           secret-key: ${{ secrets.SCW_SECRET_KEY }}
-#           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
-#           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+  deploy-pr-preview:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
 
-#       - uses: ./.github/actions/fetch-scw-secret
-#         id: kubeconfig
-#         with:
-#           secret-name: k3s-kubeconfig
+      - uses: scaleway/action-scw@v0
+        with:
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
 
-#       - name: Deploy PR preview
-#         env:
-#           KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
-#           PR_NUMBER: ${{ github.event.pull_request.number }}
-#           IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
-#         run: |
-#           echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
-#           export KUBECONFIG=/tmp/kubeconfig.yaml
-#           NS="preview-pr-${PR_NUMBER}"
+      - uses: ./.github/actions/fetch-scw-secret
+        id: kubeconfig
+        with:
+          secret-name: k3s-kubeconfig
 
-#           # Create namespace
-#           kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
+      - name: Deploy PR preview
+        env:
+          KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+        run: |
+          echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
+          export KUBECONFIG=/tmp/kubeconfig.yaml
+          NS="preview-pr-${PR_NUMBER}"
 
-#           # Copy imagePullSecret into PR namespace
-#           # Auth: username is always "nologin", password is SCW_SECRET_KEY
-#           kubectl create secret docker-registry scaleway-registry \
-#             --namespace "$NS" \
-#             --docker-server="${{ env.REGISTRY }}" \
-#             --docker-username="nologin" \
-#             --docker-password="${{ secrets.SCW_SECRET_KEY }}" \
-#             --dry-run=client -o yaml | kubectl apply -f -
+          # Create namespace
+          kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
-#           # Apply deployment, service, ingress
-#           cat <<EOF | kubectl apply -f -
-#           apiVersion: apps/v1
-#           kind: Deployment
-#           metadata:
-#             name: site
-#             namespace: $NS
-#           spec:
-#             replicas: 1
-#             selector:
-#               matchLabels:
-#                 app: site
-#             template:
-#               metadata:
-#                 labels:
-#                   app: site
-#               spec:
-#                 imagePullSecrets:
-#                   - name: scaleway-registry
-#                 containers:
-#                   - name: site
-#                     image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
-#                     imagePullPolicy: IfNotPresent
-#                     ports:
-#                       - containerPort: 80
-#                     resources:
-#                       requests:
-#                         cpu: 10m
-#                         memory: 32Mi
-#                       limits:
-#                         memory: 64Mi
-#           ---
-#           apiVersion: v1
-#           kind: Service
-#           metadata:
-#             name: site
-#             namespace: $NS
-#           spec:
-#             selector:
-#               app: site
-#             ports:
-#               - port: 80
-#                 targetPort: 80
-#           ---
-#           apiVersion: networking.k8s.io/v1
-#           kind: Ingress
-#           metadata:
-#             name: site
-#             namespace: $NS
-#             annotations:
-#               traefik.ingress.kubernetes.io/router.entrypoints: websecure
-#           spec:
-#             tls:
-#               - hosts:
-#                   - pr-${PR_NUMBER}.preview.loreweaver.no
-#                 secretName: preview-wildcard-tls
-#             rules:
-#               - host: pr-${PR_NUMBER}.preview.loreweaver.no
-#                 http:
-#                   paths:
-#                     - path: /
-#                       pathType: Prefix
-#                       backend:
-#                         service:
-#                           name: site
-#                           port:
-#                             number: 80
-#           EOF
+          # Copy imagePullSecret into PR namespace
+          # Auth: username is always "nologin", password is SCW_SECRET_KEY
+          kubectl create secret docker-registry scaleway-registry \
+            --namespace "$NS" \
+            --docker-server="${{ env.REGISTRY }}" \
+            --docker-username="nologin" \
+            --docker-password="${{ secrets.SCW_SECRET_KEY }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
-#           kubectl rollout status deployment/site \
-#             --namespace "$NS" \
-#             --timeout=120s
+          # Apply deployment, service, ingress
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: site
+            namespace: $NS
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: site
+            template:
+              metadata:
+                labels:
+                  app: site
+              spec:
+                imagePullSecrets:
+                  - name: scaleway-registry
+                containers:
+                  - name: site
+                    image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+                    imagePullPolicy: Always
+                    ports:
+                      - containerPort: 80
+                    resources:
+                      requests:
+                        cpu: 10m
+                        memory: 32Mi
+                      limits:
+                        memory: 64Mi
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: site
+            namespace: $NS
+          spec:
+            selector:
+              app: site
+            ports:
+              - port: 80
+                targetPort: 80
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: site
+            namespace: $NS
+            annotations:
+              traefik.ingress.kubernetes.io/router.entrypoints: websecure
+          spec:
+            tls:
+              - hosts:
+                  - pr-${PR_NUMBER}.preview.loreweaver.no
+                secretName: preview-wildcard-tls
+            rules:
+              - host: pr-${PR_NUMBER}.preview.loreweaver.no
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: site
+                          port:
+                            number: 80
+          EOF
 
-#           rm /tmp/kubeconfig.yaml
+          kubectl rollout status deployment/site \
+            --namespace "$NS" \
+            --timeout=120s
 
-#       - name: Comment PR URL
-#         uses: actions/github-script@v7
-#         with:
-#           script: |
-#             const prNumber = context.payload.pull_request.number;
-#             const url = `https://pr-${prNumber}.preview.loreweaver.no`;
-#             const body = `Preview deployed: ${url}`;
+          rm /tmp/kubeconfig.yaml
 
-#             // Update or create comment
-#             const { data: comments } = await github.rest.issues.listComments({
-#               owner: context.repo.owner,
-#               repo: context.repo.repo,
-#               issue_number: prNumber,
-#             });
-#             const existing = comments.find(c => c.body.startsWith('Preview deployed:'));
-#             if (existing) {
-#               await github.rest.issues.updateComment({
-#                 owner: context.repo.owner,
-#                 repo: context.repo.repo,
-#                 comment_id: existing.id,
-#                 body,
-#               });
-#             } else {
-#               await github.rest.issues.createComment({
-#                 owner: context.repo.owner,
-#                 repo: context.repo.repo,
-#                 issue_number: prNumber,
-#                 body,
-#               });
-#             }
+      - name: Comment PR URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const url = `https://pr-${prNumber}.preview.loreweaver.no`;
+            const body = `Preview deployed: ${url}`;
 
-#   cleanup-pr-preview:
-#     if: github.event_name == 'pull_request' && github.event.action == 'closed'
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v6
+            // Update or create comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            const existing = comments.find(c => c.body.startsWith('Preview deployed:'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }
 
-#       - uses: scaleway/action-scw@v0
-#         with:
-#           save-config: true
-#           export-config: true
-#           access-key: ${{ secrets.SCW_ACCESS_KEY }}
-#           secret-key: ${{ secrets.SCW_SECRET_KEY }}
-#           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
-#           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+  cleanup-pr-preview:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
 
-#       - uses: ./.github/actions/fetch-scw-secret
-#         id: kubeconfig
-#         with:
-#           secret-name: k3s-kubeconfig
+      - uses: scaleway/action-scw@v0
+        with:
+          save-config: true
+          export-config: true
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
 
-#       - name: Delete PR namespace
-#         run: |
-#           echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
-#           kubectl delete namespace "preview-pr-${{ github.event.pull_request.number }}" \
-#             --kubeconfig /tmp/kubeconfig.yaml \
-#             --ignore-not-found
-#           rm /tmp/kubeconfig.yaml
+      - uses: ./.github/actions/fetch-scw-secret
+        id: kubeconfig
+        with:
+          secret-name: k3s-kubeconfig
+
+      - name: Delete PR namespace
+        run: |
+          echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
+          kubectl delete namespace "preview-pr-${{ github.event.pull_request.number }}" \
+            --kubeconfig /tmp/kubeconfig.yaml \
+            --ignore-not-found
+          rm /tmp/kubeconfig.yaml
+
+      - name: Clean up PR images from registry
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          PREFIX="pr-${PR_NUMBER}/"
+
+          # Get the image ID for the site image
+          IMAGE_ID="$(scw registry image list name=site -o json | jq -r '.[0].id')"
+          if [ -z "$IMAGE_ID" ] || [ "$IMAGE_ID" = "null" ]; then
+            echo "No site image found in registry, skipping cleanup"
+            exit 0
+          fi
+
+          # List all tags, filter locally for pr-N/* prefix, delete each
+          scw registry tag list image-id="$IMAGE_ID" -o json \
+          | jq -r --arg prefix "$PREFIX" '.[] | select(.name | startswith($prefix)) | .id' \
+          | while read -r TAG_ID; do
+              echo "Deleting tag $TAG_ID"
+              scw registry tag delete "$TAG_ID"
+            done
