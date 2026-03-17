@@ -12,6 +12,10 @@ on:
       - apps/site/**
       - .github/workflows/deploy-preview.yml
 
+permissions:
+  contents: read
+  pull-requests: write
+
 concurrency:
   group: deploy-preview-${{ github.event.pull_request.number || 'main' }}
   cancel-in-progress: true
