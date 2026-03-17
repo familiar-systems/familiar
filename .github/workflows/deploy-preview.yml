@@ -38,7 +38,7 @@ jobs:
           SHA="${GITHUB_SHA:0:7}"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tag=pr-${{ github.event.pull_request.number }}/$SHA" >> "$GITHUB_OUTPUT"
+            echo "tag=pr-${{ github.event.pull_request.number }}-$SHA" >> "$GITHUB_OUTPUT"
           else
             echo "tag=$SHA" >> "$GITHUB_OUTPUT"
           fi
@@ -292,7 +292,7 @@ jobs:
       - name: Clean up PR images from registry
         run: |
           PR_NUMBER="${{ github.event.pull_request.number }}"
-          PREFIX="pr-${PR_NUMBER}/"
+          PREFIX="pr-${PR_NUMBER}-"
 
           # Get the image ID for the site image
           IMAGE_ID="$(scw registry image list name=site -o json | jq -r '.[0].id')"
