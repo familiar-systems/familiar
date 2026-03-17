@@ -3,7 +3,7 @@ line-length = 100
 [lint]
 select = ["ALL"]
 ignore = [
-  "D",      # pydocstyle -- no forced docstrings
+  "D", # pydocstyle -- no forced docstrings
   "COM812", # trailing comma (conflicts with formatter)
   "ISC001", # implicit string concat (conflicts with formatter)
   "PLR0913", # too many arguments -- unavoidable in infra constructors

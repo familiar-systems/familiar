@@ -48,6 +48,7 @@ pulumi up --yes
 ```
 
 All 12 resources should create successfully in ~30 seconds. Expected output:
+
 - cert-manager + webhook-bunny: all pods Running
 - ClusterIssuer: created but `READY=False` (no real DNS)
 - Certificate: created but `READY=False` (no real DNS)

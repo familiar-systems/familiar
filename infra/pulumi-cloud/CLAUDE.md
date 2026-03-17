@@ -5,23 +5,24 @@
 Pulumi Python project for Loreweaver's cloud infrastructure on Hetzner Cloud + Scaleway Container Registry + Scaleway Secrets Manager. State is stored in Scaleway Object Storage, secrets are encrypted with a passphrase from Scaleway Secrets Manager.
 
 Two deployment targets coexist during migration:
+
 - **Coolify server** (Phase 1, production at `loreweaver.no`)
 - **k3s cluster** (Phase 2, preview at `preview.loreweaver.no`)
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `__main__.py` | Pulumi entrypoint. Wires together modules, declares exports. |
-| `config.py` | Shared constants: `LOCATION`, `SERVER_TYPE`, `IMAGE`, `LABELS`, `config` object. |
-| `cloud.py` | All Coolify-era Hetzner resources (SSH keys, floating IP, volume, firewall, server) + Scaleway resources (registry, secrets). |
-| `k3s_cluster.py` | `K3sCluster` ComponentResource: provisions k3s server with automated kubeconfig extraction via `pulumi-command`. |
-| `k8s.py` | Kubernetes resources on the k3s cluster: cert-manager, webhook-bunny, ClusterIssuer, wildcard cert, site deployment + ingress. |
-| `Pulumi.yaml` | Project config. Runtime is Python via uv toolchain. |
-| `Pulumi.prod.yaml` | Stack config for `prod`. Contains encrypted secrets + SSH public keys. |
-| `pyproject.toml` | Python deps: pulumi, pulumi-hcloud, pulumi-command, pulumi-kubernetes, pulumiverse-scaleway. |
-| `scripts/bootstrap.sh` | One-time setup: creates Scaleway bucket + passphrase secret. |
-| `scripts/setup.sh` | Per-machine setup: generates `.envrc` from existing Scaleway resources. |
+| File                   | Purpose                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `__main__.py`          | Pulumi entrypoint. Wires together modules, declares exports.                                                                   |
+| `config.py`            | Shared constants: `LOCATION`, `SERVER_TYPE`, `IMAGE`, `LABELS`, `config` object.                                               |
+| `cloud.py`             | All Coolify-era Hetzner resources (SSH keys, floating IP, volume, firewall, server) + Scaleway resources (registry, secrets).  |
+| `k3s_cluster.py`       | `K3sCluster` ComponentResource: provisions k3s server with automated kubeconfig extraction via `pulumi-command`.               |
+| `k8s.py`               | Kubernetes resources on the k3s cluster: cert-manager, webhook-bunny, ClusterIssuer, wildcard cert, site deployment + ingress. |
+| `Pulumi.yaml`          | Project config. Runtime is Python via uv toolchain.                                                                            |
+| `Pulumi.prod.yaml`     | Stack config for `prod`. Contains encrypted secrets + SSH public keys.                                                         |
+| `pyproject.toml`       | Python deps: pulumi, pulumi-hcloud, pulumi-command, pulumi-kubernetes, pulumiverse-scaleway.                                   |
+| `scripts/bootstrap.sh` | One-time setup: creates Scaleway bucket + passphrase secret.                                                                   |
+| `scripts/setup.sh`     | Per-machine setup: generates `.envrc` from existing Scaleway resources.                                                        |
 
 ## Architecture
 
@@ -32,12 +33,14 @@ Two deployment targets coexist during migration:
 ### k3s (k3s_cluster.py + k8s.py) -- Phase 2, preview
 
 `K3sCluster` ComponentResource encapsulates:
+
 - Floating IP (creates its own, or adopts an existing one for Phase 3 cutover)
 - Volume (10GB, `/data/k3s`, `/data/campaigns`, `/data/preview`)
 - Server with k3s cloud-init (`--tls-san` includes both k3s + Coolify floating IPs for Phase 3)
 - Automated kubeconfig extraction via `pulumi-command` (SSH, waits for cloud-init)
 
 `k8s.py` declares all Kubernetes resources using the extracted kubeconfig:
+
 - cert-manager (Jetstack Helm chart, v1.17.2)
 - cert-manager-webhook-bunny (DNS-01 for bunny.net)
 - ClusterIssuer + wildcard Certificate for `*.preview.loreweaver.no`
@@ -46,6 +49,7 @@ Two deployment targets coexist during migration:
 CRDs (ClusterIssuer, Certificate) use `pulumi_kubernetes.apiextensions.CustomResource` -- not `ConfigGroup`, which can't resolve CRD schemas before cert-manager is installed.
 
 **Important:** CRD specs (ClusterIssuer, Certificate) and webhook solver configs are untyped dicts. Always read the upstream docs/source before writing or modifying them:
+
 - cert-manager CRDs: https://cert-manager.io/docs/reference/api-docs/
 - cert-manager-webhook-bunny config schema (Go struct in main.go): https://github.com/davidhidvegi/cert-manager-webhook-bunny
 - cert-manager-webhook-bunny Helm values: `helm show values cert-manager-webhook-bunny --repo https://davidhidvegi.github.io/cert-manager-webhook-bunny/charts/`
@@ -80,41 +84,41 @@ Pulumi reads secrets from Scaleway SM at deploy time via `config.read_secret(nam
 
 ### Required Scaleway SM Secrets
 
-| Secret Name | Purpose |
-|-------------|---------|
-| `loreweaver-deploy-ssh-key` | SSH private key for `pulumi-command` to extract k3s kubeconfig |
-| `bunny-api-key` | bunny.net API key for DNS-01 ACME (deployed as k8s Secret) |
-| `k3s-kubeconfig` | k3s kubeconfig for GHA deploys (written by Pulumi, read by GHA) |
+| Secret Name                 | Purpose                                                         |
+| --------------------------- | --------------------------------------------------------------- |
+| `loreweaver-deploy-ssh-key` | SSH private key for `pulumi-command` to extract k3s kubeconfig  |
+| `bunny-api-key`             | bunny.net API key for DNS-01 ACME (deployed as k8s Secret)      |
+| `k3s-kubeconfig`            | k3s kubeconfig for GHA deploys (written by Pulumi, read by GHA) |
 
 Registry auth uses `nologin` + `SCW_SECRET_KEY` directly (no SM secret needed).
 
 ### Pulumi Config (non-secret)
 
-| Key | Purpose |
-|-----|---------|
-| `hcloud:token` | Hetzner provider credential (encrypted in Pulumi.prod.yaml) |
-| `acme-email` | Email for Let's Encrypt registration (not a secret) |
-| `personal-ssh-public-key` | SSH public key (not a secret) |
-| `deploy-ssh-public-key` | SSH public key (not a secret) |
+| Key                       | Purpose                                                     |
+| ------------------------- | ----------------------------------------------------------- |
+| `hcloud:token`            | Hetzner provider credential (encrypted in Pulumi.prod.yaml) |
+| `acme-email`              | Email for Let's Encrypt registration (not a secret)         |
+| `personal-ssh-public-key` | SSH public key (not a secret)                               |
+| `deploy-ssh-public-key`   | SSH public key (not a secret)                               |
 
 ## Pulumi Exports
 
-| Export | Used By |
-|--------|---------|
-| `floating_ip` | DNS A record for `loreweaver.no` (bunny.net) |
-| `server_ip` | Direct SSH access to Coolify server |
-| `server_id` | Reference |
-| `volume_id` | Reference |
-| `volume_linux_device` | Reference |
-| `registry_endpoint` | GHA deploy workflow (image push target) |
-| `deploy_ssh_secret_id` | Reference |
-| `coolify_api_token_secret_id` | CD workflow (Coolify API auth) |
-| `coolify_site_webhook_secret_id` | CD workflow (deploy trigger) |
-| `bunny_api_key_secret_id` | Reference |
-| `k3s_kubeconfig_secret_id` | GHA deploy-preview workflow |
-| `k3s_floating_ip` | DNS A record for `preview.loreweaver.no` |
-| `k3s_server_ip` | Direct SSH access to k3s server |
-| `k3s_kubeconfig` | k8s Provider + GHA workflows |
+| Export                           | Used By                                      |
+| -------------------------------- | -------------------------------------------- |
+| `floating_ip`                    | DNS A record for `loreweaver.no` (bunny.net) |
+| `server_ip`                      | Direct SSH access to Coolify server          |
+| `server_id`                      | Reference                                    |
+| `volume_id`                      | Reference                                    |
+| `volume_linux_device`            | Reference                                    |
+| `registry_endpoint`              | GHA deploy workflow (image push target)      |
+| `deploy_ssh_secret_id`           | Reference                                    |
+| `coolify_api_token_secret_id`    | CD workflow (Coolify API auth)               |
+| `coolify_site_webhook_secret_id` | CD workflow (deploy trigger)                 |
+| `bunny_api_key_secret_id`        | Reference                                    |
+| `k3s_kubeconfig_secret_id`       | GHA deploy-preview workflow                  |
+| `k3s_floating_ip`                | DNS A record for `preview.loreweaver.no`     |
+| `k3s_server_ip`                  | Direct SSH access to k3s server              |
+| `k3s_kubeconfig`                 | k8s Provider + GHA workflows                 |
 
 ## Commands
 
