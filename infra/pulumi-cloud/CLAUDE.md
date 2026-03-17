@@ -57,9 +57,9 @@ CRDs (ClusterIssuer, Certificate) use `pulumi_kubernetes.apiextensions.CustomRes
 ### Pulumi Providers
 
 - pulumiverse-scaleway registry: https://www.pulumi.com/registry/packages/scaleway/api-docs/
-  - Secret: https://www.pulumi.com/registry/packages/scaleway/api-docs/secret/
-  - SecretVersion: https://www.pulumi.com/registry/packages/scaleway/api-docs/secretversion/ (`data` field takes RAW payload, not base64)
-  - RegistryNamespace: https://www.pulumi.com/registry/packages/scaleway/api-docs/registrynamespace/
+    - Secret: https://www.pulumi.com/registry/packages/scaleway/api-docs/secret/
+    - SecretVersion: https://www.pulumi.com/registry/packages/scaleway/api-docs/secretversion/ (`data` field takes RAW payload, not base64)
+    - RegistryNamespace: https://www.pulumi.com/registry/packages/scaleway/api-docs/registrynamespace/
 - pulumi-kubernetes: https://www.pulumi.com/registry/packages/kubernetes/api-docs/
 - pulumi-hcloud: https://www.pulumi.com/registry/packages/hcloud/api-docs/
 - pulumi-command: https://www.pulumi.com/registry/packages/command/api-docs/
@@ -67,9 +67,9 @@ CRDs (ClusterIssuer, Certificate) use `pulumi_kubernetes.apiextensions.CustomRes
 ### Scaleway
 
 - CLI reference (`scw`): https://github.com/scaleway/scaleway-cli/blob/master/docs/commands/
-  - `scw registry`: https://github.com/scaleway/scaleway-cli/blob/master/docs/commands/registry.md
-  - `scw secret`: https://github.com/scaleway/scaleway-cli/blob/master/docs/commands/secret.md
-  - CLI `data=` arg for secrets handles base64 internally. Never manually encode before passing.
+    - `scw registry`: https://github.com/scaleway/scaleway-cli/blob/master/docs/commands/registry.md
+    - `scw secret`: https://github.com/scaleway/scaleway-cli/blob/master/docs/commands/secret.md
+    - CLI `data=` arg for secrets handles base64 internally. Never manually encode before passing.
 - Container Registry docs: https://www.scaleway.com/en/docs/containers/container-registry/
 - Secrets Manager docs: https://www.scaleway.com/en/docs/identity-and-access-management/secret-manager/
 
