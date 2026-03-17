@@ -72,9 +72,19 @@ Hanko was chosen over Auth0, Clerk, and other auth providers because it's EU-bas
 
 [Keila](https://www.keila.io) handles marketing emails and newsletters. It's an open-source, EU-based alternative to Mailchimp. Keila is self-hostable but we pay keila.io to never bother with dealing with that ourselves. Email is _hard_.
 
+### Domeneshop
+
+[Domeneshop](https://domene.shop/) is our domain registrar. They're a Norwegian company based in Oslo and the largest provider of `.no` domains. They've been around since 1996 and are ICANN-accredited.
+
 ### bunny.net
 
 [bunny.net](https://bunny.net) provides DNS. They're a Slovenian company. In the future, they'll provide CDN, too.
+
+### Nebius Token Factory
+
+[Nebius Token Factory](https://nebius.com/services/token-factory) handles LLM inference for Loreweaver's AI features (entity extraction, journal drafting, Q&A). Nebius B.V. is a Dutch company with data centers in Finland and France. We use their EU-only endpoints exclusively.
+
+Nebius was chosen for three reasons: zero log retention on inference requests, being an EEA-based neocloud (not a US hyperscaler subsidiary), and running open source models. Your session transcripts and campaign data pass through the LLM for processing but are never stored on their side.
 
 ### mailbox.org
 
