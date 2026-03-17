@@ -41,8 +41,6 @@ import cloud as loreweaver_cloud
 # create_k8s_resources(
 #     kubeconfig=k3s.kubeconfig,
 #     registry_endpoint=loreweaver_cloud.registry.endpoint,
-#     registry_login=loreweaver_config.read_secret("scaleway-registry-login"),
-#     registry_password=loreweaver_config.read_secret("scaleway-registry-password"),
 #     bunny_api_key=loreweaver_config.read_secret("bunny-api-key"),
 #     acme_email=loreweaver_config.config.require("acme-email"),
 # )
@@ -64,14 +62,6 @@ pulumi.export("coolify_api_token_secret_id", loreweaver_cloud.coolify_api_token_
 pulumi.export("coolify_site_webhook_secret_id", loreweaver_cloud.coolify_site_webhook_secret.id)
 pulumi.export("bunny_api_key_secret_id", loreweaver_cloud.bunny_api_key_secret.id)
 pulumi.export("k3s_kubeconfig_secret_id", loreweaver_cloud.k3s_kubeconfig_secret.id)
-pulumi.export(
-    "scaleway_registry_login_secret_id",
-    loreweaver_cloud.scaleway_registry_login_secret.id,
-)
-pulumi.export(
-    "scaleway_registry_password_secret_id",
-    loreweaver_cloud.scaleway_registry_password_secret.id,
-)
 
 # k3s (Phase 2) -- uncomment with the k3s block above
 # pulumi.export("k3s_floating_ip", k3s.floating_ip_address)

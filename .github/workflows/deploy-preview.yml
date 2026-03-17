@@ -116,23 +116,11 @@
 #         with:
 #           secret-name: k3s-kubeconfig
 
-#       - uses: ./.github/actions/fetch-scw-secret
-#         id: registry-login
-#         with:
-#           secret-name: scaleway-registry-login
-
-#       - uses: ./.github/actions/fetch-scw-secret
-#         id: registry-password
-#         with:
-#           secret-name: scaleway-registry-password
-
 #       - name: Deploy PR preview
 #         env:
 #           KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
 #           PR_NUMBER: ${{ github.event.pull_request.number }}
 #           IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
-#           REGISTRY_LOGIN: ${{ steps.registry-login.outputs.value }}
-#           REGISTRY_PASSWORD: ${{ steps.registry-password.outputs.value }}
 #         run: |
 #           echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
 #           export KUBECONFIG=/tmp/kubeconfig.yaml
@@ -142,11 +130,12 @@
 #           kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
 #           # Copy imagePullSecret into PR namespace
+#           # Auth: username is always "nologin", password is SCW_SECRET_KEY
 #           kubectl create secret docker-registry scaleway-registry \
 #             --namespace "$NS" \
 #             --docker-server="${{ env.REGISTRY }}" \
-#             --docker-username="$REGISTRY_LOGIN" \
-#             --docker-password="$REGISTRY_PASSWORD" \
+#             --docker-username="nologin" \
+#             --docker-password="${{ secrets.SCW_SECRET_KEY }}" \
 #             --dry-run=client -o yaml | kubectl apply -f -
 
 #           # Apply deployment, service, ingress

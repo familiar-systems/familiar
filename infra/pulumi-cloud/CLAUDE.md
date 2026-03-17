@@ -78,9 +78,9 @@ Pulumi reads secrets from Scaleway SM at deploy time via `config.read_secret(nam
 |-------------|---------|
 | `loreweaver-deploy-ssh-key` | SSH private key for `pulumi-command` to extract k3s kubeconfig |
 | `bunny-api-key` | bunny.net API key for DNS-01 ACME (deployed as k8s Secret) |
-| `scaleway-registry-login` | Scaleway CR login for imagePullSecret |
-| `scaleway-registry-password` | Scaleway CR password (SCW_SECRET_KEY) for imagePullSecret |
 | `k3s-kubeconfig` | k3s kubeconfig for GHA deploys (written by Pulumi, read by GHA) |
+
+Registry auth uses `nologin` + `SCW_SECRET_KEY` directly (no SM secret needed).
 
 ### Pulumi Config (non-secret)
 
@@ -106,8 +106,6 @@ Pulumi reads secrets from Scaleway SM at deploy time via `config.read_secret(nam
 | `coolify_site_webhook_secret_id` | CD workflow (deploy trigger) |
 | `bunny_api_key_secret_id` | Reference |
 | `k3s_kubeconfig_secret_id` | GHA deploy-preview workflow |
-| `scaleway_registry_login_secret_id` | Reference |
-| `scaleway_registry_password_secret_id` | Reference |
 | `k3s_floating_ip` | DNS A record for `preview.loreweaver.no` |
 | `k3s_server_ip` | Direct SSH access to k3s server |
 | `k3s_kubeconfig` | k8s Provider + GHA workflows |

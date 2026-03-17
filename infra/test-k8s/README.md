@@ -37,8 +37,7 @@ pulumi stack init test
 k3d kubeconfig get loreweaver-test | pulumi config set --secret k3d-kubeconfig --
 pulumi config set --secret bunny-api-key fake-test-key
 pulumi config set acme-email test@example.com
-pulumi config set --secret scaleway-registry-login noop
-pulumi config set --secret scaleway-registry-password noop
+export SCW_SECRET_KEY=noop  # dummy value for imagePullSecret
 ```
 
 ## Run the test

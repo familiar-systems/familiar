@@ -2,17 +2,6 @@
 
 Provisions the Coolify server (Phase 1) and all supporting infrastructure.
 This module will be simplified in Phase 3 when Coolify resources are removed.
-
-Resources:
-  SSH Keys (2)           - Personal + deploy access
-  FloatingIp             - Static IPv4 (zero-downtime server replacement)
-  Volume                 - 10GB ext4 for persistent data (/data)
-  Firewall               - Inbound TCP 22/80/443 + ICMP
-  Server                 - CX23 with cloud-init (Coolify)
-  FloatingIpAssignment   - Links Floating IP -> Server
-  VolumeAttachment       - Links Volume -> Server
-  RegistryNamespace      - Scaleway Container Registry (private, fr-par)
-  Secrets (7)            - See Scaleway SM section below
 """
 
 import pulumi
@@ -242,19 +231,5 @@ k3s_kubeconfig_secret = scaleway.secrets.Secret(
     "k3s-kubeconfig-secret",
     name="k3s-kubeconfig",
     description="k3s cluster kubeconfig for GHA deploys",
-    region="fr-par",
-)
-
-scaleway_registry_login_secret = scaleway.secrets.Secret(
-    "scaleway-registry-login-secret",
-    name="scaleway-registry-login",
-    description="Scaleway Container Registry login for imagePullSecret",
-    region="fr-par",
-)
-
-scaleway_registry_password_secret = scaleway.secrets.Secret(
-    "scaleway-registry-password-secret",
-    name="scaleway-registry-password",
-    description="Scaleway Container Registry password (SCW_SECRET_KEY) for imagePullSecret",
     region="fr-par",
 )

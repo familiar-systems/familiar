@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 
 import pulumi
 import pulumi_kubernetes as k8s
@@ -26,8 +27,6 @@ def create_k8s_resources(
     *,
     kubeconfig: pulumi.Output[str],
     registry_endpoint: pulumi.Output[str],
-    registry_login: pulumi.Input[str],
-    registry_password: pulumi.Input[str],
     bunny_api_key: pulumi.Input[str],
     acme_email: str,
 ) -> None:
@@ -157,15 +156,16 @@ def create_k8s_resources(
     )
 
     # -- Scaleway Container Registry imagePullSecret --------------------------
-    # Docker config JSON for registry auth, used by deployments to pull images.
+    # Auth: username is always "nologin", password is SCW_SECRET_KEY.
+    # See: https://www.scaleway.com/en/docs/container-registry/how-to/connect-docker-cli/
+    scw_secret_key = pulumi.Output.secret(os.environ["SCW_SECRET_KEY"])
     docker_config = pulumi.Output.all(
         endpoint=registry_endpoint,
-        login=pulumi.Output.from_input(registry_login),
-        password=pulumi.Output.from_input(registry_password),
+        password=scw_secret_key,
     ).apply(
         lambda args: _docker_config_json(
             registry=str(args["endpoint"]),  # pyright: ignore[reportAny]
-            username=str(args["login"]),  # pyright: ignore[reportAny]
+            username="nologin",
             password=str(args["password"]),  # pyright: ignore[reportAny]
         )
     )
