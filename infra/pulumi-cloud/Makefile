@@ -38,7 +38,10 @@ rotate-certs: ## Rotate k3s client certs, re-extract kubeconfig, push to Scalewa
 		> $(KUBECONFIG_FILE)
 	scw secret version create $(K3S_KUBECONFIG_SECRET_ID) data=@$(KUBECONFIG_FILE)
 	@echo "Kubeconfig rotated and pushed to Scaleway SM"
-	$(MAKE) kubeconfig
+	kubectl --kubeconfig $(KUBECONFIG_FILE) config rename-context default $(CONTEXT_NAME) 2>/dev/null || true
+	KUBECONFIG=$(HOME)/.kube/config:$(KUBECONFIG_FILE) kubectl config view --flatten > $(HOME)/.kube/config.merged
+	mv $(HOME)/.kube/config.merged $(HOME)/.kube/config
+	@echo "Context '$(CONTEXT_NAME)' merged into ~/.kube/config"
 
 .PHONY: help
 help: ## Show this help
