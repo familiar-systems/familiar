@@ -61,20 +61,21 @@ jobs:
       - name: Log in to Scaleway Container Registry
         run: scw registry login
 
-      - name: Build and push
-        run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          SHA_TAG="${{ steps.meta.outputs.sha }}"
-          FULL_TAG="${{ steps.meta.outputs.tag }}"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
-          docker build \
-            -f apps/site/Dockerfile \
-            --build-arg SITE_URL=https://preview.loreweaver.no \
-            -t "$IMAGE:$SHA_TAG" \
-            -t "$IMAGE:$FULL_TAG" \
-            .
-          docker push "$IMAGE:$SHA_TAG"
-          docker push "$IMAGE:$FULL_TAG"
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/site/Dockerfile
+          push: true
+          build-args: SITE_URL=https://preview.loreweaver.no
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy-site:
     if: github.event_name == 'push'
@@ -233,7 +234,7 @@ jobs:
           rm /tmp/kubeconfig.yaml
 
       - name: Comment PR URL
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const prNumber = context.payload.pull_request.number;
@@ -305,7 +306,7 @@ jobs:
             exit 0
           fi
 
-          # List all tags, filter locally for pr-N/* prefix, delete each
+          # List all tags, filter locally for pr-N- prefix, delete each
           scw registry tag list image-id="$IMAGE_ID" -o json \
           | jq -r --arg prefix "$PREFIX" '.[] | select(.name | startswith($prefix)) | .id' \
           | while read -r TAG_ID; do
