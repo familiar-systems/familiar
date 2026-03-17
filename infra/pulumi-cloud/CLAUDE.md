@@ -48,10 +48,40 @@ Two deployment targets coexist during migration:
 
 CRDs (ClusterIssuer, Certificate) use `pulumi_kubernetes.apiextensions.CustomResource` -- not `ConfigGroup`, which can't resolve CRD schemas before cert-manager is installed.
 
-**Important:** CRD specs (ClusterIssuer, Certificate) and webhook solver configs are untyped dicts. Always read the upstream docs/source before writing or modifying them:
+**Important:** CRD specs (ClusterIssuer, Certificate) and webhook solver configs are untyped dicts. Always read the upstream docs before writing or modifying them (see Reference Documentation section below).
+
+## Reference Documentation
+
+**MANDATORY: Read the relevant docs before writing or modifying any resource. Do not guess at API shapes, field names, or encoding requirements.**
+
+### Pulumi Providers
+
+- pulumiverse-scaleway registry: https://www.pulumi.com/registry/packages/scaleway/api-docs/
+    - Secret: https://www.pulumi.com/registry/packages/scaleway/api-docs/secret/
+    - SecretVersion: https://www.pulumi.com/registry/packages/scaleway/api-docs/secretversion/ (`data` field takes RAW payload, not base64)
+    - RegistryNamespace: https://www.pulumi.com/registry/packages/scaleway/api-docs/registrynamespace/
+- pulumi-kubernetes: https://www.pulumi.com/registry/packages/kubernetes/api-docs/
+- pulumi-hcloud: https://www.pulumi.com/registry/packages/hcloud/api-docs/
+- pulumi-command: https://www.pulumi.com/registry/packages/command/api-docs/
+
+### Scaleway
+
+- CLI reference (`scw`): https://github.com/scaleway/scaleway-cli/blob/master/docs/commands/
+    - `scw registry`: https://github.com/scaleway/scaleway-cli/blob/master/docs/commands/registry.md
+    - `scw secret`: https://github.com/scaleway/scaleway-cli/blob/master/docs/commands/secret.md
+    - CLI `data=` arg for secrets handles base64 internally. Never manually encode before passing.
+- Container Registry docs: https://www.scaleway.com/en/docs/containers/container-registry/
+- Secrets Manager docs: https://www.scaleway.com/en/docs/identity-and-access-management/secret-manager/
+
+### GitHub Actions
+
+- scaleway/action-scw: https://github.com/scaleway/action-scw (accepts `version`, `repo-token` inputs)
+- docker/build-push-action: https://github.com/docker/build-push-action
+
+### Kubernetes / Helm Charts
 
 - cert-manager CRDs: https://cert-manager.io/docs/reference/api-docs/
-- cert-manager-webhook-bunny config schema (Go struct in main.go): https://github.com/davidhidvegi/cert-manager-webhook-bunny
+- cert-manager-webhook-bunny (source + config schema): https://github.com/davidhidvegi/cert-manager-webhook-bunny
 - cert-manager-webhook-bunny Helm values: `helm show values cert-manager-webhook-bunny --repo https://davidhidvegi.github.io/cert-manager-webhook-bunny/charts/`
 - The webhook's solver `config` block is opaque to cert-manager -- each webhook defines its own schema. Do NOT assume cert-manager conventions (e.g. `apiKeySecretRef`) apply to webhook configs.
 

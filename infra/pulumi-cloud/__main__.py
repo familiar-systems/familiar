@@ -11,6 +11,7 @@ See config.py for shared constants.
 """
 
 import pulumi
+import pulumiverse_scaleway as scaleway
 
 import cloud as loreweaver_cloud
 import config as loreweaver_config
@@ -40,6 +41,16 @@ create_k8s_resources(
     registry_endpoint=loreweaver_cloud.registry.endpoint,
     bunny_api_key=loreweaver_config.read_secret("bunny-api-key"),
     acme_email=loreweaver_config.config.require("acme-email"),
+)
+
+# ---------------------------------------------------------------------------
+# Populate k3s kubeconfig into Scaleway Secrets Manager (for GHA deploys)
+# ---------------------------------------------------------------------------
+_k3s_kubeconfig_version = scaleway.secrets.Version(
+    "k3s-kubeconfig-version",
+    secret_id=loreweaver_cloud.k3s_kubeconfig_secret.id,
+    data=k3s.kubeconfig,
+    region="fr-par",
 )
 
 # ---------------------------------------------------------------------------

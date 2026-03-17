@@ -27,5 +27,17 @@ runs:
           exit 1
         fi
         VALUE=$(scw secret version access "$SECRET_ID" revision=latest region=${{ inputs.region }} -o json | jq -r '.data' | base64 -d)
-        echo "::add-mask::${VALUE}"
-        echo "value=${VALUE}" >> "$GITHUB_OUTPUT"
+
+        # ::add-mask:: only works per-line, so mask each line individually
+        # See: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#masking-a-value-in-a-log
+        while IFS= read -r line; do
+          [ -n "$line" ] && echo "::add-mask::$line"
+        done <<< "$VALUE"
+
+        # Multi-line values require heredoc delimiter syntax for GITHUB_OUTPUT
+        # See: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#multiline-strings
+        {
+          echo 'value<<SCWEOF'
+          echo "$VALUE"
+          echo 'SCWEOF'
+        } >> "$GITHUB_OUTPUT"
