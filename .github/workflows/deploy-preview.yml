@@ -55,7 +55,7 @@ jobs:
           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
 
       - name: Log in to Scaleway Container Registry
-        run: scw cr login
+        run: scw registry login
 
       - name: Build and push
         run: |
