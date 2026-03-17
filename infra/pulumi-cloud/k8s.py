@@ -124,7 +124,7 @@ def create_k8s_resources(
         metadata={"name": CLUSTER_ISSUER_NAME},
         spec={
             "acme": {
-                "server": "https://acme-staging-v02.api.letsencrypt.org/directory",
+                "server": "https://acme-v02.api.letsencrypt.org/directory",
                 "email": acme_email,
                 "privateKeySecretRef": {"name": "letsencrypt-dns-account-key"},
                 "solvers": [
