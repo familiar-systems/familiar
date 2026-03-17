@@ -20,7 +20,18 @@ from pulumi_kubernetes.apiextensions import CustomResource
 PREVIEW_DOMAIN = "preview.loreweaver.no"
 CERT_MANAGER_VERSION = "v1.17.2"
 WEBHOOK_BUNNY_VERSION = "1.0.3"
+WEBHOOK_BUNNY_GROUP_NAME = "com.bunny.webhook"
 SITE_IMAGE_TAG = "latest"
+
+# Cross-resource references: these names link resources together.
+CERT_MANAGER_NS = "cert-manager"
+BUNNY_SECRET_NAME = "bunny-api-key"  # noqa: S105
+BUNNY_SECRET_KEY = "api-key"  # noqa: S105
+WILDCARD_CERT_SECRET = "preview-wildcard-tls"  # noqa: S105
+REGISTRY_PULL_SECRET = "scaleway-registry"  # noqa: S105
+CLUSTER_ISSUER_NAME = "letsencrypt-dns"
+SITE_NAME = "site"
+SITE_PORT = 80
 
 
 def create_k8s_resources(
@@ -41,7 +52,7 @@ def create_k8s_resources(
     # -- cert-manager ---------------------------------------------------------
     cert_manager_ns = k8s.core.v1.Namespace(
         "cert-manager-ns",
-        metadata=k8s.meta.v1.ObjectMetaArgs(name="cert-manager"),
+        metadata=k8s.meta.v1.ObjectMetaArgs(name=CERT_MANAGER_NS),
         opts=k8s_opts,
     )
 
@@ -49,7 +60,7 @@ def create_k8s_resources(
         "cert-manager",
         chart="cert-manager",
         version=CERT_MANAGER_VERSION,
-        namespace="cert-manager",
+        namespace=CERT_MANAGER_NS,
         repository_opts=k8s.helm.v3.RepositoryOptsArgs(
             repo="https://charts.jetstack.io",
         ),
@@ -63,11 +74,11 @@ def create_k8s_resources(
     bunny_secret = k8s.core.v1.Secret(
         "bunny-api-key-secret",
         metadata=k8s.meta.v1.ObjectMetaArgs(
-            name="bunny-api-key",
-            namespace="cert-manager",
+            name=BUNNY_SECRET_NAME,
+            namespace=CERT_MANAGER_NS,
         ),
         type="Opaque",
-        string_data={"api-key": bunny_api_key},
+        string_data={BUNNY_SECRET_KEY: bunny_api_key},
         opts=pulumi.ResourceOptions(
             provider=provider,
             depends_on=[cert_manager_ns],
@@ -75,19 +86,27 @@ def create_k8s_resources(
     )
 
     # -- cert-manager-webhook-bunny -------------------------------------------
+    # The webhook needs to know the cert-manager SA name for RBAC.
+    # Pulumi suffixes Helm release names, so the SA isn't just "cert-manager".
+    cert_manager_sa = cert_manager.status.apply(lambda s: str(s.name) if s else "cert-manager")
+
     webhook_bunny = k8s.helm.v3.Release(
         "cert-manager-webhook-bunny",
         chart="cert-manager-webhook-bunny",
         version=WEBHOOK_BUNNY_VERSION,
-        namespace="cert-manager",
+        namespace=CERT_MANAGER_NS,
         repository_opts=k8s.helm.v3.RepositoryOptsArgs(
             repo="https://davidhidvegi.github.io/cert-manager-webhook-bunny/charts/",
         ),
         values={
+            "groupName": WEBHOOK_BUNNY_GROUP_NAME,
+            "certManager": {
+                "serviceAccountName": cert_manager_sa,
+            },
             "bunny": {
                 "apiKeySecretRef": {
-                    "name": "bunny-api-key",
-                    "key": "api-key",
+                    "name": BUNNY_SECRET_NAME,
+                    "key": BUNNY_SECRET_KEY,
                 },
             },
         },
@@ -102,7 +121,7 @@ def create_k8s_resources(
         "letsencrypt-dns",
         api_version="cert-manager.io/v1",
         kind="ClusterIssuer",
-        metadata={"name": "letsencrypt-dns"},
+        metadata={"name": CLUSTER_ISSUER_NAME},
         spec={
             "acme": {
                 "server": "https://acme-staging-v02.api.letsencrypt.org/directory",
@@ -112,13 +131,11 @@ def create_k8s_resources(
                     {
                         "dns01": {
                             "webhook": {
-                                "groupName": "acme.bunny.net",
+                                "groupName": WEBHOOK_BUNNY_GROUP_NAME,
                                 "solverName": "bunny",
                                 "config": {
-                                    "apiKeySecretRef": {
-                                        "name": "bunny-api-key",
-                                        "key": "api-key",
-                                    },
+                                    "secretRef": BUNNY_SECRET_NAME,
+                                    "secretNamespace": CERT_MANAGER_NS,
                                 },
                             },
                         },
@@ -137,11 +154,11 @@ def create_k8s_resources(
         "preview-wildcard-cert",
         api_version="cert-manager.io/v1",
         kind="Certificate",
-        metadata={"name": "preview-wildcard-tls", "namespace": "default"},
+        metadata={"name": WILDCARD_CERT_SECRET, "namespace": "default"},
         spec={
-            "secretName": "preview-wildcard-tls",
+            "secretName": WILDCARD_CERT_SECRET,
             "issuerRef": {
-                "name": "letsencrypt-dns",
+                "name": CLUSTER_ISSUER_NAME,
                 "kind": "ClusterIssuer",
             },
             "dnsNames": [
@@ -173,7 +190,7 @@ def create_k8s_resources(
     image_pull_secret = k8s.core.v1.Secret(
         "registry-pull-secret",
         metadata=k8s.meta.v1.ObjectMetaArgs(
-            name="scaleway-registry",
+            name=REGISTRY_PULL_SECRET,
             namespace="default",
         ),
         type="kubernetes.io/dockerconfigjson",
@@ -182,14 +199,14 @@ def create_k8s_resources(
     )
 
     # -- Site Deployment + Service + Ingress ----------------------------------
-    site_labels = {"app": "site"}
+    site_labels = {"app": SITE_NAME}
 
-    site_image = registry_endpoint.apply(lambda ep: f"{ep}/site:{SITE_IMAGE_TAG}")
+    site_image = registry_endpoint.apply(lambda ep: f"{ep}/{SITE_NAME}:{SITE_IMAGE_TAG}")
 
     _site_deployment = k8s.apps.v1.Deployment(
         "site-deployment",
         metadata=k8s.meta.v1.ObjectMetaArgs(
-            name="site",
+            name=SITE_NAME,
             namespace="default",
         ),
         spec=k8s.apps.v1.DeploymentSpecArgs(
@@ -199,14 +216,14 @@ def create_k8s_resources(
                 metadata=k8s.meta.v1.ObjectMetaArgs(labels=site_labels),
                 spec=k8s.core.v1.PodSpecArgs(
                     image_pull_secrets=[
-                        k8s.core.v1.LocalObjectReferenceArgs(name="scaleway-registry"),
+                        k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
                     ],
                     containers=[
                         k8s.core.v1.ContainerArgs(
-                            name="site",
+                            name=SITE_NAME,
                             image=site_image,
                             image_pull_policy="IfNotPresent",
-                            ports=[k8s.core.v1.ContainerPortArgs(container_port=80)],
+                            ports=[k8s.core.v1.ContainerPortArgs(container_port=SITE_PORT)],
                             resources=k8s.core.v1.ResourceRequirementsArgs(
                                 requests={"cpu": "10m", "memory": "32Mi"},
                                 limits={"memory": "64Mi"},
@@ -222,15 +239,15 @@ def create_k8s_resources(
     _site_service = k8s.core.v1.Service(
         "site-service",
         metadata=k8s.meta.v1.ObjectMetaArgs(
-            name="site",
+            name=SITE_NAME,
             namespace="default",
         ),
         spec=k8s.core.v1.ServiceSpecArgs(
             selector=site_labels,
             ports=[
                 k8s.core.v1.ServicePortArgs(
-                    port=80,
-                    target_port=80,
+                    port=SITE_PORT,
+                    target_port=SITE_PORT,
                 ),
             ],
         ),
@@ -240,7 +257,7 @@ def create_k8s_resources(
     _site_ingress = k8s.networking.v1.Ingress(
         "site-ingress",
         metadata=k8s.meta.v1.ObjectMetaArgs(
-            name="site",
+            name=SITE_NAME,
             namespace="default",
             annotations={
                 "traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
@@ -250,7 +267,7 @@ def create_k8s_resources(
             tls=[
                 k8s.networking.v1.IngressTLSArgs(
                     hosts=[PREVIEW_DOMAIN],
-                    secret_name="preview-wildcard-tls",  # noqa: S106
+                    secret_name=WILDCARD_CERT_SECRET,
                 ),
             ],
             rules=[
@@ -263,9 +280,9 @@ def create_k8s_resources(
                                 path_type="Prefix",
                                 backend=k8s.networking.v1.IngressBackendArgs(
                                     service=k8s.networking.v1.IngressServiceBackendArgs(
-                                        name="site",
+                                        name=SITE_NAME,
                                         port=k8s.networking.v1.ServiceBackendPortArgs(
-                                            number=80,
+                                            number=SITE_PORT,
                                         ),
                                     ),
                                 ),

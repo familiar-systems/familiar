@@ -45,6 +45,12 @@ Two deployment targets coexist during migration:
 
 CRDs (ClusterIssuer, Certificate) use `pulumi_kubernetes.apiextensions.CustomResource` -- not `ConfigGroup`, which can't resolve CRD schemas before cert-manager is installed.
 
+**Important:** CRD specs (ClusterIssuer, Certificate) and webhook solver configs are untyped dicts. Always read the upstream docs/source before writing or modifying them:
+- cert-manager CRDs: https://cert-manager.io/docs/reference/api-docs/
+- cert-manager-webhook-bunny config schema (Go struct in main.go): https://github.com/davidhidvegi/cert-manager-webhook-bunny
+- cert-manager-webhook-bunny Helm values: `helm show values cert-manager-webhook-bunny --repo https://davidhidvegi.github.io/cert-manager-webhook-bunny/charts/`
+- The webhook's solver `config` block is opaque to cert-manager -- each webhook defines its own schema. Do NOT assume cert-manager conventions (e.g. `apiKeySecretRef`) apply to webhook configs.
+
 ### Three-Resource Dependency Pattern
 
 Volume and Floating IP use a three-resource pattern to avoid circular dependencies:
