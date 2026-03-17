@@ -1,11 +1,6 @@
 name: Deploy Preview
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - apps/site/**
-      - .github/workflows/deploy-preview.yml
   pull_request:
     types: [opened, synchronize, closed]
     paths:
@@ -17,7 +12,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: deploy-preview-${{ github.event.pull_request.number || 'main' }}
+  group: deploy-preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
@@ -31,8 +26,7 @@ jobs:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     outputs:
-      image-tag: ${{ steps.meta.outputs.tag }}
-      sha: ${{ steps.meta.outputs.sha }}
+      image: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@v6
 
@@ -40,12 +34,7 @@ jobs:
         id: meta
         run: |
           SHA="${GITHUB_SHA:0:7}"
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "tag=pr-${{ github.event.pull_request.number }}-$SHA" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=$SHA" >> "$GITHUB_OUTPUT"
-          fi
+          echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}-$SHA" >> "$GITHUB_OUTPUT"
 
       - uses: scaleway/action-scw@v0
         with:
@@ -70,46 +59,9 @@ jobs:
           file: apps/site/Dockerfile
           push: true
           build-args: SITE_URL=https://preview.loreweaver.no
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  deploy-site:
-    if: github.event_name == 'push'
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: scaleway/action-scw@v0
-        with:
-          version: 2.53.0
-          save-config: true
-          export-config: true
-          access-key: ${{ secrets.SCW_ACCESS_KEY }}
-          secret-key: ${{ secrets.SCW_SECRET_KEY }}
-          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
-          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
-
-      - uses: ./.github/actions/fetch-scw-secret
-        id: kubeconfig
-        with:
-          secret-name: k3s-kubeconfig
-
-      - name: Deploy to preview cluster
-        run: |
-          echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
-          kubectl set image deployment/site \
-            site=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.sha }} \
-            --kubeconfig /tmp/kubeconfig.yaml \
-            --namespace default
-          kubectl rollout status deployment/site \
-            --kubeconfig /tmp/kubeconfig.yaml \
-            --namespace default \
-            --timeout=120s
-          rm /tmp/kubeconfig.yaml
 
   deploy-pr-preview:
     if: github.event_name == 'pull_request' && github.event.action != 'closed'
@@ -137,7 +89,7 @@ jobs:
         env:
           KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+          IMAGE: ${{ needs.build-and-push.outputs.image }}
         run: |
           echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
           export KUBECONFIG=/tmp/kubeconfig.yaml
@@ -176,7 +128,7 @@ jobs:
                   - name: scaleway-registry
                 containers:
                   - name: site
-                    image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+                    image: ${IMAGE}
                     imagePullPolicy: Always
                     ports:
                       - containerPort: 80
