@@ -45,6 +45,8 @@ jobs:
 
       - uses: scaleway/action-scw@v0
         with:
+          version: 2.53.0
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           save-config: true
           export-config: true
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
@@ -79,6 +81,8 @@ jobs:
 
       - uses: scaleway/action-scw@v0
         with:
+          version: 2.53.0
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           save-config: true
           export-config: true
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
@@ -113,6 +117,8 @@ jobs:
 
       - uses: scaleway/action-scw@v0
         with:
+          version: 2.53.0
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           save-config: true
           export-config: true
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
@@ -261,6 +267,8 @@ jobs:
 
       - uses: scaleway/action-scw@v0
         with:
+          version: 2.53.0
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           save-config: true
           export-config: true
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
