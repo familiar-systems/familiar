@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
 
+permissions:
+  # Necessary for calling cd.yml
+  actions: read
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -55,3 +60,9 @@ jobs:
       - name: test
         if: matrix.check == 'test'
         run: pnpm turbo test
+
+  deploy-site:
+    needs: [ci]
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/cd.yml
+    secrets: inherit
