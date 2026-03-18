@@ -59,7 +59,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy-pr-preview:
-    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    if: github.event.action != 'closed'
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
@@ -206,7 +206,7 @@ jobs:
             }
 
   cleanup-pr-preview:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
