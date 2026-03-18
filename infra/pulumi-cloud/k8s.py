@@ -1,7 +1,7 @@
-"""Kubernetes resources for the k3s preview cluster.
+"""Kubernetes resources for the k3s preview + production cluster.
 
-Deploys cert-manager (with bunny.net DNS-01 webhook), a wildcard TLS
-certificate for *.preview.loreweaver.no, and the static site.
+Deploys cert-manager (with bunny.net DNS-01 webhook), a TLS certificate
+covering loreweaver.no and *.preview.loreweaver.no, and the static site.
 
 All resources use an explicit k8s Provider bound to the k3s cluster's
 kubeconfig, so nothing touches a default/ambient kubeconfig.
@@ -17,6 +17,7 @@ import pulumi
 import pulumi_kubernetes as k8s
 from pulumi_kubernetes.apiextensions import CustomResource
 
+PRODUCTION_DOMAIN = "loreweaver.no"
 PREVIEW_DOMAIN = "preview.loreweaver.no"
 CERT_MANAGER_VERSION = "v1.17.2"
 WEBHOOK_BUNNY_VERSION = "1.0.3"
@@ -162,6 +163,7 @@ def create_k8s_resources(
                 "kind": "ClusterIssuer",
             },
             "dnsNames": [
+                PRODUCTION_DOMAIN,
                 PREVIEW_DOMAIN,
                 f"*.{PREVIEW_DOMAIN}",
             ],
@@ -266,33 +268,43 @@ def create_k8s_resources(
         spec=k8s.networking.v1.IngressSpecArgs(
             tls=[
                 k8s.networking.v1.IngressTLSArgs(
+                    hosts=[PRODUCTION_DOMAIN],
+                    secret_name=WILDCARD_CERT_SECRET,
+                ),
+                k8s.networking.v1.IngressTLSArgs(
                     hosts=[PREVIEW_DOMAIN],
                     secret_name=WILDCARD_CERT_SECRET,
                 ),
             ],
             rules=[
-                k8s.networking.v1.IngressRuleArgs(
-                    host=PREVIEW_DOMAIN,
-                    http=k8s.networking.v1.HTTPIngressRuleValueArgs(
-                        paths=[
-                            k8s.networking.v1.HTTPIngressPathArgs(
-                                path="/",
-                                path_type="Prefix",
-                                backend=k8s.networking.v1.IngressBackendArgs(
-                                    service=k8s.networking.v1.IngressServiceBackendArgs(
-                                        name=SITE_NAME,
-                                        port=k8s.networking.v1.ServiceBackendPortArgs(
-                                            number=SITE_PORT,
-                                        ),
-                                    ),
-                                ),
+                _site_ingress_rule(PRODUCTION_DOMAIN),
+                _site_ingress_rule(PREVIEW_DOMAIN),
+            ],
+        ),
+        opts=k8s_opts,
+    )
+
+
+def _site_ingress_rule(host: str) -> k8s.networking.v1.IngressRuleArgs:
+    """Build an Ingress rule routing all traffic for *host* to the site service."""
+    return k8s.networking.v1.IngressRuleArgs(
+        host=host,
+        http=k8s.networking.v1.HTTPIngressRuleValueArgs(
+            paths=[
+                k8s.networking.v1.HTTPIngressPathArgs(
+                    path="/",
+                    path_type="Prefix",
+                    backend=k8s.networking.v1.IngressBackendArgs(
+                        service=k8s.networking.v1.IngressServiceBackendArgs(
+                            name=SITE_NAME,
+                            port=k8s.networking.v1.ServiceBackendPortArgs(
+                                number=SITE_PORT,
                             ),
-                        ],
+                        ),
                     ),
                 ),
             ],
         ),
-        opts=k8s_opts,
     )
 
 
