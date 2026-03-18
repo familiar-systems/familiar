@@ -1,0 +1,112 @@
+name: Deploy Site
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+env:
+  REGISTRY: rg.fr-par.scw.cloud/loreweaver
+  IMAGE_NAME: site
+  DO_NOT_TRACK: 1
+  TURBO_TELEMETRY_DISABLED: 1
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check if site files changed
+        id: changes
+        uses: tj-actions/changed-files@v47
+        with:
+          files: apps/site/**
+
+      - name: Wait for Infrastructure workflow
+        if: steps.changes.outputs.any_changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          RUN_ID=$(gh run list --workflow=infra.yml --commit="$SHA" --json databaseId --jq '.[0].databaseId // empty')
+
+          if [ -z "$RUN_ID" ]; then
+            echo "No Infrastructure run for this SHA, proceeding"
+            exit 0
+          fi
+
+          echo "Waiting for Infrastructure run $RUN_ID..."
+          gh run watch "$RUN_ID" --exit-status
+
+      - uses: ./.github/actions/setup-scw
+        if: steps.changes.outputs.any_changed == 'true'
+        with:
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+          registry-login: true
+
+      - name: Set up Docker Buildx
+        if: steps.changes.outputs.any_changed == 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push
+        if: steps.changes.outputs.any_changed == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/site/Dockerfile
+          push: true
+          build-args: SITE_URL=https://preview.loreweaver.no
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - uses: ./.github/actions/fetch-scw-secret
+        if: steps.changes.outputs.any_changed == 'true'
+        id: kubeconfig
+        with:
+          secret-name: k3s-kubeconfig
+
+      - name: Deploy to preview cluster
+        if: steps.changes.outputs.any_changed == 'true'
+        run: |
+          echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
+          kubectl set image deployment/site \
+            site=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }} \
+            --kubeconfig /tmp/kubeconfig.yaml \
+            --namespace default
+          kubectl rollout status deployment/site \
+            --kubeconfig /tmp/kubeconfig.yaml \
+            --namespace default \
+            --timeout=120s
+          rm /tmp/kubeconfig.yaml
+
+      - name: Clean up old images
+        if: steps.changes.outputs.any_changed == 'true'
+        run: |
+          IMAGE_ID="$(scw registry image list name=site -o json | jq -r '.[0].id')"
+          if [ -z "$IMAGE_ID" ] || [ "$IMAGE_ID" = "null" ]; then
+            echo "No site image found, skipping cleanup"
+            exit 0
+          fi
+
+          CUTOFF="$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+
+          scw registry tag list image-id="$IMAGE_ID" -o json \
+          | jq -r --arg cutoff "$CUTOFF" \
+              '.[] | select(.name != "latest" and (.name | startswith("pr-") | not) and .created_at < $cutoff) | .id' \
+          | while read -r TAG_ID; do
+              echo "Deleting old tag $TAG_ID"
+              scw registry tag delete "$TAG_ID"
+            done

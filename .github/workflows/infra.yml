@@ -60,10 +60,8 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
 
-      - uses: scaleway/action-scw@v0
+      - uses: ./.github/actions/setup-scw
         with:
-          save-config: true
-          export-config: true
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
           secret-key: ${{ secrets.SCW_SECRET_KEY }}
           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
@@ -95,10 +93,8 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
 
-      - uses: scaleway/action-scw@v0
+      - uses: ./.github/actions/setup-scw
         with:
-          save-config: true
-          export-config: true
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
           secret-key: ${{ secrets.SCW_SECRET_KEY }}
           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}

@@ -36,18 +36,13 @@ jobs:
           SHA="${GITHUB_SHA:0:7}"
           echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}-$SHA" >> "$GITHUB_OUTPUT"
 
-      - uses: scaleway/action-scw@v0
+      - uses: ./.github/actions/setup-scw
         with:
-          version: 2.53.0
-          save-config: true
-          export-config: true
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
           secret-key: ${{ secrets.SCW_SECRET_KEY }}
           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
-
-      - name: Log in to Scaleway Container Registry
-        run: scw registry login
+          registry-login: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -70,11 +65,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: scaleway/action-scw@v0
+      - uses: ./.github/actions/setup-scw
         with:
-          version: 2.53.0
-          save-config: true
-          export-config: true
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
           secret-key: ${{ secrets.SCW_SECRET_KEY }}
           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
@@ -219,11 +211,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: scaleway/action-scw@v0
+      - uses: ./.github/actions/setup-scw
         with:
-          version: 2.53.0
-          save-config: true
-          export-config: true
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
           secret-key: ${{ secrets.SCW_SECRET_KEY }}
           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}

@@ -1,0 +1,41 @@
+name: Setup Scaleway CLI
+description: Configures Scaleway CLI with credentials and optionally logs in to the container registry
+
+inputs:
+  access-key:
+    description: Scaleway access key
+    required: true
+  secret-key:
+    description: Scaleway secret key
+    required: true
+  default-project-id:
+    description: Scaleway default project ID
+    required: true
+  default-organization-id:
+    description: Scaleway default organization ID
+    required: true
+  registry-login:
+    description: Whether to log in to the Scaleway container registry
+    required: false
+    default: "false"
+  version:
+    description: Scaleway CLI version
+    required: false
+    default: "2.53.0"
+
+runs:
+  using: composite
+  steps:
+    - uses: scaleway/action-scw@v0
+      with:
+        version: ${{ inputs.version }}
+        save-config: true
+        export-config: true
+        access-key: ${{ inputs.access-key }}
+        secret-key: ${{ inputs.secret-key }}
+        default-project-id: ${{ inputs.default-project-id }}
+        default-organization-id: ${{ inputs.default-organization-id }}
+
+    - if: inputs.registry-login == 'true'
+      shell: bash
+      run: scw registry login
