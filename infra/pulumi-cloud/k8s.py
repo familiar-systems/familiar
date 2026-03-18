@@ -67,6 +67,12 @@ def create_k8s_resources(
         ),
         values={
             "crds": {"enabled": True},
+            # The post-install startupapicheck job verifies the cert-manager
+            # API is responsive. It times out on small servers (CX23) where
+            # the webhook takes longer than 1 min to become ready. Disabling
+            # it is safe -- cert-manager itself works fine; only the
+            # smoke-test job fails.
+            "startupapicheck": {"enabled": False},
         },
         opts=pulumi.ResourceOptions(provider=provider, depends_on=[cert_manager_ns]),
     )

@@ -15,7 +15,7 @@ Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It
 - `docs/plans/2026-02-14-ai-workflow-unification-design.md` — AI workflow architecture (SessionIngest, P&R, Q&A)
 - `docs/plans/2026-02-20-templates-as-prototype-pages.md` — Templates are Things, not a separate entity. Categorization via `prototypeId` and tag-relationships.
 - `docs/plans/2026-02-20-public-site-design.md` — Public site (Astro): landing page, blog, public campaign pages. Path-based routing.
-- `docs/plans/2026-03-12-deployment-strategy.md` — Deployment strategy (k3s on Hetzner, phased migration from Coolify, libSQL files on Volume)
+- `docs/plans/2026-03-12-deployment-strategy.md` — Deployment strategy (k3s on Hetzner, libSQL files on Volume)
 - `docs/plans/2026-03-14-hocuspocus-architecture.md` — Document-centric campaign architecture (Hocuspocus, campaign checkout/checkin, object storage, AI agent as collab participant, scaling model)
 - `docs/discovery/2026-03-09-sqlite-over-postgres-decision.md` — libSQL over PostgreSQL decision (database-per-campaign, Turso Database upgrade path)
 

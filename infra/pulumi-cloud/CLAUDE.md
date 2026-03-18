@@ -4,47 +4,40 @@
 
 Pulumi Python project for Loreweaver's cloud infrastructure on Hetzner Cloud + Scaleway Container Registry + Scaleway Secrets Manager. State is stored in Scaleway Object Storage, secrets are encrypted with a passphrase from Scaleway Secrets Manager.
 
-Two deployment targets coexist during migration:
-
-- **Coolify server** (Phase 1, production at `loreweaver.no`)
-- **k3s cluster** (Phase 2, preview at `preview.loreweaver.no`)
+Single deployment target: **k3s cluster** serving `loreweaver.no` (production) and `preview.loreweaver.no` (PR previews).
 
 ## Key Files
 
-| File                   | Purpose                                                                                                                        |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `__main__.py`          | Pulumi entrypoint. Wires together modules, declares exports.                                                                   |
-| `config.py`            | Shared constants: `LOCATION`, `SERVER_TYPE`, `IMAGE`, `LABELS`, `config` object.                                               |
-| `cloud.py`             | All Coolify-era Hetzner resources (SSH keys, floating IP, volume, firewall, server) + Scaleway resources (registry, secrets).  |
-| `k3s_cluster.py`       | `K3sCluster` ComponentResource: provisions k3s server with automated kubeconfig extraction via `pulumi-command`.               |
-| `k8s.py`               | Kubernetes resources on the k3s cluster: cert-manager, webhook-bunny, ClusterIssuer, wildcard cert, site deployment + ingress. |
-| `Pulumi.yaml`          | Project config. Runtime is Python via uv toolchain.                                                                            |
-| `Pulumi.prod.yaml`     | Stack config for `prod`. Contains encrypted secrets + SSH public keys.                                                         |
-| `pyproject.toml`       | Python deps: pulumi, pulumi-hcloud, pulumi-command, pulumi-kubernetes, pulumiverse-scaleway.                                   |
-| `scripts/bootstrap.sh` | One-time setup: creates Scaleway bucket + passphrase secret.                                                                   |
-| `scripts/setup.sh`     | Per-machine setup: generates `.envrc` from existing Scaleway resources.                                                        |
+| File                   | Purpose                                                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `__main__.py`          | Pulumi entrypoint. Wires together modules, declares exports.                                                              |
+| `config.py`            | Shared constants: `LOCATION`, `SERVER_TYPE`, `IMAGE`, `LABELS`, `config` object.                                          |
+| `cloud.py`             | Shared Hetzner resources (SSH keys, firewall) + Scaleway resources (registry, secrets).                                   |
+| `k3s_cluster.py`       | `K3sCluster` ComponentResource: provisions k3s server with automated kubeconfig extraction via `pulumi-command`.          |
+| `k8s.py`               | Kubernetes resources on the k3s cluster: cert-manager, webhook-bunny, ClusterIssuer, TLS cert, site deployment + ingress. |
+| `Pulumi.yaml`          | Project config. Runtime is Python via uv toolchain.                                                                       |
+| `Pulumi.prod.yaml`     | Stack config for `prod`. Contains encrypted secrets + SSH public keys.                                                    |
+| `pyproject.toml`       | Python deps: pulumi, pulumi-hcloud, pulumi-command, pulumi-kubernetes, pulumiverse-scaleway.                              |
+| `scripts/bootstrap.sh` | One-time setup: creates Scaleway bucket + passphrase secret.                                                              |
+| `scripts/setup.sh`     | Per-machine setup: generates `.envrc` from existing Scaleway resources.                                                   |
 
 ## Architecture
 
-### Coolify (cloud.py) -- Phase 1, production
-
-14 resources: SSH keys, floating IP, volume, firewall, server (cloud-init installs Coolify), assignments, Scaleway registry + 4 secrets. Being removed in Phase 3.
-
-### k3s (k3s_cluster.py + k8s.py) -- Phase 2, preview
+### k3s (k3s_cluster.py + k8s.py)
 
 `K3sCluster` ComponentResource encapsulates:
 
-- Floating IP (creates its own, or adopts an existing one for Phase 3 cutover)
+- Floating IP (k3s-owned, DNS points `loreweaver.no` here)
 - Volume (10GB, `/data/k3s`, `/data/campaigns`, `/data/preview`)
-- Server with k3s cloud-init (`--tls-san` includes both k3s + Coolify floating IPs for Phase 3)
+- Server with k3s cloud-init
 - Automated kubeconfig extraction via `pulumi-command` (SSH, waits for cloud-init)
 
 `k8s.py` declares all Kubernetes resources using the extracted kubeconfig:
 
 - cert-manager (Jetstack Helm chart, v1.17.2)
 - cert-manager-webhook-bunny (DNS-01 for bunny.net)
-- ClusterIssuer + wildcard Certificate for `*.preview.loreweaver.no`
-- Site Deployment + Service + Ingress
+- ClusterIssuer + Certificate for `loreweaver.no` and `*.preview.loreweaver.no`
+- Site Deployment + Service + Ingress (serves both production and preview domains)
 
 CRDs (ClusterIssuer, Certificate) use `pulumi_kubernetes.apiextensions.CustomResource` -- not `ConfigGroup`, which can't resolve CRD schemas before cert-manager is installed.
 
@@ -133,22 +126,15 @@ Registry auth uses `nologin` + `SCW_SECRET_KEY` directly (no SM secret needed).
 
 ## Pulumi Exports
 
-| Export                           | Used By                                      |
-| -------------------------------- | -------------------------------------------- |
-| `floating_ip`                    | DNS A record for `loreweaver.no` (bunny.net) |
-| `server_ip`                      | Direct SSH access to Coolify server          |
-| `server_id`                      | Reference                                    |
-| `volume_id`                      | Reference                                    |
-| `volume_linux_device`            | Reference                                    |
-| `registry_endpoint`              | GHA deploy workflow (image push target)      |
-| `deploy_ssh_secret_id`           | Reference                                    |
-| `coolify_api_token_secret_id`    | CD workflow (Coolify API auth)               |
-| `coolify_site_webhook_secret_id` | CD workflow (deploy trigger)                 |
-| `bunny_api_key_secret_id`        | Reference                                    |
-| `k3s_kubeconfig_secret_id`       | GHA deploy-preview workflow                  |
-| `k3s_floating_ip`                | DNS A record for `preview.loreweaver.no`     |
-| `k3s_server_ip`                  | Direct SSH access to k3s server              |
-| `k3s_kubeconfig`                 | k8s Provider + GHA workflows                 |
+| Export                     | Used By                                      |
+| -------------------------- | -------------------------------------------- |
+| `registry_endpoint`        | GHA deploy workflow (image push target)      |
+| `deploy_ssh_secret_id`     | Reference                                    |
+| `bunny_api_key_secret_id`  | Reference                                    |
+| `k3s_kubeconfig_secret_id` | GHA deploy workflows                         |
+| `k3s_floating_ip`          | DNS A record for `loreweaver.no` (bunny.net) |
+| `k3s_server_ip`            | Direct SSH access to k3s server              |
+| `k3s_kubeconfig`           | k8s Provider + GHA workflows                 |
 
 ## Commands
 
@@ -175,4 +161,4 @@ See `../test-k8s/README.md` for a k3d-based smoke test of the Kubernetes resourc
 - The `encryptionsalt` in `Pulumi.prod.yaml` is safe to commit -- it's not a secret.
 - Python: ruff for linting/formatting, basedpyright for type checking. Strict config in `pyproject.toml`.
 - **Lint/format/check command**: `uv run ruff check --fix . && uv run ruff format . && uv run basedpyright` (fix + format + typecheck in one pass).
-- Both volumes have `delete_protection=True`. Must be disabled before Pulumi can destroy them (intentional friction).
+- The k3s volume has `delete_protection=True`. Must be disabled before Pulumi can destroy it (intentional friction).

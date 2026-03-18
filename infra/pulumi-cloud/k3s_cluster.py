@@ -3,10 +3,6 @@
 Provisions a single-node k3s cluster on Hetzner Cloud with automated
 kubeconfig extraction. Encapsulates server, floating IP, volume, and
 all assignments behind a typed interface.
-
-The component supports an optional `floating_ip` parameter for Phase 3
-cutover: pass None to create a new floating IP, or pass an existing one
-to adopt it (e.g. Coolify's IP during migration).
 """
 
 from __future__ import annotations
@@ -34,24 +30,21 @@ class K3sCluster(pulumi.ComponentResource):
         firewall_id: pulumi.Input[int],
         deploy_private_key: pulumi.Input[str],
         labels: dict[str, str],
-        floating_ip: hcloud.FloatingIp | None = None,
-        extra_tls_sans: list[pulumi.Input[str]] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("loreweaver:infra:K3sCluster", name, None, opts)
 
         child_opts = pulumi.ResourceOptions(parent=self)
 
-        # -- Floating IP (create if not provided) -----------------------------
-        if floating_ip is None:
-            floating_ip = hcloud.FloatingIp(
-                f"{name}-floating-ip",
-                type="ipv4",
-                home_location=location,
-                description="k3s cluster IP",
-                labels=labels,
-                opts=child_opts,
-            )
+        # -- Floating IP -------------------------------------------------------
+        floating_ip = hcloud.FloatingIp(
+            f"{name}-floating-ip",
+            type="ipv4",
+            home_location=location,
+            description="k3s cluster IP",
+            labels=labels,
+            opts=child_opts,
+        )
 
         self.floating_ip_address = floating_ip.ip_address
 
@@ -68,14 +61,12 @@ class K3sCluster(pulumi.ComponentResource):
         )
 
         # -- Cloud-init -------------------------------------------------------
-        # Build --tls-san args: always include own floating IP, plus any extras
-        # (e.g. Coolify's IP for Phase 3 cert validity).
-        tls_san_args = _build_tls_san_args(floating_ip.ip_address, extra_tls_sans)
+        tls_san_arg = floating_ip.ip_address.apply(lambda ip: f"--tls-san {ip}")
 
         cloud_init_script: pulumi.Output[str] = pulumi.Output.all(
             fip=floating_ip.ip_address,
             device=volume.linux_device,
-            tls_sans=tls_san_args,
+            tls_sans=tls_san_arg,
         ).apply(
             lambda args: _render_cloud_init(
                 fip=str(args["fip"]),  # pyright: ignore[reportAny]
@@ -95,7 +86,10 @@ class K3sCluster(pulumi.ComponentResource):
             firewall_ids=[firewall_id],
             user_data=cloud_init_script,
             labels=labels,
-            opts=child_opts,
+            # cloud-init only runs at first boot. Changing it should never
+            # replace the server -- that cascades to the k8s provider and
+            # every k8s resource, which Pulumi can't handle atomically.
+            opts=pulumi.ResourceOptions(parent=self, ignore_changes=["user_data"]),
         )
 
         self.server_ip = server.ipv4_address
@@ -153,20 +147,6 @@ class K3sCluster(pulumi.ComponentResource):
                 "serverIp": self.server_ip,
             }
         )
-
-
-def _build_tls_san_args(
-    primary_ip: pulumi.Output[str],
-    extra_sans: list[pulumi.Input[str]] | None,
-) -> pulumi.Output[str]:
-    """Build the --tls-san CLI args string for k3s install."""
-    if extra_sans is None:
-        return primary_ip.apply(lambda ip: f"--tls-san {ip}")
-
-    all_ips: list[pulumi.Input[str]] = [primary_ip, *extra_sans]
-    return pulumi.Output.all(*all_ips).apply(
-        lambda ips: " ".join(f"--tls-san {ip!s}" for ip in ips)  # pyright: ignore[reportAny]
-    )
 
 
 def _render_cloud_init(*, fip: str, device: str, tls_sans: str) -> str:
