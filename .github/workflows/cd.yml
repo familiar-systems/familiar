@@ -67,7 +67,7 @@ jobs:
           context: .
           file: apps/site/Dockerfile
           push: true
-          build-args: SITE_URL=https://preview.loreweaver.no
+          build-args: SITE_URL=https://loreweaver.no
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
