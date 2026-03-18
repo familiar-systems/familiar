@@ -47,7 +47,7 @@ coolify_volume = hcloud.Volume(
     size=10,
     location=LOCATION,
     format="ext4",
-    delete_protection=True,
+    delete_protection=False,
     labels=LABELS,
 )
 
