@@ -6,6 +6,10 @@ on:
     types: [completed]
     branches: [main]
 
+permissions:
+  actions: read
+  contents: read
+
 env:
   REGISTRY: rg.fr-par.scw.cloud/loreweaver
   IMAGE_NAME: site
@@ -23,11 +27,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Check if site files changed
+      - name: Check if site files or CI changed
         id: changes
         uses: tj-actions/changed-files@v47
         with:
-          files: apps/site/**
+          files: |
+            apps/site/**
+            .github/**
 
       - name: Wait for Infrastructure workflow
         if: steps.changes.outputs.any_changed == 'true'
