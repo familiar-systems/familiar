@@ -1,10 +1,7 @@
-name: Deploy Site
+name: CD
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
+  workflow_call:
 
 permissions:
   actions: read
@@ -22,7 +19,6 @@ concurrency:
 
 jobs:
   build-and-deploy:
-    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -40,7 +36,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          SHA="${{ github.event.workflow_run.head_sha }}"
+          SHA="${{ github.sha }}"
           RUN_ID=$(gh run list --workflow=infra.yml --commit="$SHA" --json databaseId --jq '.[0].databaseId // empty')
 
           if [ -z "$RUN_ID" ]; then
@@ -73,7 +69,7 @@ jobs:
           push: true
           build-args: SITE_URL=https://preview.loreweaver.no
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -89,7 +85,7 @@ jobs:
         run: |
           echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
           kubectl set image deployment/site \
-            site=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }} \
+            site=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --kubeconfig /tmp/kubeconfig.yaml \
             --namespace default
           kubectl rollout status deployment/site \
