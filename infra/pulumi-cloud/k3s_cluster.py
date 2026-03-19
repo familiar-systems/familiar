@@ -1,8 +1,9 @@
 """K3sCluster ComponentResource.
 
 Provisions a single-node k3s cluster on Hetzner Cloud with automated
-kubeconfig extraction. Encapsulates server, floating IP, volume, and
-all assignments behind a typed interface.
+kubeconfig extraction. Encapsulates server, volume, and assignments
+behind a typed interface. The floating IP is created externally
+(cloud.py) and passed in.
 """
 
 from __future__ import annotations
@@ -16,18 +17,18 @@ class K3sCluster(pulumi.ComponentResource):
     """Provisions a k3s server with automated kubeconfig extraction."""
 
     kubeconfig: pulumi.Output[str]
-    floating_ip_address: pulumi.Output[str]
     server_ip: pulumi.Output[str]
 
     def __init__(
         self,
         name: str,
         *,
+        floating_ip: hcloud.FloatingIp,
+        firewall: hcloud.Firewall,
+        ssh_keys: list[hcloud.SshKey],
         location: str,
         server_type: str,
         image: str,
-        ssh_keys: list[pulumi.Input[str]],
-        firewall_id: pulumi.Input[int],
         deploy_private_key: pulumi.Input[str],
         labels: dict[str, str],
         opts: pulumi.ResourceOptions | None = None,
@@ -35,18 +36,6 @@ class K3sCluster(pulumi.ComponentResource):
         super().__init__("loreweaver:infra:K3sCluster", name, None, opts)
 
         child_opts = pulumi.ResourceOptions(parent=self)
-
-        # -- Floating IP -------------------------------------------------------
-        floating_ip = hcloud.FloatingIp(
-            f"{name}-floating-ip",
-            type="ipv4",
-            home_location=location,
-            description="k3s cluster IP",
-            labels=labels,
-            opts=child_opts,
-        )
-
-        self.floating_ip_address = floating_ip.ip_address
 
         # -- Volume -----------------------------------------------------------
         volume = hcloud.Volume(
@@ -61,10 +50,11 @@ class K3sCluster(pulumi.ComponentResource):
         )
 
         # -- Cloud-init -------------------------------------------------------
-        tls_san_arg = floating_ip.ip_address.apply(lambda ip: f"--tls-san {ip}")
+        fip = floating_ip.ip_address
+        tls_san_arg = fip.apply(lambda ip: f"--tls-san {ip}")
 
         cloud_init_script: pulumi.Output[str] = pulumi.Output.all(
-            fip=floating_ip.ip_address,
+            fip=fip,
             device=volume.linux_device,
             tls_sans=tls_san_arg,
         ).apply(
@@ -82,8 +72,8 @@ class K3sCluster(pulumi.ComponentResource):
             server_type=server_type,
             image=image,
             location=location,
-            ssh_keys=ssh_keys,
-            firewall_ids=[firewall_id],
+            ssh_keys=[k.name for k in ssh_keys],
+            firewall_ids=[firewall.id.apply(int)],
             user_data=cloud_init_script,
             labels=labels,
             # cloud-init only runs at first boot. Changing it should never
@@ -124,14 +114,14 @@ class K3sCluster(pulumi.ComponentResource):
                 per_dial_timeout=30,
             ),
             # cloud-init can take 3-5 minutes; wait for it, then extract
-            create=floating_ip.ip_address.apply(
+            create=fip.apply(
                 lambda fip: (
                     "cloud-init status --wait > /dev/null 2>&1 && "
                     f"sed 's/127\\.0\\.0\\.1/{fip}/g' /etc/rancher/k3s/k3s.yaml"
                 )
             ),
             # Re-extract on update (e.g. server replacement)
-            update=floating_ip.ip_address.apply(
+            update=fip.apply(
                 lambda fip: f"sed 's/127\\.0\\.0\\.1/{fip}/g' /etc/rancher/k3s/k3s.yaml"
             ),
             triggers=[server.id],
@@ -143,7 +133,6 @@ class K3sCluster(pulumi.ComponentResource):
         self.register_outputs(
             {
                 "kubeconfig": self.kubeconfig,
-                "floatingIpAddress": self.floating_ip_address,
                 "serverIp": self.server_ip,
             }
         )
@@ -167,6 +156,11 @@ write_files:
       iface lo:1 inet static
         address {fip}
         netmask 255.255.255.255
+  - path: /etc/rancher/k3s/config.yaml
+    content: |
+      kubelet-arg:
+        - "container-log-max-files=10"
+        - "container-log-max-size=50Mi"
   - path: /etc/fstab
     append: true
     content: "{device} /data ext4 defaults,nofail 0 2"

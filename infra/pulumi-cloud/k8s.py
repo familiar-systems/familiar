@@ -12,10 +12,18 @@ from __future__ import annotations
 import base64
 import json
 import os
+from typing import TYPE_CHECKING
 
 import pulumi
 import pulumi_kubernetes as k8s
+
+# CRD specs (ClusterIssuer, Certificate) use CustomResource -- not ConfigGroup,
+# which can't resolve CRD schemas before cert-manager is installed. The specs
+# are untyped dicts; always read upstream docs before modifying.
 from pulumi_kubernetes.apiextensions import CustomResource
+
+if TYPE_CHECKING:
+    import pulumiverse_scaleway as scaleway
 
 PRODUCTION_DOMAIN = "loreweaver.no"
 PREVIEW_DOMAIN = "preview.loreweaver.no"
@@ -38,7 +46,7 @@ SITE_PORT = 80
 def create_k8s_resources(
     *,
     kubeconfig: pulumi.Output[str],
-    registry_endpoint: pulumi.Output[str],
+    registry: scaleway.registry.Namespace,
     bunny_api_key: pulumi.Input[str],
     acme_email: str,
 ) -> None:
@@ -185,7 +193,7 @@ def create_k8s_resources(
     # See: https://www.scaleway.com/en/docs/container-registry/how-to/connect-docker-cli/
     scw_secret_key = pulumi.Output.secret(os.environ["SCW_SECRET_KEY"])
     docker_config = pulumi.Output.all(
-        endpoint=registry_endpoint,
+        endpoint=registry.endpoint,
         password=scw_secret_key,
     ).apply(
         lambda args: _docker_config_json(
@@ -209,7 +217,7 @@ def create_k8s_resources(
     # -- Site Deployment + Service + Ingress ----------------------------------
     site_labels = {"app": SITE_NAME}
 
-    site_image = registry_endpoint.apply(lambda ep: f"{ep}/{SITE_NAME}:{SITE_IMAGE_TAG}")
+    site_image = registry.endpoint.apply(lambda ep: f"{ep}/{SITE_NAME}:{SITE_IMAGE_TAG}")
 
     _site_deployment = k8s.apps.v1.Deployment(
         "site-deployment",

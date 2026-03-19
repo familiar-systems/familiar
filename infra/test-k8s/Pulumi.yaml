@@ -1,6 +1,0 @@
-name: loreweaver-k8s-test
-runtime:
-  name: python
-  options:
-    toolchain: uv
-description: Local k3d test for k8s resources

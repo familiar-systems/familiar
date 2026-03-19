@@ -12,7 +12,7 @@ Single deployment target: **k3s cluster** serving `loreweaver.no` (production) a
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `__main__.py`          | Pulumi entrypoint. Wires together modules, declares exports.                                                              |
 | `config.py`            | Shared constants: `LOCATION`, `SERVER_TYPE`, `IMAGE`, `LABELS`, `config` object.                                          |
-| `cloud.py`             | Shared Hetzner resources (SSH keys, firewall) + Scaleway resources (registry, secrets).                                   |
+| `cloud.py`             | Shared Hetzner resources (floating IP, SSH keys, firewall) + Scaleway resources (registry, secrets).                      |
 | `k3s_cluster.py`       | `K3sCluster` ComponentResource: provisions k3s server with automated kubeconfig extraction via `pulumi-command`.          |
 | `k8s.py`               | Kubernetes resources on the k3s cluster: cert-manager, webhook-bunny, ClusterIssuer, TLS cert, site deployment + ingress. |
 | `Pulumi.yaml`          | Project config. Runtime is Python via uv toolchain.                                                                       |
@@ -20,14 +20,17 @@ Single deployment target: **k3s cluster** serving `loreweaver.no` (production) a
 | `pyproject.toml`       | Python deps: pulumi, pulumi-hcloud, pulumi-command, pulumi-kubernetes, pulumiverse-scaleway.                              |
 | `scripts/bootstrap.sh` | One-time setup: creates Scaleway bucket + passphrase secret.                                                              |
 | `scripts/setup.sh`     | Per-machine setup: generates `.envrc` from existing Scaleway resources.                                                   |
+| `scripts/nuke-k8s.sh`  | Emergency recovery: removes k8s resources from Pulumi state (and optionally wipes k3s).                                   |
 
 ## Architecture
 
 ### k3s (k3s_cluster.py + k8s.py)
 
+The **Floating IP** (`cloud.py`) is the public entry point: DNS A record for `loreweaver.no` points here. It is a top-level resource, not owned by any cluster. The IP is passed into `K3sCluster` as an input.
+
 `K3sCluster` ComponentResource encapsulates:
 
-- Floating IP (k3s-owned, DNS points `loreweaver.no` here)
+- Floating IP assignment (binds the external IP to the server)
 - Volume (10GB, `/data/k3s`, `/data/campaigns`, `/data/preview`)
 - Server with k3s cloud-init
 - Automated kubeconfig extraction via `pulumi-command` (SSH, waits for cloud-init)
@@ -39,9 +42,29 @@ Single deployment target: **k3s cluster** serving `loreweaver.no` (production) a
 - ClusterIssuer + Certificate for `loreweaver.no` and `*.preview.loreweaver.no`
 - Site Deployment + Service + Ingress (serves both production and preview domains)
 
-CRDs (ClusterIssuer, Certificate) use `pulumi_kubernetes.apiextensions.CustomResource` -- not `ConfigGroup`, which can't resolve CRD schemas before cert-manager is installed.
+### Provider cascade hazard
 
-**Important:** CRD specs (ClusterIssuer, Certificate) and webhook solver configs are untyped dicts. Always read the upstream docs before writing or modifying them (see Reference Documentation section below).
+Pulumi manages both the Hetzner server and the k8s workloads running on it. The k8s provider is derived from the server's kubeconfig, creating a fragile dependency chain:
+
+```
+Server (Hetzner) --> kubeconfig (SSH command) --> k8s Provider --> all k8s resources
+```
+
+If the server is **replaced**, the entire chain cascades: Pulumi creates a new provider and tries to delete all old k8s resources via the old provider, but the old provider's gRPC connection is already dead (old server is gone). Every delete fails with `grpc: the client connection is closing`.
+
+**Mitigations in place:**
+
+- `ignoreChanges: ["user_data"]` on the server resource (`k3s_cluster.py`). Cloud-init only runs at first boot, so changes to it are meaningless on an existing server. This prevents cloud-init edits from triggering a server replacement and the resulting cascade.
+- `scripts/nuke-k8s.sh` for recovery when the cascade happens anyway (e.g. intentional server resize). It removes k8s resources from Pulumi state so `pulumi up` can recreate them from scratch.
+
+**If you need to intentionally replace the server** (resize, OS upgrade, etc.):
+
+1. Run `./scripts/nuke-k8s.sh --wipe-k3s` (wipes k3s datastore on the Volume, cleans Pulumi state)
+2. Temporarily remove `ignore_changes=["user_data"]` if cloud-init changes are needed
+3. `pulumi up` (creates new server, reinstalls k3s, recreates all k8s resources)
+4. Restore `ignore_changes=["user_data"]`
+
+k3s state on the Volume (`/data/k3s`) persists across server replacements. A new server will inherit corrupted k3s state unless `/data/k3s` is wiped first. Campaign data (`/data/campaigns`, `/data/preview`) is unaffected.
 
 ## Reference Documentation
 
@@ -51,7 +74,7 @@ CRDs (ClusterIssuer, Certificate) use `pulumi_kubernetes.apiextensions.CustomRes
 
 - pulumiverse-scaleway registry: https://www.pulumi.com/registry/packages/scaleway/api-docs/
     - Secret: https://www.pulumi.com/registry/packages/scaleway/api-docs/secret/
-    - SecretVersion: https://www.pulumi.com/registry/packages/scaleway/api-docs/secretversion/ (`data` field takes RAW payload, not base64)
+    - SecretVersion: https://www.pulumi.com/registry/packages/scaleway/api-docs/secretversion/
     - RegistryNamespace: https://www.pulumi.com/registry/packages/scaleway/api-docs/registrynamespace/
 - pulumi-kubernetes: https://www.pulumi.com/registry/packages/kubernetes/api-docs/
 - pulumi-hcloud: https://www.pulumi.com/registry/packages/hcloud/api-docs/
@@ -78,20 +101,6 @@ CRDs (ClusterIssuer, Certificate) use `pulumi_kubernetes.apiextensions.CustomRes
 - cert-manager-webhook-bunny Helm values: `helm show values cert-manager-webhook-bunny --repo https://davidhidvegi.github.io/cert-manager-webhook-bunny/charts/`
 - The webhook's solver `config` block is opaque to cert-manager -- each webhook defines its own schema. Do NOT assume cert-manager conventions (e.g. `apiKeySecretRef`) apply to webhook configs.
 
-### Three-Resource Dependency Pattern
-
-Volume and Floating IP use a three-resource pattern to avoid circular dependencies:
-
-```
-FloatingIp (location only) --> ip_address --> Server (cloud-init configures loopback)
-         |                                          |
-         +-------- FloatingIpAssignment ------------+
-
-Volume (location only) --> linux_device --> Server (cloud-init writes fstab)
-         |                                        |
-         +-------- VolumeAttachment --------------+
-```
-
 ## Credentials Architecture
 
 - **Scaleway Secrets Manager** is the single source of truth for all application secrets. Never store secret values in Pulumi config or GitHub Actions secrets.
@@ -115,27 +124,6 @@ Pulumi reads secrets from Scaleway SM at deploy time via `config.read_secret(nam
 
 Registry auth uses `nologin` + `SCW_SECRET_KEY` directly (no SM secret needed).
 
-### Pulumi Config (non-secret)
-
-| Key                       | Purpose                                                     |
-| ------------------------- | ----------------------------------------------------------- |
-| `hcloud:token`            | Hetzner provider credential (encrypted in Pulumi.prod.yaml) |
-| `acme-email`              | Email for Let's Encrypt registration (not a secret)         |
-| `personal-ssh-public-key` | SSH public key (not a secret)                               |
-| `deploy-ssh-public-key`   | SSH public key (not a secret)                               |
-
-## Pulumi Exports
-
-| Export                     | Used By                                      |
-| -------------------------- | -------------------------------------------- |
-| `registry_endpoint`        | GHA deploy workflow (image push target)      |
-| `deploy_ssh_secret_id`     | Reference                                    |
-| `bunny_api_key_secret_id`  | Reference                                    |
-| `k3s_kubeconfig_secret_id` | GHA deploy workflows                         |
-| `k3s_floating_ip`          | DNS A record for `loreweaver.no` (bunny.net) |
-| `k3s_server_ip`            | Direct SSH access to k3s server              |
-| `k3s_kubeconfig`           | k8s Provider + GHA workflows                 |
-
 ## Commands
 
 ```bash
@@ -150,15 +138,9 @@ pulumi stack output k3s_kubeconfig --show-secrets > /tmp/k3s.yaml  # Get kubecon
 pulumi config set --secret <key> <value>  # Add encrypted config
 ```
 
-## Local k8s Testing
-
-See `../test-k8s/README.md` for a k3d-based smoke test of the Kubernetes resources.
-
 ## Rules
 
 - Never commit `.env`, `.envrc`, or any file containing raw credentials.
 - All application secrets live in Scaleway Secrets Manager. Only provider credentials (e.g. `hcloud:token`) belong in Pulumi config.
 - The `encryptionsalt` in `Pulumi.prod.yaml` is safe to commit -- it's not a secret.
-- Python: ruff for linting/formatting, basedpyright for type checking. Strict config in `pyproject.toml`.
 - **Lint/format/check command**: `uv run ruff check --fix . && uv run ruff format . && uv run basedpyright` (fix + format + typecheck in one pass).
-- The k3s volume has `delete_protection=True`. Must be disabled before Pulumi can destroy it (intentional friction).

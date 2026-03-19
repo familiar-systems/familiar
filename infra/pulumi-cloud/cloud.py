@@ -5,10 +5,11 @@ and Scaleway Secrets Manager entries. The k3s cluster (k3s_cluster.py)
 and Kubernetes resources (k8s.py) build on these.
 """
 
+import pulumi
 import pulumi_hcloud as hcloud
 import pulumiverse_scaleway as scaleway
 
-from config import LABELS, config
+from config import LABELS, LOCATION, config
 
 # ---------------------------------------------------------------------------
 # SSH Keys (both registered -- personal for desktop, deploy for break-glass)
@@ -25,6 +26,27 @@ deploy_key = hcloud.SshKey(
     name="loreweaver-deploy",
     public_key=config.require("deploy-ssh-public-key"),
     labels=LABELS,
+)
+
+# ---------------------------------------------------------------------------
+# Floating IP (public entry point -- DNS A record for loreweaver.no)
+# ---------------------------------------------------------------------------
+floating_ip = hcloud.FloatingIp(
+    "floating-ip",
+    type="ipv4",
+    home_location=LOCATION,
+    description="Public IP for loreweaver.no (DNS, TLS, ingress)",
+    labels=LABELS,
+    # Alias: this resource was previously named "k3s-floating-ip" as a child
+    # of K3sCluster. Safe to remove after one successful `pulumi up`.
+    opts=pulumi.ResourceOptions(
+        aliases=[
+            pulumi.Alias(
+                name="k3s-floating-ip",
+                parent="urn:pulumi:prod::loreweaver-cloud::loreweaver:infra:K3sCluster::k3s",
+            ),
+        ],
+    ),
 )
 
 # ---------------------------------------------------------------------------
