@@ -24,4 +24,6 @@ def read_secret(name: str) -> pulumi.Output[str]:
         revision="latest",
         region="fr-par",
     )
+    # SecretVersion.data is returned as base64 by the Scaleway API, but the
+    # Pulumi provider's `data` INPUT field takes raw plaintext (not base64).
     return version.apply(lambda r: base64.b64decode(r.data).decode("utf-8"))

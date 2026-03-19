@@ -16,6 +16,10 @@ from typing import TYPE_CHECKING
 
 import pulumi
 import pulumi_kubernetes as k8s
+
+# CRD specs (ClusterIssuer, Certificate) use CustomResource -- not ConfigGroup,
+# which can't resolve CRD schemas before cert-manager is installed. The specs
+# are untyped dicts; always read upstream docs before modifying.
 from pulumi_kubernetes.apiextensions import CustomResource
 
 if TYPE_CHECKING:

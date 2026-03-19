@@ -3,10 +3,10 @@ name: Infrastructure
 on:
   pull_request:
     branches: [main]
-    paths: [infra/pulumi-cloud/**, infra/test-k8s/**]
+    paths: [infra/pulumi-cloud/**]
   push:
     branches: [main]
-    paths: [infra/pulumi-cloud/**, infra/test-k8s/**]
+    paths: [infra/pulumi-cloud/**]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,12 +15,9 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        dir: [infra/pulumi-cloud, infra/test-k8s]
     defaults:
       run:
-        working-directory: ${{ matrix.dir }}
+        working-directory: infra/pulumi-cloud
     steps:
       - uses: actions/checkout@v6
 
@@ -34,12 +31,9 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        dir: [infra/pulumi-cloud, infra/test-k8s]
     defaults:
       run:
-        working-directory: ${{ matrix.dir }}
+        working-directory: infra/pulumi-cloud
     steps:
       - uses: actions/checkout@v6
 

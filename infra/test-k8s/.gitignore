@@ -1,4 +1,0 @@
-.venv/
-__pycache__/
-Pulumi.test.yaml
-uv.lock
