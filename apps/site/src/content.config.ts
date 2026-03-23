@@ -5,7 +5,7 @@ import { glob } from "astro/loaders";
 const roadmapCollection = defineCollection({
   loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/roadmap" }),
   schema: z.object({
-    milestone: z.number(),
+    quest: z.number(),
     title: z.string(),
     description: z.string(),
     status: z.enum(["done", "in-progress", "planned"]).default("planned"),

@@ -1,7 +1,7 @@
 ---
-milestone: 5
-title: "General Localization"
-description: "Framework for community-contributed language support beyond Norwegian."
+quest: 5
+title: "Comprehend Languages"
+description: "A framework for community-contributed language support beyond Norwegian."
 status: "planned"
 ---
 

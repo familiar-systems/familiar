@@ -1,7 +1,7 @@
 ---
-milestone: 2
+quest: 2
 title: "Multiplayer"
-description: "Authentication, user accounts, and isolated campaign workspaces."
+description: "Authentication, user accounts, and shared campaign workspaces."
 status: "planned"
 ---
 
