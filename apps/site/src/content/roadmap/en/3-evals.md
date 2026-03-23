@@ -1,5 +1,5 @@
 ---
-milestone: 3
+quest: 3
 title: "Evals & Quality"
 description: "Systematic evaluation of AI outputs and quality improvements."
 status: "planned"

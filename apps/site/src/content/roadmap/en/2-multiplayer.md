@@ -1,10 +1,11 @@
 ---
-milestone: 2
+quest: 2
 title: "Multiplayer"
-description: "Authentication, user accounts, and isolated campaign workspaces."
+description: "Invite your players to the table."
 status: "planned"
 ---
 
 - Multiple GMs with multiple players
 - Invite players to view campaign content
 - Role-based access (GM vs. player)
+- Watch your party edit the wiki together in real time.

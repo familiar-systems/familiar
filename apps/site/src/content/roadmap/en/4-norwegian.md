@@ -1,5 +1,5 @@
 ---
-milestone: 4
+quest: 4
 title: "Norwegian Language Support"
 description: "Full Norwegian language support for the interface and AI processing."
 status: "planned"
