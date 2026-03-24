@@ -1,14 +1,14 @@
 export const siteConfig = {
-  name: "Loreweaver",
+  name: "Eddator",
   description: "AI-assisted campaign notebook for tabletop RPGs.",
   logo: {
     src: "/logo-light.png",
     srcDark: "/logo-dark.png",
-    alt: "Loreweaver Logo",
+    alt: "Eddator Logo",
     strategy: "switch" as "invert" | "switch" | "static",
   },
   ogImage: "",
-  primaryColor: "#C49A2B",
+  primaryColor: "#e07a3a",
   search: {
     enabled: true,
   },

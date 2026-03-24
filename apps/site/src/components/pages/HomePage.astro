@@ -18,18 +18,22 @@ const t = useTranslations(lang);
   <!-- HERO                                        -->
   <!-- ═══════════════════════════════════════════ -->
   <section class="min-h-[90vh] flex items-center justify-center relative overflow-hidden pt-20 bg-background">
-    <!-- Ambient glow -->
-    <div class="absolute inset-0 z-0 opacity-30">
-      <div class="absolute top-[15%] left-[25%] w-[500px] h-[500px] bg-primary/40 rounded-full blur-[140px] animate-pulse"></div>
-      <div class="absolute bottom-[20%] right-[15%] w-[400px] h-[400px] bg-amber-700/30 rounded-full blur-[120px] animate-pulse" style="animation-delay: 3s;"></div>
+    <!-- Frost on the edges (the cold outside) -->
+    <div class="absolute inset-0 z-0 pointer-events-none frost-edges"></div>
+
+    <!-- Warm hearth glow (dominant, flickering) -->
+    <div class="absolute inset-0 z-0 hearth-flicker">
+      <div class="absolute top-[20%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] rounded-full blur-[180px] fire-core"></div>
+      <div class="absolute top-[30%] left-[42%] w-[500px] h-[450px] rounded-full blur-[140px] fire-secondary"></div>
+      <div class="absolute top-[40%] left-[55%] w-[300px] h-[300px] rounded-full blur-[100px] fire-accent"></div>
     </div>
 
-    <!-- Subtle texture overlay -->
-    <div class="absolute inset-0 z-0 opacity-[0.03] dark:opacity-[0.05]" style="background-image: url('data:image/svg+xml,%3Csvg width=&quot;60&quot; height=&quot;60&quot; viewBox=&quot;0 0 60 60&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;%3E%3Cg fill=&quot;none&quot; fill-rule=&quot;evenodd&quot;%3E%3Cg fill=&quot;%23000000&quot; fill-opacity=&quot;0.4&quot;%3E%3Cpath d=&quot;M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z&quot;/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
+    <!-- Ember particles -->
+    <div class="absolute inset-0 z-0 ember-field overflow-hidden"></div>
 
     <div class="container mx-auto px-6 relative z-10 text-center">
       <div class="hero-content opacity-0 translate-y-5">
-        <p class="inline-block text-sm font-medium tracking-[0.2em] uppercase text-primary mb-8 border border-primary/20 rounded-full px-5 py-2">
+        <p class="inline-block text-sm font-medium tracking-[0.2em] uppercase text-primary mb-8 border border-primary/30 rounded-full px-5 py-2 bg-primary/5 dark:bg-primary/10">
           {t['hero.badge']}
         </p>
         <h1 class="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-8 text-foreground leading-[1.1]">
@@ -72,8 +76,8 @@ const t = useTranslations(lang);
       </p>
 
       <div class="relative">
-        <!-- Vertical connector line -->
-        <div class="absolute left-8 md:left-10 top-0 bottom-0 w-px bg-gradient-to-b from-primary/0 via-primary/30 to-primary/0 hidden md:block"></div>
+        <!-- Vertical connector line (warm ember) -->
+        <div class="absolute left-8 md:left-10 top-0 bottom-0 w-px hidden md:block" style="background: linear-gradient(to bottom, rgba(224, 122, 58, 0), rgba(224, 122, 58, 0.3) 15%, rgba(224, 122, 58, 0.3) 85%, rgba(224, 122, 58, 0));"></div>
 
         <div class="space-y-12">
           <!-- Step 1 -->
@@ -93,7 +97,7 @@ const t = useTranslations(lang);
               <Sparkles className="w-7 h-7 md:w-8 md:h-8 text-primary" />
             </div>
             <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2">Loreweaver processes everything</h3>
+              <h3 class="text-xl font-bold mb-2">Eddator processes everything</h3>
               <p class="text-muted-foreground leading-relaxed">It transcribes audio, identifies what happened, extracts NPCs, locations, and events, and drafts a session write-up.</p>
             </div>
           </div>
@@ -147,7 +151,7 @@ const t = useTranslations(lang);
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Sessions -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
+        <div class="wiki-card p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background relative">
           <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
             <ScrollText className="w-6 h-6 text-primary" />
           </div>
@@ -156,7 +160,7 @@ const t = useTranslations(lang);
         </div>
 
         <!-- Things -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
+        <div class="wiki-card p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background relative">
           <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
             <Users className="w-6 h-6 text-primary" />
           </div>
@@ -165,7 +169,7 @@ const t = useTranslations(lang);
         </div>
 
         <!-- Connections -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
+        <div class="wiki-card p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background relative">
           <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
             <Link2 className="w-6 h-6 text-primary" />
           </div>
@@ -174,7 +178,7 @@ const t = useTranslations(lang);
         </div>
 
         <!-- Player Visibility -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
+        <div class="wiki-card p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background relative">
           <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
             <Eye className="w-6 h-6 text-primary" />
           </div>
@@ -233,7 +237,7 @@ const t = useTranslations(lang);
           </div>
           <div>
             <h3 class="text-xl font-bold mb-3">It captures the mess</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg">Retconned something? No problem. Mark things as "established in play but since retconned." The history is preserved, but Loreweaver stops treating it as current. Your campaign's contradictions are part of the story.</p>
+            <p class="text-muted-foreground leading-relaxed text-lg">Retconned something? No problem. Mark things as "established in play but since retconned." The history is preserved, but Eddator stops treating it as current. Your campaign's contradictions are part of the story.</p>
           </div>
         </div>
       </div>
@@ -255,7 +259,7 @@ const t = useTranslations(lang);
       </div>
       <h2 class="font-display text-3xl md:text-4xl font-bold mb-6">Open Source. Self-Hostable.</h2>
       <p class="text-muted-foreground text-lg leading-relaxed mb-8">
-        Loreweaver is open source. Use the hosted version to get started instantly, or run it on your own server with your own AI provider. Your campaign data is yours - we never sell it nor anything that comes from it.
+        Eddator is open source. Use the hosted version to get started instantly, or run it on your own server with your own AI provider. Your campaign data is yours - we never sell it nor anything that comes from it.
       </p>
       <Button
         href="https://github.com/loreweaver-no"
@@ -277,14 +281,19 @@ const t = useTranslations(lang);
   <!-- ═══════════════════════════════════════════ -->
   <!-- CTA                                         -->
   <!-- ═══════════════════════════════════════════ -->
-  <Section class="py-24 md:py-32">
-    <div class="max-w-3xl mx-auto text-center">
+  <Section class="py-24 md:py-32 relative overflow-hidden">
+    <!-- CTA warm glow (warmest spot on the page) -->
+    <div class="absolute inset-0 z-0 pointer-events-none">
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-primary/10 rounded-full blur-[140px]"></div>
+    </div>
+
+    <div class="max-w-3xl mx-auto text-center relative z-10">
       <h2 class="font-display text-3xl md:text-5xl font-bold mb-6">
-        Stop taking notes.<br />
-        <span class="text-primary">Start playing.</span>
+        Come sit by our fire.<br />
+        <span class="text-primary">Tell us your story.</span>
       </h2>
       <p class="text-muted-foreground text-lg mb-10 max-w-xl mx-auto">
-        Loreweaver is in early development. Subscribe to get updates when things ship.
+        Eddator is in early development. Subscribe to hear when we set sail.
       </p>
       <NewsletterSignup lang={lang} variant="hero" />
       <p class="mt-8">
@@ -300,7 +309,11 @@ const t = useTranslations(lang);
     </div>
   </Section>
 
+<!-- Page-level: warm center + frost edges -->
+<div class="fixed inset-0 z-[-1] pointer-events-none page-atmosphere"></div>
+
 <style>
+  /* Hero fade-up */
   .hero-content {
     animation: fadeUp 0.8s ease-out forwards;
   }
@@ -314,5 +327,246 @@ const t = useTranslations(lang);
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  /* ── Frost on the edges ── */
+  /* The cold trying to creep in from outside the cottage */
+  .frost-edges {
+    background:
+      /* Left frost */
+      linear-gradient(to right,
+        rgba(45, 70, 105, 0.35) 0%,
+        rgba(45, 70, 105, 0.12) 8%,
+        transparent 22%),
+      /* Right frost */
+      linear-gradient(to left,
+        rgba(45, 70, 105, 0.35) 0%,
+        rgba(45, 70, 105, 0.12) 8%,
+        transparent 22%),
+      /* Top frost */
+      linear-gradient(to bottom,
+        rgba(45, 70, 105, 0.25) 0%,
+        rgba(45, 70, 105, 0.08) 6%,
+        transparent 18%),
+      /* Bottom frost */
+      linear-gradient(to top,
+        rgba(45, 70, 105, 0.20) 0%,
+        rgba(45, 70, 105, 0.06) 5%,
+        transparent 15%);
+  }
+
+  /* Less intense frost in light mode */
+  :root .frost-edges {
+    background:
+      linear-gradient(to right,
+        rgba(45, 70, 105, 0.10) 0%,
+        rgba(45, 70, 105, 0.04) 8%,
+        transparent 18%),
+      linear-gradient(to left,
+        rgba(45, 70, 105, 0.10) 0%,
+        rgba(45, 70, 105, 0.04) 8%,
+        transparent 18%),
+      linear-gradient(to bottom,
+        rgba(45, 70, 105, 0.08) 0%,
+        transparent 12%),
+      linear-gradient(to top,
+        rgba(45, 70, 105, 0.06) 0%,
+        transparent 10%);
+  }
+
+  :root:where(.dark) .frost-edges {
+    background:
+      linear-gradient(to right,
+        rgba(45, 70, 105, 0.35) 0%,
+        rgba(45, 70, 105, 0.12) 8%,
+        transparent 22%),
+      linear-gradient(to left,
+        rgba(45, 70, 105, 0.35) 0%,
+        rgba(45, 70, 105, 0.12) 8%,
+        transparent 22%),
+      linear-gradient(to bottom,
+        rgba(45, 70, 105, 0.25) 0%,
+        rgba(45, 70, 105, 0.08) 6%,
+        transparent 18%),
+      linear-gradient(to top,
+        rgba(45, 70, 105, 0.20) 0%,
+        rgba(45, 70, 105, 0.06) 5%,
+        transparent 15%);
+  }
+
+  /* ── Page-level atmosphere ── */
+  /* Frost on edges + warm glow at center, applied to entire page */
+  .page-atmosphere {
+    background:
+      /* Warm center */
+      radial-gradient(ellipse 60% 45% at 50% 50%,
+        rgba(224, 122, 58, 0.06) 0%,
+        transparent 70%),
+      /* Frost left */
+      linear-gradient(to right,
+        rgba(45, 70, 105, 0.20) 0%,
+        rgba(45, 70, 105, 0.06) 5%,
+        transparent 15%),
+      /* Frost right */
+      linear-gradient(to left,
+        rgba(45, 70, 105, 0.20) 0%,
+        rgba(45, 70, 105, 0.06) 5%,
+        transparent 15%);
+  }
+
+  :root .page-atmosphere {
+    background:
+      radial-gradient(ellipse 60% 45% at 50% 50%,
+        rgba(224, 122, 58, 0.04) 0%,
+        transparent 70%),
+      linear-gradient(to right,
+        rgba(45, 70, 105, 0.06) 0%,
+        transparent 12%),
+      linear-gradient(to left,
+        rgba(45, 70, 105, 0.06) 0%,
+        transparent 12%);
+  }
+
+  :root:where(.dark) .page-atmosphere {
+    background:
+      radial-gradient(ellipse 60% 45% at 50% 50%,
+        rgba(224, 122, 58, 0.06) 0%,
+        transparent 70%),
+      linear-gradient(to right,
+        rgba(45, 70, 105, 0.20) 0%,
+        rgba(45, 70, 105, 0.06) 5%,
+        transparent 15%),
+      linear-gradient(to left,
+        rgba(45, 70, 105, 0.20) 0%,
+        rgba(45, 70, 105, 0.06) 5%,
+        transparent 15%);
+  }
+
+  /* ── Fire flicker ── */
+  /* Three overlapping glows with different flicker rhythms.
+     Real fire doesn't breathe smoothly -- it dances. */
+  .fire-core {
+    background: rgba(224, 122, 58, 0.22);
+    animation: flickerCore 3s ease-in-out infinite;
+  }
+
+  .fire-secondary {
+    background: rgba(240, 160, 80, 0.14);
+    animation: flickerSecondary 2.3s ease-in-out infinite;
+    animation-delay: -0.8s;
+  }
+
+  .fire-accent {
+    background: rgba(255, 180, 100, 0.10);
+    animation: flickerAccent 1.8s ease-in-out infinite;
+    animation-delay: -1.4s;
+  }
+
+  @keyframes flickerCore {
+    0%   { opacity: 0.8; transform: scale(1); }
+    10%  { opacity: 0.65; transform: scale(0.98); }
+    20%  { opacity: 0.9; transform: scale(1.01); }
+    35%  { opacity: 0.7; transform: scale(0.99); }
+    50%  { opacity: 0.95; transform: scale(1.02); }
+    65%  { opacity: 0.75; transform: scale(0.97); }
+    80%  { opacity: 0.85; transform: scale(1.01); }
+    90%  { opacity: 0.7; transform: scale(0.99); }
+    100% { opacity: 0.8; transform: scale(1); }
+  }
+
+  @keyframes flickerSecondary {
+    0%   { opacity: 0.7; transform: scale(1) translateX(0); }
+    15%  { opacity: 0.9; transform: scale(1.03) translateX(5px); }
+    30%  { opacity: 0.6; transform: scale(0.97) translateX(-3px); }
+    50%  { opacity: 0.85; transform: scale(1.01) translateX(2px); }
+    70%  { opacity: 0.65; transform: scale(0.98) translateX(-4px); }
+    85%  { opacity: 0.8; transform: scale(1.02) translateX(3px); }
+    100% { opacity: 0.7; transform: scale(1) translateX(0); }
+  }
+
+  @keyframes flickerAccent {
+    0%   { opacity: 0.6; transform: scale(1) translateY(0); }
+    12%  { opacity: 0.85; transform: scale(1.04) translateY(-4px); }
+    25%  { opacity: 0.5; transform: scale(0.96) translateY(2px); }
+    40%  { opacity: 0.9; transform: scale(1.02) translateY(-3px); }
+    55%  { opacity: 0.55; transform: scale(0.98) translateY(1px); }
+    70%  { opacity: 0.8; transform: scale(1.03) translateY(-5px); }
+    85%  { opacity: 0.6; transform: scale(0.97) translateY(2px); }
+    100% { opacity: 0.6; transform: scale(1) translateY(0); }
+  }
+
+  /* ── Ember particles (CSS-only, zero JS) ── */
+  .ember-field::before,
+  .ember-field::after {
+    content: '';
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    border-radius: 50%;
+    background: transparent;
+  }
+
+  .ember-field::before {
+    box-shadow:
+      120px 350px 2px 0 rgba(240, 147, 78, 0.6),
+      380px 180px 1px 0 rgba(240, 147, 78, 0.4),
+      620px 420px 2px 0 rgba(240, 147, 78, 0.35),
+      260px 520px 1px 0 rgba(240, 147, 78, 0.5),
+      780px 280px 2px 0 rgba(240, 147, 78, 0.3),
+      510px 120px 1px 0 rgba(240, 147, 78, 0.45),
+      85px 460px 2px 0 rgba(240, 147, 78, 0.35),
+      670px 370px 1px 0 rgba(240, 147, 78, 0.5),
+      200px 220px 2px 0 rgba(240, 147, 78, 0.25),
+      880px 480px 1px 0 rgba(240, 147, 78, 0.4),
+      440px 90px 1px 0 rgba(240, 147, 78, 0.3),
+      730px 550px 2px 0 rgba(240, 147, 78, 0.35);
+    animation: emberDrift1 16s ease-in-out infinite;
+  }
+
+  .ember-field::after {
+    box-shadow:
+      310px 280px 1px 0 rgba(240, 147, 78, 0.45),
+      560px 80px 2px 0 rgba(240, 147, 78, 0.35),
+      150px 410px 1px 0 rgba(240, 147, 78, 0.5),
+      700px 190px 2px 0 rgba(240, 147, 78, 0.3),
+      420px 500px 1px 0 rgba(240, 147, 78, 0.4),
+      50px 150px 2px 0 rgba(240, 147, 78, 0.3),
+      830px 360px 1px 0 rgba(240, 147, 78, 0.45),
+      250px 60px 2px 0 rgba(240, 147, 78, 0.25),
+      590px 440px 1px 0 rgba(240, 147, 78, 0.4),
+      180px 310px 2px 0 rgba(240, 147, 78, 0.3);
+    animation: emberDrift2 20s ease-in-out infinite;
+    animation-delay: -8s;
+  }
+
+  @keyframes emberDrift1 {
+    0%   { transform: translateY(0) translateX(0); opacity: 0.7; }
+    25%  { transform: translateY(-12px) translateX(4px); opacity: 0.4; }
+    50%  { transform: translateY(-20px) translateX(-3px); opacity: 0.6; }
+    75%  { transform: translateY(-8px) translateX(6px); opacity: 0.35; }
+    100% { transform: translateY(0) translateX(0); opacity: 0.7; }
+  }
+
+  @keyframes emberDrift2 {
+    0%   { transform: translateY(0) translateX(0); opacity: 0.5; }
+    33%  { transform: translateY(-16px) translateX(-5px); opacity: 0.3; }
+    66%  { transform: translateY(-6px) translateX(3px); opacity: 0.55; }
+    100% { transform: translateY(0) translateX(0); opacity: 0.5; }
+  }
+
+  /* ── Wiki card warm-glow hover ── */
+  .wiki-card::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: radial-gradient(circle at 50% 50%, rgba(224, 122, 58, 0.08), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: -1;
+  }
+
+  .wiki-card:hover::before {
+    opacity: 1;
   }
 </style>
