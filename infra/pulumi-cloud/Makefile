@@ -18,6 +18,10 @@ kubeconfig: ## Export k3s kubeconfig and merge into ~/.kube/config
 preview: ## Open k9s on the preview cluster
 	k9s --context $(CONTEXT_NAME)
 
+.PHONY: logs
+logs: ## Open Kubetail log viewer in browser
+	kubetail serve --context $(CONTEXT_NAME)
+
 .PHONY: up
 up: ## pulumi up
 	pulumi up
