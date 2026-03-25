@@ -138,6 +138,13 @@ pulumi stack output k3s_kubeconfig --show-secrets > /tmp/k3s.yaml  # Get kubecon
 pulumi config set --secret <key> <value>  # Add encrypted config
 ```
 
+## Logging
+
+Kubelet log retention is configured in cloud-init (`k3s_cluster.py`): 10 files x 50 MiB per container. Logs live at `/var/log/pods/` on the node.
+
+- **Humans:** `make logs` opens the Kubetail browser dashboard for log viewing.
+- **Claude:** Use `stern` for log access -- it's CLI-native and requires no browser. Example: `stern . --context loreweaver-preview` tails all pods, `stern api --context loreweaver-preview` tails the API pod.
+
 ## Rules
 
 - Never commit `.env`, `.envrc`, or any file containing raw credentials.
