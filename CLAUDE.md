@@ -103,7 +103,7 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 | Linting        | oxlint (TS, strictest config)                               |
 | Formatting     | oxfmt (alpha, Prettier fallback)                            |
 | TS packages    | pnpm (strict dependency resolution)                         |
-| Orchestration  | mise (cross-language task runner + tool versions)            |
+| Orchestration  | mise (cross-language task runner + tool versions)           |
 
 ## Commands (planned)
 
