@@ -2,6 +2,9 @@
 .claude/**/*
 !.claude/settings.json
 
+# === Superpowers ===
+.superpowers/
+
 # === Astro ===
 **/.astro
 **/.json

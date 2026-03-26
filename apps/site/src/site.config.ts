@@ -1,10 +1,10 @@
 export const siteConfig = {
-  name: "Loreweaver",
+  name: "chronicle.ventures",
   description: "AI-assisted campaign notebook for tabletop RPGs.",
   logo: {
     src: "/logo-light.png",
     srcDark: "/logo-dark.png",
-    alt: "Loreweaver Logo",
+    alt: "chronicle.ventures",
     strategy: "switch" as "invert" | "switch" | "static",
   },
   ogImage: "",

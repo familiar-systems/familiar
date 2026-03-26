@@ -13,8 +13,8 @@ export default {
         "muted-foreground": "var(--muted-foreground)",
       },
       fontFamily: {
-        sans: ["Crimson Pro", "Georgia", "serif"],
-        display: ["Cinzel", "Georgia", "serif"],
+        sans: ["Lora", "Georgia", "serif"],
+        display: ["EB Garamond", "Georgia", "serif"],
       },
     },
   },

@@ -18,18 +18,32 @@ const t = useTranslations(lang);
   <!-- HERO                                        -->
   <!-- ═══════════════════════════════════════════ -->
   <section class="min-h-[90vh] flex items-center justify-center relative overflow-hidden pt-20 bg-background">
-    <!-- Ambient glow -->
+    <!-- Ambient glow (centered on the sun in the harbor backsplash) -->
     <div class="absolute inset-0 z-0 opacity-30">
-      <div class="absolute top-[15%] left-[25%] w-[500px] h-[500px] bg-primary/40 rounded-full blur-[140px] animate-pulse"></div>
-      <div class="absolute bottom-[20%] right-[15%] w-[400px] h-[400px] bg-amber-700/30 rounded-full blur-[120px] animate-pulse" style="animation-delay: 3s;"></div>
+      <div class="absolute top-[20%] left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-primary/40 rounded-full blur-[140px] animate-pulse"></div>
+      <div class="absolute top-[15%] left-[45%] w-[400px] h-[400px] bg-amber-700/30 rounded-full blur-[120px] animate-pulse" style="animation-delay: 3s;"></div>
     </div>
 
     <!-- Subtle texture overlay -->
     <div class="absolute inset-0 z-0 opacity-[0.03] dark:opacity-[0.05]" style="background-image: url('data:image/svg+xml,%3Csvg width=&quot;60&quot; height=&quot;60&quot; viewBox=&quot;0 0 60 60&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;%3E%3Cg fill=&quot;none&quot; fill-rule=&quot;evenodd&quot;%3E%3Cg fill=&quot;%23000000&quot; fill-opacity=&quot;0.4&quot;%3E%3Cpath d=&quot;M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z&quot;/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
 
+    <!-- Harbor backsplash (embossed) -->
+    <img
+      src="/harbor-light.svg"
+      alt=""
+      class="absolute inset-0 w-full h-full object-cover opacity-[0.12] dark:hidden pointer-events-none"
+      aria-hidden="true"
+    />
+    <img
+      src="/harbor-dark.svg"
+      alt=""
+      class="absolute inset-0 w-full h-full object-cover opacity-[0.12] hidden dark:block pointer-events-none"
+      aria-hidden="true"
+    />
+
     <div class="container mx-auto px-6 relative z-10 text-center">
       <div class="hero-content opacity-0 translate-y-5">
-        <p class="inline-block text-sm font-medium tracking-[0.2em] uppercase text-primary mb-8 border border-primary/20 rounded-full px-5 py-2">
+        <p class="inline-block text-sm font-medium tracking-[0.2em] uppercase text-primary mb-8 border border-primary/30 bg-primary/10 backdrop-blur-sm rounded-full px-5 py-2">
           {t['hero.badge']}
         </p>
         <h1 class="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-8 text-foreground leading-[1.1]">
@@ -66,9 +80,9 @@ const t = useTranslations(lang);
   <!-- ═══════════════════════════════════════════ -->
   <Section class="py-24 md:py-32">
     <div class="max-w-4xl mx-auto">
-      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-4">After Every Session</h2>
+      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-4">From Table to Tale in 15 Minutes</h2>
       <p class="text-center text-muted-foreground text-lg mb-16 max-w-2xl mx-auto">
-        The core loop takes 15 minutes, not hours. You played the game - let the AI do the bookkeeping.
+        You played the game. Let the AI do the bookkeeping.
       </p>
 
       <div class="relative">
@@ -78,8 +92,9 @@ const t = useTranslations(lang);
         <div class="space-y-12">
           <!-- Step 1 -->
           <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
-              <Upload className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-background border border-primary/20 flex items-center justify-center shrink-0 overflow-hidden">
+              <div class="absolute inset-0 bg-primary/10 dark:bg-primary/5 group-hover:bg-primary/20 transition-colors duration-300"></div>
+              <Upload className="relative w-7 h-7 md:w-8 md:h-8 text-primary" />
             </div>
             <div class="pt-2 md:pt-4">
               <h3 class="text-xl font-bold mb-2">Upload your recording or notes</h3>
@@ -89,19 +104,21 @@ const t = useTranslations(lang);
 
           <!-- Step 2 -->
           <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
-              <Sparkles className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-background border border-primary/20 flex items-center justify-center shrink-0 overflow-hidden">
+              <div class="absolute inset-0 bg-primary/10 dark:bg-primary/5 group-hover:bg-primary/20 transition-colors duration-300"></div>
+              <Sparkles className="relative w-7 h-7 md:w-8 md:h-8 text-primary" />
             </div>
             <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2">Loreweaver processes everything</h3>
-              <p class="text-muted-foreground leading-relaxed">It transcribes audio, identifies what happened, extracts NPCs, locations, and events, and drafts a session write-up.</p>
+              <h3 class="text-xl font-bold mb-2">Your session gets processed</h3>
+              <p class="text-muted-foreground leading-relaxed">Audio is transcribed, events are identified, NPCs, locations, and plot threads are extracted, and a session write-up is drafted.</p>
             </div>
           </div>
 
           <!-- Step 3 -->
           <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
-              <ScrollText className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-background border border-primary/20 flex items-center justify-center shrink-0 overflow-hidden">
+              <div class="absolute inset-0 bg-primary/10 dark:bg-primary/5 group-hover:bg-primary/20 transition-colors duration-300"></div>
+              <ScrollText className="relative w-7 h-7 md:w-8 md:h-8 text-primary" />
             </div>
             <div class="pt-2 md:pt-4">
               <h3 class="text-xl font-bold mb-2">You get a list of proposals</h3>
@@ -111,8 +128,9 @@ const t = useTranslations(lang);
 
           <!-- Step 4 -->
           <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
-              <CheckCircle className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-background border border-primary/20 flex items-center justify-center shrink-0 overflow-hidden">
+              <div class="absolute inset-0 bg-primary/10 dark:bg-primary/5 group-hover:bg-primary/20 transition-colors duration-300"></div>
+              <CheckCircle className="relative w-7 h-7 md:w-8 md:h-8 text-primary" />
             </div>
             <div class="pt-2 md:pt-4">
               <h3 class="text-xl font-bold mb-2">Review and approve</h3>
@@ -122,8 +140,9 @@ const t = useTranslations(lang);
 
           <!-- Step 5 -->
           <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
-              <BookOpen className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-background border border-primary/20 flex items-center justify-center shrink-0 overflow-hidden">
+              <div class="absolute inset-0 bg-primary/10 dark:bg-primary/5 group-hover:bg-primary/20 transition-colors duration-300"></div>
+              <BookOpen className="relative w-7 h-7 md:w-8 md:h-8 text-primary" />
             </div>
             <div class="pt-2 md:pt-4">
               <h3 class="text-xl font-bold mb-2">Done. Your wiki just grew.</h3>
@@ -190,7 +209,7 @@ const t = useTranslations(lang);
   <!-- ═══════════════════════════════════════════ -->
   <Section class="py-24 md:py-32">
     <div class="max-w-4xl mx-auto">
-      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-16">Built for How GMs Actually Work</h2>
+      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-16">Built for How Campaigns Actually Run</h2>
 
       <div class="space-y-16">
         <!-- Meets you where you are -->
@@ -233,7 +252,7 @@ const t = useTranslations(lang);
           </div>
           <div>
             <h3 class="text-xl font-bold mb-3">It captures the mess</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg">Retconned something? No problem. Mark things as "established in play but since retconned." The history is preserved, but Loreweaver stops treating it as current. Your campaign's contradictions are part of the story.</p>
+            <p class="text-muted-foreground leading-relaxed text-lg">Retconned something? No problem. Mark things as "established in play but since retconned." The history is preserved, but it stops being treated as current. Your campaign's contradictions are part of the story.</p>
           </div>
         </div>
       </div>
@@ -255,7 +274,7 @@ const t = useTranslations(lang);
       </div>
       <h2 class="font-display text-3xl md:text-4xl font-bold mb-6">Open Source. Self-Hostable.</h2>
       <p class="text-muted-foreground text-lg leading-relaxed mb-8">
-        Loreweaver is open source. Use the hosted version to get started instantly, or run it on your own server with your own AI provider. Your campaign data is yours - we never sell it nor anything that comes from it.
+        chronicle.ventures is open source. Use the hosted version to get started instantly, or run it on your own server with your own AI provider. Your campaign data is yours; we never sell it nor anything that comes from it.
       </p>
       <Button
         href="https://github.com/loreweaver-no"
@@ -280,11 +299,11 @@ const t = useTranslations(lang);
   <Section class="py-24 md:py-32">
     <div class="max-w-3xl mx-auto text-center">
       <h2 class="font-display text-3xl md:text-5xl font-bold mb-6">
-        Stop taking notes.<br />
-        <span class="text-primary">Start playing.</span>
+        Your table tells the story.<br />
+        <span class="text-primary">We just write it down.</span>
       </h2>
       <p class="text-muted-foreground text-lg mb-10 max-w-xl mx-auto">
-        Loreweaver is in early development. Subscribe to get updates when things ship.
+        chronicle.ventures is in early development. Subscribe to get updates when things ship.
       </p>
       <NewsletterSignup lang={lang} variant="hero" />
       <p class="mt-8">

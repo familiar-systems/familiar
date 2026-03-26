@@ -7,8 +7,8 @@
   --color-primary: #c49a2b;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Crimson Pro", Georgia, serif;
-  --font-display: "Cinzel", Georgia, serif;
+  --font-sans: "Lora", Georgia, serif;
+  --font-display: "EB Garamond", Georgia, serif;
 }
 
 @import "./theme.css";

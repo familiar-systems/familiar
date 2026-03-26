@@ -1,5 +1,6 @@
 ---
 import { SiGithub as Github } from '~/components/icons/BrandIcons';
+import ChronicleIcon from '~/components/icons/ChronicleIcon.astro';
 import ThemeToggle from '~/components/common/ThemeToggle.astro';
 import MobileMenu from '~/components/islands/MobileMenu';
 import DesktopNav from '~/components/islands/DesktopNav';
@@ -48,36 +49,7 @@ const primaryHref = ACTION_LINKS.primary.href.startsWith('/docs')
 <header class="w-full transition-all duration-300 border-b border-foreground/10 bg-background/80 backdrop-blur-md">
   <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
     <a href={`/${lang}`} class="flex items-center gap-3 text-xl font-bold font-display tracking-tight text-primary dark:text-white group">
-      {siteConfig.logo && (
-        siteConfig.logo.strategy === 'switch' ? (
-          <>
-            <img 
-              src={siteConfig.logo.src} 
-              alt={siteConfig.logo.alt} 
-              width="32"
-              height="32"
-              class="h-8 w-auto group-hover:rotate-6 transition-transform duration-300 dark:hidden block"
-            />
-            <img 
-              src={siteConfig.logo.srcDark || siteConfig.logo.src} 
-              alt={siteConfig.logo.alt} 
-              width="32"
-              height="32"
-              class="h-8 w-auto group-hover:rotate-6 transition-transform duration-300 hidden dark:block"
-            />
-          </>
-        ) : (
-          <img 
-            src={siteConfig.logo.src} 
-            alt={siteConfig.logo.alt} 
-            width="32"
-            height="32"
-            class={`h-8 w-auto group-hover:rotate-6 transition-transform duration-300 ${
-              siteConfig.logo.strategy === 'invert' ? 'dark:invert' : ''
-            }`}
-          />
-        )
-      )}
+      <ChronicleIcon class="h-7 w-7 group-hover:rotate-6 transition-transform duration-300" />
       <span class="md:hidden lg:inline">{t['brand.name'] || siteConfig.name}</span>
     </a>
     <div class="flex-1 flex justify-center mx-4 lg:mx-8">

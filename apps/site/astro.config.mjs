@@ -77,7 +77,7 @@ const DEFAULT_LOCALE = "en";
 
 // https://astro.build/config
 export default defineConfig({
-  site: process.env.SITE_URL || "https://loreweaver.no",
+  site: process.env.SITE_URL || "https://chronicle.ventures",
   output: "static",
   image: {
     domains: [],
