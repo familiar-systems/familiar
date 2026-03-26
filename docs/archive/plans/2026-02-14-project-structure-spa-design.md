@@ -1,5 +1,7 @@
 # Loreweaver — Project Structure Design (SPA)
 
+> **Superseded** by the [Project Structure Design](../plans/2026-03-26-project-structure-design.md). This document described a TypeScript full-stack architecture with Hocuspocus, tRPC, and 5 deployment targets. The architecture has shifted to Rust (Axum + kameo + Loro) for the server, eliminating the separate API, collaboration, and TypeScript worker processes.
+
 ## Context
 
 Loreweaver is a web application with five workloads that have **different deployment lifecycles**:

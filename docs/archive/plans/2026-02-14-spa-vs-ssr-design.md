@@ -1,6 +1,6 @@
 # Loreweaver — SPA vs SSR Architecture Decision
 
-> **Decided: SPA.** This analysis evaluated SSR (Next.js) against SPA (Vite + React) for Loreweaver's requirements. The conclusion — SPA is a better fit — was adopted. The current project structure reflecting this decision is the [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md).
+> **Decided: SPA.** This analysis evaluated SSR (Next.js) against SPA (Vite + React) for Loreweaver's requirements. The conclusion — SPA is a better fit — was adopted. The current project structure reflecting this decision is the [SPA project structure](./2026-02-14-project-structure-spa-design.md).
 
 ## Context
 

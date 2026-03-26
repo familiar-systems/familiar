@@ -128,4 +128,4 @@ Each of these can be adopted independently without changing the application arch
 - [Solo dev deployment landscape](../discovery/deployment/solo_dev_deployment_landscape.md) — full provider and tooling exploration
 - [EU deployment landscape](../discovery/deployment/eu_deployment_landscape.md) — team-scale deployment options and database branching providers
 - [PostgreSQL vs Turso decision](../discovery/2026-02-18-postgres-vs-turso.md) — why PostgreSQL over Turso/libSQL
-- [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md) — the 4-app architecture this strategy deploys
+- [SPA project structure](./2026-02-14-project-structure-spa-design.md) — the 4-app architecture this strategy deploys

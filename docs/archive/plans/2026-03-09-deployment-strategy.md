@@ -184,7 +184,7 @@ Campaign databases are independent files — individual campaigns can be backed 
 ## References
 
 - [libSQL over PostgreSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md) — why the database changed
-- [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md) — the 5-app architecture this strategy deploys
+- [SPA project structure](./2026-02-14-project-structure-spa-design.md) — the 5-app architecture this strategy deploys
 - [Solo dev deployment landscape (archived)](../discovery/2026-02-18-solo-dev-deployment-landscape.md) — full provider and tooling exploration
 - [EU deployment landscape (archived)](../discovery/2026-02-18-eu-deployment-landscape.md) — team-scale deployment options
 - [Previous deployment strategy (archived)](./2026-02-18-deployment-strategy.md) — PostgreSQL-era strategy

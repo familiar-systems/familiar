@@ -3,7 +3,7 @@
 **Status:** Superseded by [Campaign Collaboration Architecture](../../plans/2026-03-25-campaign-collaboration-architecture.md) -- all eight architectural hypotheses validated ([experiment repo](https://github.com/loreweaver-no/experiment-hocuspocus-agent-collab), [hypotheses](https://github.com/loreweaver-no/experiment-hocuspocus-agent-collab/blob/main/hocuspocus-hypotheses.md)), then implementation technology replaced (Yjs/Hocuspocus/Node.js to Loro/kameo/Rust)
 **Date:** 2026-03-14
 **Supersedes:** None (new decision area)
-**Related decisions:** [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md), [AI workflow unification](../../plans/2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](../../plans/2026-02-20-templates-as-prototype-pages.md)
+**Related decisions:** [SPA project structure](./2026-02-14-project-structure-spa-design.md), [AI workflow unification](../../plans/2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](../../plans/2026-02-20-templates-as-prototype-pages.md)
 
 ---
 
@@ -298,6 +298,6 @@ These findings were not documented anywhere in the Hocuspocus, Yjs, or TipTap ec
 ### Loreweaver design documents
 
 - [AI workflow unification](../../plans/2026-02-14-ai-workflow-unification-design.md)
-- [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md)
+- [SPA project structure](./2026-02-14-project-structure-spa-design.md)
 - [Templates as prototype pages](../../plans/2026-02-20-templates-as-prototype-pages.md)
 - [Storage overview](../discovery/2026-02-14-storage-overview.md)

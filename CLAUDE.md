@@ -11,7 +11,7 @@ Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It
 ## Key Design Documents
 
 - `docs/vision.md` — Product vision, core concepts (Campaign, Session, Things, Blocks, Edges, Status, Suggestions)
-- `docs/plans/2026-02-14-project-structure-spa-design.md` — **Authoritative** project structure and tech stack
+- `docs/plans/2026-03-26-project-structure-design.md` — **Authoritative** project structure (Rust server + TypeScript frontend + Python ML workers)
 - `docs/plans/2026-02-14-ai-workflow-unification-design.md` — AI workflow architecture (SessionIngest, P&R, Q&A)
 - `docs/plans/2026-02-20-templates-as-prototype-pages.md` — Templates are Things, not a separate entity. Categorization via `prototypeId` and tag-relationships.
 - `docs/plans/2026-02-20-public-site-design.md` — Public site (Astro): landing page, blog, public campaign pages. Path-based routing.
@@ -33,53 +33,47 @@ Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It
 - `docs/archive/discovery/2026-02-18-eu-deployment-landscape.md` — EU deployment exploration (decided: Hetzner)
 - `docs/archive/plans/2026-03-14-hocuspocus-architecture.md` — **Superseded** by Campaign Collaboration Architecture. Hocuspocus/Yjs-era design; hypotheses validated, implementation technology replaced.
 
-Read the SPA project structure doc before making architectural decisions — it is the source of truth.
+Read the project structure doc (`docs/plans/2026-03-26-project-structure-design.md`) before making architectural decisions — it is the source of truth.
 
 ## Architecture
 
-### Monorepo: pnpm workspaces + Turborepo
+### Monorepo: pnpm workspaces + Cargo + uv (orchestrated by mise)
 
 ```
-apps/site     — Astro static site (landing page, blog, public campaign pages)
-apps/web      — Vite + React SPA (the app, behind auth, served under /app/)
-apps/api      — Hono + tRPC server (CRUD, interactive AI streaming, job submission)
-apps/collab   — Rust binary: Axum + kameo actors (WebSocket collaboration via loro-dev/protocol, campaign-pinned)
-apps/worker   — Job consumer (polling libSQL job table) (batch AI: transcription, entity extraction, journal drafting)
+apps/site      — Astro static site (landing page, blog, public campaign pages)
+apps/web       — Vite + React SPA (the app, behind auth, served under /app/)
+server/        — Rust binary: Axum + kameo (ALL backend: HTTP API, WebSocket collab, actors, AI, jobs)
+workers/       — Python ML workers (audio transcription, diarization)
 
-packages/domain  — Pure types, zero dependencies. Everything depends on this.
-packages/db      — Drizzle ORM schema, migrations, query helpers (libSQL, database-per-campaign)
-packages/auth    — Token verification, permissions, session management
-packages/editor  — TipTap/ProseMirror schema + custom extensions (THE shared contract)
-packages/ai      — LLM client, prompt templates, pipelines, agent tool definitions
-packages/queue   — libSQL-backed job table, polling producer/consumer
+packages/types   — @loreweaver/types — generated from Rust via ts-rs, zero runtime deps
+packages/editor  — @loreweaver/editor — TipTap/ProseMirror schema + custom extensions (THE shared contract)
 ```
 
 ### Critical Dependency Rules
 
-- **Dependency direction flows toward `domain`.** No package imports from an app. No app imports from another app.
-- **`apps/site` depends only on `domain`.** The public site has the lightest dependency footprint of any app.
-- **`apps/web` depends only on `domain` and `editor`.** It structurally cannot import `db`, `auth`, `ai`, or `queue`. The client/server boundary is enforced by the dependency graph.
-- **Each package's `src/index.ts` is its public API.** Import from `@loreweaver/db`, never from `@loreweaver/db/src/schema/nodes`.
-- **Domain logic belongs in packages, not apps.** Apps are thin wiring that connect packages to deployment targets.
+- **Dependency direction: web -> editor -> types.** The frontend depends on two packages. The editor depends on one. Nothing else.
+- **`apps/site` depends only on `types`.** The public site has the lightest dependency footprint.
+- **`apps/web` depends only on `types` and `editor`.** The client/server boundary is enforced by the dependency graph -- there is no server-side TypeScript to import.
+- **Each package's `src/index.ts` is its public API.** Import from `@loreweaver/types`, never from `@loreweaver/types/generated/ThingId`.
+- **Domain logic is Rust.** The Rust server owns all backend logic: database access, auth, AI orchestration, job dispatch. TypeScript is frontend-only.
 
-### Five Deployment Targets
+### Four Deployment Targets
 
-Each app has a different lifecycle — deploying one must not affect the others:
+Each target has a different lifecycle -- deploying one must not affect the others:
 
 1. **site** — Static HTML (CDN/nginx). Public-facing. Content changes deploy independently of the app.
 2. **web** — Static files (CDN/nginx). The authenticated SPA, served under `/app/`.
-3. **api** — Stateless HTTP. Fast restarts, blue/green deploys.
-4. **collab** — Rust binary (Axum + kameo actors). Actor-per-document, one WebSocket per campaign per client. Campaign-pinning routes all traffic for a campaign to the same server. See [Campaign Collaboration Architecture](docs/plans/2026-03-25-campaign-collaboration-architecture.md).
-5. **worker** — Long-running jobs (10+ minutes). Must survive deploys of everything else.
+3. **server** — Rust binary (Axum + kameo actors). The single backend: HTTP API, WebSocket collaboration, actor lifecycle, AI conversations, job dispatch. Campaign-pinned. See [Campaign Collaboration Architecture](docs/plans/2026-03-25-campaign-collaboration-architecture.md).
+4. **workers** — Python ML workers (faster-whisper, pyannote). Stateless, GPU-bound, called by the server via HTTP.
 
 ### AI Architecture
 
 Two execution paths, same output primitives:
 
-- **Interactive** (apps/api): P&R and Q&A via the agent window. Streaming, latency-sensitive.
-- **Batch** (apps/worker): SessionIngest pipeline. Long-running, survives deploys.
+- **Interactive** (server -- AgentConversation actors): P&R and Q&A via the agent window. Streaming, latency-sensitive.
+- **Batch** (server -- actors + Python workers): SessionIngest pipeline. Audio processing dispatched to Python ML workers, campaign-scoped work (entity extraction, journal drafting) runs through actors.
 
-Both produce **Suggestions** — proposed mutations to the campaign graph. AI never modifies the graph directly; every change requires GM approval. Suggestions are always durable (persisted immediately). Both use the shared `CampaignContext` interface for status-filtered graph retrieval.
+Both produce **Suggestions** -- proposed mutations to the campaign graph. AI never modifies the graph directly; every change requires GM approval. Suggestions are always durable (persisted immediately).
 
 The AI agent writes via tool calls (`suggest_replace`, `create_page`, `propose_relationship`). The serialization compiler translates tool calls into compiled suggestions routed to ThingActors. Document-level proposals use suggestion marks on block UUID ranges; graph-level proposals use the suggestion queue. See [AI Serialization Format v2](docs/plans/2026-03-25-ai-serialization-format-v2.md) and [Campaign Actor Domain Design](docs/plans/2026-03-25-campaign-actor-domain-design.md).
 
@@ -89,40 +83,46 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 
 | Concern         | Choice                                                      |
 | --------------- | ----------------------------------------------------------- |
-| Language        | TypeScript (frontend, API, worker) + Rust (collaboration server) |
+| Language        | TypeScript (frontend) + Rust (server) + Python (ML workers) |
 | Public site     | Astro (static site generator, React islands)                |
 | Frontend        | React (Vite SPA)                                            |
 | Editor          | TipTap (on ProseMirror)                                     |
 | Routing         | TanStack Router or React Router (not yet decided)           |
-| API             | Hono + tRPC                                                 |
+| Server          | Rust: Axum + kameo actors                                   |
+| API contract    | ts-rs (type generation) + utoipa (OpenAPI)                  |
 | Database        | libSQL (database-per-campaign), Turso Database upgrade path |
-| ORM             | Drizzle                                                     |
-| Collaboration   | Rust: Axum + kameo actors + Loro CRDTs + loro-dev/protocol  |
+| Collaboration   | Loro CRDTs + loro-dev/protocol                              |
 | Object Storage  | Hetzner Object Storage (campaign DB source of truth)        |
-| Job queue       | libSQL-backed polling table                                 |
-| Validation      | Zod (at all system boundaries)                              |
-| Testing         | Vitest                                                      |
-| Dev runner      | tsx (server-side), Vite dev server (frontend)               |
-| Linting         | oxlint (strictest config)                                   |
+| ML workers      | Python: faster-whisper, pyannote (GPU, called via HTTP)     |
+| Validation      | Zod (at TypeScript system boundaries)                       |
+| Testing         | Vitest (TS), cargo test (Rust), pytest (Python)             |
+| Dev runner      | Vite dev server (frontend), cargo run (server)              |
+| Linting         | oxlint (TS, strictest config)                               |
 | Formatting      | oxfmt (alpha, Prettier fallback)                            |
-| Package manager | pnpm (strict dependency resolution)                         |
-| Monorepo        | Turborepo                                                   |
+| TS packages     | pnpm (strict dependency resolution)                         |
+| Orchestration   | mise (cross-language task runner + tool versions)            |
 
 ## Commands (planned)
 
 ```bash
-# Monorepo operations
-pnpm install                    # Install all dependencies
-turbo build                     # Build all packages/apps (cached)
-turbo dev                       # Start all dev servers (site:4321, web:5173, api:3001, collab:3002)
-turbo test                      # Run all tests
-turbo lint                      # Lint all packages
-turbo typecheck                 # tsc --noEmit across all packages
+# Cross-language orchestration (mise)
+mise run dev                    # Start all dev servers (site:4321, web:5173, server:3000)
+mise run build                  # Build all targets in dependency order
+mise run generate-types         # Run ts-rs + OpenAPI type generation pipeline
+mise run test                   # Run all tests (Vitest + cargo test + pytest)
 
-# Single package/app
-turbo test --filter=@loreweaver/domain
-turbo dev --filter=apps/web
-pnpm --filter @loreweaver/db test
+# TypeScript (pnpm)
+pnpm install                    # Install all TS dependencies
+pnpm --filter @loreweaver/editor test
+pnpm --filter apps/web dev
+
+# Rust (Cargo)
+cargo build                     # Build the server
+cargo test                      # Run server tests + emit ts-rs types
+cargo run                       # Start the server (localhost:3000)
+
+# Python (uv)
+uv run pytest                   # Run ML worker tests
 ```
 
 ## TypeScript Strictness
@@ -148,8 +148,8 @@ Maximum strictness, no exceptions:
 ## Development Notes
 
 - Path-based routing: `apps/site` owns `/` (landing, blog), `apps/web` is served under `/app/`
-- In dev, Vite proxies `/app/api/*` → localhost:3001 and `/app/collab/*` → ws://localhost:3002 (no CORS needed). Astro dev server runs independently on port 4321.
-- In production, Traefik (via k3s Ingress) routes all traffic through a single domain: `/app/api/*` → api, `/app/collab/*` → collab, `/app/*` → web SPA, `/*` → site
-- The `@loreweaver/editor` package is the most architecturally important — it defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and server (Rust collab server for LoroDoc reconstruction, apps/worker for batch processing)
+- In dev, Vite proxies `/app/api/*` and `/app/ws/*` to the Rust server at localhost:3000 (no CORS needed). Astro dev server runs independently on port 4321.
+- In production, Traefik (via k3s Ingress) routes all traffic through a single domain: `/app/api/*` -> server, `/app/ws/*` -> server (WebSocket upgrade), `/app/*` -> web SPA, `/*` -> site
+- The `@loreweaver/editor` package is the most architecturally important -- it defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and server (Rust server for LoroDoc reconstruction and serialization compiler)
 - LLM provider is pluggable: hosted instance uses managed keys, self-hosters bring their own
 - No Docker database container needed for local development. libSQL files on disk. `:memory:` databases for tests.

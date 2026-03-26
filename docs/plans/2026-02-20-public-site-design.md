@@ -8,7 +8,7 @@
 
 ## Context
 
-The existing SPA (`apps/web`) is entirely behind authentication. The [SPA design](./2026-02-14-project-structure-spa-design.md) explicitly rejected SSR because Loreweaver's content has no SEO requirements — it's a TipTap editor that is inherently client-rendered.
+The existing SPA (`apps/web`) is entirely behind authentication. The [project structure design](./2026-03-26-project-structure-design.md) explicitly rejected SSR because Loreweaver's content has no SEO requirements — it's a TipTap editor that is inherently client-rendered.
 
 A landing page and blog are the **opposite workload**: public, SEO-critical, content-heavy, and largely static. Serving them from the SPA would mean:
 
@@ -162,6 +162,6 @@ graph BT
 
 ## References
 
-- [SPA project structure](./2026-02-14-project-structure-spa-design.md) — the 5-app architecture this design extends
+- [Project structure](./2026-03-26-project-structure-design.md) — the 4-target architecture this design extends
 - [Deployment strategy](./2026-03-12-deployment-strategy.md) -- how apps are deployed
 - [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) — why the core app is an SPA (the reasoning that creates the need for a separate public site)

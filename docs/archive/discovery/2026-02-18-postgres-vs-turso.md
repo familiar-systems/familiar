@@ -8,7 +8,7 @@ The [storage overview](./2026-02-14-storage-overview.md) evaluated storage optio
 
 Since then, several architectural decisions have been made:
 
-- **SPA architecture** with 4 apps: `web` (static), `api` (Hono+tRPC), `collab` (Hocuspocus), `worker` (job consumer). See [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md).
+- **SPA architecture** with 4 apps: `web` (static), `api` (Hono+tRPC), `collab` (Hocuspocus), `worker` (job consumer). See [SPA project structure](../plans/2026-02-14-project-structure-spa-design.md).
 - **AI workflow unification** with durable suggestions, agent conversations, and the interactive/batch AI split. See [AI workflow design](../../plans/2026-02-14-ai-workflow-unification-design.md).
 - **Drizzle ORM** as the database abstraction (supports both PostgreSQL and SQLite/libSQL).
 - **Self-hosted deployment** as a first-class requirement — the same codebase must run on the customer's own infrastructure.

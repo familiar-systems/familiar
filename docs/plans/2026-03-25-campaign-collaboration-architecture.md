@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-03-25
 **Supersedes:** [Document-Centric Campaign Architecture (Hocuspocus ADR)](../archive/plans/2026-03-14-hocuspocus-architecture.md) — validated its hypotheses, then replaced the implementation technology (Yjs/Hocuspocus/Node.js → Loro/kameo/Rust). The campaign model, scaling model, and operational invariants carry forward. The collaboration layer, persistence hooks, and AI interaction model change.
-**Related decisions:** [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md), [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Suggestion Marks Spike](./2026-03-25-loro-tiptap-spike.md), [SPA project structure](./2026-02-14-project-structure-spa-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](./2026-02-20-templates-as-prototype-pages.md)
+**Related decisions:** [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md), [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Suggestion Marks Spike](./2026-03-25-loro-tiptap-spike.md), [Project structure](./2026-03-26-project-structure-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](./2026-02-20-templates-as-prototype-pages.md)
 
 ---
 

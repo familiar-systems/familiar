@@ -16,7 +16,7 @@ This document maps the EU/EEA deployment landscape before any deployment decisio
 
 **Decisions already made:**
 
-- SPA architecture with 4 apps: `web` (static), `api` (Hono+tRPC), `collab` (Hocuspocus), `worker` (job consumer). See [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md).
+- SPA architecture with 4 apps: `web` (static), `api` (Hono+tRPC), `collab` (Hocuspocus), `worker` (job consumer). See [SPA project structure](../plans/2026-02-14-project-structure-spa-design.md).
 - Drizzle ORM (supports both PostgreSQL and SQLite/libSQL).
 - Storage decision: **PostgreSQL**. See [storage overview](./2026-02-14-storage-overview.md) and [PostgreSQL vs Turso](./2026-02-18-postgres-vs-turso.md).
 
@@ -122,7 +122,7 @@ These are established EU-headquartered providers that offer managed PostgreSQL b
 
 ## App Deployment Options
 
-Loreweaver has 4 apps with different deployment lifecycles (see [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md)). The deployment tool needs to handle:
+Loreweaver has 4 apps with different deployment lifecycles (see [SPA project structure](../plans/2026-02-14-project-structure-spa-design.md)). The deployment tool needs to handle:
 
 - **4 independent services** in a monorepo (web, api, collab, worker)
 - **PR preview environments** — deploy a preview for every PR, with its own URL and database branch

@@ -21,7 +21,7 @@ This document explores what deployment looks like when you strip away the team-s
 
 **Decisions already made:**
 
-- SPA architecture with 4 apps: `web` (static), `api` (Hono+tRPC), `collab` (Hocuspocus), `worker` (job consumer). See [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md).
+- SPA architecture with 4 apps: `web` (static), `api` (Hono+tRPC), `collab` (Hocuspocus), `worker` (job consumer). See [SPA project structure](../plans/2026-02-14-project-structure-spa-design.md).
 - Drizzle ORM (supports both PostgreSQL and SQLite/libSQL).
 - Storage decision: **PostgreSQL**. See [storage overview](./2026-02-14-storage-overview.md) and [PostgreSQL vs Turso](./2026-02-18-postgres-vs-turso.md).
 
