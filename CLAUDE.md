@@ -6,74 +6,77 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It captures session content (audio, notes) and uses AI to assemble a campaign knowledge base (NPCs, locations, items, relationships) as a graph that grows from play.
 
-**Status: Pre-implementation.** The repository contains design documents only — no application code yet. All architectural decisions are documented in `docs/`.
+**Status: Pre-implementation.** The repository contains design documents only, no application code yet. All architectural decisions are documented in `docs/`.
 
 ## Key Design Documents
 
-- `docs/vision.md` — Product vision, core concepts (Campaign, Session, Things, Blocks, Edges, Status, Suggestions)
-- `docs/plans/2026-03-26-project-structure-design.md` — **Authoritative** project structure (Rust server + TypeScript frontend + Python ML workers)
-- `docs/plans/2026-02-14-ai-workflow-unification-design.md` — AI workflow architecture (SessionIngest, P&R, Q&A)
-- `docs/plans/2026-02-20-templates-as-prototype-pages.md` — Templates are Things, not a separate entity. Categorization via `prototypeId` and tag-relationships.
-- `docs/plans/2026-02-20-public-site-design.md` — Public site (Astro): landing page, blog, public campaign pages. Path-based routing.
-- `docs/plans/2026-03-12-deployment-strategy.md` — Deployment strategy (k3s on Hetzner, libSQL files on Volume)
-- `docs/plans/2026-03-25-campaign-collaboration-architecture.md` — **Authoritative** collaboration architecture (Rust/kameo/Loro, supersedes Hocuspocus ADR). Campaign checkout/checkin, actor topology, scaling model.
-- `docs/plans/2026-03-25-campaign-actor-domain-design.md` — Actor topology, trait system, WebSocket architecture, suggestion model
-- `docs/plans/2026-03-25-ai-serialization-format-v2.md` — Agent serialization format, progressive disclosure tiers, compiler pipeline, tool signatures
-- `docs/discovery/2026-03-09-sqlite-over-postgres-decision.md` — libSQL over PostgreSQL decision (database-per-campaign, Turso Database upgrade path)
+- `docs/vision.md`: Product vision, core concepts (Campaign, Session, Things, Blocks, Edges, Status, Suggestions)
+- `docs/plans/2026-03-26-project-structure-design.md`: **Authoritative** project structure (Rust server + TypeScript frontend + Python ML workers)
+- `docs/plans/2026-02-14-ai-workflow-unification-design.md`: AI workflow architecture (SessionIngest, P&R, Q&A)
+- `docs/plans/2026-02-22-ai-prd.md`: Full AI system requirements (SessionIngest, entity extraction, suggestion lifecycle)
+- `docs/plans/2026-02-20-templates-as-prototype-pages.md`: Templates are Things, not a separate entity. Categorization via `prototypeId` and tag-relationships.
+- `docs/plans/2026-02-20-public-site-design.md`: Public site (Astro) for landing page, blog, public campaign pages. Path-based routing.
+- `docs/plans/2026-03-12-deployment-strategy.md`: Deployment strategy (k3s on Hetzner, libSQL files on Volume)
+- `docs/plans/2026-03-25-campaign-collaboration-architecture.md`: **Authoritative** collaboration architecture (Rust/kameo/Loro, supersedes Hocuspocus ADR). Campaign checkout/checkin, actor topology, scaling model.
+- `docs/plans/2026-03-25-campaign-actor-domain-design.md`: Actor topology, trait system, WebSocket architecture, suggestion model
+- `docs/plans/2026-03-25-ai-serialization-format-v2.md`: Agent serialization format, progressive disclosure tiers, compiler pipeline, tool signatures
+- `docs/plans/2026-03-25-loro-tiptap-spike.md`: Spike plan validating suggestion marks on block UUID ranges in Loro + TipTap
+- `docs/discovery/2026-03-09-sqlite-over-postgres-decision.md`: libSQL over PostgreSQL decision (database-per-campaign, Turso Database upgrade path)
 
 ### Not Worth Reading On Startup
 
-- `docs/archive/plans/2026-02-14-spa-vs-ssr-design.md` — Why SPA over SSR (decided: SPA)
-- `docs/archive/plans/2026-02-14-project-structure-design.md` — **Superseded** by the SPA design.
-- `docs/archive/discovery/2026-02-18-postgres-vs-turso.md` — Original PostgreSQL decision (superseded by libSQL decision)
-- `docs/archive/discovery/2026-02-14-storage-overview.md` — Initial storage architecture analysis
-- `docs/archive/plans/2026-02-18-deployment-strategy.md` — Previous deployment strategy (superseded by 2026-03-09 version)
-- `docs/archive/plans/2026-03-09-deployment-strategy.md` — Previous deployment strategy (superseded by k3s deployment strategy)
-- `docs/archive/discovery/2026-02-18-solo-dev-deployment-landscape.md` — Deployment exploration (decided: Hetzner)
-- `docs/archive/discovery/2026-02-18-eu-deployment-landscape.md` — EU deployment exploration (decided: Hetzner)
-- `docs/archive/plans/2026-03-14-hocuspocus-architecture.md` — **Superseded** by Campaign Collaboration Architecture. Hocuspocus/Yjs-era design; hypotheses validated, implementation technology replaced.
+- `docs/archive/plans/2026-02-14-spa-vs-ssr-design.md`: Why SPA over SSR (decided: SPA)
+- `docs/archive/plans/2026-02-14-project-structure-design.md`: **Superseded** by the SPA design.
+- `docs/archive/plans/2026-02-14-project-structure-spa-design.md`: **Superseded** by the 2026-03-26 project structure redesign.
+- `docs/archive/discovery/2026-02-18-postgres-vs-turso.md`: Original PostgreSQL decision (superseded by libSQL decision)
+- `docs/archive/discovery/2026-02-14-storage-overview.md`: Initial storage architecture analysis
+- `docs/archive/plans/2026-02-18-deployment-strategy.md`: Previous deployment strategy (superseded by 2026-03-09 version)
+- `docs/archive/plans/2026-03-09-deployment-strategy.md`: Previous deployment strategy (superseded by k3s deployment strategy)
+- `docs/archive/discovery/2026-02-18-solo-dev-deployment-landscape.md`: Deployment exploration (decided: Hetzner)
+- `docs/archive/discovery/2026-02-18-eu-deployment-landscape.md`: EU deployment exploration (decided: Hetzner)
+- `docs/archive/plans/2026-03-14-hocuspocus-architecture.md`: **Superseded** by Campaign Collaboration Architecture. Hocuspocus/Yjs-era design; hypotheses validated, implementation technology replaced.
 
-Read the project structure doc (`docs/plans/2026-03-26-project-structure-design.md`) before making architectural decisions — it is the source of truth.
+Read the project structure doc (`docs/plans/2026-03-26-project-structure-design.md`) before making architectural decisions. It is the source of truth.
 
 ## Architecture
 
 ### Monorepo: pnpm workspaces + Cargo + uv (orchestrated by mise)
 
 ```
-apps/site      — Astro static site (landing page, blog, public campaign pages)
-apps/web       — Vite + React SPA (the app, behind auth, served under /app/)
-server/        — Rust binary: Axum + kameo (ALL backend: HTTP API, WebSocket collab, actors, AI, jobs)
-workers/       — Python ML workers (audio transcription, diarization)
+apps/site      Astro static site (landing page, blog, public campaign pages)
+apps/web       Vite + React SPA (the app, behind auth, served under /app/)
+server/        Rust binary: Axum + kameo (ALL backend: HTTP API, WebSocket collab, actors, AI, jobs)
+workers/       Python ML workers (audio transcription, diarization)
 
-packages/types   — @loreweaver/types — generated from Rust via ts-rs, zero runtime deps
-packages/editor  — @loreweaver/editor — TipTap/ProseMirror schema + custom extensions (THE shared contract)
+packages/types   @loreweaver/types, generated from Rust via ts-rs, zero runtime deps
+packages/editor  @loreweaver/editor, TipTap/ProseMirror schema + custom extensions (THE shared contract)
 ```
 
 ### Critical Dependency Rules
 
 - **Dependency direction: web -> editor -> types.** The frontend depends on two packages. The editor depends on one. Nothing else.
 - **`apps/site` depends only on `types`.** The public site has the lightest dependency footprint.
-- **`apps/web` depends only on `types` and `editor`.** The client/server boundary is enforced by the dependency graph -- there is no server-side TypeScript to import.
+- **`apps/web` depends only on `types` and `editor`.** The client/server boundary is enforced by the dependency graph. There is no server-side TypeScript to import.
 - **Each package's `src/index.ts` is its public API.** Import from `@loreweaver/types`, never from `@loreweaver/types/generated/ThingId`.
 - **Domain logic is Rust.** The Rust server owns all backend logic: database access, auth, AI orchestration, job dispatch. TypeScript is frontend-only.
 
 ### Four Deployment Targets
 
-Each target has a different lifecycle -- deploying one must not affect the others:
+Each target has a different lifecycle. Deploying one must not affect the others:
 
-1. **site** — Static HTML (CDN/nginx). Public-facing. Content changes deploy independently of the app.
-2. **web** — Static files (CDN/nginx). The authenticated SPA, served under `/app/`.
-3. **server** — Rust binary (Axum + kameo actors). The single backend: HTTP API, WebSocket collaboration, actor lifecycle, AI conversations, job dispatch. Campaign-pinned. See [Campaign Collaboration Architecture](docs/plans/2026-03-25-campaign-collaboration-architecture.md).
-4. **workers** — Python ML workers (faster-whisper, pyannote). Stateless, GPU-bound, called by the server via HTTP.
+1. **site**: Static HTML (CDN/nginx). Public-facing. Content changes deploy independently of the app.
+2. **web**: Static files (CDN/nginx). The authenticated SPA, served under `/app/`.
+3. **server**: Rust binary (Axum + kameo actors). The single backend: HTTP API, WebSocket collaboration, actor lifecycle, AI conversations, job dispatch. Campaign-pinned. See [Campaign Collaboration Architecture](docs/plans/2026-03-25-campaign-collaboration-architecture.md).
+4. **workers**: Python ML workers (faster-whisper, pyannote). Stateless, GPU-bound, called by the server via HTTP.
 
 ### AI Architecture
 
 Two execution paths, same output primitives:
 
-- **Interactive** (server -- AgentConversation actors): P&R and Q&A via the agent window. Streaming, latency-sensitive.
-- **Batch** (server -- actors + Python workers): SessionIngest pipeline. Audio processing dispatched to Python ML workers, campaign-scoped work (entity extraction, journal drafting) runs through actors.
+- **Interactive** (server, AgentConversation actors): P&R and Q&A via the agent window. Streaming, latency-sensitive.
+- **Batch** (server, actors + Python workers): SessionIngest pipeline. Audio processing dispatched to Python ML workers; campaign-scoped work (entity extraction, journal drafting) runs through actors.
 
-Both produce **Suggestions** -- proposed mutations to the campaign graph. AI never modifies the graph directly; every change requires GM approval. Suggestions are always durable (persisted immediately).
+Both produce **Suggestions**: proposed mutations to the campaign graph. AI never modifies the graph directly; every change requires GM approval. Suggestions are always durable (persisted immediately).
 
 The AI agent writes via tool calls (`suggest_replace`, `create_page`, `propose_relationship`). The serialization compiler translates tool calls into compiled suggestions routed to ThingActors. Document-level proposals use suggestion marks on block UUID ranges; graph-level proposals use the suggestion queue. See [AI Serialization Format v2](docs/plans/2026-03-25-ai-serialization-format-v2.md) and [Campaign Actor Domain Design](docs/plans/2026-03-25-campaign-actor-domain-design.md).
 
@@ -100,7 +103,7 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 | Linting        | oxlint (TS, strictest config)                               |
 | Formatting     | oxfmt (alpha, Prettier fallback)                            |
 | TS packages    | pnpm (strict dependency resolution)                         |
-| Orchestration  | mise (cross-language task runner + tool versions)           |
+| Orchestration  | mise (cross-language task runner + tool versions)            |
 
 ## Commands (planned)
 
@@ -130,8 +133,8 @@ uv run pytest                   # Run ML worker tests
 Maximum strictness, no exceptions:
 
 - `strict: true`
-- `noUncheckedIndexedAccess` — array indexing returns `T | undefined`
-- `exactOptionalPropertyTypes` — distinguishes `undefined` from missing
+- `noUncheckedIndexedAccess`: array indexing returns `T | undefined`
+- `exactOptionalPropertyTypes`: distinguishes `undefined` from missing
 - `noUnusedLocals` + `noUnusedParameters`
 - Lint ban on `any`
 - Zod validation at every system boundary (API inputs, DB rows, env vars)
@@ -143,13 +146,13 @@ Maximum strictness, no exceptions:
 - **AgentConversation**: Persisted record of AI interactions. Provenance for suggestions. Roles: `gm`, `player`, `system`.
 - **Mentions** (block→node or block→block): Derived automatically, power backlinks and transclusion.
 - **Relationships** (node→node): Authored/curated, carry semantic labels. Freeform vocabulary.
-- **Prototypes (templates)**: A template is a Thing with `isTemplate: true`. No separate `Template` entity. Creating a thing from a template clones the prototype's block structure. `prototypeId?: ThingId` tracks lineage. Tags are Things connected via `tagged` relationships — no `tags: string[]` field.
+- **Prototypes (templates)**: A template is a Thing with `isTemplate: true`. No separate `Template` entity. Creating a thing from a template clones the prototype's block structure. `prototypeId?: ThingId` tracks lineage. Tags are Things connected via `tagged` relationships, not a `tags: string[]` field.
 
 ## Development Notes
 
 - Path-based routing: `apps/site` owns `/` (landing, blog), `apps/web` is served under `/app/`
 - In dev, Vite proxies `/app/api/*` and `/app/ws/*` to the Rust server at localhost:3000 (no CORS needed). Astro dev server runs independently on port 4321.
 - In production, Traefik (via k3s Ingress) routes all traffic through a single domain: `/app/api/*` -> server, `/app/ws/*` -> server (WebSocket upgrade), `/app/*` -> web SPA, `/*` -> site
-- The `@loreweaver/editor` package is the most architecturally important -- it defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and server (Rust server for LoroDoc reconstruction and serialization compiler)
+- The `@loreweaver/editor` package is the most architecturally important. It defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and server (Rust server for LoroDoc reconstruction and serialization compiler).
 - LLM provider is pluggable: hosted instance uses managed keys, self-hosters bring their own
 - No Docker database container needed for local development. libSQL files on disk. `:memory:` databases for tests.
