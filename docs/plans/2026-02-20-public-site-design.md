@@ -2,7 +2,7 @@
 
 ## Decision
 
-**Add `apps/site` as a fifth deployment target** using Astro to serve the landing page, blog, and public campaign showcase pages. Path-based routing: the public site owns the root domain (`/`), the SPA moves under `/app/`.
+**Add `apps/site` as a fourth deployment target** using Astro to serve the landing page, blog, and public campaign showcase pages. Path-based routing: the public site owns the root domain (`/`), the SPA moves under `/app/`.
 
 ---
 
@@ -57,7 +57,7 @@ Each Markdown file has typed frontmatter (title, date, summary, tags) validated 
 
 Optional public-facing pages where GMs can showcase their campaigns. These are **static snapshots** built from campaign data:
 
-- `apps/api` exposes a public endpoint for campaign summaries (title, description, public entity count, etc.)
+- The Rust server exposes a public endpoint for campaign summaries (title, description, public entity count, etc.)
 - `apps/site` fetches this data at build time (or via a scheduled rebuild trigger)
 - Result: static HTML pages that are fast, SEO-friendly, and don't require a server runtime
 
@@ -74,15 +74,15 @@ loreweaver.com/              → apps/site   (landing page)
 loreweaver.com/blog/         → apps/site   (blog)
 loreweaver.com/campaigns/    → apps/site   (public campaign showcase)
 loreweaver.com/app/          → apps/web    (SPA, behind auth)
-loreweaver.com/app/api/      → apps/api    (tRPC)
-loreweaver.com/app/collab/   → apps/collab (WebSocket)
+loreweaver.com/app/api/      → server/     (HTTP API)
+loreweaver.com/app/ws/       → server/     (WebSocket)
 ```
 
-### Reverse proxy rules (nginx/Caddy)
+### Reverse proxy rules (Traefik via k3s Ingress)
 
 ```
-/app/api/*     → apps/api     (port 3001)
-/app/collab/*  → apps/collab  (port 3002, WebSocket upgrade)
+/app/api/*     → server       (port 3000, HTTP)
+/app/ws/*      → server       (port 3000, WebSocket upgrade)
 /app/*         → apps/web     (SPA static files, with fallback to /app/index.html)
 /*             → apps/site    (Astro static files)
 ```
