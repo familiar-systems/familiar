@@ -4,7 +4,7 @@
 
 **Coolify on Hetzner, libSQL database-per-campaign files on a Hetzner Volume, Pulumi for IaC.**
 
-This supersedes the [previous deployment strategy](./archive/2026-02-18-deployment-strategy.md), which assumed PostgreSQL and deferred provider/tool decisions. Those decisions are now made. See the [libSQL over PostgreSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md) for why the database changed.
+This supersedes the [previous deployment strategy](./2026-02-18-deployment-strategy.md), which assumed PostgreSQL and deferred provider/tool decisions. Those decisions are now made. See the [libSQL over PostgreSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md) for why the database changed.
 
 ---
 
@@ -92,7 +92,7 @@ PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
 ```
 
-See the [libSQL decision doc](../discovery/2026-03-09-sqlite-over-postgres-decision.md) for the defense-in-depth concurrency analysis.
+See the [libSQL decision doc](../../discovery/2026-03-09-sqlite-over-postgres-decision.md) for the defense-in-depth concurrency analysis.
 
 ---
 
@@ -183,10 +183,10 @@ Campaign databases are independent files — individual campaigns can be backed 
 
 ## References
 
-- [libSQL over PostgreSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md) — why the database changed
+- [libSQL over PostgreSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md) — why the database changed
 - [SPA project structure](./2026-02-14-project-structure-spa-design.md) — the 5-app architecture this strategy deploys
-- [Solo dev deployment landscape (archived)](../discovery/archive/2026-02-18-solo-dev-deployment-landscape.md) — full provider and tooling exploration
-- [EU deployment landscape (archived)](../discovery/archive/2026-02-18-eu-deployment-landscape.md) — team-scale deployment options
-- [Previous deployment strategy (archived)](./archive/2026-02-18-deployment-strategy.md) — PostgreSQL-era strategy
+- [Solo dev deployment landscape (archived)](../discovery/2026-02-18-solo-dev-deployment-landscape.md) — full provider and tooling exploration
+- [EU deployment landscape (archived)](../discovery/2026-02-18-eu-deployment-landscape.md) — team-scale deployment options
+- [Previous deployment strategy (archived)](./2026-02-18-deployment-strategy.md) — PostgreSQL-era strategy
 - [Coolify PR preview deploy docs](https://coolify.io/docs/applications/ci-cd/github/preview-deploy)
 - [Coolify Traefik basic auth middleware](https://coolify.io/docs/knowledge-base/proxy/traefik/basic-auth)

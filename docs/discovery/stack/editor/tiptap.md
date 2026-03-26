@@ -194,7 +194,7 @@ TipTap's [Collaboration extension](https://tiptap.dev/docs/editor/extensions/fun
 - WebSocket-based Yjs sync
 - Persistence hooks (save to database on change)
 - Authentication hooks
-- ~~Redis scaling for multiple server instances~~ (eliminated by campaign-pinning, see [Hocuspocus Architecture ADR](../../../plans/2026-03-14-hocuspocus-architecture.md))
+- ~~Redis scaling for multiple server instances~~ (eliminated by campaign-pinning, see [Hocuspocus Architecture ADR](../../../archive/plans/2026-03-14-hocuspocus-architecture.md))
 - SQLite or custom storage backends
 
 ```typescript

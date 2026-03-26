@@ -1,4 +1,4 @@
-> **Superseded.** Deployment decided: Coolify on Hetzner with libSQL database-per-campaign. See [deployment strategy](../../plans/2026-03-09-deployment-strategy.md). This document's research informed that decision.
+> **Superseded.** Deployment decided: Coolify on Hetzner with libSQL database-per-campaign. See [deployment strategy](../plans/2026-03-09-deployment-strategy.md). This document's research informed that decision.
 
 # Loreweaver — EU Deployment & Development Lifecycle Landscape
 
@@ -16,9 +16,9 @@ This document maps the EU/EEA deployment landscape before any deployment decisio
 
 **Decisions already made:**
 
-- SPA architecture with 4 apps: `web` (static), `api` (Hono+tRPC), `collab` (Hocuspocus), `worker` (job consumer). See [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md).
+- SPA architecture with 4 apps: `web` (static), `api` (Hono+tRPC), `collab` (Hocuspocus), `worker` (job consumer). See [SPA project structure](../plans/2026-02-14-project-structure-spa-design.md).
 - Drizzle ORM (supports both PostgreSQL and SQLite/libSQL).
-- Storage decision: **PostgreSQL**. See [storage overview](../archive/2026-02-14-storage-overview.md) and [PostgreSQL vs Turso](../archive/2026-02-18-postgres-vs-turso.md).
+- Storage decision: **PostgreSQL**. See [storage overview](./2026-02-14-storage-overview.md) and [PostgreSQL vs Turso](./2026-02-18-postgres-vs-turso.md).
 
 ---
 
@@ -122,7 +122,7 @@ These are established EU-headquartered providers that offer managed PostgreSQL b
 
 ## App Deployment Options
 
-Loreweaver has 4 apps with different deployment lifecycles (see [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md)). The deployment tool needs to handle:
+Loreweaver has 4 apps with different deployment lifecycles (see [SPA project structure](../plans/2026-02-14-project-structure-spa-design.md)). The deployment tool needs to handle:
 
 - **4 independent services** in a monorepo (web, api, collab, worker)
 - **PR preview environments** — deploy a preview for every PR, with its own URL and database branch
@@ -314,7 +314,7 @@ The goal: every PR gets an isolated preview environment with its own database st
       - turso db destroy camp-test-pr-${N}
 ```
 
-**Multiple branch commands, pointer rewriting.** Each campaign database is branched separately. The platform database branch needs its `db_name` references updated to point to the branched campaign databases (see [postgres_vs_turso.md](../archive/2026-02-18-postgres-vs-turso.md#database-branching-for-development) for the rewrite pattern). More orchestration, but granular — you branch only the campaigns needed for the PR.
+**Multiple branch commands, pointer rewriting.** Each campaign database is branched separately. The platform database branch needs its `db_name` references updated to point to the branched campaign databases (see [postgres_vs_turso.md](./2026-02-18-postgres-vs-turso.md#database-branching-for-development) for the rewrite pattern). More orchestration, but granular — you branch only the campaigns needed for the PR.
 
 ### Without Database Branching (EU-only PostgreSQL path)
 

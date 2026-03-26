@@ -33,7 +33,7 @@ packages/
   queue/      Job type definitions, polling producer/consumer
 ```
 
-See [project structure](docs/plans/2026-02-14-project-structure-spa-design.md) for the full design.
+See [project structure](docs/plans/2026-03-26-project-structure-design.md) for the full design.
 
 ## Tech stack
 
@@ -56,7 +56,7 @@ See [deployment strategy](docs/plans/2026-03-12-deployment-strategy.md) and [lib
 ## Design documents
 
 - [Vision](docs/vision.md) — product vision and core concepts
-- [Project structure](docs/plans/2026-02-14-project-structure-spa-design.md) — monorepo architecture (authoritative)
+- [Project structure](docs/plans/2026-03-26-project-structure-design.md) — monorepo architecture (authoritative)
 - [AI workflow](docs/plans/2026-02-14-ai-workflow-unification-design.md) — interactive and batch AI design
 - [AI PRD](docs/plans/2026-02-22-ai-prd.md) — full AI system requirements
 - [Deployment strategy](docs/plans/2026-03-12-deployment-strategy.md) — k3s + Hetzner + libSQL

@@ -408,7 +408,7 @@ campaign_pvc = k8s.core.v1.PersistentVolumeClaim("campaigns",
 )
 ```
 
-**Note:** The [Hocuspocus Architecture ADR](./2026-03-14-hocuspocus-architecture.md) supersedes this data persistence model. Object Storage is the source of truth for campaign databases, with the Volume serving as a local working cache. Writeback to Object Storage happens every ~30 seconds during active use, not nightly. The PV/PVC definitions above remain relevant (the Volume is the local cache), but the nightly CronJob backup is replaced by continuous writeback.
+**Note:** The [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md) (now superseded by the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md)) established this persistence model: Object Storage is the source of truth for campaign databases, with the Volume serving as a local working cache. Writeback to Object Storage happens every ~30 seconds during active use, not nightly. This model carries forward unchanged. The PV/PVC definitions above remain relevant (the Volume is the local cache), but the nightly CronJob backup is replaced by continuous writeback. The collaboration server changes from Node.js/Hocuspocus to a Rust binary (Axum + kameo actors).
 
 ---
 

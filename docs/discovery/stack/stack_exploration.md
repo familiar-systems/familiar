@@ -2,7 +2,7 @@
 
 ## Context
 
-This document evaluates technology stacks for Loreweaver before any code is written. It sits alongside the [storage analysis](../archive/2026-02-14-storage-overview.md) (PostgreSQL or Turso) and the [audio pipeline design](../audio_ingest/audio_overview.md) (multi-stage AI processing).
+This document evaluates technology stacks for Loreweaver before any code is written. It sits alongside the [storage analysis](../../archive/discovery/2026-02-14-storage-overview.md) (PostgreSQL or Turso) and the [audio pipeline design](../audio_ingest/audio_overview.md) (multi-stage AI processing).
 
 The [vision doc](../../vision.md) defines a **server-hosted web app** (with self-hosted option) centered on a **block-based rich text editor** wired into a **property graph**. The stack needs to serve three workloads:
 
