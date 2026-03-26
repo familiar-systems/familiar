@@ -1,4 +1,4 @@
-> **Superseded** by [2026-03-09-deployment-strategy.md](../2026-03-09-deployment-strategy.md). This document assumed PostgreSQL and deferred provider/tool decisions that are now made (Coolify on Hetzner, libSQL database-per-campaign). See also [libSQL over PostgreSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md).
+> **Superseded** by [2026-03-09-deployment-strategy.md](./2026-03-09-deployment-strategy.md). This document assumed PostgreSQL and deferred provider/tool decisions that are now made (Coolify on Hetzner, libSQL database-per-campaign). See also [libSQL over PostgreSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md).
 
 # Loreweaver — Deployment Strategy
 
@@ -16,7 +16,7 @@ Loreweaver is being built by a solo developer. The previous deployment explorati
 
 **What changed:**
 
-- **Storage decision: PostgreSQL.** Turso/libSQL was the other candidate, but Turso confirmed they have no plans to expand beyond AWS. PostgreSQL is universally available across every EU provider and every deployment tier. See [PostgreSQL vs Turso decision](../discovery/archive/2026-02-18-postgres-vs-turso.md).
+- **Storage decision: PostgreSQL.** Turso/libSQL was the other candidate, but Turso confirmed they have no plans to expand beyond AWS. PostgreSQL is universally available across every EU provider and every deployment tier. See [PostgreSQL vs Turso decision](../discovery/2026-02-18-postgres-vs-turso.md).
 - **Solo developer.** No team contention on the database. No need for PR-based isolation. The expensive-test-data problem (audio transcription + AI extraction costs $2+ per session) is real, but solvable with `pg_dump` snapshots rather than copy-on-write branching.
 - **EU data sovereignty.** Preferred, not mandatory. EU-headquartered providers preferred; non-EU providers acceptable where no EU alternative exists for a needed capability.
 
@@ -127,5 +127,5 @@ Each of these can be adopted independently without changing the application arch
 
 - [Solo dev deployment landscape](../discovery/deployment/solo_dev_deployment_landscape.md) — full provider and tooling exploration
 - [EU deployment landscape](../discovery/deployment/eu_deployment_landscape.md) — team-scale deployment options and database branching providers
-- [PostgreSQL vs Turso decision](../discovery/archive/2026-02-18-postgres-vs-turso.md) — why PostgreSQL over Turso/libSQL
-- [SPA project structure](./2026-02-14-project-structure-spa-design.md) — the 4-app architecture this strategy deploys
+- [PostgreSQL vs Turso decision](../discovery/2026-02-18-postgres-vs-turso.md) — why PostgreSQL over Turso/libSQL
+- [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md) — the 4-app architecture this strategy deploys

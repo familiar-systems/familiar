@@ -4,7 +4,7 @@
 
 ## Context
 
-The [project structure design](../../plans/archive/2026-02-14-project-structure-design.md) defines two places where AI work happens:
+The [project structure design](../../archive/plans/2026-02-14-project-structure-design.md) defines two places where AI work happens:
 
 1. **`apps/worker`** — background job consumer for long-running AI tasks (audio transcription, entity extraction, journal drafting). Jobs are enqueued by the API server and processed independently. Duration: minutes to tens of minutes.
 2. **`apps/api`** — tRPC server that also handles interactive AI requests (content generation, suggestions, "what do we know about X?"). Streams tokens directly to the browser. Duration: seconds.

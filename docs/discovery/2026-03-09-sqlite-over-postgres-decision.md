@@ -1,10 +1,10 @@
 # SQLite over PostgreSQL — Database Re-evaluation
 
-> **Decided: SQLite files (database-per-campaign), with [Turso Database](https://github.com/tursodatabase/turso) as the upgrade path.** This supersedes the [previous PostgreSQL decision](./archive/2026-02-18-postgres-vs-turso.md). The original decision was sound given its assumptions, but those assumptions changed when PR preview environments became a priority and the deployment infrastructure crystallized around Hetzner + k3s.
+> **Decided: SQLite files (database-per-campaign), with [Turso Database](https://github.com/tursodatabase/turso) as the upgrade path.** This supersedes the [previous PostgreSQL decision](../archive/discovery/2026-02-18-postgres-vs-turso.md). The original decision was sound given its assumptions, but those assumptions changed when PR preview environments became a priority and the deployment infrastructure crystallized around Hetzner + k3s.
 
 ## Context
 
-The [previous decision](./archive/2026-02-18-postgres-vs-turso.md) chose PostgreSQL over Turso/libSQL. The reasoning was:
+The [previous decision](../archive/discovery/2026-02-18-postgres-vs-turso.md) chose PostgreSQL over Turso/libSQL. The reasoning was:
 
 1. **Turso confirmed no plans to expand beyond AWS** — conflicting with EU data sovereignty preferences.
 2. **PostgreSQL is universally available** across every EU provider and deployment tier.
@@ -129,7 +129,7 @@ The list of contributor emails lives in a version-controlled `contributors.sql` 
 
 **Schema migrations across N databases.** Adding a column to a campaign table requires running the migration against every campaign database. Drizzle can handle this, but the "iterate over all campaign DBs" runner needs to be built. Turso's managed platform automates this via parent→child propagation, but that's not available in the self-hosted path.
 
-**Hocuspocus storage adapter.** ~~Hocuspocus has a PostgreSQL adapter. A SQLite adapter needs to be written or found.~~ Resolved: the [Hocuspocus Architecture ADR](../plans/2026-03-14-hocuspocus-architecture.md) stores Y.Doc blobs as a nullable BLOB column in the campaign database, materialized to relational tables via `onStoreDocument`. No separate adapter needed.
+**Hocuspocus storage adapter.** ~~Hocuspocus has a PostgreSQL adapter. A SQLite adapter needs to be written or found.~~ Resolved: the [Hocuspocus Architecture ADR](.../archive/discovery/plans/2026-03-14-hocuspocus-architecture.md) stores Y.Doc blobs as a nullable BLOB column in the campaign database, materialized to relational tables via `onStoreDocument`. No separate adapter needed.
 
 **Less mainstream for self-hosters.** "Run PostgreSQL" is universal knowledge. "Your campaigns are SQLite files" is less familiar, though arguably simpler in practice.
 
@@ -139,7 +139,7 @@ The list of contributor emails lives in a version-controlled `contributors.sql` 
 
 **Tier 2 (when Turso Database exits beta):** Swap in Turso Database. Same files, better engine. `BEGIN CONCURRENT` available if needed. No infrastructure changes — only the database driver in `@loreweaver/db` changes.
 
-Both tiers use the same file-on-disk model. The Hetzner Volume, the PR preview copy logic, and the Pulumi infrastructure don't change between tiers. Note: the [Hocuspocus Architecture ADR](../plans/2026-03-14-hocuspocus-architecture.md) makes Object Storage the source of truth with local disk as a working cache (campaign checkout/checkin lifecycle with ~30-second writeback).
+Both tiers use the same file-on-disk model. The Hetzner Volume, the PR preview copy logic, and the Pulumi infrastructure don't change between tiers. Note: the [Hocuspocus Architecture ADR](.../archive/discovery/plans/2026-03-14-hocuspocus-architecture.md) makes Object Storage the source of truth with local disk as a working cache (campaign checkout/checkin lifecycle with ~30-second writeback).
 
 ## Self-hosting story
 
@@ -160,7 +160,7 @@ All containers mount the data directory. No database server to install, configur
 
 ## Open questions
 
-1. ~~**Hocuspocus SQLite storage adapter.** Does one exist, or does it need to be written?~~ Resolved: Y.Doc blobs live as a nullable BLOB column in the campaign database, materialized to relational tables via `onStoreDocument`. No separate adapter needed. See [Hocuspocus Architecture ADR](../plans/2026-03-14-hocuspocus-architecture.md).
+1. ~~**Hocuspocus SQLite storage adapter.** Does one exist, or does it need to be written?~~ Resolved: Y.Doc blobs live as a nullable BLOB column in the campaign database, materialized to relational tables via `onStoreDocument`. No separate adapter needed. See [Hocuspocus Architecture ADR](.../archive/discovery/plans/2026-03-14-hocuspocus-architecture.md).
 
 2. **Drizzle multi-database ergonomics.** The "resolve campaign ID → get database client → run query" pattern needs a clean abstraction. Turso has a [starter template with Drizzle](https://turso.tech/blog/creating-a-multitenant-saas-service-with-turso-remix-and-drizzle-6205cf47) that demonstrates this for their managed service — the pattern should transfer to local files.
 
@@ -170,11 +170,11 @@ All containers mount the data directory. No database server to install, configur
 
 ## References
 
-- [Previous PostgreSQL decision](./archive/2026-02-18-postgres-vs-turso.md) — superseded by this document
+- [Previous PostgreSQL decision](../archive/discovery/2026-02-18-postgres-vs-turso.md) — superseded by this document
 - [Turso Database (Rust SQLite rewrite)](https://github.com/tursodatabase/turso) — MIT licensed, in-process, SQLite-compatible
 - [Turso Database JavaScript binding](https://www.npmjs.com/package/@tursodatabase/database)
 - [k3s on Hetzner deployment strategy](../../plans/2026-03-12-deployment-strategy.md) — deployment infrastructure this decision integrates with
 - [Hanko](https://www.hanko.io/) — authentication provider for Loreweaver
 - [SQLite WAL mode](https://www.sqlite.org/wal.html) — write-ahead logging for concurrent read/write
-- [Deployment strategy (archived)](../../plans/archive/2026-02-18-deployment-strategy.md) — superseded; see [current deployment strategy](../../plans/2026-03-12-deployment-strategy.md)
-- [Storage overview](./archive/2026-02-14-storage-overview.md) — original storage analysis
+- [Deployment strategy (archived)](.../archive/discovery/plans/2026-02-18-deployment-strategy.md) — superseded; see [current deployment strategy](../../plans/2026-03-12-deployment-strategy.md)
+- [Storage overview](../archive/discovery/2026-02-14-storage-overview.md) — original storage analysis

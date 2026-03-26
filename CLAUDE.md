@@ -16,19 +16,22 @@ Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It
 - `docs/plans/2026-02-20-templates-as-prototype-pages.md` — Templates are Things, not a separate entity. Categorization via `prototypeId` and tag-relationships.
 - `docs/plans/2026-02-20-public-site-design.md` — Public site (Astro): landing page, blog, public campaign pages. Path-based routing.
 - `docs/plans/2026-03-12-deployment-strategy.md` — Deployment strategy (k3s on Hetzner, libSQL files on Volume)
-- `docs/plans/2026-03-14-hocuspocus-architecture.md` — Document-centric campaign architecture (Hocuspocus, campaign checkout/checkin, object storage, AI agent as collab participant, scaling model)
+- `docs/plans/2026-03-25-campaign-collaboration-architecture.md` — **Authoritative** collaboration architecture (Rust/kameo/Loro, supersedes Hocuspocus ADR). Campaign checkout/checkin, actor topology, scaling model.
+- `docs/plans/2026-03-25-campaign-actor-domain-design.md` — Actor topology, trait system, WebSocket architecture, suggestion model
+- `docs/plans/2026-03-25-ai-serialization-format-v2.md` — Agent serialization format, progressive disclosure tiers, compiler pipeline, tool signatures
 - `docs/discovery/2026-03-09-sqlite-over-postgres-decision.md` — libSQL over PostgreSQL decision (database-per-campaign, Turso Database upgrade path)
 
 ### Not Worth Reading On Startup
 
-- `docs/plans/archive/2026-02-14-spa-vs-ssr-design.md` — Why SPA over SSR (decided: SPA)
-- `docs/plans/archive/2026-02-14-project-structure-design.md` — **Superseded** by the SPA design.
-- `docs/discovery/archive/2026-02-18-postgres-vs-turso.md` — Original PostgreSQL decision (superseded by libSQL decision)
-- `docs/discovery/archive/2026-02-14-storage-overview.md` — Initial storage architecture analysis
-- `docs/plans/archive/2026-02-18-deployment-strategy.md` — Previous deployment strategy (superseded by 2026-03-09 version)
-- `docs/plans/archive/2026-03-09-deployment-strategy.md` — Previous deployment strategy (superseded by k3s deployment strategy)
-- `docs/discovery/archive/2026-02-18-solo-dev-deployment-landscape.md` — Deployment exploration (decided: Hetzner)
-- `docs/discovery/archive/2026-02-18-eu-deployment-landscape.md` — EU deployment exploration (decided: Hetzner)
+- `docs/archive/plans/2026-02-14-spa-vs-ssr-design.md` — Why SPA over SSR (decided: SPA)
+- `docs/archive/plans/2026-02-14-project-structure-design.md` — **Superseded** by the SPA design.
+- `docs/archive/discovery/2026-02-18-postgres-vs-turso.md` — Original PostgreSQL decision (superseded by libSQL decision)
+- `docs/archive/discovery/2026-02-14-storage-overview.md` — Initial storage architecture analysis
+- `docs/archive/plans/2026-02-18-deployment-strategy.md` — Previous deployment strategy (superseded by 2026-03-09 version)
+- `docs/archive/plans/2026-03-09-deployment-strategy.md` — Previous deployment strategy (superseded by k3s deployment strategy)
+- `docs/archive/discovery/2026-02-18-solo-dev-deployment-landscape.md` — Deployment exploration (decided: Hetzner)
+- `docs/archive/discovery/2026-02-18-eu-deployment-landscape.md` — EU deployment exploration (decided: Hetzner)
+- `docs/archive/plans/2026-03-14-hocuspocus-architecture.md` — **Superseded** by Campaign Collaboration Architecture. Hocuspocus/Yjs-era design; hypotheses validated, implementation technology replaced.
 
 Read the SPA project structure doc before making architectural decisions — it is the source of truth.
 
@@ -40,7 +43,7 @@ Read the SPA project structure doc before making architectural decisions — it 
 apps/site     — Astro static site (landing page, blog, public campaign pages)
 apps/web      — Vite + React SPA (the app, behind auth, served under /app/)
 apps/api      — Hono + tRPC server (CRUD, interactive AI streaming, job submission)
-apps/collab   — Hono + Hocuspocus (HTTP API + WebSocket collaboration, co-located per campaign-pinning architecture)
+apps/collab   — Rust binary: Axum + kameo actors (WebSocket collaboration via loro-dev/protocol, campaign-pinned)
 apps/worker   — Job consumer (polling libSQL job table) (batch AI: transcription, entity extraction, journal drafting)
 
 packages/domain  — Pure types, zero dependencies. Everything depends on this.
@@ -66,7 +69,7 @@ Each app has a different lifecycle — deploying one must not affect the others:
 1. **site** — Static HTML (CDN/nginx). Public-facing. Content changes deploy independently of the app.
 2. **web** — Static files (CDN/nginx). The authenticated SPA, served under `/app/`.
 3. **api** — Stateless HTTP. Fast restarts, blue/green deploys.
-4. **collab** — Hono + Hocuspocus co-located in one process. Campaign-pinning routes all traffic for a campaign to the same server. See [Hocuspocus Architecture ADR](docs/plans/2026-03-14-hocuspocus-architecture.md).
+4. **collab** — Rust binary (Axum + kameo actors). Actor-per-document, one WebSocket per campaign per client. Campaign-pinning routes all traffic for a campaign to the same server. See [Campaign Collaboration Architecture](docs/plans/2026-03-25-campaign-collaboration-architecture.md).
 5. **worker** — Long-running jobs (10+ minutes). Must survive deploys of everything else.
 
 ### AI Architecture
@@ -78,7 +81,7 @@ Two execution paths, same output primitives:
 
 Both produce **Suggestions** — proposed mutations to the campaign graph. AI never modifies the graph directly; every change requires GM approval. Suggestions are always durable (persisted immediately). Both use the shared `CampaignContext` interface for status-filtered graph retrieval.
 
-The AI agent writes to documents as a Hocuspocus participant (WebSocket for active pages, HTTP/DirectConnection for inactive pages). Document-level proposals use tagged CRDT blocks; graph-level proposals use the suggestion queue.
+The AI agent writes via tool calls (`suggest_replace`, `create_page`, `propose_relationship`). The serialization compiler translates tool calls into compiled suggestions routed to ThingActors. Document-level proposals use suggestion marks on block UUID ranges; graph-level proposals use the suggestion queue. See [AI Serialization Format v2](docs/plans/2026-03-25-ai-serialization-format-v2.md) and [Campaign Actor Domain Design](docs/plans/2026-03-25-campaign-actor-domain-design.md).
 
 Tool availability determines AI behavior (no mode toggles): GMs get read+write tools, players get read-only tools.
 
@@ -86,7 +89,7 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 
 | Concern         | Choice                                                      |
 | --------------- | ----------------------------------------------------------- |
-| Language        | TypeScript (full stack)                                     |
+| Language        | TypeScript (frontend, API, worker) + Rust (collaboration server) |
 | Public site     | Astro (static site generator, React islands)                |
 | Frontend        | React (Vite SPA)                                            |
 | Editor          | TipTap (on ProseMirror)                                     |
@@ -94,7 +97,7 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 | API             | Hono + tRPC                                                 |
 | Database        | libSQL (database-per-campaign), Turso Database upgrade path |
 | ORM             | Drizzle                                                     |
-| Collaboration   | Hocuspocus (Yjs CRDT server)                                |
+| Collaboration   | Rust: Axum + kameo actors + Loro CRDTs + loro-dev/protocol  |
 | Object Storage  | Hetzner Object Storage (campaign DB source of truth)        |
 | Job queue       | libSQL-backed polling table                                 |
 | Validation      | Zod (at all system boundaries)                              |
@@ -147,6 +150,6 @@ Maximum strictness, no exceptions:
 - Path-based routing: `apps/site` owns `/` (landing, blog), `apps/web` is served under `/app/`
 - In dev, Vite proxies `/app/api/*` → localhost:3001 and `/app/collab/*` → ws://localhost:3002 (no CORS needed). Astro dev server runs independently on port 4321.
 - In production, Traefik (via k3s Ingress) routes all traffic through a single domain: `/app/api/*` → api, `/app/collab/*` → collab, `/app/*` → web SPA, `/*` → site
-- The `@loreweaver/editor` package is the most architecturally important — it defines the TipTap schema shared between browser (apps/web) and server (apps/worker for document manipulation)
+- The `@loreweaver/editor` package is the most architecturally important — it defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and server (Rust collab server for LoroDoc reconstruction, apps/worker for batch processing)
 - LLM provider is pluggable: hosted instance uses managed keys, self-hosters bring their own
 - No Docker database container needed for local development. libSQL files on disk. `:memory:` databases for tests.

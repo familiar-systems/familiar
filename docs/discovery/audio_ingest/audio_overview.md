@@ -2,7 +2,7 @@
 
 ## Context
 
-This document describes the architecture for processing session audio (and other raw sources) into structured campaign data. It sits between the [vision doc](../../01_vision.md) (which defines the post-session workflow) and the [storage analysis](../archive/2026-02-14-storage-overview.md) (which defines how data is persisted).
+This document describes the architecture for processing session audio (and other raw sources) into structured campaign data. It sits between the [vision doc](../../01_vision.md) (which defines the post-session workflow) and the [storage analysis](../../archive/discovery/2026-02-14-storage-overview.md) (which defines how data is persisted).
 
 **The problem:** A raw session transcript is unstructured, messy, and long (30k-60k+ tokens for a 3-4 hour session). The campaign graph is structured, block-native, and entity-resolved. Something needs to bridge that gap.
 

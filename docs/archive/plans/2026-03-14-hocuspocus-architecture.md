@@ -1,9 +1,9 @@
 # ADR: Document-Centric Campaign Architecture
 
-**Status:** Accepted -- all eight architectural hypotheses validated ([experiment repo](https://github.com/loreweaver-no/experiment-hocuspocus-agent-collab), [hypotheses](https://github.com/loreweaver-no/experiment-hocuspocus-agent-collab/blob/main/hocuspocus-hypotheses.md))
+**Status:** Superseded by [Campaign Collaboration Architecture](../../plans/2026-03-25-campaign-collaboration-architecture.md) -- all eight architectural hypotheses validated ([experiment repo](https://github.com/loreweaver-no/experiment-hocuspocus-agent-collab), [hypotheses](https://github.com/loreweaver-no/experiment-hocuspocus-agent-collab/blob/main/hocuspocus-hypotheses.md)), then implementation technology replaced (Yjs/Hocuspocus/Node.js to Loro/kameo/Rust)
 **Date:** 2026-03-14
 **Supersedes:** None (new decision area)
-**Related decisions:** [SPA project structure](./2026-02-14-project-structure-spa-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](./2026-02-20-templates-as-prototype-pages.md)
+**Related decisions:** [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md), [AI workflow unification](../../plans/2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](../../plans/2026-02-20-templates-as-prototype-pages.md)
 
 ---
 
@@ -40,7 +40,7 @@ This isolation was chosen for GDPR data deletion (delete a campaign = delete a f
 
 Object storage (Hetzner Object Storage) is the authoritative location for all campaign database files. Local disk on each application server is a working cache.
 
-**Campaign checkout:** When a user connects to a campaign, the routing table (a lightweight map of campaign ID → server address in the platform database, currently libSQL -- see [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)) is consulted. If the campaign is already checked out on a server, route there. If not, assign it to the least-loaded server. That server downloads the libsql file from object storage to local disk and opens it.
+**Campaign checkout:** When a user connects to a campaign, the routing table (a lightweight map of campaign ID → server address in the platform database, currently libSQL -- see [libSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md)) is consulted. If the campaign is already checked out on a server, route there. If not, assign it to the least-loaded server. That server downloads the libsql file from object storage to local disk and opens it.
 
 **Active session:** All reads and writes run against the local embedded libsql file at NVMe speed. No network hop in the hot path. Hocuspocus documents are lazy-loaded into memory as users open pages — reconstructed via `toYdoc()` from relational data on cold checkout, or loaded from the Y.Doc blob if one exists from a prior active session (crash recovery).
 
@@ -297,7 +297,7 @@ These findings were not documented anywhere in the Hocuspocus, Yjs, or TipTap ec
 
 ### Loreweaver design documents
 
-- [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md)
-- [SPA project structure](./2026-02-14-project-structure-spa-design.md)
-- [Templates as prototype pages](./2026-02-20-templates-as-prototype-pages.md)
-- [Storage overview](../discovery/archive/2026-02-14-storage-overview.md)
+- [AI workflow unification](../../plans/2026-02-14-ai-workflow-unification-design.md)
+- [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md)
+- [Templates as prototype pages](../../plans/2026-02-20-templates-as-prototype-pages.md)
+- [Storage overview](../discovery/2026-02-14-storage-overview.md)

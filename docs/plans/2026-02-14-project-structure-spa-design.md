@@ -7,14 +7,14 @@ Loreweaver is a web application with five workloads that have **different deploy
 1. **Public site** (Astro) — static HTML for the landing page, blog, and public campaign showcase. No server process. Deploy = upload new files. Content changes deploy independently of the app.
 2. **Frontend** (Vite + React SPA) — the authenticated application. Static files served from a CDN or file server. No server process. Deploy = upload new files. Served under `/app/`.
 3. **API layer** (Hono + tRPC) — handles CRUD, interactive AI streaming, and job submission. Stateless, request-response (plus streaming for AI). Needs fast restarts and blue/green deploys.
-4. **Collaboration layer** (Hocuspocus) -- holds persistent WebSocket connections for real-time document editing via Yjs CRDTs. Note: the [Hocuspocus Architecture ADR](./2026-03-14-hocuspocus-architecture.md) co-locates Hono and Hocuspocus in the same Node.js process per server, with campaign-pinning eliminating the separate-lifecycle requirement.
+4. **Collaboration layer** -- holds persistent WebSocket connections for real-time document editing via Loro CRDTs. Note: the [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md) (now superseded by the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md)) originally co-located Hono and Hocuspocus in Node.js; the new design uses a Rust binary with Axum + kameo actors, campaign-pinned.
 5. **Worker layer** (AI pipeline) — dequeues long-running jobs (audio transcription, entity extraction, journal drafting). A single job may run 10+ minutes. Must survive deploys of the other four layers.
 
 The API layer **enqueues** work; the worker **dequeues and processes** independently. Deploying the API server does not interrupt in-flight AI jobs. Deploying new static files does not affect any server process.
 
 ### Why SPA over SSR?
 
-Loreweaver's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. Server-side rendering would produce HTML that React immediately takes over — compute spent on an HTML shell the user never sees without JavaScript. The SPA approach eliminates the server/client component boundary (no `'use client'` directives, no hydration bugs) and produces a cleaner dependency graph where the frontend structurally cannot import server-side code. See [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
+Loreweaver's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. Server-side rendering would produce HTML that React immediately takes over — compute spent on an HTML shell the user never sees without JavaScript. The SPA approach eliminates the server/client component boundary (no `'use client'` directives, no hydration bugs) and produces a cleaner dependency graph where the frontend structurally cannot import server-side code. See [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
 
 ### Decisions made
 
@@ -22,14 +22,14 @@ Loreweaver's content is entirely behind authentication (no SEO), and the centerp
 | -------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Language       | Full TypeScript (Stack A)                                   | [stack_exploration.md](../discovery/stack/stack_exploration.md)                                             |
 | Editor         | TipTap (open-source, MIT)                                   | [tiptap.md](../discovery/stack/editor/tiptap.md)                                                            |
-| Frontend       | React (Vite SPA)                                            | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md)                                            |
-| Build tool     | Vite                                                        | [SPA vs SSR analysis](./archive/2026-02-14-spa-vs-ssr-design.md)                                            |
+| Frontend       | React (Vite SPA)                                            | [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md)                                            |
+| Build tool     | Vite                                                        | [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md)                                            |
 | API server     | Hono + tRPC                                                 | This document                                                                                               |
 | Database       | libSQL (database-per-campaign, Turso Database upgrade path) | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)                                 |
 | ORM            | Drizzle                                                     | [stack_exploration.md](../discovery/stack/stack_exploration.md)                                             |
-| Collaboration  | Hocuspocus (self-hosted Yjs server)                         | [tiptap.md](../discovery/stack/editor/tiptap.md), [Hocuspocus ADR](./2026-03-14-hocuspocus-architecture.md) |
+| Collaboration  | Rust: Axum + kameo actors + Loro CRDTs                      | [tiptap.md](../discovery/stack/editor/tiptap.md), [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) |
 | Job queue      | libSQL-backed polling table                                 | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)                                 |
-| Repo structure | pnpm monorepo with Turborepo                                | [project structure design (SSR)](./archive/2026-02-14-project-structure-design.md)                          |
+| Repo structure | pnpm monorepo with Turborepo                                | [project structure design (SSR)](../archive/plans/2026-02-14-project-structure-design.md)                          |
 | Public site    | Astro (static site generator)                               | [Public site design](./2026-02-20-public-site-design.md)                                                    |
 
 ---
@@ -76,7 +76,7 @@ loreweaver/
 
 ## Packages
 
-The package layer is shared across both the SPA and [SSR design](./archive/2026-02-14-project-structure-design.md) — the SPA/SSR decision affects apps, not packages. This document reflects updates to `domain`, `db`, and `ai` packages to incorporate the [AI workflow primitives](./2026-02-14-ai-workflow-unification-design.md) (suggestions, conversations, CampaignContext, tool definitions).
+The package layer is shared across both the SPA and [SSR design](../archive/plans/2026-02-14-project-structure-design.md) — the SPA/SSR decision affects apps, not packages. This document reflects updates to `domain`, `db`, and `ai` packages to incorporate the [AI workflow primitives](./2026-02-14-ai-workflow-unification-design.md) (suggestions, conversations, CampaignContext, tool definitions).
 
 ### Dependency graph
 
@@ -393,7 +393,7 @@ apps/collab/src/
 └── config.ts             # Server configuration (port)
 ```
 
-A Hocuspocus server with 4 lifecycle hooks, each delegating to the packages. The [Hocuspocus Architecture ADR](./2026-03-14-hocuspocus-architecture.md) expands this design: Hono and Hocuspocus run co-located in the same process, with HTTP endpoints for document status and agent writes alongside the WebSocket server. Campaign-pinning eliminates the need for Redis scaling.
+Originally a Hocuspocus server with lifecycle hooks (see archived [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md)). Now superseded by the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md): a Rust binary using Axum + kameo actors + Loro CRDTs, with actor-per-document lifecycle replacing Hocuspocus hooks. Campaign-pinning eliminates the need for Redis scaling.
 
 **Depends on:** `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/editor`, `@hocuspocus/server`, `yjs`
 

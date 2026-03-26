@@ -1,6 +1,6 @@
 # Loreweaver — Project Structure Design
 
-> **Superseded.** This was the original project structure based on Next.js (SSR). The [SPA vs SSR analysis](./2026-02-14-spa-vs-ssr-design.md) concluded that SSR provides no meaningful benefit for an authenticated, editor-centric application. The current authoritative structure is the [SPA project structure](../2026-02-14-project-structure-spa-design.md).
+> **Superseded.** This was the original project structure based on Next.js (SSR). The [SPA vs SSR analysis](./2026-02-14-spa-vs-ssr-design.md) concluded that SSR provides no meaningful benefit for an authenticated, editor-centric application. The current authoritative structure is the [SPA project structure](../../plans/2026-02-14-project-structure-spa-design.md).
 
 ## Context
 
@@ -19,7 +19,7 @@ The web layer **enqueues** work; the worker **dequeues and processes** independe
 | Language       | Full TypeScript (Stack A)                      | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
 | Editor         | TipTap (open-source, MIT)                      | [tiptap.md](../../discovery/stack/editor/tiptap.md)                           |
 | Frontend       | React (Next.js App Router)                     | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
-| Database       | PostgreSQL                                     | [storage_overview.md](../../discovery/archive/2026-02-14-storage-overview.md) |
+| Database       | PostgreSQL                                     | [storage_overview.md](../discovery/2026-02-14-storage-overview.md) |
 | API layer      | tRPC (end-to-end type safety)                  | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
 | ORM            | Drizzle                                        | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
 | Collaboration  | Hocuspocus (self-hosted Yjs server)            | [tiptap.md](../../discovery/stack/editor/tiptap.md)                           |
