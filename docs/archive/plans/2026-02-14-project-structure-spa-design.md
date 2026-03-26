@@ -20,19 +20,19 @@ Loreweaver's content is entirely behind authentication (no SEO), and the centerp
 
 ### Decisions made
 
-| Decision       | Choice                                                      | Reference                                                                                                   |
-| -------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Language       | Full TypeScript (Stack A)                                   | [stack_exploration.md](../discovery/stack/stack_exploration.md)                                             |
-| Editor         | TipTap (open-source, MIT)                                   | [tiptap.md](../discovery/stack/editor/tiptap.md)                                                            |
-| Frontend       | React (Vite SPA)                                            | [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md)                                            |
-| Build tool     | Vite                                                        | [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md)                                            |
-| API server     | Hono + tRPC                                                 | This document                                                                                               |
-| Database       | libSQL (database-per-campaign, Turso Database upgrade path) | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)                                 |
-| ORM            | Drizzle                                                     | [stack_exploration.md](../discovery/stack/stack_exploration.md)                                             |
+| Decision       | Choice                                                      | Reference                                                                                                                                    |
+| -------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language       | Full TypeScript (Stack A)                                   | [stack_exploration.md](../discovery/stack/stack_exploration.md)                                                                              |
+| Editor         | TipTap (open-source, MIT)                                   | [tiptap.md](../discovery/stack/editor/tiptap.md)                                                                                             |
+| Frontend       | React (Vite SPA)                                            | [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md)                                                                      |
+| Build tool     | Vite                                                        | [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md)                                                                      |
+| API server     | Hono + tRPC                                                 | This document                                                                                                                                |
+| Database       | libSQL (database-per-campaign, Turso Database upgrade path) | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)                                                                  |
+| ORM            | Drizzle                                                     | [stack_exploration.md](../discovery/stack/stack_exploration.md)                                                                              |
 | Collaboration  | Rust: Axum + kameo actors + Loro CRDTs                      | [tiptap.md](../discovery/stack/editor/tiptap.md), [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) |
-| Job queue      | libSQL-backed polling table                                 | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)                                 |
-| Repo structure | pnpm monorepo with Turborepo                                | [project structure design (SSR)](../archive/plans/2026-02-14-project-structure-design.md)                          |
-| Public site    | Astro (static site generator)                               | [Public site design](./2026-02-20-public-site-design.md)                                                    |
+| Job queue      | libSQL-backed polling table                                 | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)                                                                  |
+| Repo structure | pnpm monorepo with Turborepo                                | [project structure design (SSR)](../archive/plans/2026-02-14-project-structure-design.md)                                                    |
+| Public site    | Astro (static site generator)                               | [Public site design](./2026-02-20-public-site-design.md)                                                                                     |
 
 ---
 

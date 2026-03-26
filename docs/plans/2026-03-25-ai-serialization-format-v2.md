@@ -48,15 +48,18 @@ staged. [gm_only]
 </relationships>
 
 ## Appearance
+
 Wiry build, dark eyes that never settle. A scar runs from
 his left ear to his jaw — he says it's from a bar fight.
 It isn't.
 
 ## Personality
+
 Deflects with humor. Answers questions with questions. Loyal
 to whoever is paying — or so he wants people to think.
 
 ## Secrets [gm_only]
+
 Kael is still reporting to the {Silver Compact}. His "betrayal"
 was staged to place him as a mole inside {Northport}'s
 intelligence network.
@@ -68,18 +71,22 @@ but he's begun feeding {Whisper} false intelligence.</suggestion>
 ## History
 
 ### Session 0
+
 Kael was introduced to the party by {Tormund} at the
 {Rusty Anchor}.
 
 ### Session 3
+
 Kael revealed his former ties to the {Silver Compact}
 during the ambush at {Northport} docks.
 
 ### Session 7
+
 The party discovered Kael had been feeding information
 to both sides.
 
 ## GM Notes [gm_only]
+
 Planning to have Kael betray the party in session 9. The reveal
 should come through {Whisper} showing up at the {Rusty Anchor}.
 ```
@@ -174,17 +181,21 @@ The `[gm_only]` annotation is the only status marker that appears in the format.
 
 ```md
 ## Appearance
+
 ...
 
 ## Secrets [gm_only]
+
 ...
 
 ## History
 
 ### Session 0
+
 ...
 
 ### Session 3
+
 ...
 ```
 
@@ -307,13 +318,13 @@ GM Notes [gm_only] (150 words)
 </toc>
 
 > From: Secrets
-Kael is still reporting to the {Silver Compact}. His "betrayal"
-was staged to place him as a mole inside {Northport}'s
-intelligence network.
+> Kael is still reporting to the {Silver Compact}. His "betrayal"
+> was staged to place him as a mole inside {Northport}'s
+> intelligence network.
 
 > From: History / Session 3
-Kael revealed his former ties to the {Silver Compact}
-during the ambush at {Northport} docks.
+> Kael revealed his former ties to the {Silver Compact}
+> during the ambush at {Northport} docks.
 ```
 
 **Used when:** Interactive P&R where the agent needs specific context about related entities. GM asks "flesh out Kael's backstory connecting him to the Silver Compact" — agent gets tier 3 for Kael (the edit target), tier 2 for Silver Compact (relevant context).
@@ -326,14 +337,14 @@ The complete serialized page — all sections expanded, all content present. The
 
 ### Tier Selection Heuristics
 
-| Scenario | Focal entity | Related entities |
-| --- | --- | --- |
-| SessionIngest entity resolution | — | Tier 1 for all candidates |
-| SessionIngest journal drafting | Tier 3 for the session | Tier 1-2 for referenced entities |
-| P&R: "flesh out this NPC" | Tier 3 for the target | Tier 2 for @-referenced entities |
-| P&R: "connect these two things" | Tier 2 for both | Tier 1 for surrounding context |
-| Q&A: "tell me about Kael" | Tier 2-3 for Kael | Tier 1 for connected entities |
-| Q&A: "what happened in session 14?" | Tier 3 for session 14 | Tier 1 for referenced entities |
+| Scenario                            | Focal entity           | Related entities                 |
+| ----------------------------------- | ---------------------- | -------------------------------- |
+| SessionIngest entity resolution     | —                      | Tier 1 for all candidates        |
+| SessionIngest journal drafting      | Tier 3 for the session | Tier 1-2 for referenced entities |
+| P&R: "flesh out this NPC"           | Tier 3 for the target  | Tier 2 for @-referenced entities |
+| P&R: "connect these two things"     | Tier 2 for both        | Tier 1 for surrounding context   |
+| Q&A: "tell me about Kael"           | Tier 2-3 for Kael      | Tier 1 for connected entities    |
+| Q&A: "what happened in session 14?" | Tier 3 for session 14  | Tier 1 for referenced entities   |
 
 ---
 
@@ -382,24 +393,28 @@ Directly inspired by Claude Code's `str_replace` tool ([open source](https://git
 **All three mutation types — replace, insert, and delete — are handled by one tool.** No separate `suggest_insert` or `suggest_delete` is needed. The agent includes surrounding content as context in `old_content` and the full result in `new_content`:
 
 **Replace** (content changes):
+
 ```
 old_content: "His handler is Whisper, who operates out of Ashenmoor."
 new_content: "His handler is Whisper, who operates out of Ashenmoor, but he's begun feeding Whisper false intelligence."
 ```
 
 **Insert after existing content** (proposed is a superset of original):
+
 ```
 old_content: "Kael was introduced to the party by Tormund."
 new_content: "Kael was introduced to the party by Tormund.\n\nHe seemed nervous, glancing toward the door every few minutes."
 ```
 
 **Insert before existing content:**
+
 ```
 old_content: "## Secrets"
 new_content: "## Secrets\n\nThe following is known only to the GM."
 ```
 
 **Delete** (proposed is empty or a subset):
+
 ```
 old_content: "This paragraph is no longer relevant to the narrative."
 new_content: ""
@@ -476,7 +491,7 @@ To edit the original text, the GM rejects the suggestion. One action, clear inte
 
 **Blocking eliminates staleness as a concept.** Without blocking, a human could edit the text underneath a suggestion, causing the suggestion's target content to drift from what the agent reasoned about. The v1 design addressed this with render-time staleness detection — comparing `original_text` to current content. With blocking, the text under a suggestion cannot change via human editing. There is no drift. There is no race condition. There is no `original_text` field to store or compare.
 
-The only way content under a suggestion changes is when a *different* overlapping suggestion is accepted — which is a deliberate GM action with clear, visible consequences.
+The only way content under a suggestion changes is when a _different_ overlapping suggestion is accepted — which is a deliberate GM action with clear, visible consequences.
 
 **Blocking respects "AI proposes, GM disposes."** The suggestion is a visible, active proposal that demands a decision: accept, reject, or edit the proposal. This is the right interaction model for AI-assisted creative writing where the GM is the authority.
 
@@ -653,18 +668,23 @@ Example NPC prototype:
 What would you need to know if they came up unexpectedly?}
 
 ## Appearance
+
 {What do people notice first?}
 
 ## Personality
+
 {How do they behave? What do they want?}
 
 ## Secrets [gm_only]
+
 {What the players don't know.}
 
 ## History
+
 {How they got here.}
 
 ## GM Notes [gm_only]
+
 {Running notes, plans, future hooks.}
 ```
 
@@ -672,7 +692,7 @@ What would you need to know if they came up unexpectedly?}
 
 Prototypes specify tags that are automatically applied to Things created from them. The NPC prototype has `OnCreate: tag as #NPC`. This creates a `tagged` relationship to the NPC tag-Thing at creation time.
 
-The prototype itself is not tagged NPC — it *creates things that are tagged NPC*. This prevents prototypes from appearing in tag queries alongside actual campaign entities.
+The prototype itself is not tagged NPC — it _creates things that are tagged NPC_. This prevents prototypes from appearing in tag queries alongside actual campaign entities.
 
 ### AI Instructions Block
 
@@ -680,6 +700,7 @@ Prototypes include an AI instructions block that tells the agent how to work wit
 
 ```md
 ## AI Instructions
+
 OnCreate: tag as #NPC
 When writing the preamble, cover identity, role, and affiliations.
 The Secrets section should include motivations the players haven't
@@ -725,14 +746,17 @@ index card for future retrieval.}
 </toc>
 
 ## Journal
+
 {The narrative of what happened. AI-drafted from transcript,
 GM-reviewed. The canonical record.}
 
 ## Prep Notes [gm_only]
+
 {What the GM planned before the session. Valuable for
 post-session diffing — what happened vs. what was planned.}
 
 ## Sources [gm_only]
+
 {Transcript segments, player recollections, GM notes.
 The raw material the journal was derived from.}
 ```

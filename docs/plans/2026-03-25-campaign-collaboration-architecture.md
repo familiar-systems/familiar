@@ -35,19 +35,19 @@ The superseded Hocuspocus ADR validated eight hypotheses about how page state fl
 
 ### What changes
 
-| Concern | Hocuspocus ADR | This ADR |
-|---------|---------------|----------|
-| CRDT library | Yjs (Y.Doc) | Loro (LoroDoc) |
-| Sync protocol | Yjs sync protocol via Hocuspocus | loro-dev/protocol (room-based multiplexing) |
-| Server runtime | Node.js (single-threaded event loop) | Rust + kameo (actor-per-document, independent async tasks) |
-| Collaboration server | Hocuspocus (lifecycle hooks) | Axum WebSocket + kameo actors |
-| ProseMirror binding | y-prosemirror | loro-prosemirror |
-| Persistence hooks | `onLoadDocument` / `onStoreDocument` | Actor `restore()` / `snapshot()` via `Persistent` trait |
-| AI read paths | Two: Hocuspocus for active pages, libSQL for inactive | One: always through actors. Every actor holds a full LoroDoc. |
-| AI write paths | Two: WebSocket for active pages, HTTP/DirectConnection for inactive | One: through the compiler + actor messaging. All suggestions are marks on blocks. |
-| Document proposals | Tagged CRDT blocks (`agent_proposal_prior/suggestion`) | Suggestion marks on block UUID ranges |
-| AI agent connection model | WebSocket participant speaking Yjs sync protocol | Compiler-mediated: agent calls tools, compiler produces LoroDoc operations |
-| Memory management | Manual (don't load Y.Docs for read-only, eviction timeout) | Automatic (actors are independent, eviction is per-actor idle timeout) |
+| Concern                   | Hocuspocus ADR                                                      | This ADR                                                                          |
+| ------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| CRDT library              | Yjs (Y.Doc)                                                         | Loro (LoroDoc)                                                                    |
+| Sync protocol             | Yjs sync protocol via Hocuspocus                                    | loro-dev/protocol (room-based multiplexing)                                       |
+| Server runtime            | Node.js (single-threaded event loop)                                | Rust + kameo (actor-per-document, independent async tasks)                        |
+| Collaboration server      | Hocuspocus (lifecycle hooks)                                        | Axum WebSocket + kameo actors                                                     |
+| ProseMirror binding       | y-prosemirror                                                       | loro-prosemirror                                                                  |
+| Persistence hooks         | `onLoadDocument` / `onStoreDocument`                                | Actor `restore()` / `snapshot()` via `Persistent` trait                           |
+| AI read paths             | Two: Hocuspocus for active pages, libSQL for inactive               | One: always through actors. Every actor holds a full LoroDoc.                     |
+| AI write paths            | Two: WebSocket for active pages, HTTP/DirectConnection for inactive | One: through the compiler + actor messaging. All suggestions are marks on blocks. |
+| Document proposals        | Tagged CRDT blocks (`agent_proposal_prior/suggestion`)              | Suggestion marks on block UUID ranges                                             |
+| AI agent connection model | WebSocket participant speaking Yjs sync protocol                    | Compiler-mediated: agent calls tools, compiler produces LoroDoc operations        |
+| Memory management         | Manual (don't load Y.Docs for read-only, eviction timeout)          | Automatic (actors are independent, eviction is per-actor idle timeout)            |
 
 ### Constraints
 

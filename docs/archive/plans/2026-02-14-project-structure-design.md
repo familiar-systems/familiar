@@ -14,17 +14,17 @@ The web layer **enqueues** work; the worker **dequeues and processes** independe
 
 ### Decisions made
 
-| Decision       | Choice                                         | Reference                                                                     |
-| -------------- | ---------------------------------------------- | ----------------------------------------------------------------------------- |
-| Language       | Full TypeScript (Stack A)                      | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
-| Editor         | TipTap (open-source, MIT)                      | [tiptap.md](../../discovery/stack/editor/tiptap.md)                           |
-| Frontend       | React (Next.js App Router)                     | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
+| Decision       | Choice                                         | Reference                                                          |
+| -------------- | ---------------------------------------------- | ------------------------------------------------------------------ |
+| Language       | Full TypeScript (Stack A)                      | [stack_exploration.md](../../discovery/stack/stack_exploration.md) |
+| Editor         | TipTap (open-source, MIT)                      | [tiptap.md](../../discovery/stack/editor/tiptap.md)                |
+| Frontend       | React (Next.js App Router)                     | [stack_exploration.md](../../discovery/stack/stack_exploration.md) |
 | Database       | PostgreSQL                                     | [storage_overview.md](../discovery/2026-02-14-storage-overview.md) |
-| API layer      | tRPC (end-to-end type safety)                  | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
-| ORM            | Drizzle                                        | [stack_exploration.md](../../discovery/stack/stack_exploration.md)            |
-| Collaboration  | Hocuspocus (self-hosted Yjs server)            | [tiptap.md](../../discovery/stack/editor/tiptap.md)                           |
-| Job queue      | PostgreSQL-backed (pg-boss or graphile-worker) | This document                                                                 |
-| Repo structure | pnpm monorepo with Turborepo                   | This document                                                                 |
+| API layer      | tRPC (end-to-end type safety)                  | [stack_exploration.md](../../discovery/stack/stack_exploration.md) |
+| ORM            | Drizzle                                        | [stack_exploration.md](../../discovery/stack/stack_exploration.md) |
+| Collaboration  | Hocuspocus (self-hosted Yjs server)            | [tiptap.md](../../discovery/stack/editor/tiptap.md)                |
+| Job queue      | PostgreSQL-backed (pg-boss or graphile-worker) | This document                                                      |
+| Repo structure | pnpm monorepo with Turborepo                   | This document                                                      |
 
 ---
 

@@ -32,21 +32,21 @@ Unchanged from the superseded design. Loreweaver's content is entirely behind au
 
 ### Decisions
 
-| Decision | Choice | Reference |
-|----------|--------|-----------|
-| Language | TypeScript (frontend) + Rust (server) + Python (ML workers) | This document |
-| Editor | TipTap (MIT, on ProseMirror) | [tiptap.md](../discovery/stack/editor/tiptap.md) |
-| Frontend | React (Vite SPA) | [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) |
-| Server | Rust: Axum + kameo actors | [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) |
-| CRDTs | Loro + loro-dev/protocol | [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md) |
-| ProseMirror binding | loro-prosemirror | [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md) |
-| Database | libSQL (database-per-campaign), Turso Database upgrade path | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md) |
-| API contract | ts-rs (type generation) + utoipa (OpenAPI) | This document |
-| Public site | Astro (static site generator) | [Public site design](./2026-02-20-public-site-design.md) |
-| Monorepo orchestration | mise | This document |
-| TS package manager | pnpm (strict workspaces) | This document |
-| Rust build | Cargo | This document |
-| Python tooling | uv | This document |
+| Decision               | Choice                                                      | Reference                                                                                  |
+| ---------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Language               | TypeScript (frontend) + Rust (server) + Python (ML workers) | This document                                                                              |
+| Editor                 | TipTap (MIT, on ProseMirror)                                | [tiptap.md](../discovery/stack/editor/tiptap.md)                                           |
+| Frontend               | React (Vite SPA)                                            | [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md)                    |
+| Server                 | Rust: Axum + kameo actors                                   | [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) |
+| CRDTs                  | Loro + loro-dev/protocol                                    | [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md)               |
+| ProseMirror binding    | loro-prosemirror                                            | [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md)               |
+| Database               | libSQL (database-per-campaign), Turso Database upgrade path | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)                |
+| API contract           | ts-rs (type generation) + utoipa (OpenAPI)                  | This document                                                                              |
+| Public site            | Astro (static site generator)                               | [Public site design](./2026-02-20-public-site-design.md)                                   |
+| Monorepo orchestration | mise                                                        | This document                                                                              |
+| TS package manager     | pnpm (strict workspaces)                                    | This document                                                                              |
+| Rust build             | Cargo                                                       | This document                                                                              |
+| Python tooling         | uv                                                          | This document                                                                              |
 
 ---
 
@@ -184,7 +184,7 @@ This section describes the server's role in the project structure, not its inter
 Two-tier libSQL architecture, both owned by the server:
 
 - **platform.db** -- users, campaigns, subscriptions, the routing table (campaign -> server assignment). Cross-campaign queries.
-- **campaigns/*.db** -- one file per campaign. Block records, entity data, relationships, search text, embeddings, suggestion outcomes, conversation history. Campaign-as-file isolation enables trivial GDPR deletion, PR preview branching (`cp`), and horizontal scaling (add servers, route campaigns).
+- **campaigns/\*.db** -- one file per campaign. Block records, entity data, relationships, search text, embeddings, suggestion outcomes, conversation history. Campaign-as-file isolation enables trivial GDPR deletion, PR preview branching (`cp`), and horizontal scaling (add servers, route campaigns).
 
 See [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md) for the database architecture.
 
@@ -381,14 +381,14 @@ No Docker database container needed. libSQL files on disk. `:memory:` databases 
 
 ## TypeScript Tooling
 
-| Concern | Tool | Notes |
-|---------|------|-------|
-| Type checking | **tsc** (`strict: true`) | `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noUnusedLocals`, `noUnusedParameters` |
-| Runtime validation | **Zod** | Validates data at system boundaries (API responses, WebSocket messages, env vars) |
-| Testing | **Vitest** | Native TypeScript, fast, Jest-compatible API. Shares Vite's transform pipeline. |
-| Linting | **oxlint 1.0** | Rust-based, 520+ rules, strictest config. Ban `any`, enforce exhaustive switches. |
-| Type-aware linting | **tsgolint** (when stable) | Uses tsgo (Microsoft's official Go port of TypeScript) for type-aware rules. |
-| Formatting | **oxfmt** (alpha) | Prettier-compatible, 30x faster. Fallback to Prettier if needed. |
+| Concern            | Tool                       | Notes                                                                                                      |
+| ------------------ | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Type checking      | **tsc** (`strict: true`)   | `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noUnusedLocals`, `noUnusedParameters` |
+| Runtime validation | **Zod**                    | Validates data at system boundaries (API responses, WebSocket messages, env vars)                          |
+| Testing            | **Vitest**                 | Native TypeScript, fast, Jest-compatible API. Shares Vite's transform pipeline.                            |
+| Linting            | **oxlint 1.0**             | Rust-based, 520+ rules, strictest config. Ban `any`, enforce exhaustive switches.                          |
+| Type-aware linting | **tsgolint** (when stable) | Uses tsgo (Microsoft's official Go port of TypeScript) for type-aware rules.                               |
+| Formatting         | **oxfmt** (alpha)          | Prettier-compatible, 30x faster. Fallback to Prettier if needed.                                           |
 
 Maximum strictness, no exceptions. TypeScript types are erased at runtime -- Zod fills the gap at system boundaries, the same role Pydantic plays in Python. The compiler is the first line of defense: if it compiles, the type-level guarantees are real.
 

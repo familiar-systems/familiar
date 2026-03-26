@@ -7,28 +7,28 @@
 
 ### Key External Dependencies
 
-| Dependency | Role | Links |
-|-----------|------|-------|
-| **Loro** | CRDT library. Each ThingActor, TocActor, and AgentConversation holds a LoroDoc. | [loro-dev/loro](https://github.com/loro-dev/loro) · [docs](https://loro.dev/docs) |
-| **loro-dev/protocol** | Transport-agnostic CRDT sync protocol. Room-based multiplexing, 256KB message limit, fragmentation, ack/error semantics. The wire format between clients and the Rust backend. | [repo](https://github.com/loro-dev/protocol) · [protocol spec](https://github.com/loro-dev/protocol/blob/main/protocol.md) · [Rust crate source](https://github.com/loro-dev/protocol/tree/main/rust/loro-protocol/src) · [protocol.rs (message types)](https://github.com/loro-dev/protocol/blob/main/rust/loro-protocol/src/protocol.rs) |
-| **kameo** | Rust actor framework. Typed actor refs, async message passing, supervision trees. Each actor in the topology is a kameo actor. | [tqwewe/kameo](https://github.com/tqwewe/kameo) · [docs](https://docs.rs/kameo) |
-| **axum** | HTTP/WebSocket server. Handles the WS upgrade, REST endpoints, and spawns per-connection read/write tasks. | [tokio-rs/axum](https://github.com/tokio-rs/axum) · [docs](https://docs.rs/axum) |
-| **petgraph** | In-memory graph representation for the RelationshipGraph actor. Loaded at campaign checkout, ~500 nodes / ~2,000 edges. | [petgraph/petgraph](https://github.com/petgraph/petgraph) · [docs](https://docs.rs/petgraph) |
-| **libSQL / Turso** | Campaign database. Database-per-campaign as isolated `.db` files. Turso is the identified upgrade path (MIT-licensed Rust rewrite of SQLite with `BEGIN CONCURRENT` and native vector search). | [tursodatabase/libsql](https://github.com/tursodatabase/libsql) |
-| **TipTap / ProseMirror** | Frontend rich text editor. The LoroDoc content must round-trip through ProseMirror's document model. TipTap extensions define custom node types (suggestion marks, transclusion blocks, etc.). | [ueberdosis/tiptap](https://github.com/ueberdosis/tiptap) · [TipTap docs](https://tiptap.dev/docs) · [TipTap comments (architectural reference for suggestion marks)](https://tiptap.dev/docs/comments/getting-started/overview) |
-| **loro-prosemirror** | Official ProseMirror binding for Loro. Provides `LoroSyncPlugin` (bidirectional doc ↔ editor sync), `LoroUndoPlugin`, `LoroEphemeralCursorPlugin`. TipTap compatible. Validated in prior integration. | [loro-dev/loro-prosemirror](https://github.com/loro-dev/loro-prosemirror) |
-| **Hetzner** | Compute (CX22, hel1 datacenter), object storage (campaign DB source of truth), volumes (local NVMe cache). | [hetzner.com](https://www.hetzner.com) |
-| **Nebius** | GPU inference for open-weight LLMs. Finnish infrastructure, EU data residency. | [nebius.com](https://nebius.com) |
+| Dependency               | Role                                                                                                                                                                                                  | Links                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Loro**                 | CRDT library. Each ThingActor, TocActor, and AgentConversation holds a LoroDoc.                                                                                                                       | [loro-dev/loro](https://github.com/loro-dev/loro) · [docs](https://loro.dev/docs)                                                                                                                                                                                                                                                          |
+| **loro-dev/protocol**    | Transport-agnostic CRDT sync protocol. Room-based multiplexing, 256KB message limit, fragmentation, ack/error semantics. The wire format between clients and the Rust backend.                        | [repo](https://github.com/loro-dev/protocol) · [protocol spec](https://github.com/loro-dev/protocol/blob/main/protocol.md) · [Rust crate source](https://github.com/loro-dev/protocol/tree/main/rust/loro-protocol/src) · [protocol.rs (message types)](https://github.com/loro-dev/protocol/blob/main/rust/loro-protocol/src/protocol.rs) |
+| **kameo**                | Rust actor framework. Typed actor refs, async message passing, supervision trees. Each actor in the topology is a kameo actor.                                                                        | [tqwewe/kameo](https://github.com/tqwewe/kameo) · [docs](https://docs.rs/kameo)                                                                                                                                                                                                                                                            |
+| **axum**                 | HTTP/WebSocket server. Handles the WS upgrade, REST endpoints, and spawns per-connection read/write tasks.                                                                                            | [tokio-rs/axum](https://github.com/tokio-rs/axum) · [docs](https://docs.rs/axum)                                                                                                                                                                                                                                                           |
+| **petgraph**             | In-memory graph representation for the RelationshipGraph actor. Loaded at campaign checkout, ~500 nodes / ~2,000 edges.                                                                               | [petgraph/petgraph](https://github.com/petgraph/petgraph) · [docs](https://docs.rs/petgraph)                                                                                                                                                                                                                                               |
+| **libSQL / Turso**       | Campaign database. Database-per-campaign as isolated `.db` files. Turso is the identified upgrade path (MIT-licensed Rust rewrite of SQLite with `BEGIN CONCURRENT` and native vector search).        | [tursodatabase/libsql](https://github.com/tursodatabase/libsql)                                                                                                                                                                                                                                                                            |
+| **TipTap / ProseMirror** | Frontend rich text editor. The LoroDoc content must round-trip through ProseMirror's document model. TipTap extensions define custom node types (suggestion marks, transclusion blocks, etc.).        | [ueberdosis/tiptap](https://github.com/ueberdosis/tiptap) · [TipTap docs](https://tiptap.dev/docs) · [TipTap comments (architectural reference for suggestion marks)](https://tiptap.dev/docs/comments/getting-started/overview)                                                                                                           |
+| **loro-prosemirror**     | Official ProseMirror binding for Loro. Provides `LoroSyncPlugin` (bidirectional doc ↔ editor sync), `LoroUndoPlugin`, `LoroEphemeralCursorPlugin`. TipTap compatible. Validated in prior integration. | [loro-dev/loro-prosemirror](https://github.com/loro-dev/loro-prosemirror)                                                                                                                                                                                                                                                                  |
+| **Hetzner**              | Compute (CX22, hel1 datacenter), object storage (campaign DB source of truth), volumes (local NVMe cache).                                                                                            | [hetzner.com](https://www.hetzner.com)                                                                                                                                                                                                                                                                                                     |
+| **Nebius**               | GPU inference for open-weight LLMs. Finnish infrastructure, EU data residency.                                                                                                                        | [nebius.com](https://nebius.com)                                                                                                                                                                                                                                                                                                           |
 
 ### Key Internal References
 
-| Document | What it decides |
-|----------|----------------|
-| [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md) | The markdown format agents read/write, progressive disclosure tiers, suggestion model (marks on blocks), compiler interface, tool signatures |
+| Document                                                                              | What it decides                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md)              | The markdown format agents read/write, progressive disclosure tiers, suggestion model (marks on blocks), compiler interface, tool signatures                                                               |
 | [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md) | The Node.js/Yjs architecture this design replaces. Campaign checkout/checkin model, blob-free files at rest, lossless reconstruction requirement. Many concepts carry forward; the implementation changes. |
-| [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md) | The three AI workflows (SessionIngest, P&R, Q&A), suggestion lifecycle, conversation system |
-| [AI PRD](./2026-02-22-ai-prd.md) | Tool system, suggestion types, retrieval capabilities |
-| [Templates as Prototype Pages](./2026-02-20-templates-as-prototype-pages.md) | Templates are Things, categorization via tags-as-relationships, OnCreate directives |
+| [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md)             | The three AI workflows (SessionIngest, P&R, Q&A), suggestion lifecycle, conversation system                                                                                                                |
+| [AI PRD](./2026-02-22-ai-prd.md)                                                      | Tool system, suggestion types, retrieval capabilities                                                                                                                                                      |
+| [Templates as Prototype Pages](./2026-02-20-templates-as-prototype-pages.md)          | Templates are Things, categorization via tags-as-relationships, OnCreate directives                                                                                                                        |
 
 ---
 
@@ -120,7 +120,7 @@ One state representation means one read path, one write path, and no conditional
 
 ### Trait System
 
-The trait system captures the behavioral contracts that actors implement. Traits are composed — a ThingActor implements a different set than a RelationshipGraph. The traits exist at the *design* level (informing what messages each actor handles) rather than as Rust `dyn Trait` objects, because kameo's `ActorRef<A>` is generic over the concrete actor type.
+The trait system captures the behavioral contracts that actors implement. Traits are composed — a ThingActor implements a different set than a RelationshipGraph. The traits exist at the _design_ level (informing what messages each actor handles) rather than as Rust `dyn Trait` objects, because kameo's `ActorRef<A>` is generic over the concrete actor type.
 
 #### Lifecycle Traits
 
@@ -239,14 +239,14 @@ trait DocumentState {
 
 #### Trait Composition by Actor
 
-| Actor | Persistent | Evictable | CrdtRoom | Notifiable | Queryable | Mutable | SuggestionTarget | DocumentState |
-|-------|-----------|-----------|----------|------------|-----------|---------|-----------------|---------------|
-| ThingActor | ✓ | ✓ | ✓ | | ✓ | | ✓ | ✓ |
-| TocActor | ✓ | ✓ | ✓ | ✓ | ✓ | | | |
-| RelationshipGraph | ✓ | | | ✓ | ✓ | ✓ | | |
-| AgentConversation | ✓ | ✓ | ✓ | | | | | |
-| UserSession | | ✓ | | | | | | |
-| CampaignSupervisor | | | | | | | | |
+| Actor              | Persistent | Evictable | CrdtRoom | Notifiable | Queryable | Mutable | SuggestionTarget | DocumentState |
+| ------------------ | ---------- | --------- | -------- | ---------- | --------- | ------- | ---------------- | ------------- |
+| ThingActor         | ✓          | ✓         | ✓        |            | ✓         |         | ✓                | ✓             |
+| TocActor           | ✓          | ✓         | ✓        | ✓          | ✓         |         |                  |               |
+| RelationshipGraph  | ✓          |           |          | ✓          | ✓         | ✓       |                  |               |
+| AgentConversation  | ✓          | ✓         | ✓        |            |           |         |                  |               |
+| UserSession        |            | ✓         |          |            |           |         |                  |               |
+| CampaignSupervisor |            |           |          |            |           |         |                  |               |
 
 ---
 
@@ -386,7 +386,7 @@ Marks don't modify the document tree. The content stays where it is. Multiple su
 
 Blocks that have pending suggestions are **read-only to human editors** in the editor UI. The GM can accept the suggestion (replacing the marked content with the proposed content), reject it (removing the suggestion, leaving the original content editable), or edit the proposed replacement content — but not edit the original text underneath while a suggestion is pending.
 
-**Why blocking eliminates staleness:** If the original text under a suggestion can't be changed by human editing, then the suggestion's target content is always valid. There is no drift, no staleness detection, no render-time comparison of original vs. current text. The only way the content under a suggestion changes is when a *different* overlapping suggestion is accepted — which is a deliberate GM action, and the remaining suggestions' target blocks now reference different content. The editor can detect this trivially (the accepted suggestion removed/replaced the blocks the other suggestion was targeting) and visually flag the remaining suggestions.
+**Why blocking eliminates staleness:** If the original text under a suggestion can't be changed by human editing, then the suggestion's target content is always valid. There is no drift, no staleness detection, no render-time comparison of original vs. current text. The only way the content under a suggestion changes is when a _different_ overlapping suggestion is accepted — which is a deliberate GM action, and the remaining suggestions' target blocks now reference different content. The editor can detect this trivially (the accepted suggestion removed/replaced the blocks the other suggestion was targeting) and visually flag the remaining suggestions.
 
 **Escape hatch:** If the GM wants to edit the blocked text directly, they reject the suggestion. One action, clear intent. If multiple suggestions overlap, rejecting one doesn't affect the others — each suggestion independently references its block list.
 

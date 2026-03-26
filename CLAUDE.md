@@ -81,26 +81,26 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 
 ## Tech Stack
 
-| Concern         | Choice                                                      |
-| --------------- | ----------------------------------------------------------- |
-| Language        | TypeScript (frontend) + Rust (server) + Python (ML workers) |
-| Public site     | Astro (static site generator, React islands)                |
-| Frontend        | React (Vite SPA)                                            |
-| Editor          | TipTap (on ProseMirror)                                     |
-| Routing         | TanStack Router or React Router (not yet decided)           |
-| Server          | Rust: Axum + kameo actors                                   |
-| API contract    | ts-rs (type generation) + utoipa (OpenAPI)                  |
-| Database        | libSQL (database-per-campaign), Turso Database upgrade path |
-| Collaboration   | Loro CRDTs + loro-dev/protocol                              |
-| Object Storage  | Hetzner Object Storage (campaign DB source of truth)        |
-| ML workers      | Python: faster-whisper, pyannote (GPU, called via HTTP)     |
-| Validation      | Zod (at TypeScript system boundaries)                       |
-| Testing         | Vitest (TS), cargo test (Rust), pytest (Python)             |
-| Dev runner      | Vite dev server (frontend), cargo run (server)              |
-| Linting         | oxlint (TS, strictest config)                               |
-| Formatting      | oxfmt (alpha, Prettier fallback)                            |
-| TS packages     | pnpm (strict dependency resolution)                         |
-| Orchestration   | mise (cross-language task runner + tool versions)            |
+| Concern        | Choice                                                      |
+| -------------- | ----------------------------------------------------------- |
+| Language       | TypeScript (frontend) + Rust (server) + Python (ML workers) |
+| Public site    | Astro (static site generator, React islands)                |
+| Frontend       | React (Vite SPA)                                            |
+| Editor         | TipTap (on ProseMirror)                                     |
+| Routing        | TanStack Router or React Router (not yet decided)           |
+| Server         | Rust: Axum + kameo actors                                   |
+| API contract   | ts-rs (type generation) + utoipa (OpenAPI)                  |
+| Database       | libSQL (database-per-campaign), Turso Database upgrade path |
+| Collaboration  | Loro CRDTs + loro-dev/protocol                              |
+| Object Storage | Hetzner Object Storage (campaign DB source of truth)        |
+| ML workers     | Python: faster-whisper, pyannote (GPU, called via HTTP)     |
+| Validation     | Zod (at TypeScript system boundaries)                       |
+| Testing        | Vitest (TS), cargo test (Rust), pytest (Python)             |
+| Dev runner     | Vite dev server (frontend), cargo run (server)              |
+| Linting        | oxlint (TS, strictest config)                               |
+| Formatting     | oxfmt (alpha, Prettier fallback)                            |
+| TS packages    | pnpm (strict dependency resolution)                         |
+| Orchestration  | mise (cross-language task runner + tool versions)           |
 
 ## Commands (planned)
 
