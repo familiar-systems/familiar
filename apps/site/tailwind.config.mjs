@@ -11,10 +11,11 @@ export default {
         "primary-foreground": "var(--primary-foreground)",
         muted: "var(--muted)",
         "muted-foreground": "var(--muted-foreground)",
+        gold: "var(--color-gold)",
       },
       fontFamily: {
-        sans: ["Crimson Pro", "Georgia", "serif"],
-        display: ["Cinzel", "Georgia", "serif"],
+        sans: ["Alegreya", "Georgia", "serif"],
+        display: ["Cormorant Garamond", "Georgia", "serif"],
       },
     },
   },

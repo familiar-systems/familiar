@@ -1,14 +1,14 @@
 export const siteConfig = {
-  name: "Loreweaver",
-  description: "AI-assisted campaign notebook for tabletop RPGs.",
+  name: "familiar.systems",
+  description: "AI-assisted campaign notebook for tabletop RPG game masters.",
   logo: {
-    src: "/logo-light.png",
-    srcDark: "/logo-dark.png",
-    alt: "Loreweaver Logo",
-    strategy: "switch" as "invert" | "switch" | "static",
+    src: "/raven-icon.svg",
+    srcDark: "/raven-icon.svg",
+    alt: "familiar.systems",
+    strategy: "invert" as "invert" | "switch" | "static",
   },
   ogImage: "",
-  primaryColor: "#C49A2B",
+  primaryColor: "#5a4a6a",
   search: {
     enabled: true,
   },
@@ -27,8 +27,8 @@ export const siteConfig = {
   },
   contact: {
     email: {
-      support: "hello@loreweaver.no",
-      sales: "hello@loreweaver.no",
+      support: "hello@familiar.systems",
+      sales: "hello@familiar.systems",
     },
     phone: {
       main: "",
