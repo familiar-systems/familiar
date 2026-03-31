@@ -49,20 +49,20 @@ There is no standalone "all-in-one" binary. Local development, preview environme
 ```yaml
 # docker-compose.yml (local dev / self-hosting)
 services:
-  platform:
-    build: { context: ., dockerfile: Dockerfile.platform }
-    ports: ["3000:3000"]
-    volumes: ["./data:/data"]
-    environment:
-      DATABASE_URL: /data/platform.db
+    platform:
+        build: { context: ., dockerfile: Dockerfile.platform }
+        ports: ["3000:3000"]
+        volumes: ["./data:/data"]
+        environment:
+            DATABASE_URL: /data/platform.db
 
-  campaign:
-    build: { context: ., dockerfile: Dockerfile.campaign }
-    ports: ["3001:3001"]
-    volumes: ["./data:/data"]
-    environment:
-      PLATFORM_URL: http://platform:3000
-      CAMPAIGN_DATA_DIR: /data/campaigns
+    campaign:
+        build: { context: ., dockerfile: Dockerfile.campaign }
+        ports: ["3001:3001"]
+        volumes: ["./data:/data"]
+        environment:
+            PLATFORM_URL: http://platform:3000
+            CAMPAIGN_DATA_DIR: /data/campaigns
 ```
 
 This eliminates an entire class of code: no `Local*` trait implementations, no standalone binary, no "does standalone exercise the same paths as split?" invariant to maintain. The `Remote*` trait implementation (HTTP calls to the platform) is the only implementation. It's always tested because it's always used.
@@ -500,7 +500,7 @@ Campaign files are self-contained libSQL databases. Copying them is a file opera
 
 **Goal:** Make campaign server deploys effectively invisible to connected users.
 
-**The observation:** On a same-server rolling update, the new pod has the same Hetzner Volume. The local campaign files *are* the current state. The object storage writeback that currently blocks shutdown is for durability (surviving server loss), not for handoff to the new binary. The handoff can use local files directly.
+**The observation:** On a same-server rolling update, the new pod has the same Hetzner Volume. The local campaign files _are_ the current state. The object storage writeback that currently blocks shutdown is for durability (surviving server loss), not for handoff to the new binary. The handoff can use local files directly.
 
 **What to investigate:**
 
@@ -513,7 +513,7 @@ Two drain modes based on whether the restart is same-server or cross-server:
 
 - Deployment rolling update with `maxSurge: 1`, `maxUnavailable: 0`. New pod starts alongside old pod. Both mount the same PVC.
 - Readiness probe gates on "leases acquired, actors restored" so Traefik doesn't route to the new pod prematurely.
-- Verify that the lease model serializes access correctly: old pod closes file handles and releases lease *before* new pod acquires lease and opens the same files. No concurrent libSQL access.
+- Verify that the lease model serializes access correctly: old pod closes file handles and releases lease _before_ new pod acquires lease and opens the same files. No concurrent libSQL access.
 
 **What could go wrong:**
 
