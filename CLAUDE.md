@@ -11,12 +11,13 @@ Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It
 ## Key Design Documents
 
 - `docs/vision.md`: Product vision, core concepts (Campaign, Session, Things, Blocks, Edges, Status, Suggestions)
-- `docs/plans/2026-03-26-project-structure-design.md`: **Authoritative** project structure (Rust server + TypeScript frontend + Python ML workers)
+- `docs/plans/2026-03-26-project-structure-design.md`: **Authoritative** project structure (Rust backend + TypeScript frontend + Python ML workers)
 - `docs/plans/2026-02-14-ai-workflow-unification-design.md`: AI workflow architecture (SessionIngest, P&R, Q&A)
 - `docs/plans/2026-02-22-ai-prd.md`: Full AI system requirements (SessionIngest, entity extraction, suggestion lifecycle)
 - `docs/plans/2026-02-20-templates-as-prototype-pages.md`: Templates are Things, not a separate entity. Categorization via `prototypeId` and tag-relationships.
 - `docs/plans/2026-02-20-public-site-design.md`: Public site (Astro) for landing page, blog, public campaign pages. Path-based routing.
-- `docs/plans/2026-03-12-deployment-strategy.md`: Deployment strategy (k3s on Hetzner, libSQL files on Volume)
+- `docs/plans/2026-03-30-infrastructure.md`: Infrastructure (k3s cluster, Hetzner Volume, Pulumi project structure, certificates, CI/CD)
+- `docs/plans/2026-03-30-deployment-architecture.md`: Deployment architecture (platform/campaign service split, graceful restarts, preview environments)
 - `docs/plans/2026-03-25-campaign-collaboration-architecture.md`: **Authoritative** collaboration architecture (Rust/kameo/Loro, supersedes Hocuspocus ADR). Campaign checkout/checkin, actor topology, scaling model.
 - `docs/plans/2026-03-25-campaign-actor-domain-design.md`: Actor topology, trait system, WebSocket architecture, suggestion model
 - `docs/plans/2026-03-25-ai-serialization-format-v2.md`: Agent serialization format, progressive disclosure tiers, compiler pipeline, tool signatures
@@ -32,6 +33,7 @@ Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It
 - `docs/archive/discovery/2026-02-14-storage-overview.md`: Initial storage architecture analysis
 - `docs/archive/plans/2026-02-18-deployment-strategy.md`: Previous deployment strategy (superseded by 2026-03-09 version)
 - `docs/archive/plans/2026-03-09-deployment-strategy.md`: Previous deployment strategy (superseded by k3s deployment strategy)
+- `docs/archive/plans/2026-03-12-deployment-strategy.md`: **Superseded** by Infrastructure and Deployment Architecture docs. Monolithic plan covering both concerns.
 - `docs/archive/discovery/2026-02-18-solo-dev-deployment-landscape.md`: Deployment exploration (decided: Hetzner)
 - `docs/archive/discovery/2026-02-18-eu-deployment-landscape.md`: EU deployment exploration (decided: Hetzner)
 - `docs/archive/plans/2026-03-14-hocuspocus-architecture.md`: **Superseded** by Campaign Collaboration Architecture. Hocuspocus/Yjs-era design; hypotheses validated, implementation technology replaced.
@@ -43,11 +45,13 @@ Read the project structure doc (`docs/plans/2026-03-26-project-structure-design.
 ### Monorepo: pnpm workspaces + Cargo + uv (orchestrated by mise)
 
 ```
-apps/site      Astro static site (landing page, blog, public campaign pages)
-apps/web       Vite + React SPA (the app, behind auth, served under /app/)
-server/        Rust binary: Axum + kameo (ALL backend: HTTP API, WebSocket collab, actors, AI, jobs)
-workers/       Python ML workers (audio transcription, diarization)
+apps/site        Astro static site (landing page, blog, public campaign pages)
+apps/web         Vite + React SPA (the app, behind auth)
+apps/platform    Rust binary: Axum (auth, CRUD, routing table, discover)
+apps/campaign    Rust binary: Axum + kameo (actors, collab, AI, compiler)
+workers/         Job processors, language-agnostic (Python ML today)
 
+crates/shared    Rust library: traits, types, auth, libSQL helpers
 packages/types   @loreweaver/types, generated from Rust via ts-rs, zero runtime deps
 packages/editor  @loreweaver/editor, TipTap/ProseMirror schema + custom extensions (THE shared contract)
 ```
@@ -58,16 +62,17 @@ packages/editor  @loreweaver/editor, TipTap/ProseMirror schema + custom extensio
 - **`apps/site` depends only on `types`.** The public site has the lightest dependency footprint.
 - **`apps/web` depends only on `types` and `editor`.** The client/server boundary is enforced by the dependency graph. There is no server-side TypeScript to import.
 - **Each package's `src/index.ts` is its public API.** Import from `@loreweaver/types`, never from `@loreweaver/types/generated/ThingId`.
-- **Domain logic is Rust.** The Rust server owns all backend logic: database access, auth, AI orchestration, job dispatch. TypeScript is frontend-only.
+- **Domain logic is Rust.** Two Rust binaries (platform + campaign server) and a shared crate own all backend logic. TypeScript is frontend-only.
 
-### Four Deployment Targets
+### Five Deployment Targets
 
 Each target has a different lifecycle. Deploying one must not affect the others:
 
-1. **site**: Static HTML (CDN/nginx). Public-facing. Content changes deploy independently of the app.
-2. **web**: Static files (CDN/nginx). The authenticated SPA, served under `/app/`.
-3. **server**: Rust binary (Axum + kameo actors). The single backend: HTTP API, WebSocket collaboration, actor lifecycle, AI conversations, job dispatch. Campaign-pinned. See [Campaign Collaboration Architecture](docs/plans/2026-03-25-campaign-collaboration-architecture.md).
-4. **workers**: Python ML workers (faster-whisper, pyannote). Stateless, GPU-bound, called by the server via HTTP.
+1. **site**: Static HTML (CDN/nginx). Public-facing. Content changes deploy independently.
+2. **web**: Static files (CDN/nginx). The authenticated SPA.
+3. **platform**: Rust binary (Axum). Auth, campaign CRUD, routing table, discover. Talks to platform.db. Rarely changes.
+4. **campaign**: Rust binary (Axum + kameo actors). Actor hierarchy, WebSocket collab, AI conversations, compiler. Campaign-pinned. Changes frequently. See [Campaign Collaboration Architecture](docs/plans/2026-03-25-campaign-collaboration-architecture.md) and [Deployment Architecture](docs/plans/2026-03-30-deployment-architecture.md).
+5. **workers**: Job processors (language-agnostic). Today: Python ML workers (faster-whisper, pyannote). Stateless, GPU-bound. Deployed as k8s Jobs, dispatched by the campaign server. Job state in platform.db.
 
 ### AI Architecture
 
@@ -96,7 +101,7 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 | Database       | libSQL (database-per-campaign), Turso Database upgrade path |
 | Collaboration  | Loro CRDTs + loro-dev/protocol                              |
 | Object Storage | Hetzner Object Storage (campaign DB source of truth)        |
-| ML workers     | Python: faster-whisper, pyannote (GPU, called via HTTP)     |
+| ML workers     | Python: faster-whisper, pyannote (GPU, k8s Jobs)            |
 | Validation     | Zod (at TypeScript system boundaries)                       |
 | Testing        | Vitest (TS), cargo test (Rust), pytest (Python)             |
 | Dev runner     | Vite dev server (frontend), cargo run (server)              |
@@ -150,9 +155,9 @@ Maximum strictness, no exceptions:
 
 ## Development Notes
 
-- Path-based routing: `apps/site` owns `/` (landing, blog), `apps/web` is served under `/app/`
-- In dev, Vite proxies `/app/api/*` and `/app/ws/*` to the Rust server at localhost:3000 (no CORS needed). Astro dev server runs independently on port 4321.
-- In production, Traefik (via k3s Ingress) routes all traffic through a single domain: `/app/api/*` -> server, `/app/ws/*` -> server (WebSocket upgrade), `/app/*` -> web SPA, `/*` -> site
-- The `@loreweaver/editor` package is the most architecturally important. It defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and server (Rust server for LoroDoc reconstruction and serialization compiler).
+- Subdomain routing: `loreweaver.no` (site), `app.loreweaver.no` (SPA), `api.loreweaver.no` (platform), `c1.loreweaver.no` (campaign server). Traefik Ingress routes by subdomain.
+- In dev, Docker Compose runs platform (localhost:3000) and campaign server (localhost:3001). Vite proxies `/api/*` to the platform. Campaign server requests go direct (discover returns localhost:3001).
+- The SPA calls the platform for auth, campaign listing, and discover. After discover, the SPA talks directly to the campaign server for all campaign-scoped work (WebSocket, REST, AI).
+- The `@loreweaver/editor` package is the most architecturally important. It defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and the campaign server (for LoroDoc reconstruction and serialization compiler).
 - LLM provider is pluggable: hosted instance uses managed keys, self-hosters bring their own
 - No Docker database container needed for local development. libSQL files on disk. `:memory:` databases for tests.

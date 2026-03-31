@@ -14,19 +14,21 @@ The AI never modifies the campaign directly. Every change is a **suggestion** th
 
 ## Architecture
 
-A polyglot monorepo (pnpm + Cargo + uv, orchestrated by mise) with four deployment targets and two shared TypeScript packages:
+A polyglot monorepo (pnpm + Cargo + uv, orchestrated by mise) with five deployment targets and shared libraries:
 
 ```
 apps/site        Astro static site (landing page, blog, public campaign pages)
 apps/web         Vite + React SPA (the app, behind auth)
-server/          Rust binary: Axum + kameo (HTTP API, WebSocket collab, actors, AI, jobs)
-workers/         Python ML workers (audio transcription, diarization)
+apps/platform    Rust binary: Axum (auth, CRUD, routing table, discover)
+apps/campaign    Rust binary: Axum + kameo (actors, collab, AI, compiler)
+workers/         Job processors, language-agnostic (Python ML today)
 
+crates/shared    Rust library: traits, types, auth, libSQL helpers
 packages/types   @loreweaver/types, generated from Rust via ts-rs
 packages/editor  @loreweaver/editor, TipTap/ProseMirror schema + custom extensions
 ```
 
-The Rust server is the single backend. It handles HTTP APIs, WebSocket collaboration (Loro CRDTs via kameo actors), AI orchestration, and job dispatch. There is no separate API or collaboration service. TypeScript is frontend-only; domain logic lives in Rust.
+The Rust backend splits into two binaries: the **platform** (auth, campaign CRUD, routing table) and the **campaign server** (actor hierarchy, WebSocket collaboration, AI conversations). They communicate over HTTP via trait-based interfaces defined in `crates/shared/`. TypeScript is frontend-only; domain logic lives in Rust.
 
 See [project structure](docs/plans/2026-03-26-project-structure-design.md) for the full design.
 
@@ -34,19 +36,19 @@ See [project structure](docs/plans/2026-03-26-project-structure-design.md) for t
 
 - **Language:** TypeScript (frontend) + Rust (server) + Python (ML workers)
 - **Frontend:** React (Vite SPA), TipTap editor
-- **Server:** Rust with Axum + kameo actors
+- **Server:** Rust with Axum + kameo actors (platform + campaign server)
 - **Collaboration:** Loro CRDTs (loro-dev/protocol)
 - **Database:** libSQL (database-per-campaign), Turso Database as upgrade path
 - **API contract:** ts-rs (type generation) + utoipa (OpenAPI)
 - **Public site:** Astro (static, React islands)
-- **ML workers:** Python with faster-whisper, pyannote (GPU, called via HTTP)
+- **ML workers:** Python with faster-whisper, pyannote (GPU, k8s Jobs)
 - **Infrastructure:** k3s on Hetzner, Pulumi IaC, Traefik Ingress
 
 ## Infrastructure
 
-libSQL files on a Hetzner Volume: one platform database plus a separate database per campaign. No database server process. PR preview environments branch via file copy. The Rust server owns all backend concerns (API, collaboration, AI, jobs) as a single binary deployed on k3s with Traefik Ingress handling routing and SSL.
+libSQL files on a Hetzner Volume: one platform database plus a separate database per campaign. No database server process. PR preview environments branch via file copy. Two Rust binaries (platform + campaign server) deployed on k3s with Traefik Ingress routing by subdomain (`api.loreweaver.no`, `c1.loreweaver.no`).
 
-See [deployment strategy](docs/plans/2026-03-12-deployment-strategy.md) and [libSQL over PostgreSQL decision](docs/discovery/2026-03-09-sqlite-over-postgres-decision.md) for the rationale.
+See [infrastructure](docs/plans/2026-03-30-infrastructure.md) and [libSQL over PostgreSQL decision](docs/discovery/2026-03-09-sqlite-over-postgres-decision.md) for the rationale.
 
 ## Design documents
 
@@ -57,7 +59,8 @@ See [deployment strategy](docs/plans/2026-03-12-deployment-strategy.md) and [lib
 - [AI serialization](docs/plans/2026-03-25-ai-serialization-format-v2.md): agent serialization format, compiler pipeline, tool signatures
 - [AI workflow](docs/plans/2026-02-14-ai-workflow-unification-design.md): interactive and batch AI design
 - [AI PRD](docs/plans/2026-02-22-ai-prd.md): full AI system requirements
-- [Deployment strategy](docs/plans/2026-03-12-deployment-strategy.md): k3s + Hetzner + libSQL
+- [Infrastructure](docs/plans/2026-03-30-infrastructure.md): k3s cluster, Hetzner Volume, Pulumi IaC, certificates
+- [Deployment architecture](docs/plans/2026-03-30-deployment-architecture.md): service topology, graceful restarts, preview environments
 - [Database decision](docs/discovery/2026-03-09-sqlite-over-postgres-decision.md): why libSQL over PostgreSQL
 - [Suggestion marks spike](docs/plans/2026-03-25-loro-tiptap-spike.md): validates suggestion model on Loro + TipTap
 - [Templates](docs/plans/2026-02-20-templates-as-prototype-pages.md): templates are Things, not a separate entity
