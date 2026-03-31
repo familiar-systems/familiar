@@ -72,7 +72,7 @@ Each target has a different lifecycle. Deploying one must not affect the others:
 2. **web**: Static files (CDN/nginx). The authenticated SPA.
 3. **platform**: Rust binary (Axum). Auth, campaign CRUD, routing table, discover. Talks to platform.db. Rarely changes.
 4. **campaign**: Rust binary (Axum + kameo actors). Actor hierarchy, WebSocket collab, AI conversations, compiler. Campaign-pinned. Changes frequently. See [Campaign Collaboration Architecture](docs/plans/2026-03-25-campaign-collaboration-architecture.md) and [Deployment Architecture](docs/plans/2026-03-30-deployment-architecture.md).
-5. **workers**: Job processors (language-agnostic). Today: Python ML workers (faster-whisper, pyannote). Stateless, GPU-bound, called by the campaign server via HTTP.
+5. **workers**: Job processors (language-agnostic). Today: Python ML workers (faster-whisper, pyannote). Stateless, GPU-bound. Deployed as k8s Jobs, dispatched by the campaign server. Job state in platform.db.
 
 ### AI Architecture
 
@@ -101,7 +101,7 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 | Database       | libSQL (database-per-campaign), Turso Database upgrade path |
 | Collaboration  | Loro CRDTs + loro-dev/protocol                              |
 | Object Storage | Hetzner Object Storage (campaign DB source of truth)        |
-| ML workers     | Python: faster-whisper, pyannote (GPU, called via HTTP)     |
+| ML workers     | Python: faster-whisper, pyannote (GPU, k8s Jobs)            |
 | Validation     | Zod (at TypeScript system boundaries)                       |
 | Testing        | Vitest (TS), cargo test (Rust), pytest (Python)             |
 | Dev runner     | Vite dev server (frontend), cargo run (server)              |

@@ -15,7 +15,7 @@ Loreweaver is a web application with five workloads that have **different deploy
 2. **Frontend** (Vite + React SPA) -- the authenticated application. Static files served from a CDN or file server.
 3. **Platform** (Rust: Axum) -- authentication, campaign CRUD, routing table, discover endpoint. Talks to platform.db. Stateless HTTP, rarely changes.
 4. **Campaign server** (Rust: Axum + kameo) -- actor hierarchy, WebSocket collaboration (Loro CRDTs via loro-dev/protocol), AI agent conversations, serialization compiler, job dispatch. Talks to per-campaign libSQL files. Campaign-pinned: all traffic for a given campaign routes to the same server. Changes frequently.
-5. **Workers** -- job processors, language-agnostic. Today: Python ML workers (faster-whisper, pyannote) on GPU infrastructure. Stateless, called by the campaign server via HTTP.
+5. **Workers** -- job processors, language-agnostic. Today: Python ML workers (faster-whisper, pyannote) on GPU infrastructure. Deployed as k8s Jobs, dispatched by the campaign server. Job state tracked in platform.db.
 
 ### Why five targets, not one backend
 
@@ -204,7 +204,7 @@ Handles everything after a campaign is checked out:
 - **Campaign checkout/checkin** -- downloads libSQL files from object storage, opens them on local disk, spawns actor trees. Single-server ownership via lease-based routing.
 - **Actor lifecycle** -- CampaignSupervisor, ThingActor, TocActor, RelationshipGraph, UserSession, AgentConversation. Independent async tasks with per-actor persistence and eviction.
 - **AI agent conversations** -- AgentConversation actors connect to LLM inference (Nebius), run the serialization compiler, route compiled suggestions to ThingActors.
-- **Job dispatch** -- sends audio processing work to workers, receives structured transcripts, routes them to actors for entity extraction and journal drafting.
+- **Job dispatch** -- dispatches audio processing to workers (k8s Jobs on GPU infrastructure), receives structured transcripts, routes them to actors for entity extraction and journal drafting.
 
 Talks to **campaigns/\*.db**: one file per campaign. Block records, entity data, relationships, search text, embeddings, suggestion outcomes, conversation history. Campaign-as-file isolation enables trivial GDPR deletion, PR preview branching (`cp`), and horizontal scaling (add servers, route campaigns).
 
@@ -235,7 +235,7 @@ workers/
     └── diarize.py         # pyannote: speaker attribution on transcript
 ```
 
-Workers are stateless. The campaign server calls them via HTTP with audio file references. Workers return structured transcripts with speaker attribution and timestamps. The campaign server routes these results to actors for the campaign-scoped stages (entity extraction, journal drafting, suggestion creation) that require the campaign graph.
+Workers are stateless k8s Jobs. The campaign server dispatches them with audio file references; job state is tracked in platform.db. Workers return structured transcripts with speaker attribution and timestamps. The campaign server routes results to actors for the campaign-scoped stages (entity extraction, journal drafting, suggestion creation) that require the campaign graph. See [Deployment Architecture](./2026-03-30-deployment-architecture.md) for the job dispatch model and deferred design decisions.
 
 **Managed by:** uv (pyproject.toml, virtualenv, dependencies, scripts)
 
@@ -385,7 +385,7 @@ Traefik (via k3s Ingress) routes by subdomain:
 
 The SPA talks to the platform for login, campaign listing, and discover. The discover endpoint returns a campaign server URL. After discover, the SPA talks directly to the campaign server for all campaign-scoped work (WebSocket sync, REST queries, AI conversations). The platform is no longer in the request path.
 
-Workers run on separate GPU infrastructure (Nebius) and are not exposed to the internet. The campaign server calls them directly. See [Deployment Architecture](./2026-03-30-deployment-architecture.md) for service topology and [Infrastructure](./2026-03-30-infrastructure.md) for cluster configuration.
+Workers run on separate GPU infrastructure (Nebius) as k8s Jobs, not as persistent services. They are not exposed to the internet. See [Deployment Architecture](./2026-03-30-deployment-architecture.md) for the job dispatch model and service topology, and [Infrastructure](./2026-03-30-infrastructure.md) for cluster configuration.
 
 ### Development
 

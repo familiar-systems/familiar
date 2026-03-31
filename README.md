@@ -41,7 +41,7 @@ See [project structure](docs/plans/2026-03-26-project-structure-design.md) for t
 - **Database:** libSQL (database-per-campaign), Turso Database as upgrade path
 - **API contract:** ts-rs (type generation) + utoipa (OpenAPI)
 - **Public site:** Astro (static, React islands)
-- **ML workers:** Python with faster-whisper, pyannote (GPU, called via HTTP)
+- **ML workers:** Python with faster-whisper, pyannote (GPU, k8s Jobs)
 - **Infrastructure:** k3s on Hetzner, Pulumi IaC, Traefik Ingress
 
 ## Infrastructure
