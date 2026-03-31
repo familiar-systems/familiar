@@ -2,7 +2,7 @@
 
 ## Decision
 
-**Add `apps/site` as a fourth deployment target** using Astro to serve the landing page, blog, and public campaign showcase pages. Path-based routing: the public site owns the root domain (`/`), the SPA moves under `/app/`.
+**Add `apps/site` as a deployment target** using Astro to serve the landing page, blog, and public campaign showcase pages. The public site owns the root domain (`loreweaver.no`); the SPA, platform, and campaign server each get their own subdomains.
 
 ---
 
@@ -67,34 +67,29 @@ This defers real-time public campaign pages until there's demand. Static snapsho
 
 ## Routing
 
-Path-based split. The public site owns the root domain; the SPA moves under `/app/`.
+Subdomain-based split. Each service gets its own subdomain:
 
 ```
-loreweaver.com/              → apps/site   (landing page)
-loreweaver.com/blog/         → apps/site   (blog)
-loreweaver.com/campaigns/    → apps/site   (public campaign showcase)
-loreweaver.com/app/          → apps/web    (SPA, behind auth)
-loreweaver.com/app/api/      → server/     (HTTP API)
-loreweaver.com/app/ws/       → server/     (WebSocket)
+loreweaver.no                → apps/site     (landing page, blog, public campaign showcase)
+app.loreweaver.no            → apps/web      (SPA, behind auth)
+api.loreweaver.no            → apps/platform (auth, CRUD, routing table, discover)
+c1.loreweaver.no             → apps/campaign (actors, collab, AI, campaign-scoped REST + WebSocket)
 ```
 
 ### Reverse proxy rules (Traefik via k3s Ingress)
 
 ```
-/app/api/*     → server       (port 3000, HTTP)
-/app/ws/*      → server       (port 3000, WebSocket upgrade)
-/app/*         → apps/web     (SPA static files, with fallback to /app/index.html)
-/*             → apps/site    (Astro static files)
+loreweaver.no        → apps/site static files
+app.loreweaver.no    → apps/web static files (SPA fallback: all paths serve index.html)
+api.loreweaver.no    → platform pod (port 3000, HTTP)
+c1.loreweaver.no     → campaign server pod (port 3001, HTTP + WebSocket)
 ```
 
-Order matters: specific paths match before the catch-all. The SPA's Vite config sets `base: '/app/'` so all asset paths are correct under the prefix.
+Each subdomain routes to its own pod. No path-prefix ambiguity between services. A wildcard TLS certificate (`*.loreweaver.no`) covers all subdomains.
 
-### Why path-based over subdomain
+### Why subdomain-based routing
 
-- Single domain, single TLS certificate, single nginx config
-- No additional DNS records
-- Simpler cookie sharing (same domain) if needed for auth redirects
-- Subdomain-based (`app.loreweaver.com`) is a viable upgrade if the site grows complex enough to warrant full separation
+The platform/campaign server split requires independently addressable services. The campaign server handles campaign-scoped REST alongside WebSocket, so the SPA needs to call it directly (not through path-based routing on a shared domain). Subdomains make each service routable and scale naturally to multiple campaign servers (`c1`, `c2`, `c3`). See [Deployment Architecture](./2026-03-30-deployment-architecture.md) for the full routing model.
 
 ---
 
@@ -163,5 +158,5 @@ graph BT
 ## References
 
 - [Project structure](./2026-03-26-project-structure-design.md) — the 4-target architecture this design extends
-- [Deployment strategy](./2026-03-12-deployment-strategy.md) -- how apps are deployed
+- [Infrastructure](./2026-03-30-infrastructure.md) -- k3s cluster and Traefik Ingress routing
 - [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) — why the core app is an SPA (the reasoning that creates the need for a separate public site)

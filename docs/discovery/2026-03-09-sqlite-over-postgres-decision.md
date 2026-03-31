@@ -173,8 +173,8 @@ All containers mount the data directory. No database server to install, configur
 - [Previous PostgreSQL decision](../archive/discovery/2026-02-18-postgres-vs-turso.md) — superseded by this document
 - [Turso Database (Rust SQLite rewrite)](https://github.com/tursodatabase/turso) — MIT licensed, in-process, SQLite-compatible
 - [Turso Database JavaScript binding](https://www.npmjs.com/package/@tursodatabase/database)
-- [k3s on Hetzner deployment strategy](../../plans/2026-03-12-deployment-strategy.md) — deployment infrastructure this decision integrates with
+- [Infrastructure (k3s on Hetzner)](../../plans/2026-03-30-infrastructure.md) — deployment infrastructure this decision integrates with
 - [Hanko](https://www.hanko.io/) — authentication provider for Loreweaver
 - [SQLite WAL mode](https://www.sqlite.org/wal.html) — write-ahead logging for concurrent read/write
-- [Deployment strategy (archived)](.../archive/discovery/plans/2026-02-18-deployment-strategy.md) — superseded; see [current deployment strategy](../../plans/2026-03-12-deployment-strategy.md)
+- [Deployment strategy (archived)](../../archive/plans/2026-02-18-deployment-strategy.md) — superseded; see [current infrastructure plan](../../plans/2026-03-30-infrastructure.md)
 - [Storage overview](../archive/discovery/2026-02-14-storage-overview.md) — original storage analysis
