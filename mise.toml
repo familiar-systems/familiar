@@ -1,7 +1,7 @@
 [tools]
 node = "24"
 "npm:pnpm" = "10.32"
-rust = "1.94"
+rust = "stable"
 python = "3.14"
 
 # --- dev ---
@@ -91,11 +91,11 @@ run = "cargo fmt"
 
 [tasks."format:python"]
 dir = "workers/whisperx"
-run = "uv run ruff format ."
+run = "uv run ruff format"
 
 [tasks."format:infra"]
 dir = "infra/pulumi-cloud"
-run = "uv run ruff format ."
+run = "uv run ruff format"
 
 [tasks."format:check"]
 description = "Check formatting (all ecosystems)"
