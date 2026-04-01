@@ -11,7 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@loreweaver/domain": "workspace:*",
+    "@loreweaver/types": "workspace:*",
     "@loreweaver/editor": "workspace:*",
     "react": "^19",
     "react-dom": "^19"

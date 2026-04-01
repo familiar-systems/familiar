@@ -11,7 +11,6 @@ env:
   REGISTRY: rg.fr-par.scw.cloud/loreweaver
   IMAGE_NAME: site
   DO_NOT_TRACK: 1
-  TURBO_TELEMETRY_DISABLED: 1
 
 concurrency:
   group: deploy-site

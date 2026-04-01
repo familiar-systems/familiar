@@ -8,3 +8,8 @@ infra
 docs
 *.md
 !pnpm-workspace.yaml
+target
+workers
+crates
+Cargo.toml
+Cargo.lock

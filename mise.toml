@@ -1,0 +1,153 @@
+[tools]
+node = "24"
+"npm:pnpm" = "10.32"
+rust = "1.94"
+python = "3.14"
+
+# --- dev ---
+
+[tasks.dev]
+description = "Start all dev servers"
+depends = ["dev:*"]
+
+[tasks."dev:site"]
+description = "Astro dev server (port 4321)"
+run = "pnpm --filter @loreweaver/site dev"
+
+[tasks."dev:web"]
+description = "Vite dev server (port 5173)"
+run = "pnpm --filter @loreweaver/web dev"
+
+[tasks."dev:platform"]
+description = "Platform server (port 3000)"
+run = "cargo run -p loreweaver-platform"
+
+[tasks."dev:campaign"]
+description = "Campaign server (port 3001)"
+run = "cargo run -p loreweaver-campaign"
+
+# --- build ---
+
+[tasks.build]
+description = "Build all targets"
+depends = ["build:*"]
+
+[tasks."build:site"]
+run = "pnpm --filter @loreweaver/site build"
+
+[tasks."build:web"]
+run = "pnpm --filter @loreweaver/web build"
+
+[tasks."build:rust"]
+run = "cargo build"
+
+# --- test ---
+
+[tasks.test]
+description = "Run all tests"
+depends = ["test:*"]
+
+[tasks."test:ts"]
+run = "pnpm test"
+
+[tasks."test:rust"]
+run = "cargo test"
+
+[tasks."test:python"]
+dir = "workers/whisperx"
+run = "uv run pytest"
+
+# --- lint ---
+
+[tasks.lint]
+description = "Lint all ecosystems"
+depends = ["lint:*"]
+
+[tasks."lint:ts"]
+run = "pnpm lint"
+
+[tasks."lint:rust"]
+run = "cargo clippy --workspace -- -D warnings"
+
+[tasks."lint:python"]
+dir = "workers/whisperx"
+run = "uv run ruff check ."
+
+[tasks."lint:infra"]
+dir = "infra/pulumi-cloud"
+run = "uv run ruff check ."
+
+# --- format ---
+
+[tasks.format]
+description = "Format all code"
+depends = ["format:*"]
+
+[tasks."format:ts"]
+run = "pnpm format"
+
+[tasks."format:rust"]
+run = "cargo fmt"
+
+[tasks."format:python"]
+dir = "workers/whisperx"
+run = "uv run ruff format ."
+
+[tasks."format:infra"]
+dir = "infra/pulumi-cloud"
+run = "uv run ruff format ."
+
+[tasks."format:check"]
+description = "Check formatting (all ecosystems)"
+depends = ["format:check:*"]
+
+[tasks."format:check:ts"]
+run = "pnpm format:check"
+
+[tasks."format:check:rust"]
+run = "cargo fmt --check"
+
+[tasks."format:check:python"]
+dir = "workers/whisperx"
+run = "uv run ruff format --check ."
+
+[tasks."format:check:infra"]
+dir = "infra/pulumi-cloud"
+run = "uv run ruff format --check ."
+
+# --- typecheck ---
+
+[tasks.typecheck]
+description = "Type-check all ecosystems"
+depends = ["typecheck:*"]
+
+[tasks."typecheck:ts"]
+run = "pnpm typecheck"
+
+[tasks."typecheck:rust"]
+run = "cargo check --workspace"
+
+[tasks."typecheck:python"]
+dir = "workers/whisperx"
+run = "uv run basedpyright"
+
+[tasks."typecheck:infra"]
+dir = "infra/pulumi-cloud"
+run = "uv run basedpyright"
+
+# --- generate ---
+
+[tasks.generate-types]
+description = "Generate TS types from Rust via ts-rs"
+run = "cargo test --workspace"
+
+# --- clean ---
+
+[tasks.clean]
+description = "Remove all build artifacts and caches"
+run = """
+rm -rf target
+rm -rf node_modules/.cache
+find . -name 'dist' -type d -not -path '*/node_modules/*' -exec rm -rf {} +
+find . -name '*.tsbuildinfo' -delete
+"""
