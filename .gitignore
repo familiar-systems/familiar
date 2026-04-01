@@ -13,9 +13,6 @@ debug/
 *.pdb
 **/mutants.out*/
 
-# === Build caches ===
-.turbo/
-
 # === Node.js ===
 node_modules/
 dist/

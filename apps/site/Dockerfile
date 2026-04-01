@@ -8,7 +8,8 @@ FROM node:24-slim AS build
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
-RUN npm install -g pnpm@10.32.1
+ARG PNPM_VERSION
+RUN npm install -g pnpm@${PNPM_VERSION}
 
 WORKDIR /app
 
