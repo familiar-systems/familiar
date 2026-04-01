@@ -1,0 +1,9 @@
+[package]
+name = "loreweaver-shared"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+
+[dev-dependencies]

@@ -4,16 +4,9 @@
     "baseUrl": "."
   },
   "references": [
-    { "path": "packages/domain" },
-    { "path": "packages/db" },
-    { "path": "packages/auth" },
+    { "path": "packages/types" },
     { "path": "packages/editor" },
-    { "path": "packages/ai" },
-    { "path": "packages/queue" },
-    { "path": "apps/web" },
-    { "path": "apps/api" },
-    { "path": "apps/collab" },
-    { "path": "apps/worker" }
+    { "path": "apps/web" }
   ],
   "include": []
 }

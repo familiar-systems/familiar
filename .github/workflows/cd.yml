@@ -11,7 +11,6 @@ env:
   REGISTRY: rg.fr-par.scw.cloud/loreweaver
   IMAGE_NAME: site
   DO_NOT_TRACK: 1
-  TURBO_TELEMETRY_DISABLED: 1
 
 concurrency:
   group: deploy-site
@@ -22,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/mise-tool-versions
+        id: tools
 
       - name: Check if site files or CI changed
         id: changes
@@ -67,7 +69,9 @@ jobs:
           context: .
           file: apps/site/Dockerfile
           push: true
-          build-args: SITE_URL=https://loreweaver.no
+          build-args: |
+            SITE_URL=https://loreweaver.no
+            PNPM_VERSION=${{ steps.tools.outputs.pnpm }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest

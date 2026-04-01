@@ -7,7 +7,6 @@ on:
     branches: [main]
 
 permissions:
-  # Necessary for calling cd.yml
   actions: read
   contents: read
 
@@ -16,53 +15,121 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DO_NOT_TRACK: 1
-  TURBO_TELEMETRY_DISABLED: 1
+  CARGO_TERM_COLOR: always
 
 jobs:
-  ci:
+  # ── TypeScript ──────────────────────────────────────────
+  ts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/mise-tool-versions
+        id: tools
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ steps.tools.outputs.pnpm }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ steps.tools.outputs.node }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: format
+        run: pnpm format:check
+
+      - name: lint
+        run: pnpm lint
+
+      - name: typecheck
+        run: pnpm typecheck
+
+      - name: build
+        run: pnpm build:web
+
+      - name: test
+        run: pnpm test
+
+  # ── Rust ────────────────────────────────────────────────
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/mise-tool-versions
+        id: tools
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.tools.outputs.rust }}
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: format
+        run: cargo fmt --check
+
+      - name: clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: test
+        run: cargo test --workspace
+
+  # ── Python ──────────────────────────────────────────────
+  python:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        check: [lint, typecheck, format, build, test]
-    name: ${{ matrix.check }}
+        worker: [whisperx]
+    defaults:
+      run:
+        working-directory: workers/${{ matrix.worker }}
     steps:
       - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v6
+      - uses: astral-sh/setup-uv@v6
         with:
-          node-version-file: ".nvmrc"
-          cache: "pnpm"
+          enable-cache: true
+          cache-dependency-glob: "workers/*/uv.lock"
 
-      - run: pnpm install --frozen-lockfile
-
-      - uses: rharkor/caching-for-turbo@v2.3.11
-
-      - name: lint
-        if: matrix.check == 'lint'
-        run: pnpm turbo lint
-
-      - name: typecheck
-        if: matrix.check == 'typecheck'
-        run: pnpm turbo typecheck
+      - name: sync
+        run: uv sync --frozen
 
       - name: format
-        if: matrix.check == 'format'
-        run: pnpm oxfmt --check .
+        run: uv run ruff format --check .
 
-      - name: build
-        if: matrix.check == 'build'
-        run: pnpm turbo build
+      - name: lint
+        run: uv run ruff check .
+
+      - name: typecheck
+        run: uv run basedpyright
 
       - name: test
-        if: matrix.check == 'test'
-        run: pnpm turbo test
+        run: uv run pytest
+
+  # ── Gate ────────────────────────────────────────────────
+  ci-ok:
+    if: always()
+    needs: [ts, rust, python]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "One or more CI jobs failed"
+            exit 1
+          fi
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more CI jobs were cancelled"
+            exit 1
+          fi
+          echo "All CI checks passed"
 
   deploy-site:
-    needs: [ci]
+    needs: [ci-ok]
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/cd.yml
     secrets: inherit

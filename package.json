@@ -2,19 +2,18 @@
   "name": "loreweaver",
   "private": true,
   "scripts": {
-    "build": "turbo build",
-    "dev": "turbo dev",
-    "test": "turbo test",
-    "lint": "turbo lint",
+    "lint": "pnpm -r run lint",
     "format": "oxfmt .",
-    "typecheck": "turbo typecheck"
+    "format:check": "oxfmt --check .",
+    "typecheck": "tsc -b",
+    "build:web": "pnpm --filter @loreweaver/web build",
+    "build:site": "pnpm --filter @loreweaver/site build",
+    "test": "vitest run --passWithNoTests"
   },
   "devDependencies": {
     "oxfmt": "^0.33",
     "oxlint": "^1.48",
-    "turbo": "^2.8",
     "typescript": "^5.8",
     "vitest": "^3"
-  },
-  "packageManager": "pnpm@10.32.1"
+  }
 }

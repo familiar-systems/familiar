@@ -1,4 +1,0 @@
-{
-  "extends": "@loreweaver/tsconfig/library.json",
-  "include": ["src"]
-}

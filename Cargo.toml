@@ -1,0 +1,13 @@
+[workspace]
+resolver = "3"
+members = ["apps/platform", "apps/campaign", "crates/shared"]
+
+[workspace.package]
+edition = "2024"
+repository = "https://github.com/loreweaver-no/loreweaver"
+
+[workspace.metadata.ts-rs]
+output_directory = "packages/types/generated"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }

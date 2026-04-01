@@ -19,7 +19,6 @@ env:
   REGISTRY: rg.fr-par.scw.cloud/loreweaver
   IMAGE_NAME: site
   DO_NOT_TRACK: 1
-  TURBO_TELEMETRY_DISABLED: 1
 
 jobs:
   build-and-push:
@@ -29,6 +28,9 @@ jobs:
       image: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/mise-tool-versions
+        id: tools
 
       - name: Compute image tags
         id: meta
@@ -53,7 +55,9 @@ jobs:
           context: .
           file: apps/site/Dockerfile
           push: true
-          build-args: SITE_URL=https://preview.loreweaver.no
+          build-args: |
+            SITE_URL=https://preview.loreweaver.no
+            PNPM_VERSION=${{ steps.tools.outputs.pnpm }}
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
