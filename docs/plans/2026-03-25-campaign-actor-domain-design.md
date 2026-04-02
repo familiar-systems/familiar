@@ -57,6 +57,7 @@ A checked-out campaign has the following actor tree:
 
 ```
 CampaignSupervisor (one per checked-out campaign)
+├── CampaignVocabulary (one per campaign — entity name lookup service)
 ├── ThingActor (per active Thing — NPC page, location page, etc.)
 ├── TocActor (one per campaign — the GM's organizational structure)
 ├── RelationshipGraph (one per campaign — the full entity graph)
@@ -93,6 +94,411 @@ CampaignSupervisor (one per checked-out campaign)
 Each user has many conversations. Opening an existing conversation or starting a new one spins up a new AgentConversation actor. Conversations persist to the campaign database for "hammock time" — the user can close a conversation, come back days later, and resume with full history.
 
 **CampaignSupervisor** is the root actor. It handles campaign checkout/checkin from object storage, spawns and tracks all child actors, routes incoming websocket messages to the correct room actor, and manages the campaign-level database connection. It does not implement any domain traits — it is pure orchestration.
+
+---
+
+### CampaignVocabulary Actor
+
+CampaignVocabulary is an in-memory projection of all entity names in the campaign. It is a sibling of RelationshipGraph under the CampaignSupervisor, loaded at restoration time, and lives for the lifetime of the campaign checkout.
+
+#### Internal State
+
+```rust
+struct CampaignVocabulary {
+    entries: Vec<VocabularyEntry>,
+    subscribers: Vec<Subscriber>,
+    // index structures (phonetic keys, n-grams, etc.) added as needed
+}
+
+struct VocabularyEntry {
+    thing_id: ThingId,
+    canonical_name: String,
+}
+```
+
+At ~500 entities this is trivially small. Matching strategies start simple (normalized substring for autocomplete, Levenshtein distance for fuzzy matching) and can be made more sophisticated independently without changing the actor's interface or role in the architecture.
+
+#### Query Interface
+
+```rust
+enum VocabularyQuery {
+    /// Editor autocomplete. Prefix/substring match against entity names.
+    Mention { prefix: String, limit: usize },
+    /// STT correction and entity recognition. Fuzzy match a candidate
+    /// string against the campaign vocabulary.
+    FuzzyMatch { candidate: String, threshold: f32 },
+}
+```
+
+Both queries are the same shape: string in, matches out. The vocabulary actor is a lookup service. It does not scan text or extract candidates — consumers that need entity recognition (STT correction pipeline, AI context building) call FuzzyMatch repeatedly with their own candidate tokens. The scanning and extraction logic lives in the pipeline stage, not the vocabulary.
+
+#### Consumers
+
+**Editor autocomplete:** A REST endpoint queries the vocabulary actor with `Mention`. Interactive latency. The primary user-facing consumer.
+
+**STT correction (pipeline phase 2):** The correction dictionary that normalizes ASR output against known campaign entity names. "Yorgath" needs to find "Jorgath." Calls `FuzzyMatch` for each candidate token the ASR produced. The vocabulary actor handles the matching; the pipeline stage owns the logic of which tokens to check.
+
+**AI context building:** The serialization compiler uses the vocabulary for name matching when it encounters mentions in documents. The full entity list for prompt headers comes from `CampaignReader` (the debounce freshness gap is acceptable for AI prompts — a Thing created 2 seconds ago not appearing in the next prompt is fine).
+
+#### Event-Driven Freshness
+
+The CampaignSupervisor publishes domain events to the vocabulary actor as regular kameo messages. The vocabulary actor does not subscribe to anything — it receives events from the supervisor, which already mediates Thing lifecycle.
+
+```rust
+// Messages from CampaignSupervisor
+struct ThingCreated(ThingHandle);
+struct ThingRenamed { id: ThingId, new_name: String }
+struct ThingDeleted(ThingId);
+```
+
+The vocabulary is always immediately fresh. No polling, no index rebuild, no DB reads on the hot path after initial restoration.
+
+#### Notifications to Clients
+
+CampaignVocabulary implements `Notifiable` because clients need to know when the vocabulary changes independently of any specific document update. The editor's mention popup, any open search UI, and anything that displays entity names outside of a document context all need this notification.
+
+```rust
+enum VocabularyNotification {
+    ThingCreated(ThingHandle),
+    ThingRenamed { id: ThingId, new_name: String },
+    ThingDeleted(ThingId),
+}
+```
+
+#### Trait Composition
+
+| Actor              | Persistent | Evictable | CrdtRoom | Notifiable | Queryable | Mutable |
+| ------------------ | ---------- | --------- | -------- | ---------- | --------- | ------- |
+| CampaignVocabulary | yes        | no        | no       | yes        | yes       | no      |
+
+Not Evictable: too cheap to evict and too widely depended on to risk being absent. Not CrdtRoom: server-authoritative, not collaborative. Not Mutable: does not accept external commands via REST — it receives domain events from the supervisor.
+
+---
+
+### Mention Model
+
+Mentions in the LoroDoc store a `ThingId` and a display label. The relational data (libSQL) stores only the `ThingId` as a foreign key. The display label does not exist in the database.
+
+```
+LoroDoc (live editing):   { type: "mention", attrs: { thingId: "abc123", label: "Korgath" } }
+Relational (persistence): thing_id = "abc123"  (no label column)
+```
+
+The label is a rendering cache, not a source of truth. Every layer of the system treats it this way.
+
+#### Rename Propagation
+
+When a GM renames a Thing (e.g., "Korgath" → "Kurgath"):
+
+1. ThingActor (for Korgath's own page) processes the rename
+2. ThingActor tells CampaignSupervisor: `ThingRenamed { id, new_name }`
+3. Supervisor tells CampaignVocabulary: update the entry
+4. Supervisor tells active ThingActors: `MentionRenamed { thing_id, new_name }` — each walks its live LoroDoc and updates matching mention label attributes
+5. CampaignVocabulary notifies connected clients via `VocabularyNotification::ThingRenamed`
+
+**Inactive Things require no propagation.** Their relational data stores only the ThingId. When an inactive Thing is next restored, `restore()` resolves mention ThingIds to current names using the CampaignVocabulary (or CampaignReader if the vocabulary isn't up yet). The reconstructed LoroDoc gets the correct label at reconstruction time.
+
+**The RelationshipGraph requires no update.** It stores edges between ThingIds. Entity names never appear there.
+
+#### Recovery Semantics
+
+The mention model gives a spectrum of recovery quality rather than a binary works/broken:
+
+**Normal operation:** Vocabulary actor is up, full reconstruction from relational data. Every mention resolves to the current name. Perfect fidelity.
+
+**Hard restart from hot LoroDoc snapshot, vocabulary available:** Mention labels in the snapshot might be stale (a rename happened after the last snapshot). A reconciliation pass on load can fix them, or they fix on next edit. IDs are correct. Cosmetically stale, not structurally wrong.
+
+**Hard restart from hot LoroDoc snapshot, vocabulary not yet available:** Stale labels, no way to fix them immediately. Pages render, mentions are clickable (valid IDs), names might be wrong. When the vocabulary comes up, the next restore or edit fixes them.
+
+No recovery path requires special ceremony. The mention's truth is always the ThingId. The label is a cache that is correct when convenient and harmlessly stale otherwise.
+
+---
+
+### CampaignDatabase Module
+
+The campaign database is encapsulated as a module, not exposed as raw connections. The `CampaignDatabase` struct is the module's public face — the CampaignSupervisor holds it and passes its read and write handles to child actors. No actor outside the module ever sees a connection, a query, or a row.
+
+```rust
+/// The module's public face. The supervisor holds this.
+pub struct CampaignDatabase {
+    reader: CampaignReaderImpl,
+    writer: ActorRef<DatabaseActor>,
+    path: PathBuf,
+}
+```
+
+#### Read Algebra
+
+Reads go through a trait that speaks the domain language. The implementation holds a pool of read-only libSQL connections (WAL mode allows concurrent readers). The trait is `Clone + Send + Sync` so it can be handed to every actor at spawn time.
+
+```rust
+trait CampaignReader: Clone + Send + Sync + 'static {
+    async fn restore_thing(&self, id: &ThingId) -> Result<ThingSnapshot>;
+    async fn restore_toc(&self) -> Result<TocSnapshot>;
+    async fn restore_graph(&self) -> Result<GraphSnapshot>;
+    async fn restore_conversation(&self, id: &ConversationId)
+        -> Result<ConversationSnapshot>;
+    async fn list_thing_ids(&self) -> Result<Vec<ThingId>>;
+}
+```
+
+This is where all SELECT queries live. Adding a new actor type means adding one method to the algebra and one implementation in the persistence module. No SQL leaks into actor code.
+
+#### Write Actor
+
+Writes are domain-typed commands sent to a `DatabaseActor` that owns the single read-write connection. The actor's mailbox serializes writes — one message processed at a time — but this is a convenience for clean shutdown draining, not a correctness requirement. libSQL in WAL mode with `busy_timeout = 5000` already serializes writers at the database level. The actor prevents the CampaignSupervisor from blocking on IO during debounce writebacks.
+
+```rust
+enum PersistenceCommand {
+    SnapshotThing { id: ThingId, snapshot: ThingSnapshot },
+    SnapshotToc(TocSnapshot),
+    SnapshotGraph(GraphMutation),
+    SnapshotConversation { id: ConversationId, snapshot: ConversationSnapshot },
+    RecordSuggestionOutcome(SuggestionOutcome),
+}
+
+struct DatabaseActor {
+    write_conn: libsql::Connection,
+}
+```
+
+Each child actor holds an `ActorRef<DatabaseActor>`. When a debounce timer fires, the actor snapshots its state and tells the writer:
+
+```rust
+// Inside ThingActor
+async fn persist(&self) {
+    let snapshot = self.snapshot();
+    let _ = self.db_writer.tell(PersistenceCommand::SnapshotThing {
+        id: self.id.clone(),
+        snapshot,
+    }).await;
+}
+```
+
+#### Storage Backend
+
+Where the libSQL file physically lives — local filesystem vs. object storage — is a separate concern from what gets written to it. A `CampaignStore` algebra abstracts the storage lifecycle:
+
+```rust
+trait CampaignStore: Send + Sync + 'static {
+    async fn checkout(&self, campaign_id: &CampaignId) -> Result<PathBuf>;
+    async fn writeback(&self, campaign_id: &CampaignId, path: &Path) -> Result<()>;
+    async fn release(&self, campaign_id: &CampaignId, path: &Path) -> Result<()>;
+}
+```
+
+- **Local (self-hosted):** `checkout` returns the path on disk. `writeback` and `release` are no-ops. The file is already where it needs to be.
+- **Hosted:** `checkout` downloads from Hetzner Object Storage to the local Hetzner Volume. `writeback` uploads the current file for durability (called on a periodic timer — ~30 seconds). `release` does a final upload and deletes the local copy.
+
+The CampaignSupervisor owns the `CampaignStore`. The `CampaignDatabase` module consumes it during checkout and release but does not hold a reference to it — the storage lifecycle is the supervisor's responsibility, the connection lifecycle is the module's.
+
+#### Module Lifecycle
+
+```rust
+impl CampaignDatabase {
+    /// Downloads the campaign file (if hosted), opens connections,
+    /// spawns the write actor. Returns when the database is ready.
+    pub async fn checkout(
+        store: &impl CampaignStore,
+        campaign_id: &CampaignId,
+    ) -> Result<Self> {
+        let path = store.checkout(campaign_id).await?;
+        let read_pool = open_read_pool(&path).await?;
+        let write_conn = open_write_connection(&path).await?;
+        let writer = kameo::spawn(DatabaseActor { write_conn });
+        Ok(Self {
+            reader: CampaignReaderImpl::new(read_pool),
+            writer,
+            path,
+        })
+    }
+
+    pub fn reader(&self) -> &CampaignReaderImpl { &self.reader }
+    pub fn writer(&self) -> &ActorRef<DatabaseActor> { &self.writer }
+
+    /// Drains pending writes, does final writeback, releases
+    /// the file. Consumes self — use after release is a compile error.
+    pub async fn release(
+        self,
+        store: &impl CampaignStore,
+        campaign_id: &CampaignId,
+    ) -> Result<()> {
+        self.writer.stop_gracefully().await?;
+        store.release(campaign_id, &self.path).await?;
+        Ok(())
+    }
+}
+```
+
+`release` consuming `self` is intentional. The type system enforces that no reads or writes can happen after release.
+
+#### Module Boundary
+
+All SQL, row mapping, and schema knowledge lives in a single `persistence` module. Nothing outside this module touches a connection or a row.
+
+```
+campaign/
+├── actors/
+│   ├── supervisor.rs
+│   ├── thing.rs
+│   ├── toc.rs
+│   ├── graph.rs
+│   ├── session.rs
+│   └── conversation.rs
+├── persistence/
+│   ├── mod.rs          // CampaignDatabase, re-exports
+│   ├── reader.rs       // CampaignReaderImpl, all SELECT queries
+│   ├── writer.rs       // DatabaseActor, all write functions
+│   ├── schema.rs       // table definitions, migrations
+│   └── snapshots.rs    // ThingSnapshot, TocSnapshot, etc.
+├── compiler/           // serialization compiler
+└── domain.rs           // ThingId, BlockId, etc.
+```
+
+---
+
+### Campaign Startup Lifecycle
+
+kameo actors process one message at a time. The `handle` method is async, but awaiting inside a handler yields the thread back to the tokio runtime, not the actor's mailbox. Other messages queue until the handler returns. If checkout takes 2-3 seconds (object storage download, connection setup, graph restoration), a synchronous startup would block the supervisor's mailbox — heartbeats queue up, the platform thinks the server is dead.
+
+The startup is interrupt-driven: the supervisor spawns checkout as a background task, returns immediately, and receives a completion message when the database is ready. A separate timeout races against the completion.
+
+#### Supervisor State Machine
+
+```rust
+enum SupervisorState {
+    /// Checkout in progress. Heartbeats respond. Room joins rejected.
+    Starting,
+    /// Actors being restored from the database.
+    Restoring { db: CampaignDatabase },
+    /// Normal operation.
+    Ready { db: CampaignDatabase },
+    /// Child actors draining before release.
+    Draining,
+}
+```
+
+Note: `Starting` and `Restoring` are separate states. `Starting` means the database file is being downloaded and connections are being opened. `Restoring` means the database is ready but child actors (RelationshipGraph, TocActor, etc.) are being spawned and populated. Both are non-blocking. Both respond to heartbeats with their current phase.
+
+#### Startup Sequence
+
+```rust
+impl Message<CheckoutCampaign> for CampaignSupervisor {
+    type Reply = ();
+    async fn handle(&mut self, _msg: CheckoutCampaign, ctx: Context<'_, Self, Self::Reply>) {
+        let store = self.store.clone();
+        let campaign_id = self.campaign_id.clone();
+        let self_ref = ctx.actor_ref().clone();
+
+        // Spawn the checkout as a background task
+        tokio::spawn(async move {
+            match CampaignDatabase::checkout(&*store, &campaign_id).await {
+                Ok(db) => { self_ref.tell(CheckoutComplete(db)).await.ok(); }
+                Err(e) => { self_ref.tell(CheckoutFailed(e)).await.ok(); }
+            }
+        });
+
+        // Race a timeout against the completion
+        tokio::spawn({
+            let self_ref = ctx.actor_ref().clone();
+            async move {
+                tokio::time::sleep(CHECKOUT_TIMEOUT).await;
+                self_ref.tell(CheckoutTimedOut).await.ok();
+            }
+        });
+
+        self.state = SupervisorState::Starting;
+    }
+}
+```
+
+#### Completion Transitions
+
+```rust
+impl Message<CheckoutComplete> for CampaignSupervisor {
+    type Reply = ();
+    async fn handle(&mut self, msg: CheckoutComplete, ctx: Context<'_, Self, Self::Reply>) {
+        let SupervisorState::Starting = &self.state else { return; };
+        let db = msg.0;
+
+        self.state = SupervisorState::Restoring { db };
+
+        // Spawn actor restoration as another background task
+        let reader = self.db().reader().clone();
+        let self_ref = ctx.actor_ref().clone();
+        tokio::spawn(async move {
+            match restore_campaign_actors(&reader).await {
+                Ok(actors) => { self_ref.tell(RestoreComplete(actors)).await.ok(); }
+                Err(e) => { self_ref.tell(RestoreFailed(e)).await.ok(); }
+            }
+        });
+    }
+}
+
+impl Message<RestoreComplete> for CampaignSupervisor {
+    type Reply = ();
+    async fn handle(&mut self, msg: RestoreComplete, _ctx: Context<'_, Self, Self::Reply>) {
+        let SupervisorState::Restoring { db } = std::mem::replace(
+            &mut self.state, SupervisorState::Starting // placeholder
+        ) else { return; };
+
+        self.actors = msg.0;
+        self.state = SupervisorState::Ready { db };
+    }
+}
+
+impl Message<CheckoutTimedOut> for CampaignSupervisor {
+    type Reply = ();
+    async fn handle(&mut self, _msg: CheckoutTimedOut, _ctx: Context<'_, Self, Self::Reply>) {
+        // If we're already Ready or Restoring, the timeout lost the race. Ignore it.
+        let SupervisorState::Starting = &self.state else { return; };
+        // Log, notify platform, terminate
+    }
+}
+```
+
+The loser of the race is always a no-op. `CheckoutComplete` arrives after timeout? Supervisor is no longer in `Starting`, early return. Timeout arrives after completion? Same.
+
+#### Heartbeats Report Phase
+
+```rust
+impl Message<Heartbeat> for CampaignSupervisor {
+    type Reply = HeartbeatAck;
+    async fn handle(&mut self, _msg: Heartbeat, _ctx: Context<'_, Self, Self::Reply>) -> HeartbeatAck {
+        HeartbeatAck {
+            campaign_id: self.campaign_id.clone(),
+            phase: match &self.state {
+                SupervisorState::Starting   => CampaignPhase::Downloading,
+                SupervisorState::Restoring { .. } => CampaignPhase::Restoring,
+                SupervisorState::Ready { .. }     => CampaignPhase::Ready,
+                SupervisorState::Draining   => CampaignPhase::Draining,
+            }
+        }
+    }
+}
+```
+
+The platform forwards the phase to connected clients. A client that connects while the campaign is starting sees "Downloading campaign data..." then "Restoring entities..." then the editor loads. This turns an otherwise opaque wait into descriptive progress. The phases can be made more granular later (e.g., `Restoring` could report which actors have been spawned) without changing the state machine structure.
+
+#### Room Joins Gate on Ready
+
+```rust
+impl Message<JoinRoom> for CampaignSupervisor {
+    type Reply = Result<RoomHandle, JoinError>;
+    async fn handle(&mut self, msg: JoinRoom, _ctx: Context<'_, Self, Self::Reply>) -> Result<RoomHandle, JoinError> {
+        let SupervisorState::Ready { db } = &self.state else {
+            return Err(JoinError::CampaignNotReady);
+        };
+        // ... normal room join logic using db.reader() and db.writer()
+    }
+}
+```
+
+Clients that attempt to join rooms before the campaign is ready receive `CampaignNotReady` and can retry. The frontend uses the heartbeat phase to decide whether to show a loading indicator or an error.
+
+#### Shutdown is the Same Pattern in Reverse
+
+Shutdown mirrors startup: the supervisor evicts all child actors (each one snapshots via the DatabaseActor), then spawns the release as a background task. Heartbeats continue responding with `CampaignPhase::Draining` throughout. A timeout races against the release. The only difference is that after `ReleaseComplete`, the supervisor terminates itself.
 
 ---
 
@@ -244,6 +650,7 @@ trait DocumentState {
 | ThingActor         | ✓          | ✓         | ✓        |            | ✓         |         | ✓                | ✓             |
 | TocActor           | ✓          | ✓         | ✓        | ✓          | ✓         |         |                  |               |
 | RelationshipGraph  | ✓          |           |          | ✓          | ✓         | ✓       |                  |               |
+| CampaignVocabulary | ✓          |           |          | ✓          | ✓         |         |                  |               |
 | AgentConversation  | ✓          | ✓         | ✓        |            |           |         |                  |               |
 | UserSession        |            | ✓         |          |            |           |         |                  |               |
 | CampaignSupervisor |            |           |          |            |           |         |                  |               |
@@ -439,6 +846,66 @@ The serialization compiler (`f()` / `f⁻¹()`) is a stateless service, not an a
 **Why the compiler is not on the actor:** The compiler needs the actor's document state AND the relationship graph AND embedding results (Tier 2) AND role context AND conversation scoping. Putting this on the ThingActor would require the actor to hold references to all of these. The compiler is a pure function with multiple inputs. The AgentConversation orchestrates: it asks the ThingActor for DocumentState, asks the RelationshipGraph for context, calls the compiler, and routes the result back to the ThingActor.
 
 **Why the compiler always reads from actors:** In the Hocuspocus architecture, the compiler had two read paths — Y.Doc for active pages, libSQL for inactive pages — because loading a Y.Doc on the Node.js event loop was expensive and could starve other connections. In the Rust actor model, spinning up a ThingActor to serve a Tier 1 index card costs one libSQL read and a few milliseconds of CPU. The actor evicts itself on idle. There is no event loop to starve. One read path, through the actor, always.
+
+---
+
+### Design Rationale: How These Decisions Emerged
+
+The designs in this section were not planned top-down. Each one fell out of a specific problem encountered while reasoning about the one before it. This section traces the causal chain to make the reasoning auditable.
+
+#### CampaignDatabase module: "reads are parallelizable, writes need serialization"
+
+The starting problem was: multiple actors need to read from the campaign database concurrently (especially during restoration, when the RelationshipGraph, TocActor, and initial ThingActors all need data), but writes need to be serialized. An actor model gives serialization for free via the mailbox, but if every actor reads through the same write actor, reads become a bottleneck.
+
+The resolution split reads from writes. Reads go through a `CampaignReader` trait — a domain-typed algebra backed by a pool of read-only libSQL connections (WAL mode allows concurrent readers). Writes go through a `DatabaseActor` that owns the single read-write connection.
+
+This also established the persistence module boundary: all SQL lives in one place. Actors never see a connection, a query, or a row. They see domain-typed snapshots going in and out.
+
+**Why a write actor instead of `Arc<Mutex<Connection>>`:** Not for correctness — libSQL in WAL mode with `busy_timeout` already serializes writers at the database level. The actor buys two things: the CampaignSupervisor never blocks on IO during a debounce writeback, and shutdown has a natural drain point (stop accepting new commands, flush pending writes, then release).
+
+#### CampaignStore algebra: "local vs. hosted is not the database's concern"
+
+While designing the CampaignDatabase module, a temptation arose to put the storage lifecycle (downloading from object storage, periodic writeback, final upload) inside the DatabaseActor. This was rejected because it conflates two responsibilities with different triggers, different error handling, and different shutdown ordering.
+
+Per-write persistence (actor snapshots to libSQL) is identical in both local and hosted topologies. The DatabaseActor doesn't know or care where its file came from. The storage lifecycle (where the file comes from, where it goes) is a CampaignSupervisor concern.
+
+The `CampaignStore` trait encapsulates this: local impl is mostly no-ops, hosted impl downloads/uploads from object storage. The CampaignSupervisor owns it. The DatabaseActor never sees it.
+
+**What it gave us for free:** The `CampaignDatabase::checkout()` and `release()` methods compose the two concerns cleanly — checkout calls `CampaignStore::checkout()` to get a file path, then opens connections and spawns the write actor. `release()` drains the write actor, then calls `CampaignStore::release()`. The module owns its full lifecycle with two clean entry/exit points.
+
+#### Non-blocking startup: "heartbeats must survive checkout"
+
+The CampaignDatabase module's `checkout()` is an async function that may take 2-3 seconds (object storage download, connection setup). kameo actors process one message at a time — an `.await` inside a handler yields the thread but not the mailbox. If the CampaignSupervisor calls `checkout()` inside a message handler, heartbeats queue up and the platform thinks the server is dead.
+
+This forced the supervisor into a state machine. The checkout is spawned as a background `tokio::spawn` task, the handler returns immediately, and a `CheckoutComplete` message arrives when the database is ready. A `CheckoutTimedOut` races against completion — loser is always a no-op.
+
+The `Starting` / `Restoring` / `Ready` / `Draining` state machine fell out of this naturally. And because heartbeats always respond with the current phase, the design gives us descriptive loading for free: the platform forwards the phase to connected clients, who see "Downloading campaign data..." then "Restoring entities..." then the editor loads.
+
+**Why interrupt-driven instead of polling:** An alternative (the "monadic" approach) was considered: hold the `JoinHandle` in state, send yourself a `PollLifecycle` message, check `is_finished()` each spin. This is elegant conceptually but adds latency (one message-processing cycle of delay on completion) and requires `std::mem::replace` gymnastics in Rust to move the handle out of the enum. The interrupt pattern (completion message + timeout message) has zero wasted work on the happy path and the timeout falls out of the same mechanism rather than needing a separate check.
+
+#### CampaignVocabulary: "autocomplete needs freshness the database can't provide"
+
+The original prompt was editor autocomplete for `@mentions` — when a GM types `@Jorg`, suggest "Jorgath the Beneficent." The naive implementation (query the database: `SELECT id, name FROM things WHERE name LIKE ?`) has a freshness gap: the ThingActor writes to the database through the DatabaseActor's debounce timer. A Thing created 2 seconds ago might not be in the DB yet. "I just created Jorgath, why can't I mention him?"
+
+This motivated an in-memory actor that holds the entity list and receives domain events (`ThingCreated`, `ThingRenamed`, `ThingDeleted`) directly from the CampaignSupervisor. The actor is always immediately fresh — no polling, no DB reads on the hot path.
+
+**Why Tantivy was deferred:** At ~500 entities, a linear scan with substring matching is sub-microsecond. The search engine question becomes relevant for fuzzy matching (STT correction needs "Yorgath" to find "Jorgath"), but the matching strategy is an implementation detail behind the query interface. Start with Levenshtein distance. Reach for Tantivy or phonetic indexing if and when matching quality becomes a bottleneck.
+
+**Why two separate concerns, not one trait:** The original sketch had a single `TypedInputSuggestions` trait with both `suggest_thing()` and `suggest_relationship()`. These were split because they have different data sources: Thing mentions draw from the entity list (new CampaignVocabulary actor), relationship suggestions draw from distinct edge labels in the graph (existing RelationshipGraph actor, via its `Queryable` implementation). No new actor needed for the second concern.
+
+**Why the vocabulary is Notifiable:** Fell out of tracing the rename flow. When the GM renames "Korgath" to "Kurgath," the vocabulary actor updates its entry, but connected clients also need to know — their local autocomplete cache is stale. The notification is independent of any document update. No CRDT room carries this information. The vocabulary actor pushes `VocabularyNotification::ThingRenamed` to subscribers over the websocket side channel.
+
+#### Mention model: "the relational layer shouldn't store what it can derive"
+
+Tracing the rename flow surfaced three options for mention storage:
+
+- **Option A (ID only in LoroDoc):** No propagation on rename, but every renderer needs a vocabulary lookup. The document is not self-describing. The serialization compiler would need to resolve every mention.
+- **Option B (ID + label in LoroDoc, ID + label in relational):** Self-describing documents, but rename requires propagation to every document that mentions the entity — including inactive Things sitting in the database.
+- **Option C (ID + label in LoroDoc, ID only in relational):** Self-describing live documents, no propagation to inactive Things. The label is a rendering cache in the CRDT. The relational layer stores only the foreign key. On restoration, `restore()` resolves ThingIds to current names using the CampaignVocabulary.
+
+Option C was chosen because it treats each storage layer according to its strengths. The LoroDoc carries the label for rendering convenience. The relational data carries the ID for structural correctness. Rename propagation only touches active ThingActors (the supervisor sends `MentionRenamed`, each actor updates its live LoroDoc). Inactive Things get the correct name for free when they're next restored.
+
+**What it gave us for free:** Graceful recovery degradation. A hard restart from a hot LoroDoc snapshot might have stale mention labels (a rename happened after the last snapshot). If the vocabulary actor is up, a reconciliation pass can fix them. If it isn't, the page renders with slightly wrong names but structurally correct links. No recovery path requires special ceremony. No recovery path corrupts data. The label is always "correct when convenient, harmlessly stale otherwise."
 
 ---
 
