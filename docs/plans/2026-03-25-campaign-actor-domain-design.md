@@ -167,14 +167,14 @@ enum VocabularyNotification {
 
 #### Trait Composition
 
-| Trait     | Implements? | Why                                                                                           |
-| --------- | ----------- | --------------------------------------------------------------------------------------------- |
-| Notifiable | yes        | Clients need vocabulary change notifications independently of document updates                 |
-| Queryable  | yes        | REST endpoints and pipeline stages query for mentions and fuzzy matches                       |
-| Persistent | no         | Derived entirely from Thing data. No independent state to write back.                         |
-| Evictable  | no         | Too cheap to evict and too widely depended on to risk being absent. Lives for campaign lifetime. |
-| CrdtRoom   | no         | Server-authoritative, not collaborative.                                                      |
-| Mutable    | no         | Does not accept external commands via REST. Receives domain events from the supervisor.        |
+| Trait      | Implements? | Why                                                                                              |
+| ---------- | ----------- | ------------------------------------------------------------------------------------------------ |
+| Notifiable | yes         | Clients need vocabulary change notifications independently of document updates                   |
+| Queryable  | yes         | REST endpoints and pipeline stages query for mentions and fuzzy matches                          |
+| Persistent | no          | Derived entirely from Thing data. No independent state to write back.                            |
+| Evictable  | no          | Too cheap to evict and too widely depended on to risk being absent. Lives for campaign lifetime. |
+| CrdtRoom   | no          | Server-authoritative, not collaborative.                                                         |
+| Mutable    | no          | Does not accept external commands via REST. Receives domain events from the supervisor.          |
 
 ---
 
@@ -626,7 +626,7 @@ trait Persistent {
 - The exhaustive match in the DatabaseActor's handler guarantees every variant is consumed.
 - Together: every persistent actor produces a snapshot, every snapshot maps to a command, every command is constructed, every command is handled. The compiler proves the wiring exists end to end.
 
-The compiler can't prove the persistence logic is *correct* -- that the SQL writes the right rows, that the snapshot captures all necessary state. But it proves the system is trying. The gaps between compile-time checkpoints are small, concrete functions in the persistence module.
+The compiler can't prove the persistence logic is _correct_ -- that the SQL writes the right rows, that the snapshot captures all necessary state. But it proves the system is trying. The gaps between compile-time checkpoints are small, concrete functions in the persistence module.
 
 **Actors that don't fit the snapshot pattern don't implement Persistent.** RelationshipGraph is mutated edge-by-edge via `Mutable`, persisted as deltas, not snapshotted whole. CampaignVocabulary is derived from Thing data and has no independent state to persist. Neither implements `Persistent`.
 
@@ -1120,7 +1120,7 @@ The `PersistenceCommand` enum provides a third layer: every variant must be cons
 
 `Persistent` originally included `restore()`. Removed because each actor needs different inputs. ThingActor needs a ThingId + reader + writer. CampaignVocabulary needs a reader only. UserSession needs nothing. An associated `RestoreCtx` type would add machinery without enabling polymorphic restoration code -- nobody writes generic restoration functions.
 
-Free functions in `persistence/restore.rs` are honest about each actor's requirements. The function signature documents exactly what's needed. The actor knows how to snapshot and persist. How it was *created* is the persistence module's concern.
+Free functions in `persistence/restore.rs` are honest about each actor's requirements. The function signature documents exactly what's needed. The actor knows how to snapshot and persist. How it was _created_ is the persistence module's concern.
 
 ---
 
