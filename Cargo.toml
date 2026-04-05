@@ -1,13 +1,17 @@
 [workspace]
 resolver = "3"
-members = ["apps/platform", "apps/campaign", "crates/shared"]
+members = ["apps/platform", "apps/campaign", "crates/app-shared", "crates/campaign-shared"]
 
 [workspace.package]
 edition = "2024"
 repository = "https://github.com/loreweaver-no/loreweaver"
 
-[workspace.metadata.ts-rs]
-output_directory = "packages/types/generated"
-
 [workspace.dependencies]
+loro = "1"
+nanoid = "0.4.0"
+serde = "1"
+serde_json = "1"
 tokio = { version = "1", features = ["full"] }
+ts-rs = { version = "12.0.1", features = ["uuid-impl"] }
+utoipa = { version = "5.4.0", features = ["uuid"] }
+uuid = { version = "1.23.0", features = ["serde", "v7"] }

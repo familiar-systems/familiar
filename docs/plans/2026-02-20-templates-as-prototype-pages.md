@@ -151,5 +151,5 @@ When a GM updates the NPC template (adds a "Motivation" section), what happens t
 ## Relationship to Other Design Documents
 
 - **[Vision](../vision.md)** — says templates give Things structure and ship with starter packs. This document clarifies that templates ARE Things, not a separate concept.
-- **[Project Structure](2026-03-26-project-structure-design.md)** — `packages/types` is generated from Rust via ts-rs, `packages/editor` defines the TipTap schema. The block structure question (flat vs. tree) will be resolved when designing the editor package.
+- **[Project Structure](2026-03-26-project-structure-design.md)** — shared types are generated from Rust via ts-rs, `packages/editor` defines the TipTap schema. The block structure question (flat vs. tree) will be resolved when designing the editor package.
 - **[AI Workflow](2026-02-14-ai-workflow-unification-design.md)** — suggestions that create Things still reference a template for initial structure. The template is now a ThingId (the prototype) rather than a TemplateId.

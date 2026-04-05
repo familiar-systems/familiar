@@ -1,0 +1,15 @@
+[package]
+name = "loreweaver-app-shared"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+nanoid.workspace = true
+serde.workspace = true
+ts-rs.workspace = true
+utoipa.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

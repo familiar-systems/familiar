@@ -1,5 +1,5 @@
 {
-  "name": "@loreweaver/editor",
+  "name": "@loreweaver/types-campaign",
   "version": "0.0.0",
   "private": true,
   "main": "./src/index.ts",
@@ -9,11 +9,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint .",
-    "test": "vitest run --passWithNoTests"
+    "lint": "oxlint ."
   },
   "dependencies": {
-    "@loreweaver/types-campaign": "workspace:*"
+    "@loreweaver/types-app": "workspace:*"
   },
   "devDependencies": {
     "@loreweaver/tsconfig": "workspace:*",

@@ -138,8 +138,12 @@ run = "uv run basedpyright"
 # --- generate ---
 
 [tasks.generate-types]
-description = "Generate TS types from Rust via ts-rs"
-run = "cargo test --workspace"
+description = "Generate TS types from Rust via ts-rs (clean + regenerate + format)"
+run = """
+rm -rf packages/types-app/src/generated packages/types-campaign/src/generated
+cargo test --workspace
+pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
+"""
 
 # --- clean ---
 

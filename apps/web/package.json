@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@loreweaver/editor": "workspace:*",
-    "@loreweaver/types": "workspace:*",
+    "@loreweaver/types-app": "workspace:*",
+    "@loreweaver/types-campaign": "workspace:*",
     "react": "^19",
     "react-dom": "^19"
   },
