@@ -1,7 +1,7 @@
 ---
 quest: 3
-title: "Cast Sending"
-description: "A Discord familiar for your table. No upload ritual required."
+title: "Astral Projection"
+description: "Project Loreweaver into your Discord session. No upload ritual required."
 status: "planned"
 ---
 

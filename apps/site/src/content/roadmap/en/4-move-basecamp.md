@@ -6,5 +6,5 @@ status: "planned"
 ---
 
 - Structured onboarding workflow for existing campaigns. Take your current, active campaign and bring it into Loreweaver.
-- Support for single files: markdown, onenote, odf, docx
-- Support for groups of files such as Obsidian or Notion exports
+- Support for single files: Markdown, OneNote, ODF, DOCX.
+- Support for groups of files such as Obsidian or Notion exports.
