@@ -45,24 +45,27 @@ Read the project structure doc (`docs/plans/2026-03-26-project-structure-design.
 ### Monorepo: pnpm workspaces + Cargo + uv (orchestrated by mise)
 
 ```
-apps/site        Astro static site (landing page, blog, public campaign pages)
-apps/web         Vite + React SPA (the app, behind auth)
-apps/platform    Rust binary: Axum (auth, CRUD, routing table, discover)
-apps/campaign    Rust binary: Axum + kameo (actors, collab, AI, compiler)
-workers/         Job processors, language-agnostic (Python ML today)
+apps/site             Astro static site (landing page, blog, public campaign pages)
+apps/web              Vite + React SPA (the app, behind auth)
+apps/platform         Rust binary: Axum (auth, CRUD, routing table, discover)
+apps/campaign         Rust binary: Axum + kameo (actors, collab, AI, compiler)
+workers/              Job processors, language-agnostic (Python ML today)
 
-crates/shared    Rust library: traits, types, auth, libSQL helpers
-packages/types   @loreweaver/types, generated from Rust via ts-rs, zero runtime deps
-packages/editor  @loreweaver/editor, TipTap/ProseMirror schema + custom extensions (THE shared contract)
+crates/app-shared       Rust library: IDs, auth, libSQL helpers (platform + campaign)
+crates/campaign-shared  Rust library: ToC/Thing Loro wrappers, PM conventions, CrdtDoc trait (campaign only)
+packages/types-app      @loreweaver/types-app, generated from app-shared via ts-rs (CampaignId, UserId)
+packages/types-campaign @loreweaver/types-campaign, generated from campaign-shared via ts-rs (ThingId, BlockId, ThingHandle, TocEntry, ...)
+packages/editor         @loreweaver/editor, TipTap/ProseMirror schema + custom extensions (THE shared contract)
 ```
 
 ### Critical Dependency Rules
 
-- **Dependency direction: web -> editor -> types.** The frontend depends on two packages. The editor depends on one. Nothing else.
-- **`apps/site` depends only on `types`.** The public site has the lightest dependency footprint.
-- **`apps/web` depends only on `types` and `editor`.** The client/server boundary is enforced by the dependency graph. There is no server-side TypeScript to import.
-- **Each package's `src/index.ts` is its public API.** Import from `@loreweaver/types`, never from `@loreweaver/types/generated/ThingId`.
-- **Domain logic is Rust.** Two Rust binaries (platform + campaign server) and a shared crate own all backend logic. TypeScript is frontend-only.
+- **Dependency direction: `web -> editor -> types-campaign -> types-app`.** The editor depends on campaign types. Campaign types depend on app types. `web` also depends on `types-app` directly (for auth, campaign listing).
+- **`apps/site` depends only on `types-app`.** The public site needs platform-level types only (CampaignId, UserId).
+- **`apps/web` depends on `types-app`, `types-campaign`, and `editor`.** The client/server boundary is enforced by the dependency graph. There is no server-side TypeScript to import.
+- **Each package's `src/index.ts` is its public API.** Import from `@loreweaver/types-app` or `@loreweaver/types-campaign`, never from `@loreweaver/types-campaign/generated/ThingId`.
+- **Domain logic is Rust.** Two Rust binaries (platform + campaign server) and two shared crates own all backend logic. TypeScript is frontend-only.
+- **Two shared crates, two type packages, same split.** `app-shared` / `types-app` holds types both servers need (IDs, auth). `campaign-shared` / `types-campaign` holds campaign-only concerns (Loro wrappers, ToC schema, ProseMirror conventions, CrdtDoc trait). The test: "does the platform server need this type?" If yes, `app-shared`. If no, `campaign-shared`. Both crates export TypeScript types via ts-rs to their corresponding package.
 
 ### Five Deployment Targets
 
@@ -110,26 +113,26 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 | TS packages    | pnpm (strict dependency resolution)                         |
 | Orchestration  | mise (cross-language task runner + tool versions)           |
 
-## Commands (planned)
+## Commands
+
+**Always use mise tasks for cross-cutting operations.** Do not run raw `pnpm typecheck && cargo clippy && ...` chains. The mise tasks are the canonical interface.
 
 ```bash
-# Cross-language orchestration (mise)
-mise run dev                    # Start all dev servers (site:4321, web:5173, server:3000)
+# Use these (mise orchestrates the right tools):
+mise run test                   # All tests (Vitest + cargo test + pytest)
+mise run typecheck              # All type-checking (tsc + cargo check + basedpyright)
+mise run lint                   # All linting (oxlint + clippy + ruff)
+mise run format                 # All formatting (oxfmt + cargo fmt + ruff format)
+mise run format:check           # Check formatting without modifying
+mise run dev                    # Start all dev servers (site:4321, web:5173, platform:3000, campaign:3001)
 mise run build                  # Build all targets in dependency order
-mise run generate-types         # Run ts-rs + OpenAPI type generation pipeline
-mise run test                   # Run all tests (Vitest + cargo test + pytest)
+mise run generate-types         # Clean + regenerate ts-rs types via cargo test
 
-# TypeScript (pnpm)
+# Per-ecosystem commands (for targeted work on a single package):
 pnpm install                    # Install all TS dependencies
 pnpm --filter @loreweaver/editor test
-pnpm --filter apps/web dev
-
-# Rust (Cargo)
-cargo build                     # Build the server
-cargo test                      # Run server tests + emit ts-rs types
-cargo run                       # Start the server (localhost:3000)
-
-# Python (uv)
+cargo build                     # Build Rust workspace
+cargo test -p loreweaver-campaign-shared  # Test a single crate
 uv run pytest                   # Run ML worker tests
 ```
 

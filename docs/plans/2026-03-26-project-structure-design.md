@@ -69,9 +69,11 @@ loreweaver/
 │   ├── platform/          # Rust binary: Axum (auth, CRUD, routing table, discover)
 │   └── campaign/          # Rust binary: Axum + kameo (actors, collab, AI, compiler)
 ├── crates/
-│   └── shared/            # Rust library: traits, types, auth, libSQL helpers
+│   ├── app-shared/        # Rust library: IDs, auth, libSQL helpers (platform + campaign)
+│   └── campaign-shared/   # Rust library: Loro wrappers, ToC/Thing schema, CrdtDoc trait, status (campaign only)
 ├── packages/
-│   ├── types/             # @loreweaver/types -- generated from Rust via ts-rs
+│   ├── types-app/         # @loreweaver/types-app -- generated from app-shared via ts-rs
+│   ├── types-campaign/    # @loreweaver/types-campaign -- generated from campaign-shared via ts-rs
 │   └── editor/            # @loreweaver/editor -- TipTap schema + custom extensions
 ├── workers/               # Job processors (language-agnostic)
 │   ├── pyproject.toml     # Python ML workers today (faster-whisper, pyannote)
@@ -83,6 +85,8 @@ loreweaver/
 │   │   └── library.json
 │   └── oxlint/            # Shared oxlint config
 │       └── base.json
+├── .cargo/
+│   └── config.toml        # Cargo env vars (TS_RS_EXPORT_DIR, etc.)
 ├── docs/                  # Architecture decisions, design docs
 ├── mise.toml              # Tool versions + cross-language task orchestration
 ├── Cargo.toml             # Rust workspace root (members: apps/platform, apps/campaign, crates/*)
@@ -92,7 +96,7 @@ loreweaver/
 
 **Why Rust binaries live in `apps/`, not a separate `server/` directory:** `apps/` means "things that deploy and run," regardless of language. The Astro site, the SPA, the platform, and the campaign server are all deployable artifacts with independent lifecycles. pnpm ignores directories without `package.json`; Cargo's workspace members are listed explicitly. There's no confusion about which build system owns what. This follows the pattern used by [Spacedrive](https://github.com/spacedriveapp/spacedrive) (Rust + TypeScript monorepo) where Rust service binaries live alongside TypeScript apps.
 
-**Why `crates/` and `packages/` stay separate:** These are shared libraries, and the ecosystem-specific naming helps: opening `crates/shared/` tells you it's Cargo; opening `packages/editor/` tells you it's pnpm. Merging them into a generic `libs/` would save one directory at the cost of that instant signal.
+**Why `crates/` and `packages/` stay separate:** These are shared libraries, and the ecosystem-specific naming helps: opening `crates/app-shared/` tells you it's Cargo; opening `packages/editor/` tells you it's pnpm. Merging them into a generic `libs/` would save one directory at the cost of that instant signal.
 
 **Why `workers/` is organized by function, not language:** Workers are defined by what they process (audio transcription, diarization), not what language they're written in. Today they're Python because the ML libraries are Python. A Rust worker binary would live in `apps/` (it's a Cargo artifact); a Python or Go worker would live in `workers/` (it has its own toolchain).
 
@@ -108,48 +112,82 @@ loreweaver/
 
 ## Packages
 
-Two TypeScript packages survive. Everything that was in `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/ai`, and `@loreweaver/queue` in the superseded design is now Rust code in `crates/shared/`, `apps/platform/`, and `apps/campaign/`.
+Three TypeScript packages survive. Everything that was in `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/ai`, and `@loreweaver/queue` in the superseded design is now Rust code in `crates/app-shared/`, `crates/campaign-shared/`, `apps/platform/`, and `apps/campaign/`.
 
 ### Dependency graph
 
 ```mermaid
 graph BT
-    types["@loreweaver/types<br/><i>generated from Rust via ts-rs</i>"]
+    types-app["@loreweaver/types-app<br/><i>generated from app-shared via ts-rs</i>"]
 
-    editor["@loreweaver/editor"] --> types
+    types-campaign["@loreweaver/types-campaign<br/><i>generated from campaign-shared via ts-rs</i>"] --> types-app
 
-    site["apps/site<br/><i>Astro (static HTML)</i>"] --> types
+    editor["@loreweaver/editor"] --> types-campaign
 
-    web["apps/web<br/><i>SPA (static files)</i>"] --> types
+    site["apps/site<br/><i>Astro (static HTML)</i>"] --> types-app
+
+    web["apps/web<br/><i>SPA (static files)</i>"] --> types-app
+    web --> types-campaign
     web --> editor
 
-    style types fill:#4a9,stroke:#333,color:#fff
+    style types-app fill:#4a9,stroke:#333,color:#fff
+    style types-campaign fill:#4a9,stroke:#333,color:#fff
     style editor fill:#69c,stroke:#333,color:#fff
     style site fill:#c66,stroke:#333,color:#fff
     style web fill:#c66,stroke:#333,color:#fff
 ```
 
-Green = types (foundation). Blue = packages (shared logic). Red = apps (deployment targets). The Rust binaries, shared crate, and workers are outside the TypeScript dependency graph entirely.
+Green = types (foundation). Blue = packages (shared logic). Red = apps (deployment targets). The Rust binaries, shared crates, and workers are outside the TypeScript dependency graph entirely.
 
-### `@loreweaver/types` -- Generated types (Rust-first)
+### Generated type packages (Rust-first)
 
-The Rust crates are the source of truth for domain types. TypeScript declarations are generated via [ts-rs](https://github.com/Aleph-Alpha/ts-rs), which derives a trait on Rust types that emits `.ts` files at test time.
+The Rust crates are the source of truth for domain types. TypeScript declarations are generated via [ts-rs](https://github.com/Aleph-Alpha/ts-rs), which derives a trait on Rust types that emits `.ts` files at test time. The types are split across two packages, mirroring the Rust crate split.
+
+The litmus test for placement: **does the platform server need this type?** If yes, it goes in `app-shared` (and generates to `types-app`). If only the campaign server uses it, it goes in `campaign-shared` (and generates to `types-campaign`).
+
+### `@loreweaver/types-app` -- Platform-level types
+
+Generated from `crates/app-shared/`. Contains types that cross the platform/campaign boundary: IDs shared by both services (CampaignId, UserId), auth primitives, and any future platform-level API types.
 
 ```
-packages/types/
-├── package.json           # @loreweaver/types, zero runtime dependencies
-├── generated/             # ts-rs output -- machine-written, never hand-edited
-│   ├── ThingId.ts
-│   ├── BlockId.ts
-│   ├── Suggestion.ts
-│   ├── Campaign.ts
-│   └── ...
-└── index.ts               # Re-exports from generated/ + any TS-only helpers
+packages/types-app/
+├── package.json           # @loreweaver/types-app, zero runtime dependencies
+├── tsconfig.json          # include: ["src"]
+└── src/
+    ├── index.ts           # Re-exports from generated/
+    └── generated/         # ts-rs output -- machine-written, never hand-edited
+        └── id/
+            ├── CampaignId.ts
+            └── UserId.ts
 ```
-
-The `generated/` directory is the output of `cargo test` across the workspace. The `index.ts` file is hand-curated: it re-exports generated types and may add TypeScript-only utilities (type guards, narrowing helpers) that don't have Rust equivalents.
 
 **Depends on:** nothing (generated, zero runtime dependencies)
+
+### `@loreweaver/types-campaign` -- Campaign-scoped types
+
+Generated from `crates/campaign-shared/`. Contains campaign-scoped IDs (ThingId, BlockId, SessionId, JournalId, SuggestionId, ConversationId) and document schema types (TocEntry, TocEntryKind, ThingHandle). The platform server never uses these types.
+
+```
+packages/types-campaign/
+├── package.json           # @loreweaver/types-campaign, depends on types-app
+├── tsconfig.json          # include: ["src"]
+└── src/
+    ├── index.ts           # Re-exports from generated/
+    └── generated/         # ts-rs output -- machine-written, never hand-edited
+        ├── id/
+        │   ├── ThingId.ts
+        │   ├── BlockId.ts
+        │   ├── SessionId.ts
+        │   └── ...
+        └── document/
+            ├── TocEntry.ts
+            ├── TocEntryKind.ts
+            └── ThingHandle.ts
+```
+
+Both packages follow the same structure: `src/index.ts` is the hand-curated public API that re-exports generated types and may add TypeScript-only utilities (type guards, narrowing helpers). The `src/generated/` directory is the output of `cargo test` and lives inside `src/` so that it falls within the tsconfig's compilation scope.
+
+**Depends on:** `@loreweaver/types-app`
 
 ### `@loreweaver/editor` -- The shared contract
 
@@ -170,13 +208,13 @@ packages/editor/src/
 
 The `helpers/` directory from the superseded design (doc-parser, doc-writer) is gone. Those were Yjs-specific utilities for server-side document manipulation. The Loro equivalents live in the campaign server's serialization compiler. See [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md).
 
-**Depends on:** `@loreweaver/types`, `@tiptap/core`, `loro-prosemirror`
+**Depends on:** `@loreweaver/types-campaign`, `@tiptap/core`, `loro-prosemirror`
 
 ---
 
 ## The Rust Backend
 
-Two binaries and a shared crate, all in one Cargo workspace. The internal architecture of the campaign server is defined in:
+Two binaries and two shared crates, all in one Cargo workspace. The internal architecture of the campaign server is defined in:
 
 - [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) -- campaign checkout/checkin, actor topology, scaling model, WebSocket architecture, suggestion model
 - [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md) -- actor traits, message patterns, persistence, eviction
@@ -208,15 +246,21 @@ Handles everything after a campaign is checked out:
 
 Talks to **campaigns/\*.db**: one file per campaign. Block records, entity data, relationships, search text, embeddings, suggestion outcomes, conversation history. Campaign-as-file isolation enables trivial GDPR deletion, PR preview branching (`cp`), and horizontal scaling (add servers, route campaigns).
 
-### `crates/shared/` -- the interface crate
+### `crates/app-shared/` -- the cross-service crate
 
-Defines the cross-service boundary: types, trait-based interfaces (`RoutingTable`, etc.), auth (JWT validation shared between both services), and libSQL helpers. The campaign server depends on `crates/shared/` and communicates with the platform exclusively through traits with a single `Remote*` implementation (HTTP calls). There is no `Local` implementation. The network boundary is always present, even in development.
+Types and infrastructure that cross the platform/campaign boundary: IDs (CampaignId, UserId), trait-based interfaces (`RoutingTable`, etc.), auth (JWT validation shared between both services), and libSQL helpers. Both platform and campaign depend on this crate. The campaign server communicates with the platform exclusively through traits with a single `Remote*` implementation (HTTP calls). There is no `Local` implementation. The network boundary is always present, even in development.
+
+The litmus test: **does the platform server need this type?** If yes, it belongs in `app-shared`. If only the campaign server uses it, it belongs in `campaign-shared`.
+
+### `crates/campaign-shared/` -- the campaign-only crate
+
+Campaign-scoped types and infrastructure that the platform server never touches. Contains the Loro document layer (CrdtDoc trait, typed wrappers for Thing and ToC documents, ProseMirror interop conventions), campaign-scoped IDs (ThingId, BlockId, SessionId, JournalId, SuggestionId, ConversationId), view status types (GmOnly, Known, Retconned), and WebSocket notification types. Only the campaign server depends on this crate.
 
 ### Type generation
 
-Both binaries contribute to type generation:
+Both shared crates and both binaries contribute to type generation:
 
-- **ts-rs** -- Rust structs derive `#[derive(TS)]` and emit TypeScript declarations to `packages/types/generated/`. Domain types live in `crates/shared/`; service-specific request/response types live in each binary's crate.
+- **ts-rs** -- Rust structs derive `#[derive(TS)]` with a per-type `#[ts(export_to = "...")]` attribute that routes each type to the correct package. Types in `crates/app-shared/` export to `packages/types-app/src/generated/`; types in `crates/campaign-shared/` export to `packages/types-campaign/src/generated/`. Service-specific request/response types in each binary's crate target whichever package is appropriate.
 - **utoipa** -- Route handlers are annotated with `#[utoipa::path(...)]`. Both the platform and campaign server generate OpenAPI specs. The SPA consumes both: `lib/api.ts` for platform calls, campaign-scoped REST uses the URL from the discover endpoint.
 
 See [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md) for the database architecture.
@@ -268,7 +312,7 @@ apps/site/
 
 Static HTML generated at build time. No server process. Blog content uses Astro's typed content collections. Public campaign pages are static snapshots: campaign data is fetched from the platform's HTTP API at build time and rendered as HTML.
 
-**Depends on:** `@loreweaver/types`, `astro`
+**Depends on:** `@loreweaver/types-app`, `astro`
 
 ### `apps/web` -- Vite + React SPA
 
@@ -304,7 +348,7 @@ Static files. In development, `vite dev` serves files with HMR and proxies platf
 
 `lib/api.ts` is a typed fetch client generated from the OpenAPI specs (via utoipa). This replaces the tRPC client from the superseded design. The SPA uses it for platform calls; campaign-scoped REST uses the URL returned by the discover endpoint. `lib/collab.ts` configures the loro-prosemirror binding for CRDT sync with the campaign server.
 
-**Depends on:** `@loreweaver/types`, `@loreweaver/editor`, `react`, `loro-prosemirror`, `vite`
+**Depends on:** `@loreweaver/types-app`, `@loreweaver/types-campaign`, `@loreweaver/editor`, `react`, `loro-prosemirror`, `vite`
 
 ---
 
@@ -314,10 +358,10 @@ Type safety across the Rust-TypeScript boundary is maintained through two genera
 
 ### Domain types (ts-rs)
 
-1. Rust structs in `crates/shared/` (and service crates) derive `#[derive(TS)]` via the ts-rs crate
-2. `cargo test` emits `.ts` declarations to `packages/types/generated/`
-3. `packages/types/index.ts` re-exports the generated types
-4. `apps/web` and `@loreweaver/editor` import from `@loreweaver/types`
+1. Rust structs in `crates/app-shared/` and `crates/campaign-shared/` (and service crates) derive `#[derive(TS)]` via the ts-rs crate, with a per-type `#[ts(export_to = "...")]` attribute
+2. `cargo test` emits `.ts` declarations to `packages/types-app/src/generated/` and `packages/types-campaign/src/generated/` respectively
+3. Each package's `src/index.ts` re-exports its generated types
+4. `apps/web`, `apps/site`, and `@loreweaver/editor` import from `@loreweaver/types-app` and/or `@loreweaver/types-campaign`
 
 ### HTTP API (utoipa + OpenAPI)
 
@@ -330,12 +374,14 @@ Type safety across the Rust-TypeScript boundary is maintained through two genera
 
 `mise run generate-types` runs both pipelines. CI verifies that generated files are up-to-date (regenerate, diff, fail if dirty).
 
-The workspace root `Cargo.toml` configures the ts-rs output directory:
+The ts-rs base output directory is configured via `TS_RS_EXPORT_DIR` in `.cargo/config.toml`:
 
 ```toml
-[workspace.metadata.ts-rs]
-output_directory = "packages/types/generated"
+[env]
+TS_RS_EXPORT_DIR = { value = "packages", relative = true }
 ```
+
+This sets the base to `packages/`. Each Rust type's `#[ts(export_to = "...")]` attribute specifies the relative path within it (e.g., `types-campaign/src/generated/id/`), routing types from each crate to the correct TypeScript package.
 
 ---
 
@@ -436,11 +482,11 @@ Maximum strictness, no exceptions. TypeScript types are erased at runtime -- Zod
 
 ## Design Principles
 
-**All backend logic is Rust.** Two binaries (platform and campaign server) and a shared crate, all in one Cargo workspace. Actor isolation handles concurrency within the campaign server; process isolation handles deployment lifecycles between services. There is no TypeScript server code.
+**All backend logic is Rust.** Two binaries (platform and campaign server) and two shared crates, all in one Cargo workspace. Actor isolation handles concurrency within the campaign server; process isolation handles deployment lifecycles between services. There is no TypeScript server code. The crate split mirrors the deployment boundary: `app-shared` holds types both servers need; `campaign-shared` holds campaign-only concerns (Loro, ToC, status). The litmus test: "does the platform server need this type?" If yes, `app-shared`. If no, `campaign-shared`.
 
-**Two TypeScript packages, no more.** `@loreweaver/types` (generated from Rust) and `@loreweaver/editor` (TipTap schema). If you're writing domain logic, database queries, or AI orchestration, it's Rust in `crates/` or `apps/`. The superseded design's `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/ai`, and `@loreweaver/queue` are gone.
+**Three TypeScript packages, no more.** `@loreweaver/types-app` (platform-level types, generated from `app-shared`), `@loreweaver/types-campaign` (campaign-scoped types, generated from `campaign-shared`), and `@loreweaver/editor` (TipTap schema). If you're writing domain logic, database queries, or AI orchestration, it's Rust in `crates/` or `apps/`. The superseded design's `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/ai`, and `@loreweaver/queue` are gone.
 
-**Dependency direction: web -> editor -> types.** The frontend depends on two packages. The editor depends on one. Nothing else. The dependency graph enforces the client/server boundary: `apps/web` structurally cannot import server-side code because there is no server-side TypeScript to import.
+**Dependency direction: web -> editor -> types-campaign -> types-app.** The frontend depends on all three packages. The editor depends on `types-campaign`. `types-campaign` depends on `types-app`. `apps/site` depends only on `types-app`. The dependency graph enforces the client/server boundary: `apps/web` structurally cannot import server-side code because there is no server-side TypeScript to import.
 
 **Type safety across the language boundary.** Rust is the source of truth for domain types. ts-rs generates TypeScript declarations. utoipa generates OpenAPI specs from Axum routes. The frontend consumes both. CI verifies generated types are fresh.
 
