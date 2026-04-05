@@ -1,11 +1,11 @@
 ---
 quest: 5
 title: "Comprehend Languages"
-description: "A framework for community-contributed language support beyond Norwegian."
+description: "A pluggable framework so Loreweaver can speak your tongue."
 status: "planned"
 ---
 
-- Pluggable localization framework
-- Community contribution workflow for new languages
-- Language-specific AI pipeline configuration
-- RTL layout support
+- Pluggable Localization Framework
+- RTL Language Support
+- Support for English, Chinese, Hindi, Spanish, Arabic, French, Portuguese, Russian, German, Japanese, Korean, Italian, and Dutch.
+- Additional languages are limited chiefly by text to speech, diarization, and LLM model support.
