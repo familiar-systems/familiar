@@ -1,6 +1,7 @@
 export const siteConfig = {
   name: "Loreweaver",
-  description: "AI-assisted campaign notebook for tabletop RPGs.",
+  description:
+    "AI-assisted campaign wiki for tabletop RPGs. Your world assembles from play. Your familiar takes notes, you play the game. Open Source.",
   logo: {
     src: "/logo-light.png",
     srcDark: "/logo-dark.png",
