@@ -158,7 +158,7 @@ Maximum strictness, no exceptions:
 
 ## Development Notes
 
-- Subdomain routing: `loreweaver.no` (site), `app.loreweaver.no` (SPA), `api.loreweaver.no` (platform), `c1.loreweaver.no` (campaign server). Traefik Ingress routes by subdomain.
+- Subdomain routing: `familiar.systems` (site), `app.familiar.systems` (SPA), `api.familiar.systems` (platform), `c1.familiar.systems` (campaign server). Traefik Ingress routes by subdomain.
 - In dev, Docker Compose runs platform (localhost:3000) and campaign server (localhost:3001). Vite proxies `/api/*` to the platform. Campaign server requests go direct (discover returns localhost:3001).
 - The SPA calls the platform for auth, campaign listing, and discover. After discover, the SPA talks directly to the campaign server for all campaign-scoped work (WebSocket, REST, AI).
 - The `@loreweaver/editor` package is the most architecturally important. It defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and the campaign server (for LoroDoc reconstruction and serialization compiler).
