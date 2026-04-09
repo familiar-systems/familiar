@@ -4,11 +4,12 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-primary: #c49a2b;
+  --color-primary: #5a4a6a;
+  --color-gold: #b89530;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Crimson Pro", Georgia, serif;
-  --font-display: "Cinzel", Georgia, serif;
+  --font-sans: "Alegreya", Georgia, serif;
+  --font-display: "Cormorant Garamond", Georgia, serif;
 }
 
 @import "./theme.css";

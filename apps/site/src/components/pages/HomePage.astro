@@ -17,11 +17,17 @@ const t = useTranslations(lang);
   <!-- ═══════════════════════════════════════════ -->
   <!-- HERO                                        -->
   <!-- ═══════════════════════════════════════════ -->
-  <section class="min-h-[90vh] flex items-center justify-center relative overflow-hidden pt-20 bg-background">
+  <section class="min-h-[75vh] flex items-center justify-center relative overflow-hidden pt-20 bg-background">
+    <!-- Raven woodcut background -->
+    <div class="absolute inset-0 z-0 overflow-hidden">
+      <img src="/raven-dark.svg" alt="" class="w-full h-full object-cover opacity-[0.14] dark:hidden" style="filter: sepia(1) saturate(1.5) brightness(0.4) hue-rotate(240deg);" />
+      <img src="/raven-light.svg" alt="" class="w-full h-full object-cover opacity-[0.22] hidden dark:block" />
+    </div>
+
     <!-- Ambient glow -->
     <div class="absolute inset-0 z-0 opacity-30">
-      <div class="absolute top-[15%] left-[25%] w-[500px] h-[500px] bg-primary/40 rounded-full blur-[140px] animate-pulse"></div>
-      <div class="absolute bottom-[20%] right-[15%] w-[400px] h-[400px] bg-amber-700/30 rounded-full blur-[120px] animate-pulse" style="animation-delay: 3s;"></div>
+      <div class="absolute top-[15%] left-[25%] w-[500px] h-[500px] bg-primary/30 rounded-full blur-[140px] animate-pulse"></div>
+      <div class="absolute bottom-[20%] right-[15%] w-[400px] h-[400px] bg-gold/20 rounded-full blur-[120px] animate-pulse" style="animation-delay: 3s;"></div>
     </div>
 
     <!-- Subtle texture overlay -->
@@ -29,7 +35,7 @@ const t = useTranslations(lang);
 
     <div class="container mx-auto px-6 relative z-10 text-center">
       <div class="hero-content opacity-0 translate-y-5">
-        <p class="inline-block text-sm font-medium tracking-[0.2em] uppercase text-primary mb-8 border border-primary/20 rounded-full px-5 py-2">
+        <p class="inline-block text-sm font-medium tracking-[0.2em] uppercase text-gold mb-8 border border-gold/20 rounded-full px-5 py-2 bg-background/60 backdrop-blur-sm">
           {t['hero.badge']}
         </p>
         <h1 class="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-8 text-foreground leading-[1.1]">
@@ -43,12 +49,12 @@ const t = useTranslations(lang);
         <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
           <Button
             href={`/${lang}/blog/2026-02-20-the-vision`}
-            class="px-8 py-4 rounded-full text-base"
+            class="px-8 py-4 rounded-full text-base bg-gold hover:bg-gold/90 shadow-lg shadow-gold/25"
           >
             {t['hero.getStarted']}
           </Button>
           <Button
-            href="https://github.com/loreweaver-no"
+            href="https://github.com/familiar-systems"
             variant="secondary"
             class="px-8 py-4 rounded-full text-base backdrop-blur-sm"
             target="_blank"
@@ -73,60 +79,62 @@ const t = useTranslations(lang);
 
       <div class="relative">
         <!-- Vertical connector line -->
-        <div class="absolute left-8 md:left-10 top-0 bottom-0 w-px bg-gradient-to-b from-primary/0 via-primary/30 to-primary/0 hidden md:block"></div>
+        <div class="absolute left-8 md:left-10 top-0 bottom-0 w-px hidden md:block" style="background: linear-gradient(to bottom, var(--color-background), var(--color-line), var(--color-background));"></div>
 
         <div class="space-y-12">
           <!-- Step 1 -->
           <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300">
               <Upload className="w-7 h-7 md:w-8 md:h-8 text-primary" />
             </div>
             <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2">Upload your recording or notes</h3>
+              <h3 class="text-xl font-bold mb-2 font-display">Upload your recording or notes</h3>
               <p class="text-muted-foreground leading-relaxed">Audio, video, or written notes from the session. Players can add their characters' perspectives too.</p>
             </div>
           </div>
 
           <!-- Step 2 -->
           <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300">
               <Sparkles className="w-7 h-7 md:w-8 md:h-8 text-primary" />
             </div>
             <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2">Loreweaver processes everything</h3>
+              <h3 class="text-xl font-bold mb-2 font-display">Your familiar processes everything</h3>
               <p class="text-muted-foreground leading-relaxed">It transcribes audio, identifies what happened, extracts NPCs, locations, and events, and drafts a session write-up.</p>
             </div>
           </div>
 
           <!-- Step 3 -->
           <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300">
               <ScrollText className="w-7 h-7 md:w-8 md:h-8 text-primary" />
             </div>
             <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2">You get a list of proposals</h3>
-              <p class="text-muted-foreground leading-relaxed">"I found 3 new NPCs. Kael frequents the Rusty Anchor. Tormund appears to be dead. Here's a draft of what happened."</p>
+              <h3 class="text-xl font-bold mb-2 font-display">You get a list of proposals</h3>
+              <div class="border-l-[3px] border-gold/40 pl-4 mt-2">
+                <p class="text-foreground leading-relaxed italic">"I found 3 new NPCs. Kael frequents the Rusty Anchor. Tormund appears to be dead. Here's a draft of what happened."</p>
+              </div>
             </div>
           </div>
 
           <!-- Step 4 -->
           <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300">
               <CheckCircle className="w-7 h-7 md:w-8 md:h-8 text-primary" />
             </div>
             <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2">Review and approve</h3>
+              <h3 class="text-xl font-bold mb-2 font-display">Review and approve</h3>
               <p class="text-muted-foreground leading-relaxed">Accept what looks right, tweak what's close, skip what you don't care about. The AI never changes your world without your say-so.</p>
             </div>
           </div>
 
           <!-- Step 5 -->
           <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-primary/10 dark:bg-primary/5 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors duration-300">
+            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300">
               <BookOpen className="w-7 h-7 md:w-8 md:h-8 text-primary" />
             </div>
             <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2">Done. Your wiki just grew.</h3>
+              <h3 class="text-xl font-bold mb-2 font-display">Done. Your wiki just grew.</h3>
               <p class="text-muted-foreground leading-relaxed">15 minutes instead of hours. Everything linked, searchable, and ready for next session's prep.</p>
             </div>
           </div>
@@ -151,7 +159,7 @@ const t = useTranslations(lang);
           <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
             <ScrollText className="w-6 h-6 text-primary" />
           </div>
-          <h3 class="text-xl font-bold mb-3">Sessions</h3>
+          <h3 class="text-xl font-bold mb-3 font-display">Sessions</h3>
           <p class="text-muted-foreground leading-relaxed">Write-ups of what happened each time you played, organized chronologically. The living history of your campaign.</p>
         </div>
 
@@ -160,7 +168,7 @@ const t = useTranslations(lang);
           <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
             <Users className="w-6 h-6 text-primary" />
           </div>
-          <h3 class="text-xl font-bold mb-3">Things</h3>
+          <h3 class="text-xl font-bold mb-3 font-display">Things</h3>
           <p class="text-muted-foreground leading-relaxed">Every entity in your world: NPCs, locations, items, factions, monsters, lore. Each one has its own page that accumulates detail over time.</p>
         </div>
 
@@ -169,7 +177,7 @@ const t = useTranslations(lang);
           <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
             <Link2 className="w-6 h-6 text-primary" />
           </div>
-          <h3 class="text-xl font-bold mb-3">Connections</h3>
+          <h3 class="text-xl font-bold mb-3 font-display">Connections</h3>
           <p class="text-muted-foreground leading-relaxed">How things relate: "Kael frequents the Rusty Anchor," "The Silver Compact is allied with the Crown of Ashenmoor." A living graph of your world.</p>
         </div>
 
@@ -178,7 +186,7 @@ const t = useTranslations(lang);
           <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
             <Eye className="w-6 h-6 text-primary" />
           </div>
-          <h3 class="text-xl font-bold mb-3">Player Visibility</h3>
+          <h3 class="text-xl font-bold mb-3 font-display">Player Visibility</h3>
           <p class="text-muted-foreground leading-relaxed">You control what players see. Secret notes stay secret. The Good Cleric's dark patron remains hidden until you're ready to reveal it.</p>
         </div>
       </div>
@@ -199,7 +207,7 @@ const t = useTranslations(lang);
             <MapPin className="w-7 h-7 text-primary" />
           </div>
           <div>
-            <h3 class="text-xl font-bold mb-3">It meets you where you are</h3>
+            <h3 class="text-xl font-bold mb-3 font-display">It meets you where you are</h3>
             <p class="text-muted-foreground leading-relaxed text-lg">You don't have to build a wiki before session 1. An NPC can start as nothing more than a name mentioned once in a session, and grow into a fully detailed character over time as they keep showing up.</p>
           </div>
         </div>
@@ -210,7 +218,7 @@ const t = useTranslations(lang);
             <Clock className="w-7 h-7 text-primary" />
           </div>
           <div>
-            <h3 class="text-xl font-bold mb-3">Tolerant of neglect</h3>
+            <h3 class="text-xl font-bold mb-3 font-display">Tolerant of neglect</h3>
             <p class="text-muted-foreground leading-relaxed text-lg">Skip a week of reviews? That's fine. Unreviewed suggestions expire quietly. The system never buries you under an infinite pile of homework.</p>
           </div>
         </div>
@@ -221,7 +229,7 @@ const t = useTranslations(lang);
             <MessageSquare className="w-7 h-7 text-primary" />
           </div>
           <div>
-            <h3 class="text-xl font-bold mb-3">The AI proposes, you decide</h3>
+            <h3 class="text-xl font-bold mb-3 font-display">The AI proposes, you decide</h3>
             <p class="text-muted-foreground leading-relaxed text-lg">The AI never changes your world on its own. Every suggestion needs your approval, and every suggestion comes with reasoning so you can see why it was proposed.</p>
           </div>
         </div>
@@ -232,8 +240,8 @@ const t = useTranslations(lang);
             <Swords className="w-7 h-7 text-primary" />
           </div>
           <div>
-            <h3 class="text-xl font-bold mb-3">It captures the mess</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg">Retconned something? No problem. Mark things as "established in play but since retconned." The history is preserved, but Loreweaver stops treating it as current. Your campaign's contradictions are part of the story.</p>
+            <h3 class="text-xl font-bold mb-3 font-display">It captures the mess</h3>
+            <p class="text-muted-foreground leading-relaxed text-lg">Retconned something? No problem. Mark things as "established in play but since retconned." The history is preserved, but your familiar stops treating it as current. Your campaign's contradictions are part of the story.</p>
           </div>
         </div>
       </div>
@@ -246,19 +254,19 @@ const t = useTranslations(lang);
   <Section class="py-20 md:py-24 bg-foreground/[0.02]">
     <div class="max-w-3xl mx-auto text-center">
       <div class="inline-flex items-center gap-3 mb-6">
-        <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-          <GitFork className="w-5 h-5 text-primary" />
+        <div class="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center">
+          <GitFork className="w-5 h-5 text-gold" />
         </div>
-        <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-          <ShieldCheck className="w-5 h-5 text-primary" />
+        <div class="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center">
+          <ShieldCheck className="w-5 h-5 text-gold" />
         </div>
       </div>
       <h2 class="font-display text-3xl md:text-4xl font-bold mb-6">Open Source. Self-Hostable.</h2>
       <p class="text-muted-foreground text-lg leading-relaxed mb-8">
-        Loreweaver is open source. Use the hosted version to get started instantly, or run it on your own server with your own AI provider. Your campaign data is yours - we never sell it nor anything that comes from it.
+        familiar.systems is open source. Use the hosted version to get started instantly, or run it on your own server with your own AI provider. Your campaign data is yours - we never sell it nor anything that comes from it.
       </p>
       <Button
-        href="https://github.com/loreweaver-no"
+        href="https://github.com/familiar-systems"
         variant="secondary"
         class="px-8 py-4 rounded-full text-base"
         target="_blank"
@@ -284,12 +292,12 @@ const t = useTranslations(lang);
         <span class="text-primary">Start playing.</span>
       </h2>
       <p class="text-muted-foreground text-lg mb-10 max-w-xl mx-auto">
-        Loreweaver is in early development. Subscribe to get updates when things ship.
+        familiar.systems is in early development. Subscribe to get updates when things ship.
       </p>
       <NewsletterSignup lang={lang} variant="hero" />
       <p class="mt-8">
         <a
-          href="https://github.com/loreweaver-no"
+          href="https://github.com/familiar-systems"
           target="_blank"
           rel="noopener noreferrer"
           class="text-sm text-muted-foreground hover:text-foreground transition-colors"

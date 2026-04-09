@@ -10,7 +10,7 @@ export async function getStaticPaths() {
 const { lang } = Astro.params;
 ---
 
-<UntranslatedLayout title="Privacy Policy - Loreweaver" description="How Loreweaver handles your data.">
+<UntranslatedLayout title="Privacy Policy - familiar.systems" description="How familiar.systems handles your data.">
     <div class="pt-32 pb-24">
         <div class="max-w-4xl mx-auto px-6">
             <h1 class="text-4xl md:text-5xl font-bold mb-8">Privacy Policy</h1>
@@ -19,7 +19,7 @@ const { lang } = Astro.params;
 
                 <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">1. Introduction</h2>
                 <p>
-                    Loreweaver is operated by {siteConfig.legal?.entityName} (Org. nr. {siteConfig.legal?.orgNumber}).
+                    familiar.systems is operated by {siteConfig.legal?.entityName} (Org. nr. {siteConfig.legal?.orgNumber}).
                     This policy explains what data we collect and how we use it. The short version: your data is yours,
                     and we only use it to run the service you pay for.
                 </p>
@@ -30,7 +30,7 @@ const { lang } = Astro.params;
                 </p>
                 <ul class="list-disc pl-6 space-y-2 mt-4">
                     <li><strong>Account information</strong> - your email address and display name when you sign up.</li>
-                    <li><strong>Campaign content</strong> - the notes, characters, locations, items, and other material you create in Loreweaver.</li>
+                    <li><strong>Campaign content</strong> - the notes, characters, locations, items, and other material you create in familiar.systems.</li>
                     <li><strong>Session recordings</strong> - audio you upload for transcription.</li>
                     <li><strong>Usage data</strong> - basic server logs and product analytics needed to keep the service running and improve it (see Cookies & Analytics below).</li>
                 </ul>
@@ -49,7 +49,7 @@ const { lang } = Astro.params;
                     in making the thing you pay for actually work.
                 </p>
                 <p>
-                    Loreweaver is a paid service. You are the customer, not the product. We do not sell your data,
+                    familiar.systems is a paid service. You are the customer, not the product. We do not sell your data,
                     serve ads, build advertising profiles, or share your information with third parties for marketing purposes.
                     The only thing we do is make it easy to run a tabletop game.
                 </p>
@@ -64,7 +64,7 @@ const { lang } = Astro.params;
                 <p>
                     To build transcription that actually works for tabletop gaming, we may use audio you upload to improve
                     our speech recognition models. This means training and fine-tuning automatic speech recognition (ASR) models
-                    so that Loreweaver gets better at understanding the way people actually play. Our legal basis for this
+                    so that familiar.systems gets better at understanding the way people actually play. Our legal basis for this
                     is legitimate interest: better speech recognition directly benefits everyone who uses the service.
                 </p>
                 <p>
@@ -74,7 +74,7 @@ const { lang } = Astro.params;
                     <li>Audio may be used to improve our <strong>speech recognition models only</strong>: the models that convert sound into text.</li>
                     <li>Audio is <strong>never</strong> used to train generative AI models such as large language models (LLMs). Your sessions, characters, and campaign content will never appear in another user's AI output.</li>
                     <li>Audio is <strong>never</strong> sold, licensed, or shared with third parties.</li>
-                    <li>Models trained on your audio are <strong>used exclusively within Loreweaver</strong>. They are not sold, licensed, or made available to third parties in any form.</li>
+                    <li>Models trained on your audio are <strong>used exclusively within familiar.systems</strong>. They are not sold, licensed, or made available to third parties in any form.</li>
                 </ul>
                 <p class="mt-4">
                     This is enabled by default. You can opt out at any time in your account settings. No explanation needed,
@@ -88,14 +88,14 @@ const { lang } = Astro.params;
                     Your data never leaves the EU/EEA.
                 </p>
                 <p>
-                    We use a small number of service providers to run Loreweaver. All of them process data
+                    We use a small number of service providers to run familiar.systems. All of them process data
                     within the EU/EEA. A current list is available at
                     <a href={`/${lang}/sub-processors`} class="text-primary hover:underline">Sub-processors</a>.
                 </p>
 
                 <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">6. Cookies & Analytics</h2>
                 <p>
-                    We use cookies and lightweight product analytics exclusively to improve Loreweaver for paying customers.
+                    We use cookies and lightweight product analytics exclusively to improve familiar.systems for paying customers.
                     For example: if an action you perform fails, we use that information to find and fix the problem.
                     If we notice that reaching a common feature takes three clicks, we use that to simplify the navigation.
                     Our legal basis for this is legitimate interest.

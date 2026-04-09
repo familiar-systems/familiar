@@ -1,5 +1,5 @@
 ---
-import LoreweaverIcon from '~/components/icons/LoreweaverIcon.astro';
+import BrandIcon from '~/components/icons/BrandIcon.astro';
 
 interface Props {
   quest: number;
@@ -77,7 +77,7 @@ const cardStyles = {
     <div class="absolute left-0 top-0 w-12 h-12 flex items-center justify-center">
       <div class="relative flex items-center justify-center">
         <div class={`w-10 h-10 rounded-xl border border-foreground/10 z-10 relative bg-background flex items-center justify-center group-hover:scale-110 group-hover:border-primary/50 transition-all duration-500 shadow-lg`}>
-          <LoreweaverIcon class={`w-5 h-5 ${iconColors[status]}`} />
+          <BrandIcon class={`w-5 h-5 ${iconColors[status]}`} />
         </div>
         {status === 'in-progress' && (
           <div class="absolute inset-0 bg-primary/20 rounded-xl blur-md animate-pulse"></div>

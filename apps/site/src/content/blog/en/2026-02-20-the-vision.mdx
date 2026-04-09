@@ -1,6 +1,6 @@
 ---
 title: "The Vision"
-description: "Why we're building Loreweaver - an AI-assisted campaign wiki that assembles your world from play."
+description: "Why we're building familiar.systems - an AI-assisted campaign wiki that assembles your world from play."
 author: "Michael Grinshpon"
 pubDate: 2026-02-20
 heroImage: "~/assets/blog/2026-02-20-vision.png"
@@ -29,17 +29,17 @@ You open a browser, log in, and you're working. No software to install, no files
 sequenceDiagram
     participant Party
     participant GM
-    participant Loreweaver
-    GM->>Loreweaver: Create campaign
+    participant Familiar
+    GM->>Familiar: Create campaign
     loop Sessions
-        GM-->>Loreweaver: [Optional] Jot down some prep notes
+        GM-->>Familiar: [Optional] Jot down some prep notes
         GM<<->>Party:
         activate Party
         GM<<->>Party: Have fun
         deactivate Party
-        GM->>Loreweaver: Upload session recording
-        Loreweaver->>GM: Fill out wiki
-        GM->>Loreweaver: Confirm suggestions
+        GM->>Familiar: Upload session recording
+        Familiar->>GM: Fill out wiki
+        GM->>Familiar: Confirm suggestions
     end
 
 ```
@@ -50,24 +50,24 @@ This is the core loop - the thing you'd do after every session:
 
 1. **Upload your audio or video recording and/or notes** from the session
    - **Optionally** players add their characters' notes, too
-2. **Loreweaver processes everything** - it transcribes audio, figures out what happened, and drafts a write-up of the session
+2. **Your familiar processes everything** - it transcribes audio, figures out what happened, and drafts a write-up of the session
 3. **You get a list of proposals**: "I found 3 new NPCs. I think Kael frequents the Rusty Anchor. Tormund appears to be dead now. Here's a draft of what happened."
 4. **You review**: accept the ones that look right, tweak the ones that are close, skip the ones you don't care about
 5. **Done.** Your campaign wiki just grew, and it took 15–30 minutes instead of hours
 
 ### Before a Session
 
-When you're prepping for the next session, you can ask Loreweaver for help:
+When you're prepping for the next session, you can ask your familiar for help:
 
 - "What loose threads did we leave hanging last session?"
 - "The party is heading to Grimhollow - what have we established about it so far?"
 - "Help me flesh out this NPC the party is about to meet"
 
-After the session, Loreweaver can even compare what you planned to what actually happened - which is often where the most interesting world updates come from (improvised NPCs, unexpected alliances, plans that went completely sideways).
+After the session, your familiar can even compare what you planned to what actually happened - which is often where the most interesting world updates come from (improvised NPCs, unexpected alliances, plans that went completely sideways).
 
 ### Between Sessions
 
-You can always build out your world manually - create locations, write NPC backstories, plan factions. Loreweaver can help with that too. But the key thing is that **you never have to**. The system works even if you only ever interact through the post-session review.
+You can always build out your world manually - create locations, write NPC backstories, plan factions. Your familiar can help with that too. But the key thing is that **you never have to**. The system works even if you only ever interact through the post-session review.
 
 ### Session Negative One
 
@@ -95,7 +95,7 @@ This means you can have secret notes on an NPC that your players can look up fre
 Players can also:
 
 - Look up what they know about NPCs, locations, and factions
-- Ask Loreweaver questions like "What do we know about the Silver Compact?" (it only answers from information they've been shown)
+- Ask your familiar questions like "What do we know about the Silver Compact?" (it only answers from information they've been shown)
 - Submit their own session recollections to help fill in gaps
 - Edit their own character pages
 
@@ -107,10 +107,10 @@ Players can also:
 
 **The AI proposes, you decide.** The AI never changes your world on its own. Every suggestion needs your approval. And every suggestion comes with the reasoning behind it, so you can always see why the AI thought something was worth proposing.
 
-**It captures the mess.** Retconned something? No problem. Loreweaver lets you mark things as "this was established in play but we've since decided it didn't happen." The history is preserved, but Loreweaver stops treating it as current. Your campaign's contradictions and course corrections are part of the story.
+**It captures the mess.** Retconned something? No problem. Your familiar lets you mark things as "this was established in play but we've since decided it didn't happen." The history is preserved, but your familiar stops treating it as current. Your campaign's contradictions and course corrections are part of the story.
 
 ## Self-Hosting
 
-Loreweaver uses AI heavily as connective tissue to understand your game. I never sell your data and I never use it for training models - I just want to solve a problem I have.
+familiar.systems uses AI heavily as connective tissue to understand your game. I never sell your data and I never use it for training models - I just want to solve a problem I have.
 
-However, if you're still worried about that, Loreweaver is open source. The default way to use it is through the hosted version (sign up, start using it), but if you want to run it on your own server, you can. Same app, same features. You'll have to provide your own AI using tools via local AI tools like Ollama.
+However, if you're still worried about that, familiar.systems is open source. The default way to use it is through the hosted version (sign up, start using it), but if you want to run it on your own server, you can. Same app, same features. You'll have to provide your own AI using tools via local AI tools like Ollama.
