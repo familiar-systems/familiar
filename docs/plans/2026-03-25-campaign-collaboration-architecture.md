@@ -9,7 +9,7 @@
 
 ## Context
 
-Loreweaver is a SaaS platform for tabletop RPG groups. Multi-hour session audio recordings go in; transcripts, speaker-attributed journals, entity graphs, and a persistent campaign wiki come out. The product is built around a rich text editor (TipTap on ProseMirror) where GMs and players view and edit campaign content, and where AI agents propose changes based on session processing and interactive conversations.
+familiar.systems is a SaaS platform for tabletop RPG groups. Multi-hour session audio recordings go in; transcripts, speaker-attributed journals, entity graphs, and a persistent campaign wiki come out. The product is built around a rich text editor (TipTap on ProseMirror) where GMs and players view and edit campaign content, and where AI agents propose changes based on session processing and interactive conversations.
 
 Three actor types interact with page content:
 

@@ -1,16 +1,16 @@
-# Loreweaver — BlockNote Editor Evaluation
+# familiar.systems — BlockNote Editor Evaluation
 
 ## Context
 
 [BlockNote](https://www.blocknotejs.org/) is a block-based rich text editor for React, built on top of **TipTap**, which is built on top of **ProseMirror**. It provides Notion-style editing (slash commands, drag handles, block type switching) with pre-built UI components out of the box.
 
-This document evaluates BlockNote against Loreweaver's specific editor requirements. For the broader stack analysis, see the [stack exploration](../stack_exploration.md). For the TipTap and Lexical evaluations, see [tiptap.md](./tiptap.md) and [lexical.md](./lexical.md).
+This document evaluates BlockNote against familiar.systems's specific editor requirements. For the broader stack analysis, see the [stack exploration](../stack_exploration.md). For the TipTap and Lexical evaluations, see [tiptap.md](./tiptap.md) and [lexical.md](./lexical.md).
 
 ---
 
 ## Licensing: What's Actually Free
 
-BlockNote has a split licensing model. This matters because Loreweaver uses [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html), which is GPL-3.0 compatible (AGPL is a superset of GPL-3.0).
+BlockNote has a split licensing model. This matters because familiar.systems uses [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html), which is GPL-3.0 compatible (AGPL is a superset of GPL-3.0).
 
 ### Core packages — MPL-2.0
 
@@ -40,15 +40,15 @@ The XL packages (`@blocknote/xl-*`) are dual-licensed: GPL-3.0 (free for GPL-3.0
 - Multi-column layouts
 - PDF, DOCX, ODT export
 
-**AGPL-3.0 is GPL-3.0 compatible**, so Loreweaver could technically use the XL packages under the GPL-3.0 grant. However, the $390/month commercial license remains the alternative. For a solo part-time developer, neither the cost nor the features justify adopting XL — especially because the AI features aren't the right AI for Loreweaver anyway (see below).
+**AGPL-3.0 is GPL-3.0 compatible**, so familiar.systems could technically use the XL packages under the GPL-3.0 grant. However, the $390/month commercial license remains the alternative. For a solo part-time developer, neither the cost nor the features justify adopting XL — especially because the AI features aren't the right AI for familiar.systems anyway (see below).
 
 ### The AI licensing question specifically
 
 BlockNote's AI features are generic text completion and editing — "make this shorter," "continue writing," "fix grammar." They're powered by an LLM the developer configures.
 
-Loreweaver's AI is campaign-aware: entity extraction against the campaign graph, journal drafting with narrative context, relationship proposal, contradiction detection. BlockNote's AI package cannot do any of this. Loreweaver needs its own AI pipeline regardless (already designed in the [audio pipeline doc](../../audio_ingest/audio_overview.md)).
+familiar.systems's AI is campaign-aware: entity extraction against the campaign graph, journal drafting with narrative context, relationship proposal, contradiction detection. BlockNote's AI package cannot do any of this. familiar.systems needs its own AI pipeline regardless (already designed in the [audio pipeline doc](../../audio_ingest/audio_overview.md)).
 
-**Building our own AI-in-editor components** means: custom TipTap/BlockNote blocks that trigger Loreweaver's AI pipeline and render results inline. This is the same custom block work you'd do in TipTap (a React node view that calls your API and displays the result). BlockNote's XL AI package doesn't help — it's solving a different problem.
+**Building our own AI-in-editor components** means: custom TipTap/BlockNote blocks that trigger familiar.systems's AI pipeline and render results inline. This is the same custom block work you'd do in TipTap (a React node view that calls your API and displays the result). BlockNote's XL AI package doesn't help — it's solving a different problem.
 
 **Bottom line:** Ignore XL entirely. The core is what matters. Evaluate it on its own merits.
 
@@ -70,7 +70,7 @@ This is both the strength and the weakness. You get a polished editing experienc
 
 ---
 
-## How It Maps to Loreweaver's Requirements
+## How It Maps to familiar.systems's Requirements
 
 ### 1. Block-based content
 
@@ -126,7 +126,7 @@ Same pattern as TipTap: custom block with `content: "none"` that renders a React
 
 This is where the abstraction layers bite.
 
-Loreweaver needs ProseMirror **decorations** to overlay status indicators on blocks without mutating the document. This is a ProseMirror-level concern — it lives in the plugin/decoration API, two layers below BlockNote.
+familiar.systems needs ProseMirror **decorations** to overlay status indicators on blocks without mutating the document. This is a ProseMirror-level concern — it lives in the plugin/decoration API, two layers below BlockNote.
 
 **Can you access ProseMirror decorations from BlockNote?**
 
@@ -134,7 +134,7 @@ Technically yes. BlockNote's custom block API accepts extensions that can includ
 
 But this is an escape hatch, not a supported path. You're writing ProseMirror plugin code (the same code you'd write in raw TipTap) while also working within BlockNote's block abstraction. The two models don't always compose cleanly — BlockNote wraps blocks in its own DOM structure (for drag handles, side menus, etc.), and decorations need to target the right DOM nodes within that structure.
 
-**Assessment:** Possible but awkward. You'd use BlockNote for the nice UI, then immediately break through it for the ProseMirror features that make Loreweaver's editor special. With raw TipTap, decorations are a first-class concept, not an escape hatch.
+**Assessment:** Possible but awkward. You'd use BlockNote for the nice UI, then immediately break through it for the ProseMirror features that make familiar.systems's editor special. With raw TipTap, decorations are a first-class concept, not an escape hatch.
 
 ### 5. Source linking
 
@@ -169,7 +169,7 @@ For a developer who has never done frontend, these UI components save real time.
 
 When something goes wrong or you need custom behavior at the ProseMirror level, you're debugging through BlockNote → TipTap → ProseMirror. Error messages and stack traces traverse three libraries. Documentation for your specific problem might exist in any of the three layers' docs, or in none of them.
 
-For basic editing, you never see this. For Loreweaver's custom requirements (status decorations, custom mention behavior, source linking), you'll be in this territory regularly.
+For basic editing, you never see this. For familiar.systems's custom requirements (status decorations, custom mention behavior, source linking), you'll be in this territory regularly.
 
 ### 2. Custom block API constraints
 
@@ -199,7 +199,7 @@ BlockNote has ~8k GitHub stars. TipTap has ~30k+. ProseMirror's forum has a deca
 
 This is not "BlockNote vs TipTap" in the abstract. It's a specific question:
 
-**Is the pre-built UI (slash menu, drag handles, formatting toolbar) worth the cost of an extra abstraction layer between you and the ProseMirror features Loreweaver needs?**
+**Is the pre-built UI (slash menu, drag handles, formatting toolbar) worth the cost of an extra abstraction layer between you and the ProseMirror features familiar.systems needs?**
 
 Arguments for BlockNote:
 
@@ -222,9 +222,9 @@ Arguments for raw TipTap:
 
 **BlockNote's core (free, MPL-2.0) is a legitimate option**, especially for accelerating early development. The Notion-style UX out of the box is genuinely valuable for a solo developer learning frontend.
 
-**The XL packages are irrelevant.** Although AGPL-3.0 is GPL-compatible (making the XL GPL grant usable), the AI features solve a different problem than Loreweaver's campaign-aware AI pipeline. Ignore them.
+**The XL packages are irrelevant.** Although AGPL-3.0 is GPL-compatible (making the XL GPL grant usable), the AI features solve a different problem than familiar.systems's campaign-aware AI pipeline. Ignore them.
 
-**The risk is the abstraction tax.** Loreweaver's editor is not a standard notes app. Status visualization via decorations, custom mention behavior wired to the campaign graph, source-linking to audio timestamps — these are ProseMirror-level features. With BlockNote, you'd use the nice UI for the standard parts and break through the abstraction for the custom parts. Whether that's sustainable depends on how much of the editor ends up being custom.
+**The risk is the abstraction tax.** familiar.systems's editor is not a standard notes app. Status visualization via decorations, custom mention behavior wired to the campaign graph, source-linking to audio timestamps — these are ProseMirror-level features. With BlockNote, you'd use the nice UI for the standard parts and break through the abstraction for the custom parts. Whether that's sustainable depends on how much of the editor ends up being custom.
 
 **Two reasonable paths:**
 

@@ -1,4 +1,4 @@
-# Loreweaver — What Is It?
+# familiar.systems — What Is It?
 
 ## The Problem Every DM Knows
 
@@ -18,7 +18,7 @@ Your job shifts from "maintain a wiki" to "run your game and review what the AI 
 
 ## How It Works
 
-Loreweaver is a web app. You open a browser, log in, and you're working. No software to install, no files to manage.
+familiar.systems is a web app. You open a browser, log in, and you're working. No software to install, no files to manage.
 
 ### After a Session
 
@@ -81,8 +81,8 @@ Players can also:
 
 **The AI proposes, you decide.** The AI never changes your world on its own. Every suggestion needs your approval. And every suggestion comes with the reasoning behind it, so you can always see why the AI thought something was worth proposing.
 
-**It captures the mess.** Retconned something? No problem. Loreweaver lets you mark things as "this was established in play but we've since decided it didn't happen." The history is preserved, but the AI stops treating it as current. Your campaign's contradictions and course corrections are part of the story.
+**It captures the mess.** Retconned something? No problem. familiar.systems lets you mark things as "this was established in play but we've since decided it didn't happen." The history is preserved, but the AI stops treating it as current. Your campaign's contradictions and course corrections are part of the story.
 
 ## Self-Hosting
 
-Loreweaver is open source. The default way to use it is through the hosted version (sign up, start using it), but if you want to run it on your own server, you can. Same app, same features.
+familiar.systems is open source. The default way to use it is through the hosted version (sign up, start using it), but if you want to run it on your own server, you can. Same app, same features.

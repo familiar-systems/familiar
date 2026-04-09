@@ -1,8 +1,8 @@
-# Loreweaver — Templates as Prototype Pages
+# familiar.systems — Templates as Prototype Pages
 
 ## Context
 
-During initial implementation of `@loreweaver/domain`, the template system was modeled as a separate entity type (`Template` + `TemplateField[]`) with a typed field schema. A concrete walkthrough of what an NPC page actually looks like revealed that this model is wrong — it creates an artificial split between "template structure" and "page content" that doesn't match how GMs think or work.
+During initial implementation of `@familiar-systems/domain`, the template system was modeled as a separate entity type (`Template` + `TemplateField[]`) with a typed field schema. A concrete walkthrough of what an NPC page actually looks like revealed that this model is wrong — it creates an artificial split between "template structure" and "page content" that doesn't match how GMs think or work.
 
 This document captures the corrected design and the reasoning behind it.
 

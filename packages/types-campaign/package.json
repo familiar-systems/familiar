@@ -1,5 +1,5 @@
 {
-  "name": "@loreweaver/types-campaign",
+  "name": "@familiar-systems/types-campaign",
   "version": "0.0.0",
   "private": true,
   "main": "./src/index.ts",
@@ -12,10 +12,10 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@loreweaver/types-app": "workspace:*"
+    "@familiar-systems/types-app": "workspace:*"
   },
   "devDependencies": {
-    "@loreweaver/tsconfig": "workspace:*",
+    "@familiar-systems/tsconfig": "workspace:*",
     "typescript": "catalog:"
   }
 }

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters. It captures session content (audio, notes) and uses AI to assemble a campaign knowledge base (NPCs, locations, items, relationships) as a graph that grows from play.
+familiar.systems is an AI-assisted campaign notebook for tabletop RPG game masters. It captures session content (audio, notes) and uses AI to assemble a campaign knowledge base (NPCs, locations, items, relationships) as a graph that grows from play.
 
 **Status: Pre-implementation.** The repository contains design documents only, no application code yet. All architectural decisions are documented in `docs/`.
 
@@ -53,9 +53,9 @@ workers/              Job processors, language-agnostic (Python ML today)
 
 crates/app-shared       Rust library: IDs, auth, libSQL helpers (platform + campaign)
 crates/campaign-shared  Rust library: ToC/Thing Loro wrappers, PM conventions, CrdtDoc trait (campaign only)
-packages/types-app      @loreweaver/types-app, generated from app-shared via ts-rs (CampaignId, UserId)
-packages/types-campaign @loreweaver/types-campaign, generated from campaign-shared via ts-rs (ThingId, BlockId, ThingHandle, TocEntry, ...)
-packages/editor         @loreweaver/editor, TipTap/ProseMirror schema + custom extensions (THE shared contract)
+packages/types-app      @familiar-systems/types-app, generated from app-shared via ts-rs (CampaignId, UserId)
+packages/types-campaign @familiar-systems/types-campaign, generated from campaign-shared via ts-rs (ThingId, BlockId, ThingHandle, TocEntry, ...)
+packages/editor         @familiar-systems/editor, TipTap/ProseMirror schema + custom extensions (THE shared contract)
 ```
 
 ### Critical Dependency Rules
@@ -63,7 +63,7 @@ packages/editor         @loreweaver/editor, TipTap/ProseMirror schema + custom e
 - **Dependency direction: `web -> editor -> types-campaign -> types-app`.** The editor depends on campaign types. Campaign types depend on app types. `web` also depends on `types-app` directly (for auth, campaign listing).
 - **`apps/site` depends only on `types-app`.** The public site needs platform-level types only (CampaignId, UserId).
 - **`apps/web` depends on `types-app`, `types-campaign`, and `editor`.** The client/server boundary is enforced by the dependency graph. There is no server-side TypeScript to import.
-- **Each package's `src/index.ts` is its public API.** Import from `@loreweaver/types-app` or `@loreweaver/types-campaign`, never from `@loreweaver/types-campaign/generated/ThingId`.
+- **Each package's `src/index.ts` is its public API.** Import from `@familiar-systems/types-app` or `@familiar-systems/types-campaign`, never from `@familiar-systems/types-campaign/generated/ThingId`.
 - **Domain logic is Rust.** Two Rust binaries (platform + campaign server) and two shared crates own all backend logic. TypeScript is frontend-only.
 - **Two shared crates, two type packages, same split.** `app-shared` / `types-app` holds types both servers need (IDs, auth). `campaign-shared` / `types-campaign` holds campaign-only concerns (Loro wrappers, ToC schema, ProseMirror conventions, CrdtDoc trait). The test: "does the platform server need this type?" If yes, `app-shared`. If no, `campaign-shared`. Both crates export TypeScript types via ts-rs to their corresponding package.
 
@@ -130,9 +130,9 @@ mise run generate-types         # Clean + regenerate ts-rs types via cargo test
 
 # Per-ecosystem commands (for targeted work on a single package):
 pnpm install                    # Install all TS dependencies
-pnpm --filter @loreweaver/editor test
+pnpm --filter @familiar-systems/editor test
 cargo build                     # Build Rust workspace
-cargo test -p loreweaver-campaign-shared  # Test a single crate
+cargo test -p familiar-systems-campaign-shared  # Test a single crate
 uv run pytest                   # Run ML worker tests
 ```
 
@@ -161,6 +161,6 @@ Maximum strictness, no exceptions:
 - Subdomain routing: `familiar.systems` (site), `app.familiar.systems` (SPA), `api.familiar.systems` (platform), `c1.familiar.systems` (campaign server). Traefik Ingress routes by subdomain.
 - In dev, Docker Compose runs platform (localhost:3000) and campaign server (localhost:3001). Vite proxies `/api/*` to the platform. Campaign server requests go direct (discover returns localhost:3001).
 - The SPA calls the platform for auth, campaign listing, and discover. After discover, the SPA talks directly to the campaign server for all campaign-scoped work (WebSocket, REST, AI).
-- The `@loreweaver/editor` package is the most architecturally important. It defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and the campaign server (for LoroDoc reconstruction and serialization compiler).
+- The `@familiar-systems/editor` package is the most architecturally important. It defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and the campaign server (for LoroDoc reconstruction and serialization compiler).
 - LLM provider is pluggable: hosted instance uses managed keys, self-hosters bring their own
 - No Docker database container needed for local development. libSQL files on disk. `:memory:` databases for tests.

@@ -117,13 +117,13 @@ importers:
 
   apps/web:
     dependencies:
-      '@loreweaver/editor':
+      '@familiar-systems/editor':
         specifier: workspace:*
         version: link:../../packages/editor
-      '@loreweaver/types-app':
+      '@familiar-systems/types-app':
         specifier: workspace:*
         version: link:../../packages/types-app
-      '@loreweaver/types-campaign':
+      '@familiar-systems/types-campaign':
         specifier: workspace:*
         version: link:../../packages/types-campaign
       react:
@@ -133,7 +133,7 @@ importers:
         specifier: ^19
         version: 19.2.4(react@19.2.4)
     devDependencies:
-      '@loreweaver/tsconfig':
+      '@familiar-systems/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig
       '@types/react':
@@ -154,11 +154,11 @@ importers:
 
   packages/editor:
     dependencies:
-      '@loreweaver/types-campaign':
+      '@familiar-systems/types-campaign':
         specifier: workspace:*
         version: link:../types-campaign
     devDependencies:
-      '@loreweaver/tsconfig':
+      '@familiar-systems/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig
       typescript:
@@ -167,7 +167,7 @@ importers:
 
   packages/types-app:
     devDependencies:
-      '@loreweaver/tsconfig':
+      '@familiar-systems/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig
       typescript:
@@ -176,11 +176,11 @@ importers:
 
   packages/types-campaign:
     dependencies:
-      '@loreweaver/types-app':
+      '@familiar-systems/types-app':
         specifier: workspace:*
         version: link:../types-app
     devDependencies:
-      '@loreweaver/tsconfig':
+      '@familiar-systems/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig
       typescript:

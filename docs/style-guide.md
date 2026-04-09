@@ -1,6 +1,6 @@
 # Visual Style Guide
 
-The Loreweaver site uses a warm, parchment-inspired palette with gold accents and serif typography. This guide documents the design system as implemented in `apps/site/`.
+The familiar.systems site uses a warm, parchment-inspired palette with gold accents and serif typography. This guide documents the design system as implemented in `apps/site/`.
 
 ## Color Palette
 

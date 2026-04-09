@@ -293,6 +293,44 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "familiar-systems-app-shared"
+version = "0.0.0"
+dependencies = [
+ "nanoid",
+ "serde",
+ "serde_json",
+ "ts-rs",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "familiar-systems-campaign"
+version = "0.0.0"
+dependencies = [
+ "familiar-systems-app-shared",
+]
+
+[[package]]
+name = "familiar-systems-campaign-shared"
+version = "0.0.0"
+dependencies = [
+ "loro",
+ "nanoid",
+ "serde",
+ "serde_json",
+ "ts-rs",
+ "uuid",
+]
+
+[[package]]
+name = "familiar-systems-platform"
+version = "0.0.0"
+dependencies = [
+ "familiar-systems-app-shared",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -591,44 +629,6 @@ dependencies = [
  "serde_json",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "loreweaver-app-shared"
-version = "0.0.0"
-dependencies = [
- "nanoid",
- "serde",
- "serde_json",
- "ts-rs",
- "utoipa",
- "uuid",
-]
-
-[[package]]
-name = "loreweaver-campaign"
-version = "0.0.0"
-dependencies = [
- "loreweaver-app-shared",
-]
-
-[[package]]
-name = "loreweaver-campaign-shared"
-version = "0.0.0"
-dependencies = [
- "loro",
- "nanoid",
- "serde",
- "serde_json",
- "ts-rs",
- "uuid",
-]
-
-[[package]]
-name = "loreweaver-platform"
-version = "0.0.0"
-dependencies = [
- "loreweaver-app-shared",
 ]
 
 [[package]]

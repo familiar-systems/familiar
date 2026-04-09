@@ -1,4 +1,4 @@
-# Loreweaver — Interactive vs Background AI Workflows
+# familiar.systems — Interactive vs Background AI Workflows
 
 > **Resolved.** The questions raised in this document are addressed in the [AI workflow unification design](../../plans/2026-02-14-ai-workflow-unification-design.md), which unifies interactive and background workflows through a shared suggestion primitive and a single agent interface.
 
@@ -107,7 +107,7 @@ The background pipeline is really just **multiple interactive-style operations c
 
 The current design has two separate code paths for AI work:
 
-- `@loreweaver/ai` (pipelines + prompts) used by `apps/worker`
+- `@familiar-systems/ai` (pipelines + prompts) used by `apps/worker`
 - Interactive tRPC procedures in `apps/api` that also call LLM providers
 
 This means context assembly logic, prompt templates, and LLM client code could end up duplicated or split awkwardly between the two paths.
@@ -146,4 +146,4 @@ Define every AI operation as a pipeline of steps. The pipeline doesn't know or c
 2. If we unify, does the worker become the single place where LLMs are called? Or does the API server call LLMs directly for interactive use?
 3. Should background jobs be "watchable" — can the GM open a live view of a transcription-in-progress?
 4. How does this interact with rate limiting and cost management? If all LLM calls go through one path, rate limiting is easier. If they're split, you need to coordinate.
-5. Does the `@loreweaver/ai` package already solve this? It defines pipelines and prompts — both the worker and the API server import it. Is the "unification" just ensuring that package is the single source of truth for all AI operations, with the caller deciding delivery?
+5. Does the `@familiar-systems/ai` package already solve this? It defines pipelines and prompts — both the worker and the API server import it. Is the "unification" just ensuring that package is the single source of truth for all AI operations, with the caller deciding delivery?

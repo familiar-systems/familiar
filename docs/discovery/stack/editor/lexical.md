@@ -1,10 +1,10 @@
-# Loreweaver — Lexical Editor Evaluation
+# familiar.systems — Lexical Editor Evaluation
 
 ## Context
 
 [Lexical](https://lexical.dev/) is Meta's extensible text editor framework. It takes a fundamentally different architectural approach from ProseMirror/TipTap: the document is a mutable tree of typed nodes, manipulated through update callbacks rather than immutable transactions.
 
-This document evaluates Lexical against Loreweaver's specific editor requirements. For the broader editor landscape and the recommended choice (TipTap), see the [stack exploration](../stack_exploration.md).
+This document evaluates Lexical against familiar.systems's specific editor requirements. For the broader editor landscape and the recommended choice (TipTap), see the [stack exploration](../stack_exploration.md).
 
 ---
 
@@ -12,7 +12,7 @@ This document evaluates Lexical against Loreweaver's specific editor requirement
 
 ### The tree model maps naturally to blocks
 
-Lexical's document tree aligns with Loreweaver's block-native content model. Each `ElementNode` is conceptually a block, `TextNode` handles inline content with formatting, and `DecoratorNode` embeds arbitrary React components (stat blocks, transcluded blocks, AI suggestion cards).
+Lexical's document tree aligns with familiar.systems's block-native content model. Each `ElementNode` is conceptually a block, `TextNode` handles inline content with formatting, and `DecoratorNode` embeds arbitrary React components (stat blocks, transcluded blocks, AI suggestion cards).
 
 ```
 root
@@ -55,11 +55,11 @@ Lexical plugins are React components rendered as children of `LexicalComposer`. 
 
 ## Sharp Edges
 
-### 1. No pure decorations (the dealbreaker for Loreweaver)
+### 1. No pure decorations (the dealbreaker for familiar.systems)
 
 ProseMirror has **decorations** — visual overlays that style content without mutating the document state. Dim a block, highlight a mention on hover, show a source-link indicator — all as a rendering layer, invisible to the document model.
 
-Lexical doesn't have this concept. Its "decorator nodes" are actual nodes in the tree that mutate the document. The distinction matters for Loreweaver's specific requirements:
+Lexical doesn't have this concept. Its "decorator nodes" are actual nodes in the tree that mutate the document. The distinction matters for familiar.systems's specific requirements:
 
 | Requirement                     | ProseMirror/TipTap                   | Lexical                                                                            |
 | ------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------- |
@@ -79,7 +79,7 @@ For an editor where every block has a status, every mention is interactive, and 
 
 Lexical's Yjs binding hardcodes the root node name, making it impossible to have more than one Lexical editor per Yjs document. The playground examples work around this with separate WebSocket connections per editor — acknowledged as unscalable for production.
 
-This matters if Loreweaver has multiple editor instances on the same page (editing a node's description while previewing related blocks, or a split-pane session prep view).
+This matters if familiar.systems has multiple editor instances on the same page (editing a node's description while previewing related blocks, or a split-pane session prep view).
 
 ### 3. No 1.0 release
 
@@ -128,7 +128,7 @@ ProseMirror's schema additionally provides **compile-time-like validation**: you
 
 Lexical is a defensible choice for teams that want maximum control and are comfortable building infrastructure. The tree model is genuinely elegant, and the React-native plugin model is clean.
 
-For Loreweaver specifically, **the lack of pure decorations is the critical issue**. The editor needs pervasive visual annotation — status indicators on every block, interactive mentions, source-link markers — that should not pollute the document model. ProseMirror's decoration system was designed for exactly this; Lexical's architecture doesn't support it.
+For familiar.systems specifically, **the lack of pure decorations is the critical issue**. The editor needs pervasive visual annotation — status indicators on every block, interactive mentions, source-link markers — that should not pollute the document model. ProseMirror's decoration system was designed for exactly this; Lexical's architecture doesn't support it.
 
 Secondary concerns (collaboration limitations, ecosystem gap, pre-1.0 stability, documentation gaps) reinforce the conclusion but aren't individually decisive.
 

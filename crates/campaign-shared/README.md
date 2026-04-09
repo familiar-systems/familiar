@@ -1,4 +1,4 @@
-# loreweaver-campaign-shared
+# familiar-systems-campaign-shared
 
 Campaign-scoped shared library. Schema types, Loro document wrappers, and the CrdtDoc trait.
 

@@ -1,4 +1,4 @@
-# Loreweaver — Vision Document
+# familiar.systems — Vision Document
 
 ## The Problem
 
@@ -27,7 +27,7 @@ The underlying structure is a **graph**: every entity is a node, every relations
 
 ### Distribution
 
-Loreweaver is a **web application**. The GM opens a browser, logs in, and works. No installation, no local setup, no file management. Players access the same application with their own accounts and see only what the GM has made visible.
+familiar.systems is a **web application**. The GM opens a browser, logs in, and works. No installation, no local setup, no file management. Players access the same application with their own accounts and see only what the GM has made visible.
 
 **Two deployment modes, one codebase:**
 
@@ -203,7 +203,7 @@ An **agent conversation** is a persisted record of an AI interaction — what wa
 
 ## The Agent Window
 
-The agent window is the single interface for all AI interaction in Loreweaver. It is a conversational surface — the user talks, the AI responds, and when appropriate, the AI produces structured suggestions alongside its conversational output.
+The agent window is the single interface for all AI interaction in familiar.systems. It is a conversational surface — the user talks, the AI responds, and when appropriate, the AI produces structured suggestions alongside its conversational output.
 
 ### Focal Point
 
