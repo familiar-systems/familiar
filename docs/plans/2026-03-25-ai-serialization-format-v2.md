@@ -1,4 +1,4 @@
-# Loreweaver — AI Serialization Format & Agent Editing Model (v2)
+# familiar.systems — AI Serialization Format & Agent Editing Model (v2)
 
 **Status:** Draft
 **Date:** 2026-03-25
@@ -9,7 +9,7 @@
 
 ## Context
 
-Loreweaver's AI agent operates across three workflows (SessionIngest, Planning & Refinement, Q&A) that all require reading campaign page content and — for the write workflows — modifying it. The editing medium is a rich text editor (TipTap on ProseMirror) backed by Loro CRDTs synced via the loro-dev/protocol. The campaign structure is a graph: Things (nodes), relationships (edges), and blocks (atomic content units within pages).
+familiar.systems's AI agent operates across three workflows (SessionIngest, Planning & Refinement, Q&A) that all require reading campaign page content and — for the write workflows — modifying it. The editing medium is a rich text editor (TipTap on ProseMirror) backed by Loro CRDTs synced via the loro-dev/protocol. The campaign structure is a graph: Things (nodes), relationships (edges), and blocks (atomic content units within pages).
 
 The agent cannot work directly with ProseMirror JSON or Loro CRDT operations — it needs a human-readable format it can reason about and edit. This document defines that format, the tool surface the agent uses to make changes, the suggestion model that governs how AI proposals interact with each other and with human editors, and the compilation pipeline that bridges agent edits back to the CRDT layer.
 

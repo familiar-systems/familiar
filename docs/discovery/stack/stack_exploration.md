@@ -1,8 +1,8 @@
-# Loreweaver — Technology Stack Exploration
+# familiar.systems — Technology Stack Exploration
 
 ## Context
 
-This document evaluates technology stacks for Loreweaver before any code is written. It sits alongside the [storage analysis](../../archive/discovery/2026-02-14-storage-overview.md) (PostgreSQL or Turso) and the [audio pipeline design](../audio_ingest/audio_overview.md) (multi-stage AI processing).
+This document evaluates technology stacks for familiar.systems before any code is written. It sits alongside the [storage analysis](../../archive/discovery/2026-02-14-storage-overview.md) (PostgreSQL or Turso) and the [audio pipeline design](../audio_ingest/audio_overview.md) (multi-stage AI processing).
 
 The [vision doc](../../vision.md) defines a **server-hosted web app** (with self-hosted option) centered on a **block-based rich text editor** wired into a **property graph**. The stack needs to serve three workloads:
 
@@ -24,7 +24,7 @@ All rich text editing in the browser sits on top of `contentEditable` — a brow
 
 This is a solved-enough problem — but only if you use a library that abstracts over the browser's quirks. Rolling your own is not viable.
 
-### What Loreweaver Needs from the Editor
+### What familiar.systems Needs from the Editor
 
 1. **Block-based content** — paragraphs, headings, stat blocks, images, AI suggestion blocks
 2. **Inline entity mentions** — autocomplete-driven references (`@Kael` → resolved node link) that become clickable graph links
@@ -39,7 +39,7 @@ From lowest to highest level of abstraction:
 
 **ProseMirror** — The gold standard for structured rich text editing. Schema-defined document model, transaction-based state management, plugin architecture. Powers the New York Times CMS, Atlassian's editor, and others. The API is powerful and low-level — you define your document schema, write plugins for behavior, and manage state transitions explicitly. Steep learning curve, maximum control.
 
-**TipTap** — A framework built on ProseMirror that provides a significantly more ergonomic developer API while preserving ProseMirror's full power underneath. Key capabilities relevant to Loreweaver:
+**TipTap** — A framework built on ProseMirror that provides a significantly more ergonomic developer API while preserving ProseMirror's full power underneath. Key capabilities relevant to familiar.systems:
 
 - **Mention extension** — autocomplete-driven inline references, out of the box
 - **Custom node views** — embed full React/Vue/Svelte components inside the editor (for stat blocks, AI suggestion cards, transcluded blocks)
@@ -48,7 +48,7 @@ From lowest to highest level of abstraction:
 
 TipTap is what most new projects building structured editors choose. It handles requirements 1, 2, and 6 directly. Requirements 3-5 are custom work but well within TipTap's extension model — you'd write custom node types and decorations.
 
-**BlockNote** — Built on TipTap/ProseMirror. Gives you Notion-style block editing out of the box — drag handles, slash commands, block types. Interesting because Loreweaver's content model is block-native. Trade-off: you gain a faster starting point but lose some flexibility compared to raw TipTap. Newer, smaller community.
+**BlockNote** — Built on TipTap/ProseMirror. Gives you Notion-style block editing out of the box — drag handles, slash commands, block types. Interesting because familiar.systems's content model is block-native. Trade-off: you gain a faster starting point but lose some flexibility compared to raw TipTap. Newer, smaller community.
 
 **Lexical** (Meta) — Different architecture from ProseMirror (tree-based, not schema-based). Good React integration, good performance. Less mature plugin ecosystem. The mention and collaboration stories are less developed than TipTap's. Actively maintained by Meta but smaller community outside Meta's own products.
 
@@ -248,7 +248,7 @@ The same two-language pattern as Stack B, but with Kotlin's stronger type system
 
 The single-language advantage is decisive for a solo developer building an editor-centric application.
 
-**The core argument:** The block model is the central domain object in Loreweaver. It lives in the editor (TipTap schema), in the API contract (request/response types), and in the database (table schema). In a full TypeScript stack, this is one definition that flows through the entire system. In a two-language stack, it's two definitions connected by code generation — a seam that must be maintained and can drift.
+**The core argument:** The block model is the central domain object in familiar.systems. It lives in the editor (TipTap schema), in the API contract (request/response types), and in the database (table schema). In a full TypeScript stack, this is one definition that flows through the entire system. In a two-language stack, it's two definitions connected by code generation — a seam that must be maintained and can drift.
 
 **Addressing the type safety concern:** TypeScript's type system is weaker than Rust's or Kotlin's. But with `strict: true`, `noUncheckedIndexedAccess`, Zod at system boundaries, and linting rules against `any`, the practical gap narrows significantly. The types you lose (nominal types, exhaustive checking on primitive values) matter less than the types you gain by not having a language boundary in the middle of your data model.
 

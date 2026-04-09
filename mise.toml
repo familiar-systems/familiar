@@ -12,19 +12,19 @@ depends = ["dev:*"]
 
 [tasks."dev:site"]
 description = "Astro dev server (port 4321)"
-run = "pnpm --filter @loreweaver/site dev"
+run = "pnpm --filter @familiar-systems/site dev"
 
 [tasks."dev:web"]
 description = "Vite dev server (port 5173)"
-run = "pnpm --filter @loreweaver/web dev"
+run = "pnpm --filter @familiar-systems/web dev"
 
 [tasks."dev:platform"]
 description = "Platform server (port 3000)"
-run = "cargo run -p loreweaver-platform"
+run = "cargo run -p familiar-systems-platform"
 
 [tasks."dev:campaign"]
 description = "Campaign server (port 3001)"
-run = "cargo run -p loreweaver-campaign"
+run = "cargo run -p familiar-systems-campaign"
 
 # --- build ---
 
@@ -33,10 +33,10 @@ description = "Build all targets"
 depends = ["build:*"]
 
 [tasks."build:site"]
-run = "pnpm --filter @loreweaver/site build"
+run = "pnpm --filter @familiar-systems/site build"
 
 [tasks."build:web"]
-run = "pnpm --filter @loreweaver/web build"
+run = "pnpm --filter @familiar-systems/web build"
 
 [tasks."build:rust"]
 run = "cargo build"

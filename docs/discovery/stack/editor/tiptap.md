@@ -1,22 +1,22 @@
-# Loreweaver — TipTap Editor Evaluation
+# familiar.systems — TipTap Editor Evaluation
 
 ## Context
 
 [TipTap Editor](https://github.com/ueberdosis/tiptap) is a headless rich text editor framework built on [ProseMirror](https://prosemirror.net/). It provides a developer-friendly API layer over ProseMirror's powerful but low-level primitives: schema-based document model, transaction-based state management, decorations, and a plugin architecture.
 
-This document evaluates TipTap against Loreweaver's specific editor requirements. For the broader stack analysis, see the [stack exploration](../stack_exploration.md). For the Lexical comparison, see [lexical.md](./lexical.md).
+This document evaluates TipTap against familiar.systems's specific editor requirements. For the broader stack analysis, see the [stack exploration](../stack_exploration.md). For the Lexical comparison, see [lexical.md](./lexical.md).
 
 ### Scope: open-source editor only
 
-TipTap the company sells a cloud platform (collaboration hosting, comments, AI toolkit, DOCX conversion, document history). **This evaluation ignores all of that.** The core editor framework and its open-source extensions are MIT-licensed. Everything Loreweaver needs — the editor, custom extensions, mentions, node views, decorations, and the collaboration extension — lives in the open-source layer.
+TipTap the company sells a cloud platform (collaboration hosting, comments, AI toolkit, DOCX conversion, document history). **This evaluation ignores all of that.** The core editor framework and its open-source extensions are MIT-licensed. Everything familiar.systems needs — the editor, custom extensions, mentions, node views, decorations, and the collaboration extension — lives in the open-source layer.
 
-For self-hosted collaboration, the Yjs protocol is open and the [Hocuspocus](https://github.com/ueberdosis/hocuspocus) WebSocket server is open source. Loreweaver would never touch TipTap Cloud.
+For self-hosted collaboration, the Yjs protocol is open and the [Hocuspocus](https://github.com/ueberdosis/hocuspocus) WebSocket server is open source. familiar.systems would never touch TipTap Cloud.
 
 **One risk to name and move on from:** TipTap the company is visibly pushing toward cloud revenue. Hocuspocus could receive less investment over time. This is mitigated by Yjs being the underlying protocol — other Yjs servers exist, and the collaboration extension is protocol-level, not server-level. If Hocuspocus stalls, you swap the server, not the editor.
 
 ---
 
-## How It Maps to Loreweaver's Requirements
+## How It Maps to familiar.systems's Requirements
 
 ### 1. Block-based content
 
@@ -57,7 +57,7 @@ const StatBlock = Node.create({
 });
 ```
 
-**Assessment:** Direct fit. Loreweaver's block types (text, headings, stat blocks, transcluded blocks, AI suggestions) map 1:1 to TipTap node extensions. The schema enforces structural validity — you can't accidentally nest a stat block inside a heading.
+**Assessment:** Direct fit. familiar.systems's block types (text, headings, stat blocks, transcluded blocks, AI suggestions) map 1:1 to TipTap node extensions. The schema enforces structural validity — you can't accidentally nest a stat block inside a heading.
 
 ### 2. Inline entity mentions
 
@@ -121,7 +121,7 @@ The React component (`TranscludedBlockView`) fetches the referenced block and re
 
 This is where TipTap's ProseMirror foundation pays off. ProseMirror has **decorations** — a rendering layer that sits on top of the document without mutating it.
 
-Three types of decoration, all useful for Loreweaver:
+Three types of decoration, all useful for familiar.systems:
 
 | Decoration type       | Use case                                | Example                                                   |
 | --------------------- | --------------------------------------- | --------------------------------------------------------- |
@@ -249,7 +249,7 @@ TipTap's docs state that the core "is even able to edit an entire book" — perf
 
 Each React node view (stat block, transcluded block, AI suggestion card) is a synchronous React render inside the ProseMirror DOM. With many node views in a single document, rendering adds up.
 
-For Loreweaver, a session journal might have 5-20 custom node views. This is well within normal range. Hundreds would be a problem.
+For familiar.systems, a session journal might have 5-20 custom node views. This is well within normal range. Hundreds would be a problem.
 
 **Mitigation:** Lazy-load node view content. The React component mounts immediately (lightweight shell) and fetches data asynchronously.
 
@@ -257,11 +257,11 @@ For Loreweaver, a session journal might have 5-20 custom node views. This is wel
 
 TipTap abstracts ProseMirror well for common operations, but for advanced customization (custom decorations, complex input rules, collaborative cursor rendering), you'll read ProseMirror docs and think in ProseMirror concepts. TipTap doesn't replace ProseMirror knowledge — it reduces how often you need it.
 
-This is a feature, not a bug: ProseMirror's power is there when you need it. But expect to invest time in the transaction model, the decoration system, and the plugin API for the custom features Loreweaver requires.
+This is a feature, not a bug: ProseMirror's power is there when you need it. But expect to invest time in the transaction model, the decoration system, and the plugin API for the custom features familiar.systems requires.
 
 ### 5. No React Native
 
-ProseMirror depends on the browser DOM. If Loreweaver ever needs a native mobile editor, TipTap can't help. The vision doc describes a web application — not a current concern, but a hard boundary.
+ProseMirror depends on the browser DOM. If familiar.systems ever needs a native mobile editor, TipTap can't help. The vision doc describes a web application — not a current concern, but a hard boundary.
 
 ---
 
@@ -278,7 +278,7 @@ These are application-level concerns that sit outside the editor:
 
 ## Verdict
 
-TipTap Editor (open-source, MIT) is the recommended editor for Loreweaver. The reasons are specific to the product's requirements:
+TipTap Editor (open-source, MIT) is the recommended editor for familiar.systems. The reasons are specific to the product's requirements:
 
 1. **Decorations** solve the pervasive visual annotation problem (status, mention highlighting, source links) without polluting the document model
 2. **The Mention extension** provides production-ready entity references with autocomplete

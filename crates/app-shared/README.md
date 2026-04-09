@@ -1,4 +1,4 @@
-# loreweaver-app-shared
+# familiar-systems-app-shared
 
 Application-level shared types used by both the platform and campaign servers.
 

@@ -1,4 +1,4 @@
-# Loreweaver
+# familiar.systems
 
 An AI-assisted campaign notebook for tabletop RPG game masters.
 
@@ -8,7 +8,7 @@ An AI-assisted campaign notebook for tabletop RPG game masters.
 
 Running a TTRPG campaign generates an enormous amount of information: NPCs improvised on the fly, locations described in passing, plot threads introduced and forgotten. GMs are expected to track all of it, and most existing tools treat the wiki as the primary artifact, requiring the GM to maintain a knowledge base as a separate activity from running the game.
 
-Loreweaver flips this. The primary artifact is the **session**: what happened at the table. Capture session audio and notes, and the AI extracts the knowledge base: NPCs, locations, items, relationships, contradictions. The GM's job shifts from authoring a wiki to running their game and reviewing what the AI proposed.
+familiar.systems flips this. The primary artifact is the **session**: what happened at the table. Capture session audio and notes, and the AI extracts the knowledge base: NPCs, locations, items, relationships, contradictions. The GM's job shifts from authoring a wiki to running their game and reviewing what the AI proposed.
 
 The AI never modifies the campaign directly. Every change is a **suggestion** that the GM accepts, rejects, or ignores.
 
@@ -24,8 +24,8 @@ apps/campaign    Rust binary: Axum + kameo (actors, collab, AI, compiler)
 workers/         Job processors, language-agnostic (Python ML today)
 
 crates/shared    Rust library: traits, types, auth, libSQL helpers
-packages/types   @loreweaver/types, generated from Rust via ts-rs
-packages/editor  @loreweaver/editor, TipTap/ProseMirror schema + custom extensions
+packages/types   @familiar-systems/types, generated from Rust via ts-rs
+packages/editor  @familiar-systems/editor, TipTap/ProseMirror schema + custom extensions
 ```
 
 The Rust backend splits into two binaries: the **platform** (auth, campaign CRUD, routing table) and the **campaign server** (actor hierarchy, WebSocket collaboration, AI conversations). They communicate over HTTP via trait-based interfaces defined in `crates/shared/`. TypeScript is frontend-only; domain logic lives in Rust.
@@ -46,7 +46,7 @@ See [project structure](docs/plans/2026-03-26-project-structure-design.md) for t
 
 ## Infrastructure
 
-libSQL files on a Hetzner Volume: one platform database plus a separate database per campaign. No database server process. PR preview environments branch via file copy. Two Rust binaries (platform + campaign server) deployed on k3s with Traefik Ingress routing by subdomain (`api.loreweaver.no`, `c1.loreweaver.no`).
+libSQL files on a Hetzner Volume: one platform database plus a separate database per campaign. No database server process. PR preview environments branch via file copy. Two Rust binaries (platform + campaign server) deployed on k3s with Traefik Ingress routing by subdomain (`api.familiar.systems`, `c1.familiar.systems`).
 
 See [infrastructure](docs/plans/2026-03-30-infrastructure.md) and [libSQL over PostgreSQL decision](docs/discovery/2026-03-09-sqlite-over-postgres-decision.md) for the rationale.
 

@@ -1,5 +1,5 @@
 {
-  "name": "@loreweaver/editor",
+  "name": "@familiar-systems/editor",
   "version": "0.0.0",
   "private": true,
   "main": "./src/index.ts",
@@ -13,10 +13,10 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@loreweaver/types-campaign": "workspace:*"
+    "@familiar-systems/types-campaign": "workspace:*"
   },
   "devDependencies": {
-    "@loreweaver/tsconfig": "workspace:*",
+    "@familiar-systems/tsconfig": "workspace:*",
     "typescript": "catalog:"
   }
 }

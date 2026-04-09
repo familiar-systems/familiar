@@ -1,14 +1,14 @@
-# Loreweaver — Public Site Design
+# familiar.systems — Public Site Design
 
 ## Decision
 
-**Add `apps/site` as a deployment target** using Astro to serve the landing page, blog, and public campaign showcase pages. The public site owns the root domain (`loreweaver.no`); the SPA, platform, and campaign server each get their own subdomains.
+**Add `apps/site` as a deployment target** using Astro to serve the landing page, blog, and public campaign showcase pages. The public site owns the root domain (`familiar.systems`); the SPA, platform, and campaign server each get their own subdomains.
 
 ---
 
 ## Context
 
-The existing SPA (`apps/web`) is entirely behind authentication. The [project structure design](./2026-03-26-project-structure-design.md) explicitly rejected SSR because Loreweaver's content has no SEO requirements — it's a TipTap editor that is inherently client-rendered.
+The existing SPA (`apps/web`) is entirely behind authentication. The [project structure design](./2026-03-26-project-structure-design.md) explicitly rejected SSR because familiar.systems's content has no SEO requirements — it's a TipTap editor that is inherently client-rendered.
 
 A landing page and blog are the **opposite workload**: public, SEO-critical, content-heavy, and largely static. Serving them from the SPA would mean:
 
@@ -46,7 +46,7 @@ Content as Markdown files using Astro's [content collections](https://docs.astro
 
 ```
 apps/site/src/content/blog/
-├── 2026-02-20-introducing-loreweaver.md
+├── 2026-02-20-introducing-familiar-systems.md
 ├── 2026-03-01-how-session-ingest-works.md
 └── ...
 ```
@@ -70,22 +70,22 @@ This defers real-time public campaign pages until there's demand. Static snapsho
 Subdomain-based split. Each service gets its own subdomain:
 
 ```
-loreweaver.no                → apps/site     (landing page, blog, public campaign showcase)
-app.loreweaver.no            → apps/web      (SPA, behind auth)
-api.loreweaver.no            → apps/platform (auth, CRUD, routing table, discover)
-c1.loreweaver.no             → apps/campaign (actors, collab, AI, campaign-scoped REST + WebSocket)
+familiar.systems                → apps/site     (landing page, blog, public campaign showcase)
+app.familiar.systems            → apps/web      (SPA, behind auth)
+api.familiar.systems            → apps/platform (auth, CRUD, routing table, discover)
+c1.familiar.systems             → apps/campaign (actors, collab, AI, campaign-scoped REST + WebSocket)
 ```
 
 ### Reverse proxy rules (Traefik via k3s Ingress)
 
 ```
-loreweaver.no        → apps/site static files
-app.loreweaver.no    → apps/web static files (SPA fallback: all paths serve index.html)
-api.loreweaver.no    → platform pod (port 3000, HTTP)
-c1.loreweaver.no     → campaign server pod (port 3001, HTTP + WebSocket)
+familiar.systems        → apps/site static files
+app.familiar.systems    → apps/web static files (SPA fallback: all paths serve index.html)
+api.familiar.systems    → platform pod (port 3000, HTTP)
+c1.familiar.systems     → campaign server pod (port 3001, HTTP + WebSocket)
 ```
 
-Each subdomain routes to its own pod. No path-prefix ambiguity between services. A wildcard TLS certificate (`*.loreweaver.no`) covers all subdomains.
+Each subdomain routes to its own pod. No path-prefix ambiguity between services. A wildcard TLS certificate (`*.familiar.systems`) covers all subdomains.
 
 ### Why subdomain-based routing
 
@@ -127,11 +127,11 @@ apps/site/
 
 ```mermaid
 graph BT
-    domain["@loreweaver/domain"]
+    domain["@familiar-systems/domain"]
     site["apps/site"] --> domain
 ```
 
-`apps/site` depends on `@loreweaver/domain` only — for shared types used in public campaign pages (campaign title, description, entity count). No dependency on `db`, `auth`, `ai`, `queue`, or `editor`.
+`apps/site` depends on `@familiar-systems/domain` only — for shared types used in public campaign pages (campaign title, description, entity count). No dependency on `db`, `auth`, `ai`, `queue`, or `editor`.
 
 ---
 

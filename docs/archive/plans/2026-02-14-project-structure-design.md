@@ -1,10 +1,10 @@
-# Loreweaver — Project Structure Design
+# familiar.systems — Project Structure Design
 
 > **Superseded.** This was the original project structure based on Next.js (SSR). The [SPA vs SSR analysis](./2026-02-14-spa-vs-ssr-design.md) concluded that SSR provides no meaningful benefit for an authenticated, editor-centric application. The current authoritative structure is the [SPA project structure](./2026-02-14-project-structure-spa-design.md).
 
 ## Context
 
-Loreweaver is a web application with three workloads that have **different deployment lifecycles**:
+familiar.systems is a web application with three workloads that have **different deployment lifecycles**:
 
 1. **Web layer** (Next.js) — serves pages, handles CRUD via tRPC. Stateless, request-response. Needs fast restarts and blue/green deploys.
 2. **Collaboration layer** (Hocuspocus) — holds persistent WebSocket connections for real-time document editing via Yjs CRDTs. Must be a separate process because WebSockets don't survive a Next.js deploy.
@@ -31,7 +31,7 @@ The web layer **enqueues** work; the worker **dequeues and processes** independe
 ## Repository Structure
 
 ```
-loreweaver/
+familiar/
 ├── apps/
 │   ├── web/              # Next.js — UI + tRPC API routes
 │   ├── collab/           # Hocuspocus — WebSocket collaboration server
@@ -72,15 +72,15 @@ loreweaver/
 
 ```mermaid
 graph BT
-    domain["@loreweaver/domain<br/><i>pure types, zero deps</i>"]
+    domain["@familiar-systems/domain<br/><i>pure types, zero deps</i>"]
 
-    db["@loreweaver/db"] --> domain
-    editor["@loreweaver/editor"] --> domain
-    ai["@loreweaver/ai"] --> domain
+    db["@familiar-systems/db"] --> domain
+    editor["@familiar-systems/editor"] --> domain
+    ai["@familiar-systems/ai"] --> domain
     ai --> db
-    queue["@loreweaver/queue"] --> domain
+    queue["@familiar-systems/queue"] --> domain
     queue --> db
-    auth["@loreweaver/auth"] --> domain
+    auth["@familiar-systems/auth"] --> domain
     auth --> db
 
     web["apps/web"] --> domain
@@ -115,7 +115,7 @@ Arrows point from consumer to dependency ("depends on"). Green = `domain` (found
 
 Everything points toward `domain`. Nothing in `domain` knows about the database, the editor, or the AI pipeline.
 
-### `@loreweaver/domain` — Pure types, zero dependencies
+### `@familiar-systems/domain` — Pure types, zero dependencies
 
 ```
 packages/domain/src/
@@ -132,7 +132,7 @@ Pure TypeScript types, enums, and status logic functions. No runtime dependencie
 
 **Depends on:** nothing
 
-### `@loreweaver/db` — Schema, migrations, queries
+### `@familiar-systems/db` — Schema, migrations, queries
 
 ```
 packages/db/src/
@@ -155,9 +155,9 @@ packages/db/src/
 
 Drizzle ORM schema definitions and typed query helpers. Migration files (generated SQL) live in a `drizzle/` directory at the package root.
 
-**Depends on:** `@loreweaver/domain`, `drizzle-orm`, `postgres`
+**Depends on:** `@familiar-systems/domain`, `drizzle-orm`, `postgres`
 
-### `@loreweaver/auth` — Authentication + authorization
+### `@familiar-systems/auth` — Authentication + authorization
 
 ```
 packages/auth/src/
@@ -169,9 +169,9 @@ packages/auth/src/
 
 Shared across `apps/web` (HTTP request auth) and `apps/collab` (WebSocket connection auth). The specific auth library choice is an implementation detail encapsulated here.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`
 
-### `@loreweaver/editor` — The shared contract
+### `@familiar-systems/editor` — The shared contract
 
 ```
 packages/editor/src/
@@ -193,9 +193,9 @@ The most architecturally important package. Defines the TipTap/ProseMirror schem
 
 The `helpers/` directory enables server-side document manipulation: parsing documents for mention extraction, and writing suggestion marks back into documents from the AI pipeline — all without a browser.
 
-**Depends on:** `@loreweaver/domain`, `@tiptap/core`, `yjs`
+**Depends on:** `@familiar-systems/domain`, `@tiptap/core`, `yjs`
 
-### `@loreweaver/ai` — LLM orchestration
+### `@familiar-systems/ai` — LLM orchestration
 
 ```
 packages/ai/src/
@@ -215,9 +215,9 @@ packages/ai/src/
 
 The `provider.ts` abstraction handles the hosted vs. self-hosted requirement: the hosted instance configures managed API keys; self-hosters configure their own provider.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`
 
-### `@loreweaver/queue` — Job definitions + runner
+### `@familiar-systems/queue` — Job definitions + runner
 
 ```
 packages/queue/src/
@@ -229,7 +229,7 @@ packages/queue/src/
 
 Defines typed job payloads and provides enqueue/dequeue functions backed by PostgreSQL (via pg-boss or graphile-worker). The web app imports `producer` to enqueue; the worker imports `consumer` to dequeue and dispatch.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`, `pg-boss`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`, `pg-boss`
 
 ---
 
@@ -284,7 +284,7 @@ The route structure encodes the access hierarchy: everything under `campaign/[ca
 
 `src/server/` makes the client/server boundary explicit within Next.js.
 
-**Depends on:** all `@loreweaver/*` packages, `next`, `react`, `@hocuspocus/provider`
+**Depends on:** all `@familiar-systems/*` packages, `next`, `react`, `@hocuspocus/provider`
 
 ### `apps/collab` — Hocuspocus (WebSocket collaboration)
 
@@ -292,7 +292,7 @@ The route structure encodes the access hierarchy: everything under `campaign/[ca
 apps/collab/src/
 ├── index.ts              # Server entrypoint
 ├── hooks/
-│   ├── auth.ts           # onAuthenticate — verify token via @loreweaver/auth
+│   ├── auth.ts           # onAuthenticate — verify token via @familiar-systems/auth
 │   ├── load.ts           # onLoadDocument — load Y.Doc from DB
 │   ├── store.ts          # onStoreDocument — persist Y.Doc to DB
 │   └── change.ts         # onChange — validation, mention extraction trigger
@@ -301,7 +301,7 @@ apps/collab/src/
 
 The thinnest app. A Hocuspocus server with 4 lifecycle hooks, each delegating to the packages. The entire app may be ~200 lines of code.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/editor`, `@hocuspocus/server`, `yjs`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`, `@familiar-systems/auth`, `@familiar-systems/editor`, `@hocuspocus/server`, `yjs`
 
 ### `apps/worker` — AI pipeline runner
 
@@ -316,9 +316,9 @@ apps/worker/src/
 └── config.ts                     # Worker config (concurrency, poll interval)
 ```
 
-A pg-boss consumer process. Each handler maps to a job type from `@loreweaver/queue`, calls the corresponding pipeline from `@loreweaver/ai`, and writes results back through `@loreweaver/db` and `@loreweaver/editor`.
+A pg-boss consumer process. Each handler maps to a job type from `@familiar-systems/queue`, calls the corresponding pipeline from `@familiar-systems/ai`, and writes results back through `@familiar-systems/db` and `@familiar-systems/editor`.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/ai`, `@loreweaver/queue`, `@loreweaver/editor`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`, `@familiar-systems/ai`, `@familiar-systems/queue`, `@familiar-systems/editor`
 
 ---
 
@@ -367,8 +367,8 @@ In development, `tsx` runs TypeScript files directly (no compile step). In CI an
 
 **Packages = shared logic, apps = deployment targets.** If you're writing domain logic, database queries, or AI prompts in an app, it belongs in a package.
 
-**Dependency direction flows toward `domain`.** Every package can import `@loreweaver/domain`. No package imports from an app. If two packages need to share something, it moves to a package they both depend on (usually `domain`).
+**Dependency direction flows toward `domain`.** Every package can import `@familiar-systems/domain`. No package imports from an app. If two packages need to share something, it moves to a package they both depend on (usually `domain`).
 
-**Each package's `src/index.ts` is its public API.** Other packages import from `@loreweaver/db`, not from `@loreweaver/db/src/schema/nodes`. Anything not re-exported from `index.ts` is a private implementation detail.
+**Each package's `src/index.ts` is its public API.** Other packages import from `@familiar-systems/db`, not from `@familiar-systems/db/src/schema/nodes`. Anything not re-exported from `index.ts` is a private implementation detail.
 
 **Maximum strictness, no exceptions.** TypeScript `strict: true`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, lint ban on `any`, Zod at every system boundary. pnpm's strict dependency resolution prevents phantom imports. The compiler is the first line of defense — if it compiles, the type-level guarantees are real. We do not weaken these settings.

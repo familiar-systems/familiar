@@ -1,8 +1,8 @@
 [project]
-name = "loreweaver-whisperx"
+name = "familiar-systems-whisperx"
 version = "0.1.0"
 description = "WhisperX audio transcription worker"
-authors = [{ name = "Michael Grinshpon", email = "mike@loreweaver.no" }]
+authors = [{ name = "Michael Grinshpon", email = "mike@familiar.systems" }]
 requires-python = ">=3.14"
 dependencies = []
 

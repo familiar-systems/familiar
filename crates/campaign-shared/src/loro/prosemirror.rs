@@ -19,7 +19,7 @@ pub const ATTRIBUTES_KEY: &str = "attributes";
 /// Key in each node's LoroMap for the children list.
 pub const CHILDREN_KEY: &str = "children";
 
-// -- Custom Loreweaver node type names --
+// -- Custom familiar.systems node type names --
 // These must match the TipTap node specs in `packages/editor/`.
 
 /// Inline mention node. Attrs: `thingId` (ThingId), `label` (display name cache).

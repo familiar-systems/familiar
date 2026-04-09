@@ -1,8 +1,8 @@
-# Loreweaver — AI Workflow Unification
+# familiar.systems — AI Workflow Unification
 
 ## Context
 
-Loreweaver's AI layer serves three distinct use cases: processing raw session data into structured content, helping the GM build and refine their world interactively, and answering questions about the campaign. Prior discovery work explored these separately — [audio pipeline architecture](../discovery/audio_ingest/audio_overview.md) for session processing, and [interactive vs background AI](../discovery/ai_workflows/interactive-vs-background.md) for the execution model split.
+familiar.systems's AI layer serves three distinct use cases: processing raw session data into structured content, helping the GM build and refine their world interactively, and answering questions about the campaign. Prior discovery work explored these separately — [audio pipeline architecture](../discovery/audio_ingest/audio_overview.md) for session processing, and [interactive vs background AI](../discovery/ai_workflows/interactive-vs-background.md) for the execution model split.
 
 This document unifies them. The core insight: **all three workflows converge on the same product primitives**. They differ in how they start (batch vs interactive, system-initiated vs user-initiated) but produce the same outputs (suggestions to the campaign graph) and are consumed through the same interface (the agent window).
 

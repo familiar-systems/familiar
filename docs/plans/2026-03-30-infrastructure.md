@@ -78,13 +78,13 @@ Every infrastructure change is testable locally before it touches production.
 
 ```bash
 # Create a local cluster
-k3d cluster create loreweaver-dev --port "8080:80@loadbalancer" --port "8443:443@loadbalancer"
+k3d cluster create familiar-dev --port "8080:80@loadbalancer" --port "8443:443@loadbalancer"
 
 # Your kubeconfig is automatically configured
 kubectl get nodes  # shows your local k3s node
 
 # Destroy when done
-k3d cluster delete loreweaver-dev
+k3d cluster delete familiar-dev
 ```
 
 **Pulumi stacks** let you target different clusters from the same code:
@@ -201,7 +201,7 @@ cluster_issuer = k8s.apiextensions.CustomResource("letsencrypt-dns",
         "spec": {
             "acme": {
                 "server": "https://acme-v02.api.letsencrypt.org/directory",
-                "email": "mike@loreweaver.no",
+                "email": "mike@familiar.systems",
                 "privateKeySecretRef": {"name": "letsencrypt-dns-key"},
                 "solvers": [{
                     "dns01": {
@@ -233,9 +233,9 @@ wildcard_cert = k8s.apiextensions.CustomResource("preview-wildcard",
             "secretName": "preview-wildcard-tls",
             "issuerRef": {"name": "letsencrypt-dns", "kind": "ClusterIssuer"},
             "dnsNames": [
-                "loreweaver.no",
-                "*.loreweaver.no",
-                "*.preview.loreweaver.no",
+                "familiar.systems",
+                "*.familiar.systems",
+                "*.preview.familiar.systems",
             ],
         },
     },

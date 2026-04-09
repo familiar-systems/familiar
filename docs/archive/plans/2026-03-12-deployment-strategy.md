@@ -1,4 +1,4 @@
-# Plan: Loreweaver Infrastructure — k3s + Pulumi Python
+# Plan: familiar.systems Infrastructure — k3s + Pulumi Python
 
 ## Why This Plan Exists
 
@@ -33,14 +33,14 @@ k3s replaces all of this with declarative manifests in git. Everything is code, 
 
 ┌─────────────────────────────────────────────────────┐
 │  Local dev (your laptop)                             │
-│    k3d cluster create loreweaver-dev                 │
+│    k3d cluster create familiar-systems-dev                 │
 │    pulumi up --stack dev (deploys to local k3d)      │
 │    Iterate until it works                            │
-│    k3d cluster delete loreweaver-dev                 │
+│    k3d cluster delete familiar-systems-dev                 │
 └─────────────────────────────────────────────────────┘
 ```
 
-During Phases 1-2, Coolify serves `loreweaver.no` on a separate server while k3s is built out on `preview.loreweaver.no`. Phase 3 collapses to the single-server target state above.
+During Phases 1-2, Coolify serves `familiar.systems` on a separate server while k3s is built out on `preview.familiar.systems`. Phase 3 collapses to the single-server target state above.
 
 ### Why single-node, not main/worker?
 
@@ -60,13 +60,13 @@ This is the key advantage over Coolify. Every infrastructure change is testable 
 
 ```bash
 # Create a local cluster
-k3d cluster create loreweaver-dev --port "8080:80@loadbalancer" --port "8443:443@loadbalancer"
+k3d cluster create familiar-systems-dev --port "8080:80@loadbalancer" --port "8443:443@loadbalancer"
 
 # Your kubeconfig is automatically configured
 kubectl get nodes  # shows your local k3s node
 
 # Destroy when done
-k3d cluster delete loreweaver-dev
+k3d cluster delete familiar-systems-dev
 ```
 
 **Pulumi stacks** let you target different clusters from the same code:
@@ -178,7 +178,7 @@ cluster_issuer = k8s.apiextensions.CustomResource("letsencrypt-dns",
         "spec": {
             "acme": {
                 "server": "https://acme-v02.api.letsencrypt.org/directory",
-                "email": "mike@loreweaver.no",
+                "email": "mike@familiar.systems",
                 "privateKeySecretRef": {"name": "letsencrypt-dns-key"},
                 "solvers": [{
                     "dns01": {
@@ -210,8 +210,8 @@ wildcard_cert = k8s.apiextensions.CustomResource("preview-wildcard",
             "secretName": "preview-wildcard-tls",
             "issuerRef": {"name": "letsencrypt-dns", "kind": "ClusterIssuer"},
             "dnsNames": [
-                "loreweaver.no",
-                "*.preview.loreweaver.no",
+                "familiar.systems",
+                "*.preview.familiar.systems",
             ],
         },
     },
@@ -276,11 +276,11 @@ site_ingress = k8s.networking.v1.Ingress("site",
     ),
     spec=k8s.networking.v1.IngressSpecArgs(
         tls=[k8s.networking.v1.IngressTLSArgs(
-            hosts=["loreweaver.no"],
+            hosts=["familiar.systems"],
             secret_name="site-tls",
         )],
         rules=[k8s.networking.v1.IngressRuleArgs(
-            host="loreweaver.no",
+            host="familiar.systems",
             http=k8s.networking.v1.HTTPIngressRuleValueArgs(
                 paths=[k8s.networking.v1.HTTPIngressPathArgs(
                     path="/",
@@ -306,7 +306,7 @@ site_ingress = k8s.networking.v1.Ingress("site",
 
 ## PR Preview Environments
 
-Each PR gets its own Kubernetes Namespace with a Deployment, Service, and Ingress. The wildcard cert (`*.preview.loreweaver.no`) covers all preview subdomains automatically.
+Each PR gets its own Kubernetes Namespace with a Deployment, Service, and Ingress. The wildcard cert (`*.preview.familiar.systems`) covers all preview subdomains automatically.
 
 **GHA workflow on PR open/push:**
 
@@ -355,10 +355,10 @@ metadata:
 spec:
   tls:
   - hosts:
-    - pr-${PR_NUMBER}.preview.loreweaver.no
+    - pr-${PR_NUMBER}.preview.familiar.systems
     secretName: preview-wildcard-tls
   rules:
-  - host: pr-${PR_NUMBER}.preview.loreweaver.no
+  - host: pr-${PR_NUMBER}.preview.familiar.systems
     http:
       paths:
       - path: /
@@ -449,7 +449,7 @@ The migration is designed so that each phase is independently valuable and indep
 
 ### Phase 1: Coolify Static Site — Get Something Live (days)
 
-**Goal:** `loreweaver.no` is live and serving the Astro site. No containers you manage, no registry, no webhook. Just Coolify doing the simplest thing it can do.
+**Goal:** `familiar.systems` is live and serving the Astro site. No containers you manage, no registry, no webhook. Just Coolify doing the simplest thing it can do.
 
 **Steps:**
 
@@ -457,16 +457,16 @@ The migration is designed so that each phase is independently valuable and indep
 2. cloud-init installs Coolify ([Coolify install docs](https://coolify.io/docs/get-started/installation))
 3. Access Coolify via SSH tunnel, create admin account
 4. Point Coolify at the Astro site repo, let Coolify build and serve it
-5. DNS: `loreweaver.no` → Floating IP (manual, bunny.net)
+5. DNS: `familiar.systems` → Floating IP (manual, bunny.net)
 6. SSL: Coolify/Traefik handles via HTTP-01 automatically
 
-**Verification:** `curl -I https://loreweaver.no` — 200 OK, valid SSL.
+**Verification:** `curl -I https://familiar.systems` — 200 OK, valid SSL.
 
 **What this buys you:** A live marketing site while you learn k3s. No urgency on the k3s timeline. If k3s takes a month, the site is up the whole time.
 
 ### Phase 2: k3s on Preview Subdomain — Learn and Build (weeks)
 
-**Goal:** k3s cluster running on a separate server (or alongside Coolify if resources allow), serving at `preview.loreweaver.no` and `*.preview.loreweaver.no`. Full PR preview pipeline working.
+**Goal:** k3s cluster running on a separate server (or alongside Coolify if resources allow), serving at `preview.familiar.systems` and `*.preview.familiar.systems`. Full PR preview pipeline working.
 
 **Steps:**
 
@@ -478,29 +478,29 @@ The migration is designed so that each phase is independently valuable and indep
 
     cloud-init installs k3s with `--data-dir /data/k3s` ([k3s Advanced Options](https://docs.k3s.io/advanced)).
 
-3. **DNS:** `preview.loreweaver.no` and `*.preview.loreweaver.no` → k3s server's Floating IP (bunny.net).
+3. **DNS:** `preview.familiar.systems` and `*.preview.familiar.systems` → k3s server's Floating IP (bunny.net).
 
-4. **Deploy to k3s:** `pulumi up --stack prod` in `infra/pulumi-k8s/`. cert-manager issues wildcard cert via DNS-01 + bunny.net. Astro site serves at `preview.loreweaver.no`.
+4. **Deploy to k3s:** `pulumi up --stack prod` in `infra/pulumi-k8s/`. cert-manager issues wildcard cert via DNS-01 + bunny.net. Astro site serves at `preview.familiar.systems`.
 
-5. **PR preview pipeline.** GHA workflow: on PR open, `kubectl apply` creates namespace + deployment + ingress at `pr-{N}.preview.loreweaver.no`. On PR close, `kubectl delete namespace`. Test with real PRs.
+5. **PR preview pipeline.** GHA workflow: on PR open, `kubectl apply` creates namespace + deployment + ingress at `pr-{N}.preview.familiar.systems`. On PR close, `kubectl delete namespace`. Test with real PRs.
 
 **Verification:**
 
-- `curl -I https://preview.loreweaver.no` — 200 OK, valid wildcard SSL
-- Open a PR → preview appears at `pr-{N}.preview.loreweaver.no`
+- `curl -I https://preview.familiar.systems` — 200 OK, valid wildcard SSL
+- Open a PR → preview appears at `pr-{N}.preview.familiar.systems`
 - Close the PR → preview is torn down
 
 **What this buys you:** Full k3s operational experience on a subdomain where failures are invisible to the public. The live site is still on Coolify, untouched.
 
 ### Phase 3: Cutover — Decommission Coolify (hours)
 
-**Goal:** k3s serves `loreweaver.no`. Coolify server decommissioned.
+**Goal:** k3s serves `familiar.systems`. Coolify server decommissioned.
 
 **Steps:**
 
-1. Update the Ingress in `infra/pulumi-k8s/` to serve `loreweaver.no` in addition to (or instead of) `preview.loreweaver.no`. `pulumi up --stack prod`.
-2. Update DNS: `loreweaver.no` → k3s server's Floating IP.
-3. Verify: `curl -I https://loreweaver.no` — 200 OK, cert-manager-issued cert.
+1. Update the Ingress in `infra/pulumi-k8s/` to serve `familiar.systems` in addition to (or instead of) `preview.familiar.systems`. `pulumi up --stack prod`.
+2. Update DNS: `familiar.systems` → k3s server's Floating IP.
+3. Verify: `curl -I https://familiar.systems` — 200 OK, cert-manager-issued cert.
 4. If anything is wrong: revert DNS to Coolify's Floating IP. Instant rollback.
 5. Once confirmed working: decommission Coolify server via Pulumi (`pulumi destroy` on the Coolify stack, or just delete the server in Hetzner console). Release its Floating IP.
 

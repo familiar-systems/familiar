@@ -41,11 +41,11 @@ The architecture is self-hosted SQLite files on a Hetzner Volume. No managed dat
 - **JavaScript binding** (`@tursodatabase/database`) — same usage pattern as better-sqlite3.
 - **Cross-platform** — Linux, macOS, Windows, WebAssembly.
 
-Currently in beta (v0.5.0 as of March 2026, 17.7k GitHub stars, 206 contributors, deterministic simulation testing + Antithesis testing, $1k data corruption bug bounty). The upgrade path is: swap the database driver in `@loreweaver/db`, test against existing `.db` files, deploy. No infrastructure changes.
+Currently in beta (v0.5.0 as of March 2026, 17.7k GitHub stars, 206 contributors, deterministic simulation testing + Antithesis testing, $1k data corruption bug bounty). The upgrade path is: swap the database driver in `@familiar-systems/db`, test against existing `.db` files, deploy. No infrastructure changes.
 
 ### The concurrent write concern is addressed by defense in depth
 
-The previous analysis flagged SQLite's single-writer limitation as a potential problem with multiple containers (API, collab, worker) writing to the same database. On closer examination, concurrent write contention doesn't happen in Loreweaver's architecture — but the database is protected even if that assumption is violated.
+The previous analysis flagged SQLite's single-writer limitation as a potential problem with multiple containers (API, collab, worker) writing to the same database. On closer examination, concurrent write contention doesn't happen in familiar.systems's architecture — but the database is protected even if that assumption is violated.
 
 **Layer 1 — Architectural serialization.** The only write path to campaign data is through Hocuspocus. Human edits and AI agent writes (via DirectConnection) both funnel through the Y.Doc and flush as a single debounced `onStoreDocument` write every few seconds. The worker writes batch results to different campaign databases than the one being actively edited. The API server mostly reads. There is no scenario where two processes contend on the same campaign database file.
 
@@ -55,7 +55,7 @@ The previous analysis flagged SQLite's single-writer limitation as a potential p
 
 SQLite's internal locking is battle-tested across billions of deployments. No application-level mutex (Node.js lock, file lock, etc.) should be implemented — it would be redundant with SQLite's own locking and introduces deadlock/crash-recovery risks that SQLite already handles correctly.
 
-**Required PRAGMAs** (set once per connection in `@loreweaver/db`):
+**Required PRAGMAs** (set once per connection in `@familiar-systems/db`):
 
 ```sql
 PRAGMA journal_mode = WAL;
@@ -66,8 +66,8 @@ PRAGMA busy_timeout = 5000;
 
 The original decision cited pgvector, pg-boss, and the Hocuspocus PostgreSQL adapter as ecosystem advantages. None of these have been integrated:
 
-- **pgvector** → SQLite/libSQL vector search and Turso Database's native vector support are adequate at Loreweaver's scale (~20,000 vectors per large campaign — orders of magnitude below where the maturity gap matters).
-- **pg-boss** → Loreweaver's job volume is tiny (a few SessionIngest jobs per day per GM). A simple polling job table works. pg-boss solves problems (exponential backoff, priority queues, dead letter queues) that won't be needed for a long time.
+- **pgvector** → SQLite/libSQL vector search and Turso Database's native vector support are adequate at familiar.systems's scale (~20,000 vectors per large campaign — orders of magnitude below where the maturity gap matters).
+- **pg-boss** → familiar.systems's job volume is tiny (a few SessionIngest jobs per day per GM). A simple polling job table works. pg-boss solves problems (exponential backoff, priority queues, dead letter queues) that won't be needed for a long time.
 - **Hocuspocus PostgreSQL adapter** → A SQLite storage adapter needs to be written or found regardless of which database is chosen. This is application code, not an infrastructure dependency.
 
 ## The decision
@@ -137,7 +137,7 @@ The list of contributor emails lives in a version-controlled `contributors.sql` 
 
 **Tier 1 (now):** SQLite files on a Hetzner Volume. WAL mode + `busy_timeout` for write safety. Hocuspocus serializes all campaign writes through `onStoreDocument`. No concurrent write contention by design, with SQLite's built-in locking as the safety net. See "defense in depth" above.
 
-**Tier 2 (when Turso Database exits beta):** Swap in Turso Database. Same files, better engine. `BEGIN CONCURRENT` available if needed. No infrastructure changes — only the database driver in `@loreweaver/db` changes.
+**Tier 2 (when Turso Database exits beta):** Swap in Turso Database. Same files, better engine. `BEGIN CONCURRENT` available if needed. No infrastructure changes — only the database driver in `@familiar-systems/db` changes.
 
 Both tiers use the same file-on-disk model. The Hetzner Volume, the PR preview copy logic, and the Pulumi infrastructure don't change between tiers. Note: the [Hocuspocus Architecture ADR](.../archive/discovery/plans/2026-03-14-hocuspocus-architecture.md) makes Object Storage the source of truth with local disk as a working cache (campaign checkout/checkin lifecycle with ~30-second writeback).
 
@@ -174,7 +174,7 @@ All containers mount the data directory. No database server to install, configur
 - [Turso Database (Rust SQLite rewrite)](https://github.com/tursodatabase/turso) — MIT licensed, in-process, SQLite-compatible
 - [Turso Database JavaScript binding](https://www.npmjs.com/package/@tursodatabase/database)
 - [Infrastructure (k3s on Hetzner)](../../plans/2026-03-30-infrastructure.md) — deployment infrastructure this decision integrates with
-- [Hanko](https://www.hanko.io/) — authentication provider for Loreweaver
+- [Hanko](https://www.hanko.io/) — authentication provider for familiar.systems
 - [SQLite WAL mode](https://www.sqlite.org/wal.html) — write-ahead logging for concurrent read/write
 - [Deployment strategy (archived)](../../archive/plans/2026-02-18-deployment-strategy.md) — superseded; see [current infrastructure plan](../../plans/2026-03-30-infrastructure.md)
 - [Storage overview](../archive/discovery/2026-02-14-storage-overview.md) — original storage analysis

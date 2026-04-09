@@ -1,13 +1,13 @@
 {
-  "name": "loreweaver",
+  "name": "familiar-systems",
   "private": true,
   "scripts": {
     "lint": "pnpm -r run lint",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "typecheck": "tsc -b",
-    "build:web": "pnpm --filter @loreweaver/web build",
-    "build:site": "pnpm --filter @loreweaver/site build",
+    "build:web": "pnpm --filter @familiar-systems/web build",
+    "build:site": "pnpm --filter @familiar-systems/site build",
     "test": "vitest run --passWithNoTests"
   },
   "devDependencies": {

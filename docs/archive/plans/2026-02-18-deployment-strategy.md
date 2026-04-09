@@ -1,6 +1,6 @@
 > **Superseded** by [2026-03-09-deployment-strategy.md](./2026-03-09-deployment-strategy.md). This document assumed PostgreSQL and deferred provider/tool decisions that are now made (Coolify on Hetzner, libSQL database-per-campaign). See also [libSQL over PostgreSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md).
 
-# Loreweaver — Deployment Strategy
+# familiar.systems — Deployment Strategy
 
 ## Decision
 
@@ -12,7 +12,7 @@ Provider and tooling choices (Hetzner vs UpCloud, Coolify vs Kamal, etc.) are de
 
 ## Context
 
-Loreweaver is being built by a solo developer. The previous deployment exploration ([EU deployment landscape](../discovery/deployment/eu_deployment_landscape.md)) assumed team-scale workflows: PR preview environments with database branching, automated CD pipelines, and isolated databases per pull request. Those assumptions don't match the current reality.
+familiar.systems is being built by a solo developer. The previous deployment exploration ([EU deployment landscape](../discovery/deployment/eu_deployment_landscape.md)) assumed team-scale workflows: PR preview environments with database branching, automated CD pipelines, and isolated databases per pull request. Those assumptions don't match the current reality.
 
 **What changed:**
 

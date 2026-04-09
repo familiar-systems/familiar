@@ -1,5 +1,5 @@
 {
-  "name": "@loreweaver/types-app",
+  "name": "@familiar-systems/types-app",
   "version": "0.0.0",
   "private": true,
   "main": "./src/index.ts",
@@ -12,7 +12,7 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
-    "@loreweaver/tsconfig": "workspace:*",
+    "@familiar-systems/tsconfig": "workspace:*",
     "typescript": "catalog:"
   }
 }

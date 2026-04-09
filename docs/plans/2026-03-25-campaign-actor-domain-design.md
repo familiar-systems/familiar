@@ -34,7 +34,7 @@
 
 ## Context
 
-Loreweaver is moving from a Node.js/Hocuspocus collaboration layer to a Rust backend built on kameo (actor framework) and Loro (CRDT library), with the loro-dev/protocol crate handling wire-level sync. This document defines the actor topology, trait system, and interaction patterns that replace Hocuspocus's role as the collaboration and persistence layer.
+familiar.systems is moving from a Node.js/Hocuspocus collaboration layer to a Rust backend built on kameo (actor framework) and Loro (CRDT library), with the loro-dev/protocol crate handling wire-level sync. This document defines the actor topology, trait system, and interaction patterns that replace Hocuspocus's role as the collaboration and persistence layer.
 
 The Node.js architecture had specific constraints — single-threaded event loop, shared memory pressure across all documents, Y.Doc lifecycle tightly coupled to Hocuspocus hooks — that drove decisions like "don't load Y.Docs for read-only access" and "two write paths (WebSocket for active, HTTP for inactive)." The Rust actor model eliminates these constraints. Each actor is an independent async task. Loading a document in one actor has zero impact on any other actor. This changes what is simple and what is complex, which changes the right design.
 

@@ -1,5 +1,5 @@
 {
-  "name": "@loreweaver/web",
+  "name": "@familiar-systems/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,14 +11,14 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@loreweaver/editor": "workspace:*",
-    "@loreweaver/types-app": "workspace:*",
-    "@loreweaver/types-campaign": "workspace:*",
+    "@familiar-systems/editor": "workspace:*",
+    "@familiar-systems/types-app": "workspace:*",
+    "@familiar-systems/types-campaign": "workspace:*",
     "react": "^19",
     "react-dom": "^19"
   },
   "devDependencies": {
-    "@loreweaver/tsconfig": "workspace:*",
+    "@familiar-systems/tsconfig": "workspace:*",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4",

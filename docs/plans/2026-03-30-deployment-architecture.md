@@ -78,7 +78,7 @@ The platform owns everything that exists before a campaign is checked out and in
 - **Authentication.** Hanko JWT verification. Token validation happens on both sides of the boundary (the platform verifies tokens for its own routes; the campaign server verifies tokens on WebSocket upgrade), but user identity, profiles, and session management live on the platform.
 - **Campaign CRUD.** Create, list, delete, transfer ownership. Campaign metadata lives in platform.db. The campaign's libSQL data file lives in object storage — the platform never opens it.
 - **The routing table.** Maps campaign ID → campaign server address. Lease-based: each checkout is a lease with a heartbeat. The platform is the single source of truth for "which server owns which campaign."
-- **The discover endpoint.** `GET /api/campaigns/:id/connect` → `{ websocket: "wss://c1.loreweaver.no/ws", api: "https://c1.loreweaver.no/api", token: "..." }`. The SPA calls this to find its campaign server. If the campaign isn't checked out, the platform assigns it to the least-loaded campaign server. The SPA uses the returned `api` URL for all campaign-scoped REST (suggestion review, entity queries, conversation messages) and the `websocket` URL for CRDT sync. Each campaign server has its own routable subdomain (`c1`, `c2`, ...), which scales to multi-server without changing the routing pattern.
+- **The discover endpoint.** `GET /api/campaigns/:id/connect` → `{ websocket: "wss://c1.familiar.systems/ws", api: "https://c1.familiar.systems/api", token: "..." }`. The SPA calls this to find its campaign server. If the campaign isn't checked out, the platform assigns it to the least-loaded campaign server. The SPA uses the returned `api` URL for all campaign-scoped REST (suggestion review, entity queries, conversation messages) and the `websocket` URL for CRDT sync. Each campaign server has its own routable subdomain (`c1`, `c2`, ...), which scales to multi-server without changing the routing pattern.
 - **Campaign server health monitoring.** Receives heartbeats from campaign servers, tracks load, detects failed leases.
 - **Future: community marketplace.** Starter packs, community templates, contributor profiles, content curation. This is cross-campaign, stateless, CDN-cacheable — a completely different traffic pattern from the campaign server's long-lived WebSocket connections.
 
@@ -113,10 +113,10 @@ Job state lives in platform.db — a `jobs` table tracking audio processing work
 
 Each service class gets its own subdomain:
 
-- `loreweaver.no` → CDN (Astro static site)
-- `app.loreweaver.no` → CDN (Vite SPA)
-- `api.loreweaver.no` → platform pod
-- `c1.loreweaver.no` → campaign server pod (in single-server mode, there's one; in multi-server, `c1`, `c2`, `c3`, etc.)
+- `familiar.systems` → CDN (Astro static site)
+- `app.familiar.systems` → CDN (Vite SPA)
+- `api.familiar.systems` → platform pod
+- `c1.familiar.systems` → campaign server pod (in single-server mode, there's one; in multi-server, `c1`, `c2`, `c3`, etc.)
 
 The SPA talks to the platform for authentication, campaign listing, and discover. After discover, the SPA talks directly to the campaign server for everything campaign-scoped (WebSocket sync, REST queries, conversation messages). No path-based routing ambiguity between platform and campaign traffic.
 
@@ -124,8 +124,8 @@ The SPA talks to the platform for authentication, campaign listing, and discover
 
 When a user hits a bookmarked link like `/campaign/123/page/456`:
 
-1. **CDN serves the SPA.** The URL is a client-side route. `app.loreweaver.no` returns `index.html` for all paths. The SPA boots instantly.
-2. **SPA calls discover.** `GET api.loreweaver.no/api/campaigns/123/connect`. The platform checks the routing table.
+1. **CDN serves the SPA.** The URL is a client-side route. `app.familiar.systems` returns `index.html` for all paths. The SPA boots instantly.
+2. **SPA calls discover.** `GET api.familiar.systems/api/campaigns/123/connect`. The platform checks the routing table.
 3. **If the campaign is already checked out:** Platform returns the campaign server's address. SPA connects.
 4. **If the campaign is not checked out (cold start):** Platform assigns it to the least-loaded campaign server and records the assignment. Returns that server's address. The campaign server receives the WebSocket connection, sees it doesn't have campaign 123 locally, acquires the lease from the platform, pulls the libSQL file from object storage (or opens it from local disk if cached), spawns the CampaignSupervisor and actors. The SPA shows a loading skeleton during checkout. When actors are ready, the SPA syncs page 456 via loro-dev/protocol and renders.
 
@@ -244,7 +244,7 @@ Every PR gets a full preview environment that exercises the production deploymen
 - **Real LLM inference** via Nebius. The product is AI-assisted — excluding AI from preview means not testing the product.
 - **Copied campaign data.** Real campaign files, not fixtures.
 
-All deployed in a k8s namespace `preview-pr-${PR_NUMBER}` with subdomain routing: `app-pr-N.preview.loreweaver.no` (SPA), `api-pr-N.preview.loreweaver.no` (platform), `c1-pr-N.preview.loreweaver.no` (campaign server). Hyphens instead of dots because wildcard TLS certs only cover one subdomain level.
+All deployed in a k8s namespace `preview-pr-${PR_NUMBER}` with subdomain routing: `app-pr-N.preview.familiar.systems` (SPA), `api-pr-N.preview.familiar.systems` (platform), `c1-pr-N.preview.familiar.systems` (campaign server). Hyphens instead of dots because wildcard TLS certs only cover one subdomain level.
 
 #### Data setup
 
@@ -259,7 +259,7 @@ The scrubbed platform.db is the access control mechanism. Non-contributors authe
 
 #### Authentication in preview
 
-Hanko's `allowed_redirect_urls` supports wildcard globbing: `https://*.preview.loreweaver.no` covers all PR preview environments. This is configured once alongside the production URL. Contributors log in with their normal credentials — same Hanko instance, same passkeys. The preview SPA hides the registration UI to prevent accidental account creation by non-contributors.
+Hanko's `allowed_redirect_urls` supports wildcard globbing: `https://*.preview.familiar.systems` covers all PR preview environments. This is configured once alongside the production URL. Contributors log in with their normal credentials — same Hanko instance, same passkeys. The preview SPA hides the registration UI to prevent accidental account creation by non-contributors.
 
 #### Lifecycle
 
@@ -388,8 +388,8 @@ spec:
 ---
 # Ingress — subdomain routing matches production topology
 # Note: subdomains use hyphens (app-pr-N) not dots (app.pr-N) because
-# wildcard certs only cover one level. *.preview.loreweaver.no covers
-# app-pr-1.preview.loreweaver.no but NOT app.pr-1.preview.loreweaver.no.
+# wildcard certs only cover one level. *.preview.familiar.systems covers
+# app-pr-1.preview.familiar.systems but NOT app.pr-1.preview.familiar.systems.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -397,12 +397,12 @@ metadata:
 spec:
   tls:
   - hosts:
-    - app-pr-${PR_NUMBER}.preview.loreweaver.no
-    - api-pr-${PR_NUMBER}.preview.loreweaver.no
-    - c1-pr-${PR_NUMBER}.preview.loreweaver.no
+    - app-pr-${PR_NUMBER}.preview.familiar.systems
+    - api-pr-${PR_NUMBER}.preview.familiar.systems
+    - c1-pr-${PR_NUMBER}.preview.familiar.systems
     secretName: preview-wildcard-tls
   rules:
-  - host: api-pr-${PR_NUMBER}.preview.loreweaver.no
+  - host: api-pr-${PR_NUMBER}.preview.familiar.systems
     http:
       paths:
       - path: /
@@ -412,7 +412,7 @@ spec:
             name: platform
             port:
               number: 3000
-  - host: c1-pr-${PR_NUMBER}.preview.loreweaver.no
+  - host: c1-pr-${PR_NUMBER}.preview.familiar.systems
     http:
       paths:
       - path: /
@@ -422,7 +422,7 @@ spec:
             name: campaign
             port:
               number: 3001
-  - host: app-pr-${PR_NUMBER}.preview.loreweaver.no
+  - host: app-pr-${PR_NUMBER}.preview.familiar.systems
     http:
       paths:
       - path: /
@@ -435,7 +435,7 @@ spec:
 EOF
 ```
 
-The wildcard TLS cert (`*.preview.loreweaver.no`) is shared across all preview namespaces, issued once by cert-manager via DNS-01 + bunny.net. See [Infrastructure](./2026-03-30-infrastructure.md) for cert-manager configuration.
+The wildcard TLS cert (`*.preview.familiar.systems`) is shared across all preview namespaces, issued once by cert-manager via DNS-01 + bunny.net. See [Infrastructure](./2026-03-30-infrastructure.md) for cert-manager configuration.
 
 **PR close:**
 

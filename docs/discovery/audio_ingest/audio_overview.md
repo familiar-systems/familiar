@@ -1,4 +1,4 @@
-# Loreweaver — Audio Pipeline Architecture
+# familiar.systems — Audio Pipeline Architecture
 
 ## Context
 

@@ -1,4 +1,4 @@
-# Loreweaver -- Project Structure Design
+# familiar.systems -- Project Structure Design
 
 **Status:** Implemented
 **Date:** 2026-03-26
@@ -9,7 +9,7 @@
 
 ## Context
 
-Loreweaver is a web application with five workloads that have **different deployment lifecycles**:
+familiar.systems is a web application with five workloads that have **different deployment lifecycles**:
 
 1. **Public site** (Astro) -- static HTML for the landing page, blog, and public campaign showcase. No server process. Deploy = upload new files.
 2. **Frontend** (Vite + React SPA) -- the authenticated application. Static files served from a CDN or file server.
@@ -37,7 +37,7 @@ See [Deployment Architecture](./2026-03-30-deployment-architecture.md) for the f
 
 ### Why SPA over SSR
 
-Unchanged from the superseded design. Loreweaver's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. SSR would produce HTML that React immediately takes over -- compute spent on an HTML shell the user never sees without JavaScript. The campaign checkout model makes SSR worse: the server would block the page render waiting for the libSQL file to download from object storage. The SPA loads instantly from CDN and handles the async checkout gracefully. See the [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
+Unchanged from the superseded design. familiar.systems's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. SSR would produce HTML that React immediately takes over -- compute spent on an HTML shell the user never sees without JavaScript. The campaign checkout model makes SSR worse: the server would block the page render waiting for the libSQL file to download from object storage. The SPA loads instantly from CDN and handles the async checkout gracefully. See the [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
 
 ### Decisions
 
@@ -62,7 +62,7 @@ Unchanged from the superseded design. Loreweaver's content is entirely behind au
 ## Repository Structure
 
 ```
-loreweaver/
+familiar/
 ├── apps/
 │   ├── site/              # Astro -- landing page, blog, public campaign pages
 │   ├── web/               # Vite + React SPA (behind auth)
@@ -72,9 +72,9 @@ loreweaver/
 │   ├── app-shared/        # Rust library: IDs, auth, libSQL helpers (platform + campaign)
 │   └── campaign-shared/   # Rust library: Loro wrappers, ToC/Thing schema, CrdtDoc trait, status (campaign only)
 ├── packages/
-│   ├── types-app/         # @loreweaver/types-app -- generated from app-shared via ts-rs
-│   ├── types-campaign/    # @loreweaver/types-campaign -- generated from campaign-shared via ts-rs
-│   └── editor/            # @loreweaver/editor -- TipTap schema + custom extensions
+│   ├── types-app/         # @familiar-systems/types-app -- generated from app-shared via ts-rs
+│   ├── types-campaign/    # @familiar-systems/types-campaign -- generated from campaign-shared via ts-rs
+│   └── editor/            # @familiar-systems/editor -- TipTap schema + custom extensions
 ├── workers/               # Job processors (language-agnostic)
 │   ├── pyproject.toml     # Python ML workers today (faster-whisper, pyannote)
 │   └── src/
@@ -112,17 +112,17 @@ loreweaver/
 
 ## Packages
 
-Three TypeScript packages survive. Everything that was in `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/ai`, and `@loreweaver/queue` in the superseded design is now Rust code in `crates/app-shared/`, `crates/campaign-shared/`, `apps/platform/`, and `apps/campaign/`.
+Three TypeScript packages survive. Everything that was in `@familiar-systems/domain`, `@familiar-systems/db`, `@familiar-systems/auth`, `@familiar-systems/ai`, and `@familiar-systems/queue` in the superseded design is now Rust code in `crates/app-shared/`, `crates/campaign-shared/`, `apps/platform/`, and `apps/campaign/`.
 
 ### Dependency graph
 
 ```mermaid
 graph BT
-    types-app["@loreweaver/types-app<br/><i>generated from app-shared via ts-rs</i>"]
+    types-app["@familiar-systems/types-app<br/><i>generated from app-shared via ts-rs</i>"]
 
-    types-campaign["@loreweaver/types-campaign<br/><i>generated from campaign-shared via ts-rs</i>"] --> types-app
+    types-campaign["@familiar-systems/types-campaign<br/><i>generated from campaign-shared via ts-rs</i>"] --> types-app
 
-    editor["@loreweaver/editor"] --> types-campaign
+    editor["@familiar-systems/editor"] --> types-campaign
 
     site["apps/site<br/><i>Astro (static HTML)</i>"] --> types-app
 
@@ -145,13 +145,13 @@ The Rust crates are the source of truth for domain types. TypeScript declaration
 
 The litmus test for placement: **does the platform server need this type?** If yes, it goes in `app-shared` (and generates to `types-app`). If only the campaign server uses it, it goes in `campaign-shared` (and generates to `types-campaign`).
 
-### `@loreweaver/types-app` -- Platform-level types
+### `@familiar-systems/types-app` -- Platform-level types
 
 Generated from `crates/app-shared/`. Contains types that cross the platform/campaign boundary: IDs shared by both services (CampaignId, UserId), auth primitives, and any future platform-level API types.
 
 ```
 packages/types-app/
-├── package.json           # @loreweaver/types-app, zero runtime dependencies
+├── package.json           # @familiar-systems/types-app, zero runtime dependencies
 ├── tsconfig.json          # include: ["src"]
 └── src/
     ├── index.ts           # Re-exports from generated/
@@ -163,13 +163,13 @@ packages/types-app/
 
 **Depends on:** nothing (generated, zero runtime dependencies)
 
-### `@loreweaver/types-campaign` -- Campaign-scoped types
+### `@familiar-systems/types-campaign` -- Campaign-scoped types
 
 Generated from `crates/campaign-shared/`. Contains campaign-scoped IDs (ThingId, BlockId, SessionId, JournalId, SuggestionId, ConversationId) and document schema types (TocEntry, TocEntryKind, ThingHandle). The platform server never uses these types.
 
 ```
 packages/types-campaign/
-├── package.json           # @loreweaver/types-campaign, depends on types-app
+├── package.json           # @familiar-systems/types-campaign, depends on types-app
 ├── tsconfig.json          # include: ["src"]
 └── src/
     ├── index.ts           # Re-exports from generated/
@@ -187,9 +187,9 @@ packages/types-campaign/
 
 Both packages follow the same structure: `src/index.ts` is the hand-curated public API that re-exports generated types and may add TypeScript-only utilities (type guards, narrowing helpers). The `src/generated/` directory is the output of `cargo test` and lives inside `src/` so that it falls within the tsconfig's compilation scope.
 
-**Depends on:** `@loreweaver/types-app`
+**Depends on:** `@familiar-systems/types-app`
 
-### `@loreweaver/editor` -- The shared contract
+### `@familiar-systems/editor` -- The shared contract
 
 The TipTap/ProseMirror schema defines the document structure that both the browser (via loro-prosemirror) and the campaign server (for LoroDoc reconstruction and the serialization compiler) must agree on. The browser consumes this package directly. The campaign server defines its own parallel block type mappings as Rust enums, kept in sync by convention and integration tests.
 
@@ -208,7 +208,7 @@ packages/editor/src/
 
 The `helpers/` directory from the superseded design (doc-parser, doc-writer) is gone. Those were Yjs-specific utilities for server-side document manipulation. The Loro equivalents live in the campaign server's serialization compiler. See [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md).
 
-**Depends on:** `@loreweaver/types-campaign`, `@tiptap/core`, `loro-prosemirror`
+**Depends on:** `@familiar-systems/types-campaign`, `@tiptap/core`, `loro-prosemirror`
 
 ---
 
@@ -228,7 +228,7 @@ Handles everything before a campaign opens:
 - **Authentication** -- Hanko JWT verification. User identity, profiles, session management.
 - **Campaign CRUD** -- create, list, delete, transfer ownership. Metadata lives in platform.db.
 - **Routing table** -- maps campaign ID to campaign server address. Lease-based: each checkout is a lease with a heartbeat.
-- **Discover endpoint** -- `GET /api/campaigns/:id/connect` returns `{ websocket: "wss://c1.loreweaver.no/ws", api: "https://c1.loreweaver.no/api" }`. The SPA calls this to find its campaign server.
+- **Discover endpoint** -- `GET /api/campaigns/:id/connect` returns `{ websocket: "wss://c1.familiar.systems/ws", api: "https://c1.familiar.systems/api" }`. The SPA calls this to find its campaign server.
 - **Campaign server health monitoring** -- receives heartbeats, tracks load, detects failed leases.
 
 Talks to **platform.db**: users, campaigns, subscriptions, the routing table. Stateless HTTP; traffic is bursty, short-lived requests.
@@ -312,7 +312,7 @@ apps/site/
 
 Static HTML generated at build time. No server process. Blog content uses Astro's typed content collections. Public campaign pages are static snapshots: campaign data is fetched from the platform's HTTP API at build time and rendered as HTML.
 
-**Depends on:** `@loreweaver/types-app`, `astro`
+**Depends on:** `@familiar-systems/types-app`, `astro`
 
 ### `apps/web` -- Vite + React SPA
 
@@ -348,7 +348,7 @@ Static files. In development, `vite dev` serves files with HMR and proxies platf
 
 `lib/api.ts` is a typed fetch client generated from the OpenAPI specs (via utoipa). This replaces the tRPC client from the superseded design. The SPA uses it for platform calls; campaign-scoped REST uses the URL returned by the discover endpoint. `lib/collab.ts` configures the loro-prosemirror binding for CRDT sync with the campaign server.
 
-**Depends on:** `@loreweaver/types-app`, `@loreweaver/types-campaign`, `@loreweaver/editor`, `react`, `loro-prosemirror`, `vite`
+**Depends on:** `@familiar-systems/types-app`, `@familiar-systems/types-campaign`, `@familiar-systems/editor`, `react`, `loro-prosemirror`, `vite`
 
 ---
 
@@ -361,7 +361,7 @@ Type safety across the Rust-TypeScript boundary is maintained through two genera
 1. Rust structs in `crates/app-shared/` and `crates/campaign-shared/` (and service crates) derive `#[derive(TS)]` via the ts-rs crate, with a per-type `#[ts(export_to = "...")]` attribute
 2. `cargo test` emits `.ts` declarations to `packages/types-app/src/generated/` and `packages/types-campaign/src/generated/` respectively
 3. Each package's `src/index.ts` re-exports its generated types
-4. `apps/web`, `apps/site`, and `@loreweaver/editor` import from `@loreweaver/types-app` and/or `@loreweaver/types-campaign`
+4. `apps/web`, `apps/site`, and `@familiar-systems/editor` import from `@familiar-systems/types-app` and/or `@familiar-systems/types-campaign`
 
 ### HTTP API (utoipa + OpenAPI)
 
@@ -398,23 +398,23 @@ This sets the base to `packages/`. Each Rust type's `#[ts(export_to = "...")]` a
      ┌─────────────────┼──────────────────┐
      │                 │                  │
      ▼                 ▼                  ▼
-┌──────────┐   ┌────────────┐   ┌─────────────────┐
-│loreweaver│   │    app.    │   │      api.       │
-│   .no    │   │loreweaver  │   │   loreweaver    │
-│ (site)   │   │   .no      │   │      .no        │
-│ static   │   │  (SPA)     │   │   (platform)    │
-└──────────┘   │  static    │   │    :3000        │
-               └────────────┘   └────────┬────────┘
-                                         │ discover
-                                         ▼
-                                ┌─────────────────┐
-                                │      c1.        │
-                                │   loreweaver    │
-                                │      .no        │
-                                │ (campaign srv)  │
-                                │    :3001        │
-                                │  HTTP + WS      │
-                                └────────┬────────┘
+┌──────────────┐ ┌──────────────┐ ┌─────────────────┐
+│   familiar   │ │     app.     │ │      api.       │
+│   .systems   │ │   familiar   │ │    familiar     │
+│   (site)     │ │   .systems   │ │    .systems     │
+│   static     │ │    (SPA)     │ │   (platform)    │
+└──────────────┘ │    static    │ │    :3000        │
+                 └──────────────┘ └────────┬────────┘
+                                           │ discover
+                                           ▼
+                                  ┌─────────────────┐
+                                  │      c1.        │
+                                  │    familiar     │
+                                  │    .systems     │
+                                  │ (campaign srv)  │
+                                  │    :3001        │
+                                  │  HTTP + WS      │
+                                  └────────┬────────┘
                                          │
                                   ┌──────┴──────┐
                                   │ libSQL files │
@@ -424,10 +424,10 @@ This sets the base to `packages/`. Each Rust type's `#[ts(export_to = "...")]` a
 
 Traefik (via k3s Ingress) routes by subdomain:
 
-- `loreweaver.no` -> apps/site static files
-- `app.loreweaver.no` -> apps/web static files (SPA, all paths serve `index.html`)
-- `api.loreweaver.no` -> platform pod (port 3000, HTTP)
-- `c1.loreweaver.no` -> campaign server pod (port 3001, HTTP + WebSocket)
+- `familiar.systems` -> apps/site static files
+- `app.familiar.systems` -> apps/web static files (SPA, all paths serve `index.html`)
+- `api.familiar.systems` -> platform pod (port 3000, HTTP)
+- `c1.familiar.systems` -> campaign server pod (port 3001, HTTP + WebSocket)
 
 The SPA talks to the platform for login, campaign listing, and discover. The discover endpoint returns a campaign server URL. After discover, the SPA talks directly to the campaign server for all campaign-scoped work (WebSocket sync, REST queries, AI conversations). The platform is no longer in the request path.
 
@@ -484,13 +484,13 @@ Maximum strictness, no exceptions. TypeScript types are erased at runtime -- Zod
 
 **All backend logic is Rust.** Two binaries (platform and campaign server) and two shared crates, all in one Cargo workspace. Actor isolation handles concurrency within the campaign server; process isolation handles deployment lifecycles between services. There is no TypeScript server code. The crate split mirrors the deployment boundary: `app-shared` holds types both servers need; `campaign-shared` holds campaign-only concerns (Loro, ToC, status). The litmus test: "does the platform server need this type?" If yes, `app-shared`. If no, `campaign-shared`.
 
-**Three TypeScript packages, no more.** `@loreweaver/types-app` (platform-level types, generated from `app-shared`), `@loreweaver/types-campaign` (campaign-scoped types, generated from `campaign-shared`), and `@loreweaver/editor` (TipTap schema). If you're writing domain logic, database queries, or AI orchestration, it's Rust in `crates/` or `apps/`. The superseded design's `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/ai`, and `@loreweaver/queue` are gone.
+**Three TypeScript packages, no more.** `@familiar-systems/types-app` (platform-level types, generated from `app-shared`), `@familiar-systems/types-campaign` (campaign-scoped types, generated from `campaign-shared`), and `@familiar-systems/editor` (TipTap schema). If you're writing domain logic, database queries, or AI orchestration, it's Rust in `crates/` or `apps/`. The superseded design's `@familiar-systems/db`, `@familiar-systems/auth`, `@familiar-systems/ai`, and `@familiar-systems/queue` are gone.
 
 **Dependency direction: web -> editor -> types-campaign -> types-app.** The frontend depends on all three packages. The editor depends on `types-campaign`. `types-campaign` depends on `types-app`. `apps/site` depends only on `types-app`. The dependency graph enforces the client/server boundary: `apps/web` structurally cannot import server-side code because there is no server-side TypeScript to import.
 
 **Type safety across the language boundary.** Rust is the source of truth for domain types. ts-rs generates TypeScript declarations. utoipa generates OpenAPI specs from Axum routes. The frontend consumes both. CI verifies generated types are fresh.
 
-**The editor package is the bridge.** The TipTap/ProseMirror schema in `@loreweaver/editor` defines the document structure that both the browser (via loro-prosemirror) and the campaign server (for LoroDoc reconstruction and the serialization compiler) must agree on. The browser consumes the TypeScript schema directly. The campaign server defines parallel block type mappings, kept in sync by convention and integration tests.
+**The editor package is the bridge.** The TipTap/ProseMirror schema in `@familiar-systems/editor` defines the document structure that both the browser (via loro-prosemirror) and the campaign server (for LoroDoc reconstruction and the serialization compiler) must agree on. The browser consumes the TypeScript schema directly. The campaign server defines parallel block type mappings, kept in sync by convention and integration tests.
 
 **Maximum TypeScript strictness.** `strict: true`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, lint ban on `any`, Zod at every system boundary. pnpm's strict dependency resolution prevents phantom imports. These settings are not weakened.
 
