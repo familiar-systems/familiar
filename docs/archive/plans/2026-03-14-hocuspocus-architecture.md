@@ -1,6 +1,6 @@
 # ADR: Document-Centric Campaign Architecture
 
-**Status:** Superseded by [Campaign Collaboration Architecture](../../plans/2026-03-25-campaign-collaboration-architecture.md) -- all eight architectural hypotheses validated ([experiment repo](https://github.com/loreweaver-no/experiment-hocuspocus-agent-collab), [hypotheses](https://github.com/loreweaver-no/experiment-hocuspocus-agent-collab/blob/main/hocuspocus-hypotheses.md)), then implementation technology replaced (Yjs/Hocuspocus/Node.js to Loro/kameo/Rust)
+**Status:** Superseded by [Campaign Collaboration Architecture](../../plans/2026-03-25-campaign-collaboration-architecture.md) -- all eight architectural hypotheses validated ([experiment repo](https://github.com/familiar-systems/experiment-hocuspocus-agent-collab), [hypotheses](https://github.com/familiar-systems/experiment-hocuspocus-agent-collab/blob/main/hocuspocus-hypotheses.md)), then implementation technology replaced (Yjs/Hocuspocus/Node.js to Loro/kameo/Rust)
 **Date:** 2026-03-14
 **Supersedes:** None (new decision area)
 **Related decisions:** [SPA project structure](./2026-02-14-project-structure-spa-design.md), [AI workflow unification](../../plans/2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](../../plans/2026-02-20-templates-as-prototype-pages.md)
@@ -9,7 +9,7 @@
 
 ## Context
 
-Loreweaver is a SaaS platform for tabletop RPG groups. Its core workflow: multi-hour session audio recordings go in, and out come transcripts, speaker-attributed journals, entity graphs, and a persistent campaign wiki. The product is built around a rich text editor (TipTap on ProseMirror) where GMs and players view and edit campaign content, and where an AI agent proposes changes based on session processing and interactive conversations.
+familiar.systems is a SaaS platform for tabletop RPG groups. Its core workflow: multi-hour session audio recordings go in, and out come transcripts, speaker-attributed journals, entity graphs, and a persistent campaign wiki. The product is built around a rich text editor (TipTap on ProseMirror) where GMs and players view and edit campaign content, and where an AI agent proposes changes based on session processing and interactive conversations.
 
 Three actors interact with page content:
 
@@ -58,7 +58,7 @@ The SPA loads from Bunny CDN with zero campaign awareness. On login, the client 
 
 ### Hocuspocus as the central authority for page state
 
-Every page in Loreweaver (session journals, Thing pages, campaign wiki entries) is a Y.Doc managed by Hocuspocus. The Y.Doc is the authoritative representation of page content. All reads and writes to page content flow through or are derived from Yjs CRDTs.
+Every page in familiar.systems (session journals, Thing pages, campaign wiki entries) is a Y.Doc managed by Hocuspocus. The Y.Doc is the authoritative representation of page content. All reads and writes to page content flow through or are derived from Yjs CRDTs.
 
 Hocuspocus is a long-running Node.js process that holds active documents in an in-memory map. Documents are loaded from the local libsql file on first access and evicted after all clients disconnect. Persistence happens on a debounced schedule (every 2-5 seconds of quiet, with a hard maximum interval).
 
@@ -217,7 +217,7 @@ Eviction is natural: no connected users + idle timeout → flush to object stora
 
 ## Key Discoveries from Hypothesis Validation
 
-These findings were not documented anywhere in the Hocuspocus, Yjs, or TipTap ecosystems at the time of testing. They were discovered empirically during the [experiment](https://github.com/loreweaver-no/experiment-hocuspocus-agent-collab).
+These findings were not documented anywhere in the Hocuspocus, Yjs, or TipTap ecosystems at the time of testing. They were discovered empirically during the [experiment](https://github.com/familiar-systems/experiment-hocuspocus-agent-collab).
 
 1. **Yjs `clientID` constructor option is ignored in v13.6.** `new Y.Doc({ clientID: 1 })` assigns a random clientID anyway. Don't rely on deterministic client IDs.
 2. **Yjs deletions don't change state vectors.** `Y.Map.delete()` marks existing Items as tombstones without creating new Items. CAS misses pure-delete edits.
@@ -292,10 +292,10 @@ These findings were not documented anywhere in the Hocuspocus, Yjs, or TipTap ec
 
 ### Validation
 
-- [Hypothesis experiment repo](https://github.com/loreweaver-no/experiment-hocuspocus-agent-collab) — 42 tests, all 8 hypotheses confirmed
-- [Hypothesis testing plan](https://github.com/loreweaver-no/experiment-hocuspocus-agent-collab/blob/main/hocuspocus-hypotheses.md) -- claims, references, spikes, and test harness design
+- [Hypothesis experiment repo](https://github.com/familiar-systems/experiment-hocuspocus-agent-collab) — 42 tests, all 8 hypotheses confirmed
+- [Hypothesis testing plan](https://github.com/familiar-systems/experiment-hocuspocus-agent-collab/blob/main/hocuspocus-hypotheses.md) -- claims, references, spikes, and test harness design
 
-### Loreweaver design documents
+### familiar.systems design documents
 
 - [AI workflow unification](../../plans/2026-02-14-ai-workflow-unification-design.md)
 - [SPA project structure](./2026-02-14-project-structure-spa-design.md)

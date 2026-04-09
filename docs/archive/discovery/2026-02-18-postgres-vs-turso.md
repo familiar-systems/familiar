@@ -23,13 +23,13 @@ This document re-evaluates PostgreSQL vs Turso in light of these decisions.
 
 The SPA project structure specified **pg-boss** (PostgreSQL-backed job queue) and **pgvector** (AI embeddings). These were treated as hard dependencies on PostgreSQL. On re-examination:
 
-**pg-boss is a convenience, not a necessity.** Loreweaver's job volume is tiny — a few SessionIngest jobs per day per GM. A simple polling job table (`SELECT ... WHERE status = 'pending' LIMIT 1`) works at this scale. pg-boss solves problems (exponential backoff, priority queues, dead letter queues) that Loreweaver won't need for a long time.
+**pg-boss is a convenience, not a necessity.** familiar.systems's job volume is tiny — a few SessionIngest jobs per day per GM. A simple polling job table (`SELECT ... WHERE status = 'pending' LIMIT 1`) works at this scale. pg-boss solves problems (exponential backoff, priority queues, dead letter queues) that familiar.systems won't need for a long time.
 
-**pgvector vs libSQL vector search is not a differentiator at Loreweaver's scale.** A large campaign has ~20,000 blocks — that's 20,000 vectors. pgvector handles tens of millions; libSQL handles this trivially. Both offer SQL-native interfaces. The maturity gap (pgvector is more battle-tested, libSQL vector search is newer) doesn't matter when the dataset is 3-4 orders of magnitude below where performance differences emerge.
+**pgvector vs libSQL vector search is not a differentiator at familiar.systems's scale.** A large campaign has ~20,000 blocks — that's 20,000 vectors. pgvector handles tens of millions; libSQL handles this trivially. Both offer SQL-native interfaces. The maturity gap (pgvector is more battle-tested, libSQL vector search is newer) doesn't matter when the dataset is 3-4 orders of magnitude below where performance differences emerge.
 
 ### New concerns that emerged
 
-**Testing with realistic data is expensive.** Loreweaver's test data requires actual audio transcription and AI processing ($2+ in tokens per session, plus wall clock time). You can't faker.js a realistic campaign — the entity mentions, relationship graph, suggestion history, and journal narrative are all deeply interconnected. Once you have a realistic seed database, the ability to branch it instantly (rather than rebuilding it) saves real time and money.
+**Testing with realistic data is expensive.** familiar.systems's test data requires actual audio transcription and AI processing ($2+ in tokens per session, plus wall clock time). You can't faker.js a realistic campaign — the entity mentions, relationship graph, suggestion history, and journal narrative are all deeply interconnected. Once you have a realistic seed database, the ability to branch it instantly (rather than rebuilding it) saves real time and money.
 
 **Campaign isolation is a security-critical concern.** Every query in a multi-tenant PostgreSQL database must include `campaign_id`. Forget it once — in a query, a join, an RLS policy — and you have a cross-campaign data leak. This is one of the most common security bugs in SaaS applications. It's enforced by discipline, not structure.
 
@@ -155,9 +155,9 @@ The platform database is standard — one database, no per-campaign isolation ne
 | **Campaign isolation**     | Convention (`campaign_id` + RLS). Discipline-dependent.           | Structural (database-per-campaign). Cannot leak.                                          |
 | **Testing**                | Docker + testcontainers (~2-3s startup). CI needs service config. | `:memory:` — instant, in-process, zero config.                                            |
 | **Database branching**     | Neon (external service, free tier) or dump/restore.               | Native copy-on-write. Instant.                                                            |
-| **AI embeddings**          | pgvector — mature, battle-tested. Overkill at Loreweaver's scale. | libSQL vector search — adequate at Loreweaver's scale. Newer.                             |
+| **AI embeddings**          | pgvector — mature, battle-tested. Overkill at familiar.systems's scale. | libSQL vector search — adequate at familiar.systems's scale. Newer.                             |
 | **Full-text search**       | tsvector/tsquery — powerful, built-in.                            | FTS5 — powerful, built-in. Roughly equivalent.                                            |
-| **Job queue**              | pg-boss — turnkey, PostgreSQL-native.                             | Simple polling table. Fine at Loreweaver's scale.                                         |
+| **Job queue**              | pg-boss — turnkey, PostgreSQL-native.                             | Simple polling table. Fine at familiar.systems's scale.                                         |
 | **Cross-campaign queries** | Trivial: `WHERE user_id = ?`                                      | ATTACH (read-only) or application-level aggregation.                                      |
 | **Schema migrations**      | Run against one database. Standard.                               | Propagate across N databases. Turso automates this; self-hosted needs scripting.          |
 | **Connection management**  | Single connection pool. Standard.                                 | Connection-per-campaign. HTTP client mitigates pooling concerns.                          |
@@ -168,7 +168,7 @@ The platform database is standard — one database, no per-campaign isolation ne
 
 ---
 
-## What Loreweaver's Data Actually Looks Like in Each Model
+## What familiar.systems's Data Actually Looks Like in Each Model
 
 ### A single campaign (PostgreSQL)
 
@@ -355,7 +355,7 @@ No Turso account needed. No network. The application code is identical — `crea
 
 ### The problem branching solves
 
-Loreweaver's test data is expensive to create — audio transcription costs money, AI entity extraction costs tokens ($2+ per session), and building up a realistic campaign graph takes many processed sessions. Once you have a database with realistic data, the ability to branch it instantly (rather than rebuilding it) saves real time and money.
+familiar.systems's test data is expensive to create — audio transcription costs money, AI entity extraction costs tokens ($2+ per session), and building up a realistic campaign graph takes many processed sessions. Once you have a database with realistic data, the ability to branch it instantly (rather than rebuilding it) saves real time and money.
 
 ### PostgreSQL + Neon
 

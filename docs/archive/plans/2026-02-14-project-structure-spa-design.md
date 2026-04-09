@@ -1,10 +1,10 @@
-# Loreweaver — Project Structure Design (SPA)
+# familiar.systems — Project Structure Design (SPA)
 
 > **Superseded** by the [Project Structure Design](../plans/2026-03-26-project-structure-design.md). This document described a TypeScript full-stack architecture with Hocuspocus, tRPC, and 5 deployment targets. The architecture has shifted to Rust (Axum + kameo + Loro) for the server, eliminating the separate API, collaboration, and TypeScript worker processes.
 
 ## Context
 
-Loreweaver is a web application with five workloads that have **different deployment lifecycles**:
+familiar.systems is a web application with five workloads that have **different deployment lifecycles**:
 
 1. **Public site** (Astro) — static HTML for the landing page, blog, and public campaign showcase. No server process. Deploy = upload new files. Content changes deploy independently of the app.
 2. **Frontend** (Vite + React SPA) — the authenticated application. Static files served from a CDN or file server. No server process. Deploy = upload new files. Served under `/app/`.
@@ -16,7 +16,7 @@ The API layer **enqueues** work; the worker **dequeues and processes** independe
 
 ### Why SPA over SSR?
 
-Loreweaver's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. Server-side rendering would produce HTML that React immediately takes over — compute spent on an HTML shell the user never sees without JavaScript. The SPA approach eliminates the server/client component boundary (no `'use client'` directives, no hydration bugs) and produces a cleaner dependency graph where the frontend structurally cannot import server-side code. See [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
+familiar.systems's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. Server-side rendering would produce HTML that React immediately takes over — compute spent on an HTML shell the user never sees without JavaScript. The SPA approach eliminates the server/client component boundary (no `'use client'` directives, no hydration bugs) and produces a cleaner dependency graph where the frontend structurally cannot import server-side code. See [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
 
 ### Decisions made
 
@@ -39,7 +39,7 @@ Loreweaver's content is entirely behind authentication (no SEO), and the centerp
 ## Repository Structure
 
 ```
-loreweaver/
+familiar/
 ├── apps/
 │   ├── site/             # Astro — landing page, blog, public campaign pages
 │   ├── web/              # Vite + React SPA (static files, behind auth, served under /app/)
@@ -84,15 +84,15 @@ The package layer is shared across both the SPA and [SSR design](../archive/plan
 
 ```mermaid
 graph BT
-    domain["@loreweaver/domain<br/><i>pure types, zero deps</i>"]
+    domain["@familiar-systems/domain<br/><i>pure types, zero deps</i>"]
 
-    db["@loreweaver/db"] --> domain
-    editor["@loreweaver/editor"] --> domain
-    ai["@loreweaver/ai"] --> domain
+    db["@familiar-systems/db"] --> domain
+    editor["@familiar-systems/editor"] --> domain
+    ai["@familiar-systems/ai"] --> domain
     ai --> db
-    queue["@loreweaver/queue"] --> domain
+    queue["@familiar-systems/queue"] --> domain
     queue --> db
-    auth["@loreweaver/auth"] --> domain
+    auth["@familiar-systems/auth"] --> domain
     auth --> db
 
     site["apps/site<br/><i>Astro (static HTML)</i>"] --> domain
@@ -134,9 +134,9 @@ Arrows point from consumer to dependency ("depends on"). Green = `domain` (found
 
 **Key structural difference from the SSR design:** `apps/web` depends on only 2 packages (`domain` and `editor`). It has no compile-time access to `db`, `auth`, `ai`, or `queue`. The client/server boundary is enforced by the dependency graph, not by convention. `apps/site` is even more minimal — it depends on `domain` only, for shared types used in public campaign pages.
 
-**AI layer split:** `apps/api` and `apps/worker` both depend on `@loreweaver/ai`, but for different purposes. `apps/api` uses it for interactive AI — streaming P&R and Q&A conversations through the agent window. `apps/worker` uses it for batch AI — the SessionIngest pipeline that processes audio and notes into journal drafts and entity proposals. Both use the shared `CampaignContext` interface for context retrieval with status filtering. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md) for the full design.
+**AI layer split:** `apps/api` and `apps/worker` both depend on `@familiar-systems/ai`, but for different purposes. `apps/api` uses it for interactive AI — streaming P&R and Q&A conversations through the agent window. `apps/worker` uses it for batch AI — the SessionIngest pipeline that processes audio and notes into journal drafts and entity proposals. Both use the shared `CampaignContext` interface for context retrieval with status filtering. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md) for the full design.
 
-### `@loreweaver/domain` — Pure types, zero dependencies
+### `@familiar-systems/domain` — Pure types, zero dependencies
 
 ```
 packages/domain/src/
@@ -157,7 +157,7 @@ The `suggestion.ts` module defines the `Suggestion` type as a discriminated unio
 
 **Depends on:** nothing
 
-### `@loreweaver/db` — Schema, migrations, queries
+### `@familiar-systems/db` — Schema, migrations, queries
 
 ```
 packages/db/src/
@@ -182,11 +182,11 @@ packages/db/src/
 
 Drizzle ORM schema definitions and typed query helpers. Migration files (generated SQL) live in a `drizzle/` directory at the package root.
 
-**Depends on:** `@loreweaver/domain`, `drizzle-orm`, `@libsql/client`
+**Depends on:** `@familiar-systems/domain`, `drizzle-orm`, `@libsql/client`
 
 The database layer uses a two-tier architecture: one platform database (`platform.db`) for users, campaigns, memberships, and the job queue, plus a separate database per campaign (`campaigns/*.db`) for all graph content. The application routes to the correct campaign database based on the request context. See [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md) for the full architecture.
 
-### `@loreweaver/auth` — Authentication + authorization
+### `@familiar-systems/auth` — Authentication + authorization
 
 ```
 packages/auth/src/
@@ -198,9 +198,9 @@ packages/auth/src/
 
 Shared across `apps/api` (HTTP request auth) and `apps/collab` (WebSocket connection auth). The specific auth library choice is an implementation detail encapsulated here.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`
 
-### `@loreweaver/editor` — The shared contract
+### `@familiar-systems/editor` — The shared contract
 
 ```
 packages/editor/src/
@@ -222,9 +222,9 @@ The most architecturally important package. Defines the TipTap/ProseMirror schem
 
 The `helpers/` directory enables server-side document manipulation: parsing documents for mention extraction, and writing suggestion marks back into documents from the AI pipeline — all without a browser.
 
-**Depends on:** `@loreweaver/domain`, `@tiptap/core`, `yjs`
+**Depends on:** `@familiar-systems/domain`, `@tiptap/core`, `yjs`
 
-### `@loreweaver/ai` — LLM orchestration
+### `@familiar-systems/ai` — LLM orchestration
 
 ```
 packages/ai/src/
@@ -254,9 +254,9 @@ The `tools/` directory defines the agent's capabilities as tool functions. Read 
 
 The `pipelines/` directory contains batch processing stages for SessionIngest — long-running jobs that run on `apps/worker`.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`
 
-### `@loreweaver/queue` — Job definitions + runner
+### `@familiar-systems/queue` — Job definitions + runner
 
 ```
 packages/queue/src/
@@ -268,7 +268,7 @@ packages/queue/src/
 
 Defines typed job payloads and provides enqueue/dequeue functions backed by a polling job table in platform.db. The API server imports `producer` to enqueue; the worker imports `consumer` to dequeue and dispatch.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`
 
 ---
 
@@ -307,7 +307,7 @@ Public campaign pages are static snapshots: campaign data is fetched from `apps/
 
 Astro supports React "islands" — interactive components that hydrate on demand — enabling shared components with `apps/web` if needed, without shipping a full React bundle to every visitor.
 
-**Depends on:** `@loreweaver/domain`, `astro`
+**Depends on:** `@familiar-systems/domain`, `astro`
 
 ### `apps/web` — Vite + React SPA
 
@@ -348,7 +348,7 @@ Routing is explicit via React Router or TanStack Router. The `routes/` directory
 
 **No `'use client'` directives.** Every component is client-side. No server/client boundary to manage.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/editor`, `react`, `@hocuspocus/provider`, `vite`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/editor`, `react`, `@hocuspocus/provider`, `vite`
 
 ### `apps/api` — Hono + tRPC Server
 
@@ -367,7 +367,7 @@ apps/api/src/
 │   ├── suggestion.ts                # Suggestion CRUD (accept, reject, dismiss, list pending)
 │   └── conversation.ts             # AgentConversation CRUD (create, list, get messages)
 ├── middleware/
-│   ├── auth.ts                      # Token verification via @loreweaver/auth
+│   ├── auth.ts                      # Token verification via @familiar-systems/auth
 │   └── cors.ts                      # CORS headers (dev only; production uses reverse proxy)
 └── config.ts                        # Server configuration (port, allowed origins)
 ```
@@ -380,7 +380,7 @@ The API server handles three categories of work:
 
 Hono is a lightweight HTTP framework that runs on Node.js, Deno, Bun, and Cloudflare Workers. The tRPC adapter plugs into Hono as middleware. The entire server is thin wiring — all logic lives in the packages.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/ai`, `@loreweaver/queue`, `hono`, `@trpc/server`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`, `@familiar-systems/auth`, `@familiar-systems/ai`, `@familiar-systems/queue`, `hono`, `@trpc/server`
 
 ### `apps/collab` — Hocuspocus (WebSocket collaboration)
 
@@ -388,7 +388,7 @@ Hono is a lightweight HTTP framework that runs on Node.js, Deno, Bun, and Cloudf
 apps/collab/src/
 ├── index.ts              # Server entrypoint
 ├── hooks/
-│   ├── auth.ts           # onAuthenticate — verify token via @loreweaver/auth
+│   ├── auth.ts           # onAuthenticate — verify token via @familiar-systems/auth
 │   ├── load.ts           # onLoadDocument — load Y.Doc from DB
 │   ├── store.ts          # onStoreDocument — persist Y.Doc to DB
 │   └── change.ts         # onChange — validation, mention extraction trigger
@@ -397,7 +397,7 @@ apps/collab/src/
 
 Originally a Hocuspocus server with lifecycle hooks (see archived [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md)). Now superseded by the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md): a Rust binary using Axum + kameo actors + Loro CRDTs, with actor-per-document lifecycle replacing Hocuspocus hooks. Campaign-pinning eliminates the need for Redis scaling.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/editor`, `@hocuspocus/server`, `yjs`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`, `@familiar-systems/auth`, `@familiar-systems/editor`, `@hocuspocus/server`, `yjs`
 
 ### `apps/worker` — AI pipeline runner
 
@@ -412,9 +412,9 @@ apps/worker/src/
 └── config.ts                     # Worker config (concurrency, poll interval)
 ```
 
-A polling-based job consumer process. Each handler maps to a job type from `@loreweaver/queue`, calls the corresponding pipeline from `@loreweaver/ai`, and writes results back through `@loreweaver/db` and `@loreweaver/editor`.
+A polling-based job consumer process. Each handler maps to a job type from `@familiar-systems/queue`, calls the corresponding pipeline from `@familiar-systems/ai`, and writes results back through `@familiar-systems/db` and `@familiar-systems/editor`.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/ai`, `@loreweaver/queue`, `@loreweaver/editor`
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`, `@familiar-systems/ai`, `@familiar-systems/queue`, `@familiar-systems/editor`
 
 ---
 
@@ -537,9 +537,9 @@ In development, `tsx` runs server-side TypeScript files directly (no compile ste
 
 **Packages = shared logic, apps = deployment targets.** If you're writing domain logic, database queries, or AI prompts in an app, it belongs in a package.
 
-**Dependency direction flows toward `domain`.** Every package can import `@loreweaver/domain`. No package imports from an app. If two packages need to share something, it moves to a package they both depend on (usually `domain`).
+**Dependency direction flows toward `domain`.** Every package can import `@familiar-systems/domain`. No package imports from an app. If two packages need to share something, it moves to a package they both depend on (usually `domain`).
 
-**Each package's `src/index.ts` is its public API.** Other packages import from `@loreweaver/db`, not from `@loreweaver/db/src/schema/nodes`. Anything not re-exported from `index.ts` is a private implementation detail.
+**Each package's `src/index.ts` is its public API.** Other packages import from `@familiar-systems/db`, not from `@familiar-systems/db/src/schema/nodes`. Anything not re-exported from `index.ts` is a private implementation detail.
 
 **The dependency graph enforces the client/server boundary.** `apps/web` depends on `domain` and `editor` — nothing else. It cannot import database schemas, auth internals, or queue logic. This is not a convention; it is a structural guarantee. Server-side concerns are unreachable from the frontend at compile time.
 

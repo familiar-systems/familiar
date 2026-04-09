@@ -1,8 +1,8 @@
-# Loreweaver — Storage Architecture Analysis
+# familiar.systems — Storage Architecture Analysis
 
 ## Context
 
-This document analyzes storage options for Loreweaver before any code is written. The goal is to choose a storage strategy that fits the product's data model (a property graph with rich content blocks) and its deployment model (server-hosted web app).
+This document analyzes storage options for familiar.systems before any code is written. The goal is to choose a storage strategy that fits the product's data model (a property graph with rich content blocks) and its deployment model (server-hosted web app).
 
 **Decision:** Server-hosted web app. Language TBD.
 
@@ -211,7 +211,7 @@ Use a relational database as the durable store (same schema as A or B), but main
 
 An architectural layer (not a database choice) that stores every change as an immutable event and materializes current state from the event log. Layers on top of any storage option.
 
-**Why it's tempting for Loreweaver:**
+**Why it's tempting for familiar.systems:**
 
 - Retconning maps naturally to events: a retcon is an event that marks previous events as superseded
 - "Revealed in Session 14" is just an event with a timestamp
@@ -235,7 +235,7 @@ An architectural layer (not a database choice) that stores every change as an im
 
 [Turso](https://turso.tech) is a hosted platform built on [libSQL](https://github.com/tursodatabase/libsql) (a fork of SQLite). The key idea: instead of one database with a `campaign_id` column on every table, **each campaign gets its own database**.
 
-**Why this is compelling for Loreweaver:**
+**Why this is compelling for familiar.systems:**
 
 - **Natural tenant isolation**: each campaign is its own database -- no cross-campaign data leaks, no `WHERE campaign_id = ?` on every query
 - **Automatic schema propagation**: define the schema on a parent; [Turso pushes it to all child databases](https://turso.tech/blog/database-per-tenant-architectures-get-production-friendly-improvements)

@@ -1,6 +1,6 @@
 > **Superseded.** Deployment decided: Coolify on Hetzner with libSQL database-per-campaign. See [deployment strategy](../plans/2026-03-09-deployment-strategy.md). This document's research informed that decision.
 
-# Loreweaver — EU Deployment & Development Lifecycle Landscape
+# familiar.systems — EU Deployment & Development Lifecycle Landscape
 
 ## Context
 
@@ -122,7 +122,7 @@ These are established EU-headquartered providers that offer managed PostgreSQL b
 
 ## App Deployment Options
 
-Loreweaver has 4 apps with different deployment lifecycles (see [SPA project structure](../plans/2026-02-14-project-structure-spa-design.md)). The deployment tool needs to handle:
+familiar.systems has 4 apps with different deployment lifecycles (see [SPA project structure](../plans/2026-02-14-project-structure-spa-design.md)). The deployment tool needs to handle:
 
 - **4 independent services** in a monorepo (web, api, collab, worker)
 - **PR preview environments** — deploy a preview for every PR, with its own URL and database branch
@@ -326,13 +326,13 @@ If using an EU-only provider without branching (UpCloud, Scaleway, Exoscale):
     PR merged → CI runs migrations on production → deploys
 ```
 
-This works but loses the ability to test against realistic data. Loreweaver's test data is expensive to create (audio transcription + AI entity extraction costs $2+ per session), so fixture-based testing covers fewer real-world scenarios.
+This works but loses the ability to test against realistic data. familiar.systems's test data is expensive to create (audio transcription + AI entity extraction costs $2+ per session), so fixture-based testing covers fewer real-world scenarios.
 
 ---
 
 ## Self-Hosted Deployment Model
 
-A key Loreweaver requirement is that the same codebase runs on customer infrastructure. How does each combination work for a self-hoster?
+A key familiar.systems requirement is that the same codebase runs on customer infrastructure. How does each combination work for a self-hoster?
 
 ### PostgreSQL path (self-hosted)
 

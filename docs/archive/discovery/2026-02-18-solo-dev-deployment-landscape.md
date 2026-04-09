@@ -1,6 +1,6 @@
 > **Superseded.** Deployment decided: Coolify on Hetzner with libSQL database-per-campaign. See [deployment strategy](../plans/2026-03-09-deployment-strategy.md). This document's research informed that decision.
 
-# Loreweaver — Solo-Dev Deployment Landscape
+# familiar.systems — Solo-Dev Deployment Landscape
 
 ## Context
 
@@ -29,7 +29,7 @@ This document explores what deployment looks like when you strip away the team-s
 
 ## What Deployment Tools Actually Do
 
-Before comparing options, it helps to understand the problem these tools solve. You have code on your machine. You want it running on a server at `https://loreweaver.no`. Between those two states:
+Before comparing options, it helps to understand the problem these tools solve. You have code on your machine. You want it running on a server at `https://familiar.systems`. Between those two states:
 
 1. **Build** your code into something runnable (Docker images, static files)
 2. **Transfer** that artifact to the server
@@ -80,7 +80,7 @@ A single VPS (Hetzner, UpCloud, etc.) running Docker. You manage everything: the
 
 #### Monorepo Support
 
-All three handle Loreweaver's 4-app monorepo well:
+All three handle familiar.systems's 4-app monorepo well:
 
 - **Kamal**: Each app gets its own deploy config. Multiple apps share one kamal-proxy on the same server. Path-based routing supported (`/api/*` → API container, `/collab/*` → WebSocket container).
 - **Coolify/Dokploy**: Each app is a separate "resource" pointing to the same repo with different build contexts/Dockerfiles.

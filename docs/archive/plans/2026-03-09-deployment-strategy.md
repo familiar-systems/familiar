@@ -1,4 +1,4 @@
-# Loreweaver — Deployment Strategy
+# familiar.systems — Deployment Strategy
 
 ## Decision
 
@@ -43,7 +43,7 @@ A single Hetzner VPS running Coolify with 5 containerized apps. All apps mount t
 
 ### PR preview environments
 
-Coolify's built-in PR preview feature deploys a preview for every PR at `pr-{id}.preview.loreweaver.no`.
+Coolify's built-in PR preview feature deploys a preview for every PR at `pr-{id}.preview.familiar.systems`.
 
 **Database branching via file copy:**
 
@@ -85,7 +85,7 @@ Hetzner Volume mounted at /data/
             └── campaign-abc.db
 ```
 
-**Required PRAGMAs** (set once per connection in `@loreweaver/db`):
+**Required PRAGMAs** (set once per connection in `@familiar-systems/db`):
 
 ```sql
 PRAGMA journal_mode = WAL;
@@ -165,7 +165,7 @@ Campaign databases are independent files — individual campaigns can be backed 
 | Upgrade            | How                                                                     | Impact                                                               |
 | ------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | **Bigger VPS**     | Detach Volume → attach to new VPS → reassign floating IP                | Zero-downtime cutover. Data lifetime independent of server lifetime. |
-| **Turso Database** | Swap `@libsql/client` for `@tursodatabase/database` in `@loreweaver/db` | Same files, better engine. Driver swap, not migration.               |
+| **Turso Database** | Swap `@libsql/client` for `@tursodatabase/database` in `@familiar-systems/db` | Same files, better engine. Driver swap, not migration.               |
 | **k3s**            | Long-term direction when single-VPS becomes a bottleneck                | Pulumi IaC already in place at `infra/pulumi-cloud/`                 |
 
 ---

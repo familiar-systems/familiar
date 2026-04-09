@@ -1,25 +1,25 @@
-# Loreweaver — SPA vs SSR Architecture Decision
+# familiar.systems — SPA vs SSR Architecture Decision
 
-> **Decided: SPA.** This analysis evaluated SSR (Next.js) against SPA (Vite + React) for Loreweaver's requirements. The conclusion — SPA is a better fit — was adopted. The current project structure reflecting this decision is the [SPA project structure](./2026-02-14-project-structure-spa-design.md).
+> **Decided: SPA.** This analysis evaluated SSR (Next.js) against SPA (Vite + React) for familiar.systems's requirements. The conclusion — SPA is a better fit — was adopted. The current project structure reflecting this decision is the [SPA project structure](./2026-02-14-project-structure-spa-design.md).
 
 ## Context
 
-The [project structure design](./2026-02-14-project-structure-design.md) specifies Next.js App Router as the web layer. This document re-examines that choice against Loreweaver's actual requirements and proposes a **Single-Page Application (SPA)** architecture as an alternative.
+The [project structure design](./2026-02-14-project-structure-design.md) specifies Next.js App Router as the web layer. This document re-examines that choice against familiar.systems's actual requirements and proposes a **Single-Page Application (SPA)** architecture as an alternative.
 
-The question: does Loreweaver benefit from server-side rendering?
+The question: does familiar.systems benefit from server-side rendering?
 
 ---
 
-## What SSR Gives You (and Whether Loreweaver Needs It)
+## What SSR Gives You (and Whether familiar.systems Needs It)
 
 Server-side rendering means the server executes React components, produces HTML, and sends it to the browser. The browser then "hydrates" the HTML — attaching JavaScript event handlers so it becomes interactive. This is what Next.js App Router does by default.
 
-| SSR benefit                                                                       | Relevant to Loreweaver? | Why / why not                                                                                                                                                                                                                                                                                                   |
+| SSR benefit                                                                       | Relevant to familiar.systems? | Why / why not                                                                                                                                                                                                                                                                                                   |
 | --------------------------------------------------------------------------------- | :---------------------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **SEO** — search engines index server-rendered HTML                               |           No            | All content is behind authentication. No public pages need indexing. Campaign data is private by design.                                                                                                                                                                                                        |
 | **First Contentful Paint** — users see content before JS loads                    |        Marginal         | The centerpiece is a TipTap editor — a large client-side JS application. The editor cannot render until its JavaScript loads regardless of SSR. SSR would show page chrome (nav, sidebar) slightly faster, but the content the user came for (the editor, the graph, the review queue) waits for JS either way. |
 | **Social previews / Open Graph** — link previews on Discord, Slack                |           No            | Campaign content is private. Shared links would at most show a login page.                                                                                                                                                                                                                                      |
-| **Streaming / progressive rendering** — show partial content while the rest loads |        Marginal         | Useful for data-heavy dashboards. Loreweaver's pages are editor-centric, not content-list-centric. The editor loads as a unit, not progressively.                                                                                                                                                               |
+| **Streaming / progressive rendering** — show partial content while the rest loads |        Marginal         | Useful for data-heavy dashboards. familiar.systems's pages are editor-centric, not content-list-centric. The editor loads as a unit, not progressively.                                                                                                                                                               |
 
 **Conclusion:** The two primary motivations for SSR — SEO and first paint of content-heavy public pages — do not apply to an authenticated, editor-centric application.
 
@@ -31,7 +31,7 @@ Server-side rendering means the server executes React components, produces HTML,
 
 Next.js App Router introduces a **server/client component boundary**. Components are server components by default (run on the server, cannot use hooks or browser APIs). To use React state, effects, or any browser API, you must mark a component with `'use client'`.
 
-For Loreweaver, nearly every meaningful component is a client component:
+For familiar.systems, nearly every meaningful component is a client component:
 
 - The TipTap editor and all its extensions → `'use client'`
 - The Hocuspocus WebSocket provider → `'use client'`
@@ -70,7 +70,7 @@ These opinions are valuable when they align with your application. When they don
 ### How it works
 
 ```
-Browser navigates to app.loreweaver.com
+Browser navigates to app.familiar.systems
     → CDN serves index.html (tiny shell: <div id="root"></div> + <script>)
     → Browser downloads JS bundle (content-hashed, cached aggressively)
     → React renders the entire UI client-side
@@ -120,7 +120,7 @@ The `apps/web` directory splits into two concerns:
 ### Revised repository structure
 
 ```
-loreweaver/
+familiar/
 ├── apps/
 │   ├── web/              # Vite + React SPA (static files)
 │   ├── api/              # tRPC server (Hono or Fastify)
@@ -180,7 +180,7 @@ apps/web/src/
 - Routing is explicit (React Router or TanStack Router), not file-based
 - Vite handles dev server (HMR) and production build (content-hashed chunks)
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/editor`, `react`, `@hocuspocus/provider`, Vite
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/editor`, `react`, `@hocuspocus/provider`, Vite
 
 ### `apps/api` — Standalone tRPC Server
 
@@ -196,27 +196,27 @@ apps/api/src/
 │   ├── graph.ts                     # Relationship + mention queries
 │   └── queue.ts                     # Job submission
 └── middleware/
-    ├── auth.ts                      # Token verification via @loreweaver/auth
+    ├── auth.ts                      # Token verification via @familiar-systems/auth
     └── cors.ts                      # CORS for SPA origin
 ```
 
 This is the `server/trpc/` directory from the Next.js design, extracted into its own deployable process. The tRPC routers are identical — they move, they don't change.
 
-**Depends on:** `@loreweaver/domain`, `@loreweaver/db`, `@loreweaver/auth`, `@loreweaver/queue`, `hono` (or `fastify`)
+**Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`, `@familiar-systems/auth`, `@familiar-systems/queue`, `hono` (or `fastify`)
 
 ### Revised dependency graph
 
 ```mermaid
 graph BT
-    domain["@loreweaver/domain<br/><i>pure types, zero deps</i>"]
+    domain["@familiar-systems/domain<br/><i>pure types, zero deps</i>"]
 
-    db["@loreweaver/db"] --> domain
-    editor["@loreweaver/editor"] --> domain
-    ai["@loreweaver/ai"] --> domain
+    db["@familiar-systems/db"] --> domain
+    editor["@familiar-systems/editor"] --> domain
+    ai["@familiar-systems/ai"] --> domain
     ai --> db
-    queue["@loreweaver/queue"] --> domain
+    queue["@familiar-systems/queue"] --> domain
     queue --> db
-    auth["@loreweaver/auth"] --> domain
+    auth["@familiar-systems/auth"] --> domain
     auth --> db
 
     web["apps/web<br/><i>SPA (static)</i>"] --> domain
@@ -250,7 +250,7 @@ graph BT
     style worker fill:#c66,stroke:#333,color:#fff
 ```
 
-**Notable change:** `apps/web` (the SPA) no longer depends on `@loreweaver/db`, `@loreweaver/auth`, or `@loreweaver/queue`. It only needs `domain` (types) and `editor` (TipTap schema). All server-side concerns move to `apps/api`. This is a **cleaner separation** — the frontend has no access to database code, auth internals, or queue logic even at the import level.
+**Notable change:** `apps/web` (the SPA) no longer depends on `@familiar-systems/db`, `@familiar-systems/auth`, or `@familiar-systems/queue`. It only needs `domain` (types) and `editor` (TipTap schema). All server-side concerns move to `apps/api`. This is a **cleaner separation** — the frontend has no access to database code, auth internals, or queue logic even at the import level.
 
 ---
 
@@ -299,7 +299,7 @@ When the SPA and API are served from different origins (during development, or i
 **Mitigation:** In development, Vite's dev server can proxy API requests (no CORS needed). In production, a reverse proxy on the same domain eliminates CORS entirely.
 
 **5. Loss of Next.js ecosystem integrations.**
-Next.js has built-in image optimization, font optimization, and middleware (edge functions). These are convenient but none are critical for Loreweaver:
+Next.js has built-in image optimization, font optimization, and middleware (edge functions). These are convenient but none are critical for familiar.systems:
 
 - **Image optimization** — campaign images can be handled by a CDN or a dedicated image service. An NPC portrait doesn't need Next.js's `<Image>` component.
 - **Font optimization** — can be handled by standard CSS `@font-face` with `font-display: swap`.
@@ -330,7 +330,7 @@ If the SPA approach is chosen, the client-side router matters. Two serious optio
 
 ## Recommendation
 
-For Loreweaver, the SPA architecture is a better fit than Next.js SSR. The application is:
+For familiar.systems, the SPA architecture is a better fit than Next.js SSR. The application is:
 
 - Entirely behind authentication (no SEO)
 - Centered on a client-rendered editor (TipTap)
