@@ -84,7 +84,7 @@ export const NAV_LINKS = [
 export const ACTION_LINKS = {
   primary: { label: "Read the Vision", href: "/blog/2026-02-20-the-vision" },
   social: {
-    github: "https://github.com/loreweaver-no",
+    github: "https://github.com/familiar-systems",
   },
 };
 
