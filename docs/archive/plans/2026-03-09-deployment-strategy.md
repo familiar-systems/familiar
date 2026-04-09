@@ -162,11 +162,11 @@ Campaign databases are independent files — individual campaigns can be backed 
 
 ## Upgrade Paths
 
-| Upgrade            | How                                                                     | Impact                                                               |
-| ------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| **Bigger VPS**     | Detach Volume → attach to new VPS → reassign floating IP                | Zero-downtime cutover. Data lifetime independent of server lifetime. |
+| Upgrade            | How                                                                           | Impact                                                               |
+| ------------------ | ----------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| **Bigger VPS**     | Detach Volume → attach to new VPS → reassign floating IP                      | Zero-downtime cutover. Data lifetime independent of server lifetime. |
 | **Turso Database** | Swap `@libsql/client` for `@tursodatabase/database` in `@familiar-systems/db` | Same files, better engine. Driver swap, not migration.               |
-| **k3s**            | Long-term direction when single-VPS becomes a bottleneck                | Pulumi IaC already in place at `infra/pulumi-cloud/`                 |
+| **k3s**            | Long-term direction when single-VPS becomes a bottleneck                      | Pulumi IaC already in place at `infra/pulumi-cloud/`                 |
 
 ---
 

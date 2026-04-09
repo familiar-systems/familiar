@@ -11,4 +11,7 @@ import type { ThingId } from "../id/ThingId";
  * **Loro storage** uses variant-specific keys (`thingId`, `journalId`).
  * Conversion between flat LoroMap fields and this enum happens in `LoroTocDoc`.
  */
-export type TocEntry = { "kind": "text", title: string, } | { "kind": "thing", title: string, thingId: ThingId, } | { "kind": "journal", title: string, journalId: JournalId, };
+export type TocEntry =
+  | { kind: "text"; title: string }
+  | { kind: "thing"; title: string; thingId: ThingId }
+  | { kind: "journal"; title: string; journalId: JournalId };

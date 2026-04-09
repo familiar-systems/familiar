@@ -150,21 +150,21 @@ The platform database is standard — one database, no per-campaign isolation ne
 
 ## Head-to-Head Comparison
 
-| Concern                    | PostgreSQL                                                        | Turso / libSQL                                                                            |
-| -------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **Campaign isolation**     | Convention (`campaign_id` + RLS). Discipline-dependent.           | Structural (database-per-campaign). Cannot leak.                                          |
-| **Testing**                | Docker + testcontainers (~2-3s startup). CI needs service config. | `:memory:` — instant, in-process, zero config.                                            |
-| **Database branching**     | Neon (external service, free tier) or dump/restore.               | Native copy-on-write. Instant.                                                            |
-| **AI embeddings**          | pgvector — mature, battle-tested. Overkill at familiar.systems's scale. | libSQL vector search — adequate at familiar.systems's scale. Newer.                             |
-| **Full-text search**       | tsvector/tsquery — powerful, built-in.                            | FTS5 — powerful, built-in. Roughly equivalent.                                            |
-| **Job queue**              | pg-boss — turnkey, PostgreSQL-native.                             | Simple polling table. Fine at familiar.systems's scale.                                         |
-| **Cross-campaign queries** | Trivial: `WHERE user_id = ?`                                      | ATTACH (read-only) or application-level aggregation.                                      |
-| **Schema migrations**      | Run against one database. Standard.                               | Propagate across N databases. Turso automates this; self-hosted needs scripting.          |
-| **Connection management**  | Single connection pool. Standard.                                 | Connection-per-campaign. HTTP client mitigates pooling concerns.                          |
-| **Self-hosted simplicity** | Run PostgreSQL. Universal knowledge.                              | Run libSQL. Less mainstream but arguably simpler (no server config for basic use).        |
-| **ORM support**            | Drizzle's primary target. Best documentation.                     | Drizzle supports libSQL/Turso. Works, but PostgreSQL gets more ecosystem attention.       |
-| **Ecosystem**              | Massive. Every problem already solved.                            | Smaller. Growing. Turso invests heavily in developer experience.                          |
-| **Risk profile**           | Low. You cannot go wrong with PostgreSQL.                         | Medium. Less beaten path. libSQL is open source and SQLite-compatible, limiting downside. |
+| Concern                    | PostgreSQL                                                              | Turso / libSQL                                                                            |
+| -------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Campaign isolation**     | Convention (`campaign_id` + RLS). Discipline-dependent.                 | Structural (database-per-campaign). Cannot leak.                                          |
+| **Testing**                | Docker + testcontainers (~2-3s startup). CI needs service config.       | `:memory:` — instant, in-process, zero config.                                            |
+| **Database branching**     | Neon (external service, free tier) or dump/restore.                     | Native copy-on-write. Instant.                                                            |
+| **AI embeddings**          | pgvector — mature, battle-tested. Overkill at familiar.systems's scale. | libSQL vector search — adequate at familiar.systems's scale. Newer.                       |
+| **Full-text search**       | tsvector/tsquery — powerful, built-in.                                  | FTS5 — powerful, built-in. Roughly equivalent.                                            |
+| **Job queue**              | pg-boss — turnkey, PostgreSQL-native.                                   | Simple polling table. Fine at familiar.systems's scale.                                   |
+| **Cross-campaign queries** | Trivial: `WHERE user_id = ?`                                            | ATTACH (read-only) or application-level aggregation.                                      |
+| **Schema migrations**      | Run against one database. Standard.                                     | Propagate across N databases. Turso automates this; self-hosted needs scripting.          |
+| **Connection management**  | Single connection pool. Standard.                                       | Connection-per-campaign. HTTP client mitigates pooling concerns.                          |
+| **Self-hosted simplicity** | Run PostgreSQL. Universal knowledge.                                    | Run libSQL. Less mainstream but arguably simpler (no server config for basic use).        |
+| **ORM support**            | Drizzle's primary target. Best documentation.                           | Drizzle supports libSQL/Turso. Works, but PostgreSQL gets more ecosystem attention.       |
+| **Ecosystem**              | Massive. Every problem already solved.                                  | Smaller. Growing. Turso invests heavily in developer experience.                          |
+| **Risk profile**           | Low. You cannot go wrong with PostgreSQL.                               | Medium. Less beaten path. libSQL is open source and SQLite-compatible, limiting downside. |
 
 ---
 
