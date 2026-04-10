@@ -55,7 +55,11 @@ depends = ["test:*"]
 run = "pnpm test"
 
 [tasks."test:rust"]
-run = "cargo test"
+description = "Run Rust tests and format ts-rs generated TS output"
+run = """
+cargo test --workspace
+pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
+"""
 
 [tasks."test:python"]
 dir = "workers/whisperx"
@@ -142,11 +146,10 @@ run = "uv run basedpyright"
 # --- generate ---
 
 [tasks.generate-types]
-description = "Generate TS types from Rust via ts-rs (clean + regenerate + format)"
+description = "Clean, regenerate, and format TS types from Rust via ts-rs"
 run = """
 rm -rf packages/types-app/src/generated packages/types-campaign/src/generated
-cargo test --workspace
-pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
+mise run test:rust
 """
 
 # --- clean ---
