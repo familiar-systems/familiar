@@ -85,7 +85,7 @@ run = "uv run ruff check ."
 
 [tasks.format]
 description = "Format all code"
-depends = ["format:*"]
+depends = ["format:ts", "format:rust", "format:python", "format:infra"]
 
 [tasks."format:ts"]
 run = "pnpm format"
