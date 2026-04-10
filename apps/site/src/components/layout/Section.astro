@@ -11,11 +11,16 @@ interface Props {
 const { class: className, id, variant = 'default' } = Astro.props;
 ---
 
-<section id={id} class={twMerge(clsx(
-  "relative overflow-hidden",
-  variant === 'default' && "py-24",
-  variant === 'boxed' && "py-16 bg-white/5 rounded-3xl my-12 mx-6",
-  className
-))}>
+<section
+  id={id}
+  class={twMerge(
+    clsx(
+      'relative overflow-hidden',
+      variant === 'default' && 'py-24',
+      variant === 'boxed' && 'py-16 bg-white/5 rounded-3xl my-12 mx-6',
+      className,
+    ),
+  )}
+>
   <slot />
 </section>

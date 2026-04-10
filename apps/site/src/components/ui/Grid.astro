@@ -17,10 +17,6 @@ const gridCols = {
 };
 ---
 
-<div class={twMerge(clsx(
-  "grid gap-8",
-  gridCols[cols],
-  className
-))}>
+<div class={twMerge(clsx('grid gap-8', gridCols[cols], className))}>
   <slot />
 </div>

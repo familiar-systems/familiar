@@ -18,10 +18,11 @@ const Tag = as || (href ? 'a' : 'div');
   href={href}
   class={twMerge(
     clsx(
-      "block p-6 rounded-2xl border border-black/5 dark:border-white/10 bg-black/5 dark:bg-white/5 transition-all duration-300",
-      href && "hover:border-primary/20 hover:shadow-2xl hover:shadow-primary/10 hover:-translate-y-1 cursor-pointer group",
-      className
-    )
+      'block p-6 rounded-2xl border border-black/5 dark:border-white/10 bg-black/5 dark:bg-white/5 transition-all duration-300',
+      href &&
+        'hover:border-primary/20 hover:shadow-2xl hover:shadow-primary/10 hover:-translate-y-1 cursor-pointer group',
+      className,
+    ),
   )}
   {...rest}
 >

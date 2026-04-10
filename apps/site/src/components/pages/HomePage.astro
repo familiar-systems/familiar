@@ -4,7 +4,25 @@ import Section from '~/components/layout/Section.astro';
 import LatestPosts from '~/components/sections/LatestPosts.astro';
 import Button from '~/components/ui/Button.astro';
 import NewsletterSignup from '~/components/common/NewsletterSignup.astro';
-import { BookOpen, Upload, Sparkles, CheckCircle, ScrollText, MapPin, Users, Swords, BrainCircuit, Link2, Eye, Clock, MessageSquare, Shield, Globe, User, GitFork } from 'lucide-react';
+import {
+  BookOpen,
+  Upload,
+  Sparkles,
+  CheckCircle,
+  ScrollText,
+  MapPin,
+  Users,
+  Swords,
+  BrainCircuit,
+  Link2,
+  Eye,
+  Clock,
+  MessageSquare,
+  Shield,
+  Globe,
+  User,
+  GitFork,
+} from 'lucide-react';
 
 interface Props {
   lang: string;
@@ -14,344 +32,556 @@ const { lang } = Astro.props;
 const t = useTranslations(lang);
 ---
 
-  <!-- ═══════════════════════════════════════════ -->
-  <!-- HERO                                        -->
-  <!-- ═══════════════════════════════════════════ -->
-  <section class="min-h-[75vh] flex items-center justify-center relative overflow-hidden pt-20 bg-background">
-    <!-- Wizards and crystals woodcut background -->
-    <div class="absolute inset-0 z-0 overflow-hidden">
-      <div class="absolute inset-0 bg-bronze opacity-[0.14] dark:hidden" style="mask: url('/wizard-for-light.svg') center/cover no-repeat; -webkit-mask: url('/wizard-for-light.svg') center/cover no-repeat;"></div>
-      <div class="absolute inset-0 bg-bronze opacity-[0.22] hidden dark:block" style="mask: url('/wizard-for-dark.svg') center/cover no-repeat; -webkit-mask: url('/wizard-for-dark.svg') center/cover no-repeat;"></div>
+<!-- ═══════════════════════════════════════════ --><!-- HERO                                        --><!-- ═══════════════════════════════════════════ -->
+<section
+  class="min-h-[75vh] flex items-center justify-center relative overflow-hidden pt-20 bg-background"
+>
+  <!-- Wizards and crystals woodcut background -->
+  <div class="absolute inset-0 z-0 overflow-hidden">
+    <div
+      class="absolute inset-0 bg-bronze opacity-[0.14] dark:hidden"
+      style="mask: url('/wizard-for-light.svg') center/cover no-repeat; -webkit-mask: url('/wizard-for-light.svg') center/cover no-repeat;"
+    >
     </div>
-
-    <!-- Ambient glow -->
-    <div class="absolute inset-0 z-0 opacity-30">
-      <div class="absolute top-[15%] left-[25%] w-[500px] h-[500px] bg-primary/30 rounded-full blur-[140px] animate-pulse"></div>
-      <div class="absolute bottom-[20%] right-[15%] w-[400px] h-[400px] bg-gold/20 rounded-full blur-[120px] animate-pulse" style="animation-delay: 3s;"></div>
+    <div
+      class="absolute inset-0 bg-bronze opacity-[0.22] hidden dark:block"
+      style="mask: url('/wizard-for-dark.svg') center/cover no-repeat; -webkit-mask: url('/wizard-for-dark.svg') center/cover no-repeat;"
+    >
     </div>
+  </div>
 
-    <!-- Subtle texture overlay -->
-    <div class="absolute inset-0 z-0 opacity-[0.03] dark:opacity-[0.05]" style="background-image: url('data:image/svg+xml,%3Csvg width=&quot;60&quot; height=&quot;60&quot; viewBox=&quot;0 0 60 60&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;%3E%3Cg fill=&quot;none&quot; fill-rule=&quot;evenodd&quot;%3E%3Cg fill=&quot;%23000000&quot; fill-opacity=&quot;0.4&quot;%3E%3Cpath d=&quot;M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z&quot;/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
-
-    <div class="container mx-auto px-6 relative z-10 text-center">
-      <div class="hero-content opacity-0 translate-y-5">
-        <p class="inline-block text-sm font-medium tracking-[0.2em] uppercase text-gold mb-8 border border-gold/20 rounded-full px-5 py-2 bg-background/60 backdrop-blur-sm">
-          {t['hero.badge']}
-        </p>
-        <h1 class="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-8 text-foreground leading-[1.1]">
-          {t['hero.title']}<br />
-          <span class="text-primary">{t['hero.highlight']}</span>
-        </h1>
-        <p class="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-12 leading-relaxed">
-          {t['hero.subtitle']}
-        </p>
-
-        <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
-          <Button
-            href={`/${lang}/blog/2026-02-20-the-vision`}
-            class="px-8 py-4 rounded-full text-base bg-gold hover:bg-gold/90 shadow-lg shadow-gold/25"
-          >
-            {t['hero.getStarted']}
-          </Button>
-          <Button
-            href="https://github.com/familiar-systems"
-            variant="secondary"
-            class="px-8 py-4 rounded-full text-base backdrop-blur-sm"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {t['hero.learnMore']}
-          </Button>
-        </div>
-      </div>
+  <!-- Ambient glow -->
+  <div class="absolute inset-0 z-0 opacity-30">
+    <div
+      class="absolute top-[15%] left-[25%] w-[500px] h-[500px] bg-primary/30 rounded-full blur-[140px] animate-pulse"
+    >
     </div>
-  </section>
+    <div
+      class="absolute bottom-[20%] right-[15%] w-[400px] h-[400px] bg-gold/20 rounded-full blur-[120px] animate-pulse"
+      style="animation-delay: 3s;"
+    >
+    </div>
+  </div>
 
-  <!-- ═══════════════════════════════════════════ -->
-  <!-- THE CORE LOOP                               -->
-  <!-- ═══════════════════════════════════════════ -->
-  <Section class="py-24 md:py-32">
-    <div class="max-w-4xl mx-auto">
-      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-4">After Every Session</h2>
-      <p class="text-center text-muted-foreground text-lg mb-16 max-w-2xl mx-auto">
-        The core loop takes 15 minutes, not hours. You played the game - let the AI do the bookkeeping.
+  <!-- Subtle texture overlay -->
+  <div
+    class="absolute inset-0 z-0 opacity-[0.03] dark:opacity-[0.05]"
+    style='background-image: url(&apos;data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%23000000" fill-opacity="0.4"%3E%3Cpath d="M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E&apos;);'
+  >
+  </div>
+
+  <div class="container mx-auto px-6 relative z-10 text-center">
+    <div class="hero-content opacity-0 translate-y-5">
+      <p
+        class="inline-block text-sm font-medium tracking-[0.2em] uppercase text-gold mb-8 border border-gold/20 rounded-full px-5 py-2 bg-background/60 backdrop-blur-sm"
+      >
+        {t['hero.badge']}
+      </p>
+      <h1
+        class="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-8 text-foreground leading-[1.1]"
+      >
+        {t['hero.title']}<br />
+        <span class="text-primary">{t['hero.highlight']}</span>
+      </h1>
+      <p
+        class="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-12 leading-relaxed"
+      >
+        {t['hero.subtitle']}
       </p>
 
-      <div class="relative">
-        <!-- Vertical connector line -->
-        <div class="absolute left-8 md:left-10 top-0 bottom-0 w-px hidden md:block" style="background: linear-gradient(to bottom, var(--color-background), var(--color-line), var(--color-background));"></div>
-
-        <div class="space-y-12">
-          <!-- Step 1 -->
-          <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300">
-              <Upload className="w-7 h-7 md:w-8 md:h-8 text-primary" />
-            </div>
-            <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2 font-display">Upload your recording or notes</h3>
-              <p class="text-muted-foreground leading-relaxed">Audio, video, or written notes from the session. Players can add their characters' perspectives too.</p>
-            </div>
-          </div>
-
-          <!-- Step 2 -->
-          <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300">
-              <Sparkles className="w-7 h-7 md:w-8 md:h-8 text-primary" />
-            </div>
-            <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2 font-display">Your familiar processes everything</h3>
-              <p class="text-muted-foreground leading-relaxed">It transcribes audio, identifies what happened, extracts NPCs, locations, and events, and drafts a session write-up.</p>
-            </div>
-          </div>
-
-          <!-- Step 3 -->
-          <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300">
-              <ScrollText className="w-7 h-7 md:w-8 md:h-8 text-primary" />
-            </div>
-            <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2 font-display">You get a list of proposals</h3>
-              <div class="border-l-[3px] border-gold/40 pl-4 mt-2">
-                <p class="text-foreground leading-relaxed italic">"I found 3 new NPCs. Kael frequents the Rusty Anchor. Tormund appears to be dead. Here's a draft of what happened."</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Step 4 -->
-          <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300">
-              <CheckCircle className="w-7 h-7 md:w-8 md:h-8 text-primary" />
-            </div>
-            <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2 font-display">Review and approve</h3>
-              <p class="text-muted-foreground leading-relaxed">Accept what looks right, tweak what's close, skip what you don't care about. The AI never changes your world without your say-so.</p>
-            </div>
-          </div>
-
-          <!-- Step 5 -->
-          <div class="flex gap-6 md:gap-8 items-start group">
-            <div class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300">
-              <BookOpen className="w-7 h-7 md:w-8 md:h-8 text-primary" />
-            </div>
-            <div class="pt-2 md:pt-4">
-              <h3 class="text-xl font-bold mb-2 font-display">Done. Your wiki just grew.</h3>
-              <p class="text-muted-foreground leading-relaxed">15 minutes instead of hours. Everything linked, searchable, and ready for next session's prep.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </Section>
-
-  <!-- ═══════════════════════════════════════════ -->
-  <!-- YOUR CAMPAIGN WIKI                          -->
-  <!-- ═══════════════════════════════════════════ -->
-  <Section class="py-24 md:py-32 bg-foreground/[0.02]">
-    <div class="max-w-5xl mx-auto">
-      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-4">A Wiki That Grows From Play</h2>
-      <p class="text-center text-muted-foreground text-lg mb-16 max-w-2xl mx-auto">
-        Every session adds detail. An NPC can start as a name mentioned once and grow into a fully realized character over time.
-      </p>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Sessions -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background">
-          <div class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5">
-            <ScrollText className="w-6 h-6 text-bronze" />
-          </div>
-          <h3 class="text-xl font-bold mb-3 font-display">Sessions</h3>
-          <p class="text-muted-foreground leading-relaxed">Write-ups of what happened each time you played, organized chronologically in a writing style of your choice. The living history of your world.</p>
-        </div>
-
-        <!-- Things -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background">
-          <div class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5">
-            <Users className="w-6 h-6 text-bronze" />
-          </div>
-          <h3 class="text-xl font-bold mb-3 font-display">Things</h3>
-          <p class="text-muted-foreground leading-relaxed">Every entity in your world: NPCs, locations, items, factions, clocks, spaceships, aspects, whatever your system needs. Each one has its own page that accumulates detail over time.</p>
-        </div>
-
-        <!-- Connections -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background">
-          <div class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5">
-            <Link2 className="w-6 h-6 text-bronze" />
-          </div>
-          <h3 class="text-xl font-bold mb-3 font-display">Connections</h3>
-          <p class="text-muted-foreground leading-relaxed">How things relate: "Kael frequents the Rusty Anchor," "The Silver Compact is allied with the Crown of Ashenmoor," "The Lampblack League owns the clock Summon The Ghost Ships." A freeform, living graph of your world.</p>
-        </div>
-
-        <!-- Player Visibility -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background">
-          <div class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5">
-            <Eye className="w-6 h-6 text-bronze" />
-          </div>
-          <h3 class="text-xl font-bold mb-3 font-display">Player Visibility</h3>
-          <p class="text-muted-foreground leading-relaxed">You control what players see. Secret notes stay secret. The Good Cleric's dark patron remains hidden until you're ready to reveal it.</p>
-        </div>
-      </div>
-    </div>
-  </Section>
-
-  <!-- ═══════════════════════════════════════════ -->
-  <!-- WHAT MAKES IT DIFFERENT                     -->
-  <!-- ═══════════════════════════════════════════ -->
-  <Section class="py-24 md:py-32">
-    <div class="max-w-4xl mx-auto">
-      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-16">Built for How GMs Actually Work</h2>
-
-      <div class="space-y-16">
-        <!-- Meets you where you are -->
-        <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
-          <div class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-            <MapPin className="w-7 h-7 text-primary" />
-          </div>
-          <div>
-            <h3 class="text-xl font-bold mb-3 font-display">Your familiar meets you where you are</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg">You don't have to build a wiki before session 1. An NPC can start as nothing more than a name mentioned once in a session, and grow into a fully detailed character over time as they keep showing up.</p>
-          </div>
-        </div>
-
-        <!-- Tolerant of neglect -->
-        <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
-          <div class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-            <Clock className="w-7 h-7 text-primary" />
-          </div>
-          <div>
-            <h3 class="text-xl font-bold mb-3 font-display">Your familiar waits patiently</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg">Skip a week of reviews? That's fine. Unreviewed suggestions expire quietly. The system never buries you under an infinite pile of homework.</p>
-          </div>
-        </div>
-
-        <!-- AI proposes, you decide -->
-        <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
-          <div class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-            <MessageSquare className="w-7 h-7 text-primary" />
-          </div>
-          <div>
-            <h3 class="text-xl font-bold mb-3 font-display">Your familiar proposes, you decide</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg">Your familiar never changes your world on its own. Every suggestion needs your approval, and every suggestion comes with reasoning so you can see why it was proposed.</p>
-          </div>
-        </div>
-
-        <!-- Captures the mess -->
-        <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
-          <div class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-            <Swords className="w-7 h-7 text-primary" />
-          </div>
-          <div>
-            <h3 class="text-xl font-bold mb-3 font-display">Your familiar never judges</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg">Retconned something? No problem. Mark things as "established in play but since retconned." The history is preserved, but your familiar stops treating it as current. Your campaign's contradictions are part of the story.</p>
-          </div>
-        </div>
-
-        <!-- Partner with an AI -->
-        <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
-          <div class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-            <BrainCircuit className="w-7 h-7 text-primary" />
-          </div>
-          <div>
-            <h3 class="text-xl font-bold mb-3 font-display">Your familiar can help</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg">It's hard to be alone as a GM. "How do I introduce the Queen of Andergast while hinting she's subtly evil?" Pair with the familiar that helped you make your wiki to formulate and refine your thoughts.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </Section>
-
-  <!-- ═══════════════════════════════════════════ -->
-  <!-- TRUST                                       -->
-  <!-- ═══════════════════════════════════════════ -->
-  <Section class="py-24 md:py-32 bg-foreground/[0.02]">
-    <div class="max-w-4xl mx-auto">
-      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-16">Your table, not ours.</h2>
-
-      <div class="space-y-12">
-        <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
-          <div class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0">
-            <Shield className="w-7 h-7 text-gold" />
-          </div>
-          <div>
-            <h3 class="text-xl font-bold mb-3 font-display">Your Data, Not Ours</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg mb-2">We never sell your data or anything derived from it. You are the customer, not the product.</p>
-            <a href={`/${lang}/privacy`} class="text-primary hover:text-primary/80 font-medium transition-colors">Read the privacy policy</a>
-          </div>
-        </div>
-
-        <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
-          <div class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0">
-            <Globe className="w-7 h-7 text-gold" />
-          </div>
-          <div>
-            <h3 class="text-xl font-bold mb-3 font-display">Every provider is public</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg mb-2">Every provider we use is listed publicly, with why we chose them. All EU/EEA. No US cloud.</p>
-            <div class="flex gap-4">
-              <a href={`/${lang}/blog/2026-03-13-our-providers`} class="text-primary hover:text-primary/80 font-medium transition-colors">See our providers</a>
-              <a href="https://github.com/familiar-systems/familiar/tree/main/infra/pulumi-cloud" target="_blank" rel="noopener noreferrer" class="text-primary hover:text-primary/80 font-medium transition-colors">See the infrastructure config</a>
-            </div>
-          </div>
-        </div>
-
-        <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
-          <div class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0">
-            <User className="w-7 h-7 text-gold" />
-          </div>
-          <div>
-            <h3 class="text-xl font-bold mb-3 font-display">One person builds this</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg mb-2">Here is his name, his face, and his email.</p>
-            <a href={`/${lang}/about`} class="text-primary hover:text-primary/80 font-medium transition-colors">Meet the developer</a>
-          </div>
-        </div>
-
-        <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
-          <div class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0">
-            <GitFork className="w-7 h-7 text-gold" />
-          </div>
-          <div>
-            <h3 class="text-xl font-bold mb-3 font-display">The code is public</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg mb-2">Read it, audit it, fork it, self-host it. Your campaign is yours forever.</p>
-            <a href="https://github.com/familiar-systems" target="_blank" rel="noopener noreferrer" class="text-primary hover:text-primary/80 font-medium transition-colors">View on GitHub</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  </Section>
-
-  <!-- ═══════════════════════════════════════════ -->
-  <!-- LATEST POSTS                                -->
-  <!-- ═══════════════════════════════════════════ -->
-  <LatestPosts count={3} />
-
-  <!-- ═══════════════════════════════════════════ -->
-  <!-- CTA                                         -->
-  <!-- ═══════════════════════════════════════════ -->
-  <Section class="py-24 md:py-32 relative overflow-hidden">
-    <!-- Raven woodcut background -->
-    <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-      <div class="absolute inset-0 bg-primary opacity-[0.10] dark:hidden" style="mask: url('/raven-for-light.svg') center/cover no-repeat; -webkit-mask: url('/raven-for-light.svg') center/cover no-repeat;"></div>
-      <div class="absolute inset-0 bg-primary opacity-[0.16] hidden dark:block" style="mask: url('/raven-for-dark.svg') center/cover no-repeat; -webkit-mask: url('/raven-for-dark.svg') center/cover no-repeat;"></div>
-    </div>
-    <div class="max-w-3xl mx-auto text-center relative z-10">
-      <h2 class="font-display text-3xl md:text-5xl font-bold mb-6">
-        Stop taking notes.<br />
-        <span class="text-primary">Start playing.</span>
-      </h2>
-      <p class="text-muted-foreground text-lg mb-10 max-w-xl mx-auto">
-        familiar.systems is in early development. Subscribe to get updates when things ship.
-      </p>
-      <NewsletterSignup lang={lang} variant="hero" />
-      <p class="mt-8">
-        <a
+      <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <Button
+          href={`/${lang}/blog/2026-02-20-the-vision`}
+          class="px-8 py-4 rounded-full text-base bg-gold hover:bg-gold/90 shadow-lg shadow-gold/25"
+        >
+          {t['hero.getStarted']}
+        </Button>
+        <Button
           href="https://github.com/familiar-systems"
+          variant="secondary"
+          class="px-8 py-4 rounded-full text-base backdrop-blur-sm"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          View on GitHub
-        </a>
-      </p>
+          {t['hero.learnMore']}
+        </Button>
+      </div>
     </div>
-  </Section>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- THE CORE LOOP                               -->
+<!-- ═══════════════════════════════════════════ -->
+<Section class="py-24 md:py-32">
+  <div class="max-w-4xl mx-auto">
+    <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-4">
+      After Every Session
+    </h2>
+    <p
+      class="text-center text-muted-foreground text-lg mb-16 max-w-2xl mx-auto"
+    >
+      The core loop takes 15 minutes, not hours. You played the game - let the
+      AI do the bookkeeping.
+    </p>
+
+    <div class="relative">
+      <!-- Vertical connector line -->
+      <div
+        class="absolute left-8 md:left-10 top-0 bottom-0 w-px hidden md:block"
+        style="background: linear-gradient(to bottom, var(--color-background), var(--color-line), var(--color-background));"
+      >
+      </div>
+
+      <div class="space-y-12">
+        <!-- Step 1 -->
+        <div class="flex gap-6 md:gap-8 items-start group">
+          <div
+            class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300"
+          >
+            <Upload className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+          </div>
+          <div class="pt-2 md:pt-4">
+            <h3 class="text-xl font-bold mb-2 font-display">
+              Upload your recording or notes
+            </h3>
+            <p class="text-muted-foreground leading-relaxed">
+              Audio, video, or written notes from the session. Players can add
+              their characters' perspectives too.
+            </p>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="flex gap-6 md:gap-8 items-start group">
+          <div
+            class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300"
+          >
+            <Sparkles className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+          </div>
+          <div class="pt-2 md:pt-4">
+            <h3 class="text-xl font-bold mb-2 font-display">
+              Your familiar processes everything
+            </h3>
+            <p class="text-muted-foreground leading-relaxed">
+              It transcribes audio, identifies what happened, extracts NPCs,
+              locations, and events, and drafts a session write-up.
+            </p>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="flex gap-6 md:gap-8 items-start group">
+          <div
+            class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300"
+          >
+            <ScrollText className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+          </div>
+          <div class="pt-2 md:pt-4">
+            <h3 class="text-xl font-bold mb-2 font-display">
+              You get a list of proposals
+            </h3>
+            <div class="border-l-[3px] border-gold/40 pl-4 mt-2">
+              <p class="text-foreground leading-relaxed italic">
+                "I found 3 new NPCs. Kael frequents the Rusty Anchor. Tormund
+                appears to be dead. Here's a draft of what happened."
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="flex gap-6 md:gap-8 items-start group">
+          <div
+            class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300"
+          >
+            <CheckCircle className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+          </div>
+          <div class="pt-2 md:pt-4">
+            <h3 class="text-xl font-bold mb-2 font-display">
+              Review and approve
+            </h3>
+            <p class="text-muted-foreground leading-relaxed">
+              Accept what looks right, tweak what's close, skip what you don't
+              care about. The AI never changes your world without your say-so.
+            </p>
+          </div>
+        </div>
+
+        <!-- Step 5 -->
+        <div class="flex gap-6 md:gap-8 items-start group">
+          <div
+            class="relative z-10 w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)] border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-[var(--color-step-hover)] transition-colors duration-300"
+          >
+            <BookOpen className="w-7 h-7 md:w-8 md:h-8 text-primary" />
+          </div>
+          <div class="pt-2 md:pt-4">
+            <h3 class="text-xl font-bold mb-2 font-display">
+              Done. Your wiki just grew.
+            </h3>
+            <p class="text-muted-foreground leading-relaxed">
+              15 minutes instead of hours. Everything linked, searchable, and
+              ready for next session's prep.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</Section>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- YOUR CAMPAIGN WIKI                          -->
+<!-- ═══════════════════════════════════════════ -->
+<Section class="py-24 md:py-32 bg-foreground/[0.02]">
+  <div class="max-w-5xl mx-auto">
+    <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-4">
+      A Wiki That Grows From Play
+    </h2>
+    <p
+      class="text-center text-muted-foreground text-lg mb-16 max-w-2xl mx-auto"
+    >
+      Every session adds detail. An NPC can start as a name mentioned once and
+      grow into a fully realized character over time.
+    </p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- Sessions -->
+      <div
+        class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background"
+      >
+        <div
+          class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5"
+        >
+          <ScrollText className="w-6 h-6 text-bronze" />
+        </div>
+        <h3 class="text-xl font-bold mb-3 font-display">Sessions</h3>
+        <p class="text-muted-foreground leading-relaxed">
+          Write-ups of what happened each time you played, organized
+          chronologically in a writing style of your choice. The living history
+          of your world.
+        </p>
+      </div>
+
+      <!-- Things -->
+      <div
+        class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background"
+      >
+        <div
+          class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5"
+        >
+          <Users className="w-6 h-6 text-bronze" />
+        </div>
+        <h3 class="text-xl font-bold mb-3 font-display">Things</h3>
+        <p class="text-muted-foreground leading-relaxed">
+          Every entity in your world: NPCs, locations, items, factions, clocks,
+          spaceships, aspects, whatever your system needs. Each one has its own
+          page that accumulates detail over time.
+        </p>
+      </div>
+
+      <!-- Connections -->
+      <div
+        class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background"
+      >
+        <div
+          class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5"
+        >
+          <Link2 className="w-6 h-6 text-bronze" />
+        </div>
+        <h3 class="text-xl font-bold mb-3 font-display">Connections</h3>
+        <p class="text-muted-foreground leading-relaxed">
+          How things relate: "Kael frequents the Rusty Anchor," "The Silver
+          Compact is allied with the Crown of Ashenmoor," "The Lampblack League
+          owns the clock Summon The Ghost Ships." A freeform, living graph of
+          your world.
+        </p>
+      </div>
+
+      <!-- Player Visibility -->
+      <div
+        class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background"
+      >
+        <div
+          class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5"
+        >
+          <Eye className="w-6 h-6 text-bronze" />
+        </div>
+        <h3 class="text-xl font-bold mb-3 font-display">Player Visibility</h3>
+        <p class="text-muted-foreground leading-relaxed">
+          You control what players see. Secret notes stay secret. The Good
+          Cleric's dark patron remains hidden until you're ready to reveal it.
+        </p>
+      </div>
+    </div>
+  </div>
+</Section>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- WHAT MAKES IT DIFFERENT                     -->
+<!-- ═══════════════════════════════════════════ -->
+<Section class="py-24 md:py-32">
+  <div class="max-w-4xl mx-auto">
+    <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-16">
+      Built for How GMs Actually Work
+    </h2>
+
+    <div class="space-y-16">
+      <!-- Meets you where you are -->
+      <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
+        <div
+          class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0"
+        >
+          <MapPin className="w-7 h-7 text-primary" />
+        </div>
+        <div>
+          <h3 class="text-xl font-bold mb-3 font-display">
+            Your familiar meets you where you are
+          </h3>
+          <p class="text-muted-foreground leading-relaxed text-lg">
+            You don't have to build a wiki before session 1. An NPC can start as
+            nothing more than a name mentioned once in a session, and grow into
+            a fully detailed character over time as they keep showing up.
+          </p>
+        </div>
+      </div>
+
+      <!-- Tolerant of neglect -->
+      <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
+        <div
+          class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0"
+        >
+          <Clock className="w-7 h-7 text-primary" />
+        </div>
+        <div>
+          <h3 class="text-xl font-bold mb-3 font-display">
+            Your familiar waits patiently
+          </h3>
+          <p class="text-muted-foreground leading-relaxed text-lg">
+            Skip a week of reviews? That's fine. Unreviewed suggestions expire
+            quietly. The system never buries you under an infinite pile of
+            homework.
+          </p>
+        </div>
+      </div>
+
+      <!-- AI proposes, you decide -->
+      <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
+        <div
+          class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0"
+        >
+          <MessageSquare className="w-7 h-7 text-primary" />
+        </div>
+        <div>
+          <h3 class="text-xl font-bold mb-3 font-display">
+            Your familiar proposes, you decide
+          </h3>
+          <p class="text-muted-foreground leading-relaxed text-lg">
+            Your familiar never changes your world on its own. Every suggestion
+            needs your approval, and every suggestion comes with reasoning so
+            you can see why it was proposed.
+          </p>
+        </div>
+      </div>
+
+      <!-- Captures the mess -->
+      <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
+        <div
+          class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0"
+        >
+          <Swords className="w-7 h-7 text-primary" />
+        </div>
+        <div>
+          <h3 class="text-xl font-bold mb-3 font-display">
+            Your familiar never judges
+          </h3>
+          <p class="text-muted-foreground leading-relaxed text-lg">
+            Retconned something? No problem. Mark things as "established in play
+            but since retconned." The history is preserved, but your familiar
+            stops treating it as current. Your campaign's contradictions are
+            part of the story.
+          </p>
+        </div>
+      </div>
+
+      <!-- Partner with an AI -->
+      <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
+        <div
+          class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0"
+        >
+          <BrainCircuit className="w-7 h-7 text-primary" />
+        </div>
+        <div>
+          <h3 class="text-xl font-bold mb-3 font-display">
+            Your familiar can help
+          </h3>
+          <p class="text-muted-foreground leading-relaxed text-lg">
+            It's hard to be alone as a GM. "How do I introduce the Queen of
+            Andergast while hinting she's subtly evil?" Pair with the familiar
+            that helped you make your wiki to formulate and refine your
+            thoughts.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</Section>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- TRUST                                       -->
+<!-- ═══════════════════════════════════════════ -->
+<Section class="py-24 md:py-32 bg-foreground/[0.02]">
+  <div class="max-w-4xl mx-auto">
+    <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-16">
+      Your table, not ours.
+    </h2>
+
+    <div class="space-y-12">
+      <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
+        <div
+          class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0"
+        >
+          <Shield className="w-7 h-7 text-gold" />
+        </div>
+        <div>
+          <h3 class="text-xl font-bold mb-3 font-display">
+            Your Data, Not Ours
+          </h3>
+          <p class="text-muted-foreground leading-relaxed text-lg mb-2">
+            We never sell your data or anything derived from it. You are the
+            customer, not the product.
+          </p>
+          <a
+            href={`/${lang}/privacy`}
+            class="text-primary hover:text-primary/80 font-medium transition-colors"
+            >Read the privacy policy</a
+          >
+        </div>
+      </div>
+
+      <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
+        <div
+          class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0"
+        >
+          <Globe className="w-7 h-7 text-gold" />
+        </div>
+        <div>
+          <h3 class="text-xl font-bold mb-3 font-display">
+            Every provider is public
+          </h3>
+          <p class="text-muted-foreground leading-relaxed text-lg mb-2">
+            Every provider we use is listed publicly, with why we chose them.
+            All EU/EEA. No US cloud.
+          </p>
+          <div class="flex gap-4">
+            <a
+              href={`/${lang}/blog/2026-03-13-our-providers`}
+              class="text-primary hover:text-primary/80 font-medium transition-colors"
+              >See our providers</a
+            >
+            <a
+              href="https://github.com/familiar-systems/familiar/tree/main/infra/pulumi-cloud"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-primary hover:text-primary/80 font-medium transition-colors"
+              >See the infrastructure config</a
+            >
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
+        <div
+          class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0"
+        >
+          <User className="w-7 h-7 text-gold" />
+        </div>
+        <div>
+          <h3 class="text-xl font-bold mb-3 font-display">
+            One person builds this
+          </h3>
+          <p class="text-muted-foreground leading-relaxed text-lg mb-2">
+            Here is his name, his face, and his email.
+          </p>
+          <a
+            href={`/${lang}/about`}
+            class="text-primary hover:text-primary/80 font-medium transition-colors"
+            >Meet the developer</a
+          >
+        </div>
+      </div>
+
+      <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
+        <div
+          class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0"
+        >
+          <GitFork className="w-7 h-7 text-gold" />
+        </div>
+        <div>
+          <h3 class="text-xl font-bold mb-3 font-display">
+            The code is public
+          </h3>
+          <p class="text-muted-foreground leading-relaxed text-lg mb-2">
+            Read it, audit it, fork it, self-host it. Your campaign is yours
+            forever.
+          </p>
+          <a
+            href="https://github.com/familiar-systems"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-primary hover:text-primary/80 font-medium transition-colors"
+            >View on GitHub</a
+          >
+        </div>
+      </div>
+    </div>
+  </div>
+</Section>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- LATEST POSTS                                -->
+<!-- ═══════════════════════════════════════════ -->
+<LatestPosts count={3} />
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- CTA                                         -->
+<!-- ═══════════════════════════════════════════ -->
+<Section class="py-24 md:py-32 relative overflow-hidden">
+  <!-- Raven woodcut background -->
+  <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+    <div
+      class="absolute inset-0 bg-primary opacity-[0.10] dark:hidden"
+      style="mask: url('/raven-for-light.svg') center/cover no-repeat; -webkit-mask: url('/raven-for-light.svg') center/cover no-repeat;"
+    >
+    </div>
+    <div
+      class="absolute inset-0 bg-primary opacity-[0.16] hidden dark:block"
+      style="mask: url('/raven-for-dark.svg') center/cover no-repeat; -webkit-mask: url('/raven-for-dark.svg') center/cover no-repeat;"
+    >
+    </div>
+  </div>
+  <div class="max-w-3xl mx-auto text-center relative z-10">
+    <h2 class="font-display text-3xl md:text-5xl font-bold mb-6">
+      Stop taking notes.<br />
+      <span class="text-primary">Start playing.</span>
+    </h2>
+    <p class="text-muted-foreground text-lg mb-10 max-w-xl mx-auto">
+      familiar.systems is in early development. Subscribe to get updates when
+      things ship.
+    </p>
+    <NewsletterSignup lang={lang} variant="hero" />
+    <p class="mt-8">
+      <a
+        href="https://github.com/familiar-systems"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        View on GitHub
+      </a>
+    </p>
+  </div>
+</Section>
 
 <style>
   .hero-content {

@@ -13,24 +13,28 @@ const t = useTranslations(lang);
 const isHero = variant === 'hero';
 ---
 
-<div class:list={[
-  !isHero && 'border-l-2 border-primary/30 pl-6',
-]}>
-  {!isHero && (
-    <h3 class="font-display font-semibold text-foreground mb-2">
-      {t['footer.newsletter']}
-    </h3>
-    <p class="text-sm text-muted-foreground/80 mb-4">
-      {t['footer.newsletter.description']}
-    </p>
-  )}
+<div class:list={[!isHero && 'border-l-2 border-primary/30 pl-6']}>
+  {
+    !isHero && (
+      <>
+        <h3 class="font-display font-semibold text-foreground mb-2">
+          {t['footer.newsletter']}
+        </h3>
+        <p class="text-sm text-muted-foreground/80 mb-4">
+          {t['footer.newsletter.description']}
+        </p>
+      </>
+    )
+  }
 
   <form
     action="https://app.keila.io/forms/nfrm_PRGK2qRj"
     method="post"
     class:list={[
       'flex',
-      isHero ? 'max-w-md mx-auto flex-col sm:flex-row gap-3' : 'flex-col sm:flex-row gap-2',
+      isHero
+        ? 'max-w-md mx-auto flex-col sm:flex-row gap-3'
+        : 'flex-col sm:flex-row gap-2',
     ]}
   >
     <!-- Honeypot -->

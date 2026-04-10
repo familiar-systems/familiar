@@ -9,9 +9,11 @@ interface Props {
 const { class: className, title, description } = Astro.props;
 ---
 
-<div class:list={[
-  "rounded-3xl border border-black/5 dark:border-white/10 bg-black/5 dark:bg-white/5 p-8 relative overflow-hidden",
-  className
-]}>
+<div
+  class:list={[
+    'rounded-3xl border border-black/5 dark:border-white/10 bg-black/5 dark:bg-white/5 p-8 relative overflow-hidden',
+    className,
+  ]}
+>
   <slot />
 </div>

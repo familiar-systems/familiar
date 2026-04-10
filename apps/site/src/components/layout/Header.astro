@@ -19,21 +19,26 @@ const { availableLangs } = Astro.props;
 const t = useTranslations(lang);
 
 const translateNavLinks = (links: any[], lang: string, t: any): any[] => {
-  return links.map(link => {
+  return links.map((link) => {
     const key = `nav.${link.label.toLowerCase().replace(/\s+/g, '.')}`;
     const descKey = `${key}.desc`;
-    
+
     const shouldLocalize = link.localize !== false;
-    const href = (!shouldLocalize)
-      ? link.href 
-      : `/${lang}${link.href.startsWith('/') ? '' : '/'}${link.href}`.replace(/\/$/, '') || `/${lang}`;
+    const href = !shouldLocalize
+      ? link.href
+      : `/${lang}${link.href.startsWith('/') ? '' : '/'}${link.href}`.replace(
+          /\/$/,
+          '',
+        ) || `/${lang}`;
 
     return {
       ...link,
       label: t[key as keyof typeof t],
       description: t[descKey as keyof typeof t],
       href,
-      children: link.children ? translateNavLinks(link.children, lang, t) : undefined
+      children: link.children
+        ? translateNavLinks(link.children, lang, t)
+        : undefined,
     };
   });
 };
@@ -42,24 +47,36 @@ const links = translateNavLinks(NAV_LINKS, lang, t);
 
 const primaryHref = ACTION_LINKS.primary.href.startsWith('/docs')
   ? ACTION_LINKS.primary.href
-  : `/${lang}${ACTION_LINKS.primary.href.startsWith('/') ? '' : '/'}${ACTION_LINKS.primary.href}`.replace(/\/$/, '');
+  : `/${lang}${ACTION_LINKS.primary.href.startsWith('/') ? '' : '/'}${ACTION_LINKS.primary.href}`.replace(
+      /\/$/,
+      '',
+    );
 ---
 
-<header class="w-full transition-all duration-300 border-b border-foreground/10 bg-background/80 backdrop-blur-md">
+<header
+  class="w-full transition-all duration-300 border-b border-foreground/10 bg-background/80 backdrop-blur-md"
+>
   <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-    <a href={`/${lang}`} class="flex items-center gap-3 text-xl font-bold font-display tracking-tight text-foreground group">
-      {siteConfig.logo && (
-        <img
-          src={siteConfig.logo.src}
-          alt={siteConfig.logo.alt}
-          width="28"
-          height="28"
-          class={`h-7 w-auto group-hover:rotate-6 transition-transform duration-300 ${
-            siteConfig.logo.strategy === 'invert' ? 'dark:invert' : ''
-          }`}
-        />
-      )}
-      <span class="md:hidden lg:inline">{t['brand.name'] || siteConfig.name}</span>
+    <a
+      href={`/${lang}`}
+      class="flex items-center gap-3 text-xl font-bold font-display tracking-tight text-foreground group"
+    >
+      {
+        siteConfig.logo && (
+          <img
+            src={siteConfig.logo.src}
+            alt={siteConfig.logo.alt}
+            width="28"
+            height="28"
+            class={`h-7 w-auto group-hover:rotate-6 transition-transform duration-300 ${
+              siteConfig.logo.strategy === 'invert' ? 'dark:invert' : ''
+            }`}
+          />
+        )
+      }
+      <span class="md:hidden lg:inline"
+        >{t['brand.name'] || siteConfig.name}</span
+      >
     </a>
     <div class="flex-1 flex justify-center mx-4 lg:mx-8">
       <DesktopNav client:load links={links} currentPath={Astro.url.pathname} />
@@ -67,43 +84,47 @@ const primaryHref = ACTION_LINKS.primary.href.startsWith('/docs')
 
     {/* Mobile/Flyout Menu */}
     <div class="flex items-center gap-4 flex-shrink-0">
-      {siteConfig.search.enabled && <Search 
-        client:load 
-        placeholder={t['search.placeholder']} 
-        devModalLabels={{
-            title: t['dev.search.title'],
-            description: t['dev.search.description'],
-            gotIt: t['dev.search.button.gotIt'],
-            doc: t['dev.search.button.docs']
-        }}
-        lang={lang}
-      />}
+      {
+        siteConfig.search.enabled && (
+          <Search
+            client:load
+            placeholder={t['search.placeholder']}
+            devModalLabels={{
+              title: t['dev.search.title'],
+              description: t['dev.search.description'],
+              gotIt: t['dev.search.button.gotIt'],
+              doc: t['dev.search.button.docs'],
+            }}
+            lang={lang}
+          />
+        )
+      }
       <LanguagePicker availableLangs={availableLangs} />
       <ThemeToggle />
-      <a 
+      <a
         href={ACTION_LINKS.social.github}
-        target="_blank" 
+        target="_blank"
         rel="noopener noreferrer"
         class="text-foreground hover:text-foreground/70 dark:text-white dark:hover:text-blue-300 transition-colors hidden md:block"
         aria-label="GitHub"
       >
         <Github className="w-5 h-5" />
       </a>
-      <a 
+      <a
         href={primaryHref}
         class="hidden md:block px-4 py-2 text-sm font-medium bg-gold text-white rounded-full hover:bg-gold/90 transition-all"
       >
         {t['hero.getStarted'] || ACTION_LINKS.primary.label}
       </a>
-      
+
       <div class="md:hidden">
-        <MobileMenu 
-          client:load 
-          links={links} 
-          currentPath={Astro.url.pathname} 
+        <MobileMenu
+          client:load
+          links={links}
+          currentPath={Astro.url.pathname}
           labels={{
             menu: t['nav.menu'],
-            getStarted: t['hero.getStarted'] || ACTION_LINKS.primary.label
+            getStarted: t['hero.getStarted'] || ACTION_LINKS.primary.label,
           }}
         />
       </div>

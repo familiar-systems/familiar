@@ -13,100 +13,112 @@ const isSidequest = quest % 1 !== 0;
 const questNumber = Math.floor(quest);
 
 const iconColors = {
-  'done': 'text-emerald-400',
+  done: 'text-emerald-400',
   'in-progress': 'text-primary',
-  'planned': 'text-foreground/30',
+  planned: 'text-foreground/30',
 };
 
 const badgeStyles = {
-  'done': 'border-emerald-400/20 bg-emerald-400/10 text-emerald-400',
+  done: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-400',
   'in-progress': 'border-primary/20 bg-primary/10 text-primary',
-  'planned': 'border-foreground/10 bg-foreground/5 text-foreground/40',
+  planned: 'border-foreground/10 bg-foreground/5 text-foreground/40',
 };
 
 const badgeLabels = {
-  'done': 'Released',
+  done: 'Released',
   'in-progress': 'In Progress',
-  'planned': 'Planned',
+  planned: 'Planned',
 };
 
 const cardStyles = {
-  'done': 'border-emerald-400/10 bg-foreground/2 opacity-80',
+  done: 'border-emerald-400/10 bg-foreground/2 opacity-80',
   'in-progress': 'border-primary/30 bg-foreground/2',
-  'planned': 'border-foreground/10 bg-foreground/2',
+  planned: 'border-foreground/10 bg-foreground/2',
 };
 ---
 
-{isSidequest ? (
-  <div class="relative pl-12 pb-8 last:pb-0 group scroll-mt-24">
-    {/* Timeline line - aligned with main quest line */}
-    <div class="absolute left-[23px] top-0 bottom-0 w-px bg-foreground/5 group-last:bg-linear-to-b group-last:from-foreground/5 group-last:to-transparent"></div>
+{
+  isSidequest ? (
+    <div class="relative pl-12 pb-8 last:pb-0 group scroll-mt-24">
+      {/* Timeline line - aligned with main quest line */}
+      <div class="absolute left-[23px] top-0 bottom-0 w-px bg-foreground/5 group-last:bg-linear-to-b group-last:from-foreground/5 group-last:to-transparent" />
 
-    {/* Sidequest marker - small diamond on the timeline */}
-    <div class="absolute left-0 top-3 w-12 h-5 flex items-center justify-center">
-      <div class="w-2.5 h-2.5 rotate-45 border border-foreground/20 bg-background z-10 group-hover:border-primary/50 group-hover:scale-125 transition-all duration-500"></div>
-    </div>
-
-    <div class="relative ml-4">
-      <div class="flex flex-col md:flex-row md:items-center gap-3 mb-3">
-        <div class="flex items-center gap-3">
-          <span class="text-xs font-bold uppercase tracking-widest text-foreground/30">
-            Sidequest
-          </span>
-          <div class="hidden md:block w-px h-3 bg-foreground/10"></div>
-          <span class="text-lg font-bold font-display">{title}</span>
-          <span class={`px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest rounded-full border ${badgeStyles[status]}`}>
-            {badgeLabels[status]}
-          </span>
-        </div>
+      {/* Sidequest marker - small diamond on the timeline */}
+      <div class="absolute left-0 top-3 w-12 h-5 flex items-center justify-center">
+        <div class="w-2.5 h-2.5 rotate-45 border border-foreground/20 bg-background z-10 group-hover:border-primary/50 group-hover:scale-125 transition-all duration-500" />
       </div>
 
-      <div class={`rounded-xl p-6 backdrop-blur-sm border hover:border-primary/20 transition-all group-hover:bg-foreground/3 ${cardStyles[status]}`}>
-        <div class="prose prose-sm prose-invert prose-p:text-foreground/60 prose-li:text-foreground/60 prose-strong:text-foreground max-w-none">
-          <slot />
+      <div class="relative ml-4">
+        <div class="flex flex-col md:flex-row md:items-center gap-3 mb-3">
+          <div class="flex items-center gap-3">
+            <span class="text-xs font-bold uppercase tracking-widest text-foreground/30">
+              Sidequest
+            </span>
+            <div class="hidden md:block w-px h-3 bg-foreground/10" />
+            <span class="text-lg font-bold font-display">{title}</span>
+            <span
+              class={`px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest rounded-full border ${badgeStyles[status]}`}
+            >
+              {badgeLabels[status]}
+            </span>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
-) : (
-  <div class="relative pl-12 pb-16 last:pb-0 group scroll-mt-24">
-    {/* Timeline line */}
-    <div class="absolute left-[23px] top-0 bottom-0 w-px bg-foreground/10 group-last:bg-linear-to-b group-last:from-foreground/10 group-last:to-transparent"></div>
 
-    {/* Timeline circle */}
-    <div class="absolute left-0 top-0 w-12 h-12 flex items-center justify-center">
-      <div class="relative flex items-center justify-center">
-        <div class={`w-10 h-10 rounded-xl border border-foreground/10 z-10 relative bg-background flex items-center justify-center group-hover:scale-110 group-hover:border-primary/50 transition-all duration-500 shadow-lg`}>
-          <BrandIcon class={`w-5 h-5 ${iconColors[status]}`} />
-        </div>
-        {status === 'in-progress' && (
-          <div class="absolute inset-0 bg-primary/20 rounded-xl blur-md animate-pulse"></div>
-        )}
-        <div class="absolute inset-0 bg-primary/20 rounded-xl blur-md opacity-0 group-hover:opacity-100 transition-opacity"></div>
-      </div>
-    </div>
-
-    <div class="relative">
-      {/* Quest label + title + badge */}
-      <div class="flex flex-col md:flex-row md:items-center gap-4 mb-6">
-        <div class="flex items-center gap-3">
-          <span class="text-sm font-bold uppercase tracking-widest text-foreground/40">
-            Quest {questNumber}
-          </span>
-          <div class="hidden md:block w-px h-4 bg-foreground/10"></div>
-          <span class="text-2xl font-bold font-display">{title}</span>
-          <span class={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full border ${badgeStyles[status]}`}>
-            {badgeLabels[status]}
-          </span>
-        </div>
-      </div>
-
-      {/* Content card */}
-      <div class={`rounded-2xl p-8 backdrop-blur-sm border hover:border-primary/20 transition-all group-hover:bg-foreground/3 ${cardStyles[status]}`}>
-        <div class="prose prose-invert prose-p:text-foreground/70 prose-li:text-foreground/70 prose-strong:text-foreground max-w-none">
-          <slot />
+        <div
+          class={`rounded-xl p-6 backdrop-blur-sm border hover:border-primary/20 transition-all group-hover:bg-foreground/3 ${cardStyles[status]}`}
+        >
+          <div class="prose prose-sm prose-invert prose-p:text-foreground/60 prose-li:text-foreground/60 prose-strong:text-foreground max-w-none">
+            <slot />
+          </div>
         </div>
       </div>
     </div>
-  </div>
-)}
+  ) : (
+    <div class="relative pl-12 pb-16 last:pb-0 group scroll-mt-24">
+      {/* Timeline line */}
+      <div class="absolute left-[23px] top-0 bottom-0 w-px bg-foreground/10 group-last:bg-linear-to-b group-last:from-foreground/10 group-last:to-transparent" />
+
+      {/* Timeline circle */}
+      <div class="absolute left-0 top-0 w-12 h-12 flex items-center justify-center">
+        <div class="relative flex items-center justify-center">
+          <div
+            class={`w-10 h-10 rounded-xl border border-foreground/10 z-10 relative bg-background flex items-center justify-center group-hover:scale-110 group-hover:border-primary/50 transition-all duration-500 shadow-lg`}
+          >
+            <BrandIcon class={`w-5 h-5 ${iconColors[status]}`} />
+          </div>
+          {status === 'in-progress' && (
+            <div class="absolute inset-0 bg-primary/20 rounded-xl blur-md animate-pulse" />
+          )}
+          <div class="absolute inset-0 bg-primary/20 rounded-xl blur-md opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+      </div>
+
+      <div class="relative">
+        {/* Quest label + title + badge */}
+        <div class="flex flex-col md:flex-row md:items-center gap-4 mb-6">
+          <div class="flex items-center gap-3">
+            <span class="text-sm font-bold uppercase tracking-widest text-foreground/40">
+              Quest {questNumber}
+            </span>
+            <div class="hidden md:block w-px h-4 bg-foreground/10" />
+            <span class="text-2xl font-bold font-display">{title}</span>
+            <span
+              class={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full border ${badgeStyles[status]}`}
+            >
+              {badgeLabels[status]}
+            </span>
+          </div>
+        </div>
+
+        {/* Content card */}
+        <div
+          class={`rounded-2xl p-8 backdrop-blur-sm border hover:border-primary/20 transition-all group-hover:bg-foreground/3 ${cardStyles[status]}`}
+        >
+          <div class="prose prose-invert prose-p:text-foreground/70 prose-li:text-foreground/70 prose-strong:text-foreground max-w-none">
+            <slot />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

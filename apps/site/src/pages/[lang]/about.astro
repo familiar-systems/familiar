@@ -3,7 +3,11 @@ import Layout from '~/layouts/Layout.astro';
 import PageHeader from '~/components/layout/PageHeader.astro';
 import Section from '~/components/layout/Section.astro';
 import Container from '~/components/ui/Container.astro';
-import { SiGithub as Github, SiLinkedin as Linkedin, SiBluesky as Bluesky } from '~/components/icons/BrandIcons';
+import {
+  SiGithub as Github,
+  SiLinkedin as Linkedin,
+  SiBluesky as Bluesky,
+} from '~/components/icons/BrandIcons';
 import { languages } from '~/i18n/ui';
 import { Image } from 'astro:assets';
 import profileImage from '~/assets/about/profile.jpg';
@@ -24,17 +28,18 @@ const { lang } = Astro.params;
   <Section class="py-16 md:py-24">
     <Container>
       <div class="about-content max-w-4xl mx-auto">
-
         <!-- ── Profile block ────────────────────────── -->
-        <div class="flex flex-col md:flex-row gap-10 md:gap-16 items-center md:items-start mb-20">
-
+        <div
+          class="flex flex-col md:flex-row gap-10 md:gap-16 items-center md:items-start mb-20"
+        >
           <!-- Photo -->
           <div class="shrink-0">
             <div class="relative w-52 h-52 md:w-64 md:h-64">
               <div
                 class="absolute inset-0 rounded-full bg-primary/20 blur-2xl scale-110"
                 style="animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;"
-              ></div>
+              >
+              </div>
               <Image
                 src={profileImage}
                 alt="Michael Grinshpon"
@@ -48,17 +53,27 @@ const { lang } = Astro.params;
 
           <!-- Identity -->
           <div class="text-center md:text-left flex-1">
-            <p class="text-primary text-xs font-medium tracking-[0.35em] uppercase mb-3">
+            <p
+              class="text-primary text-xs font-medium tracking-[0.35em] uppercase mb-3"
+            >
               Creator of familiar.systems
             </p>
-            <h1 class="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-3 leading-[1.1]">
+            <h1
+              class="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-3 leading-[1.1]"
+            >
               Michael Grinshpon
             </h1>
-            <p class="text-muted-foreground text-lg mb-1">Applied AI Researcher &amp; Developer</p>
-            <p class="text-muted-foreground/60 text-sm mb-8">15 years building intelligent systems</p>
+            <p class="text-muted-foreground text-lg mb-1">
+              Applied AI Researcher &amp; Developer
+            </p>
+            <p class="text-muted-foreground/60 text-sm mb-8">
+              15 years building intelligent systems
+            </p>
 
             <!-- Social links -->
-            <div class="flex flex-row gap-3 justify-center md:justify-start flex-wrap">
+            <div
+              class="flex flex-row gap-3 justify-center md:justify-start flex-wrap"
+            >
               <a
                 href="https://github.com/mgrinshpon"
                 target="_blank"
@@ -92,45 +107,66 @@ const { lang } = Astro.params;
 
         <!-- ── Decorative divider ─────────────────── -->
         <div class="flex items-center gap-6 mb-20">
-          <div class="h-px flex-1 bg-gradient-to-r from-transparent to-primary/25"></div>
+          <div
+            class="h-px flex-1 bg-gradient-to-r from-transparent to-primary/25"
+          >
+          </div>
           <div class="w-1.5 h-1.5 rounded-full bg-primary/40"></div>
-          <div class="h-px flex-1 bg-gradient-to-l from-transparent to-primary/25"></div>
+          <div
+            class="h-px flex-1 bg-gradient-to-l from-transparent to-primary/25"
+          >
+          </div>
         </div>
 
         <!-- ── Bio sections ───────────────────────── -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-10 mb-16">
           <div>
-            <h2 class="font-display text-2xl font-semibold text-foreground mb-5">Research and Development</h2>
+            <h2
+              class="font-display text-2xl font-semibold text-foreground mb-5"
+            >
+              Research and Development
+            </h2>
             <p class="text-muted-foreground leading-relaxed text-[1.05rem]">
-              Fifteen years at the intersection of AI research, computer vision, and software engineering,
-              turning prototypes into real systems that work in the real world.
-              For assistance in your AI projects, please contact me at mike@loreweaver.no.
-              Able to work in either the EEA or the US.
+              Fifteen years at the intersection of AI research, computer vision,
+              and software engineering, turning prototypes into real systems
+              that work in the real world. For assistance in your AI projects,
+              please contact me at mike@loreweaver.no. Able to work in either
+              the EEA or the US.
             </p>
           </div>
           <div>
-            <h2 class="font-display text-2xl font-semibold text-foreground mb-5">Why familiar.systems</h2>
+            <h2
+              class="font-display text-2xl font-semibold text-foreground mb-5"
+            >
+              Why familiar.systems
+            </h2>
             <p class="text-muted-foreground leading-relaxed text-[1.05rem]">
-              I've been a tabletop RPG game master for years. The administrative overhead of tracking NPCs, locations,
-              relationships, and continuity across dozens of sessions is exactly the kind of problem AI should solve.
-              familiar.systems exists because I want to use it.
+              I've been a tabletop RPG game master for years. The administrative
+              overhead of tracking NPCs, locations, relationships, and
+              continuity across dozens of sessions is exactly the kind of
+              problem AI should solve. familiar.systems exists because I want to
+              use it.
             </p>
           </div>
         </div>
 
         <!-- ── Pull quote ─────────────────────────── -->
-        <div class="relative p-8 rounded-2xl border border-primary/15 bg-primary/[0.03]">
+        <div
+          class="relative p-8 rounded-2xl border border-primary/15 bg-primary/[0.03]"
+        >
           <div
             class="absolute top-4 left-7 font-display text-7xl leading-none select-none text-primary/15"
             aria-hidden="true"
           >
             &ldquo;
           </div>
-          <p class="text-lg text-muted-foreground leading-relaxed italic font-display relative z-10 pl-8 pr-4">
-              I'm too lazy to take notes. I know - I'll just make a small, 100k LOC app instead.
+          <p
+            class="text-lg text-muted-foreground leading-relaxed italic font-display relative z-10 pl-8 pr-4"
+          >
+            I'm too lazy to take notes. I know - I'll just make a small, 100k
+            LOC app instead.
           </p>
         </div>
-
       </div>
     </Container>
   </Section>

@@ -15,64 +15,102 @@ const t = useTranslations(lang);
     <div class="grid grid-cols-1 md:grid-cols-5 gap-8 mb-12">
       <div class="flex flex-col items-start gap-4">
         <div class="flex flex-col gap-2">
-          <span class="text-xl font-bold font-display tracking-tight">{siteConfig.name}</span>
+          <span class="text-xl font-bold font-display tracking-tight"
+            >{siteConfig.name}</span
+          >
           <p class="text-sm text-muted-foreground/80 max-w-xs">
             {t['footer.description']}
           </p>
         </div>
       </div>
 
-      {Object.entries(FOOTER_LINKS).map(([key, section]) => (
-        <div>
-          <h3 class="font-semibold mb-4 text-foreground">{t[`footer.${key}` as keyof typeof t] || section.title}</h3>
-          <ul class="space-y-2 text-sm text-foreground/90">
-            {section.links.map((link: any) => {
-              const shouldLocalize = link.localize !== false;
-              const href = (!shouldLocalize)
-                ? link.href
-                : `/${lang}${link.href.startsWith('/') ? '' : '/'}${link.href}`.replace(/\/$/, '') || `/${lang}`;
+      {
+        Object.entries(FOOTER_LINKS).map(([key, section]) => (
+          <div>
+            <h3 class="font-semibold mb-4 text-foreground">
+              {t[`footer.${key}` as keyof typeof t] || section.title}
+            </h3>
+            <ul class="space-y-2 text-sm text-foreground/90">
+              {section.links.map((link: any) => {
+                const shouldLocalize = link.localize !== false;
+                const href = !shouldLocalize
+                  ? link.href
+                  : `/${lang}${link.href.startsWith('/') ? '' : '/'}${link.href}`.replace(
+                      /\/$/,
+                      '',
+                    ) || `/${lang}`;
 
-              return (
-                <li>
-                  <a
-                    href={href}
-                    class="hover:text-foreground transition-colors"
-                  >
-                    {t[`footer.${link.label.toLowerCase()}` as keyof typeof t] || link.label}
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+                return (
+                  <li>
+                    <a
+                      href={href}
+                      class="hover:text-foreground transition-colors"
+                    >
+                      {t[
+                        `footer.${link.label.toLowerCase()}` as keyof typeof t
+                      ] || link.label}
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))
+      }
 
       <div class="col-span-1 md:col-span-2">
         <NewsletterSignup lang={lang} />
       </div>
     </div>
 
-    <div class="pt-8 border-t border-foreground/10 flex flex-col md:flex-row justify-between items-center gap-4">
+    <div
+      class="pt-8 border-t border-foreground/10 flex flex-col md:flex-row justify-between items-center gap-4"
+    >
       <div class="flex flex-col gap-1">
         <div class="text-muted-foreground text-sm">
-          {(t['footer.copyright'] || '').replace('{year}', today.getFullYear().toString())}
+          {
+            (t['footer.copyright'] || '').replace(
+              '{year}',
+              today.getFullYear().toString(),
+            )
+          }
         </div>
-        {siteConfig.legal && (
-          <div class="text-muted-foreground/50 text-xs">
-            {siteConfig.legal.entityName} — Org. nr. {siteConfig.legal.orgNumber}
-            {siteConfig.contact?.email?.support && (
-              <span> - <a href={`mailto:${siteConfig.contact.email.support}`} class="hover:text-foreground transition-colors">{siteConfig.contact.email.support}</a></span>
-            )}
-          </div>
-        )}
+        {
+          siteConfig.legal && (
+            <div class="text-muted-foreground/50 text-xs">
+              {siteConfig.legal.entityName} — Org. nr.{' '}
+              {siteConfig.legal.orgNumber}
+              {siteConfig.contact?.email?.support && (
+                <span>
+                  {' '}
+                  -{' '}
+                  <a
+                    href={`mailto:${siteConfig.contact.email.support}`}
+                    class="hover:text-foreground transition-colors"
+                  >
+                    {siteConfig.contact.email.support}
+                  </a>
+                </span>
+              )}
+            </div>
+          )
+        }
       </div>
 
       <div class="flex gap-4">
-        {ACTION_LINKS.social.github && (
-          <a href={ACTION_LINKS.social.github} target="_blank" rel="noopener noreferrer" class="text-muted-foreground hover:text-foreground transition-colors" aria-label="GitHub">
-            <Github className="w-5 h-5" strokeWidth={1.5} />
-          </a>
-        )}
+        {
+          ACTION_LINKS.social.github && (
+            <a
+              href={ACTION_LINKS.social.github}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="GitHub"
+            >
+              <Github className="w-5 h-5" strokeWidth={1.5} />
+            </a>
+          )
+        }
       </div>
     </div>
   </div>
