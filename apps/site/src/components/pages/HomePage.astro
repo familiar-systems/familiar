@@ -4,7 +4,7 @@ import Section from '~/components/layout/Section.astro';
 import LatestPosts from '~/components/sections/LatestPosts.astro';
 import Button from '~/components/ui/Button.astro';
 import NewsletterSignup from '~/components/common/NewsletterSignup.astro';
-import { BookOpen, Upload, Sparkles, CheckCircle, ScrollText, MapPin, Users, Swords, Link2, Eye, Clock, MessageSquare, ShieldCheck, GitFork } from 'lucide-react';
+import { BookOpen, Upload, Sparkles, CheckCircle, ScrollText, MapPin, Users, Swords, BrainCircuit, Link2, Eye, Clock, MessageSquare, Shield, Globe, User, GitFork } from 'lucide-react';
 
 interface Props {
   lang: string;
@@ -160,7 +160,7 @@ const t = useTranslations(lang);
             <ScrollText className="w-6 h-6 text-primary" />
           </div>
           <h3 class="text-xl font-bold mb-3 font-display">Sessions</h3>
-          <p class="text-muted-foreground leading-relaxed">Write-ups of what happened each time you played, organized chronologically. The living history of your campaign.</p>
+          <p class="text-muted-foreground leading-relaxed">Write-ups of what happened each time you played, organized chronologically in a writing style of your choice. The living history of your world.</p>
         </div>
 
         <!-- Things -->
@@ -169,7 +169,7 @@ const t = useTranslations(lang);
             <Users className="w-6 h-6 text-primary" />
           </div>
           <h3 class="text-xl font-bold mb-3 font-display">Things</h3>
-          <p class="text-muted-foreground leading-relaxed">Every entity in your world: NPCs, locations, items, factions, monsters, lore. Each one has its own page that accumulates detail over time.</p>
+          <p class="text-muted-foreground leading-relaxed">Every entity in your world: NPCs, locations, items, factions, clocks, spaceships, aspects, whatever your system needs. Each one has its own page that accumulates detail over time.</p>
         </div>
 
         <!-- Connections -->
@@ -178,7 +178,7 @@ const t = useTranslations(lang);
             <Link2 className="w-6 h-6 text-primary" />
           </div>
           <h3 class="text-xl font-bold mb-3 font-display">Connections</h3>
-          <p class="text-muted-foreground leading-relaxed">How things relate: "Kael frequents the Rusty Anchor," "The Silver Compact is allied with the Crown of Ashenmoor." A living graph of your world.</p>
+          <p class="text-muted-foreground leading-relaxed">How things relate: "Kael frequents the Rusty Anchor," "The Silver Compact is allied with the Crown of Ashenmoor," "The Lampblack League owns the clock Summon The Ghost Ships." A freeform, living graph of your world.</p>
         </div>
 
         <!-- Player Visibility -->
@@ -207,7 +207,7 @@ const t = useTranslations(lang);
             <MapPin className="w-7 h-7 text-primary" />
           </div>
           <div>
-            <h3 class="text-xl font-bold mb-3 font-display">It meets you where you are</h3>
+            <h3 class="text-xl font-bold mb-3 font-display">Your familiar meets you where you are</h3>
             <p class="text-muted-foreground leading-relaxed text-lg">You don't have to build a wiki before session 1. An NPC can start as nothing more than a name mentioned once in a session, and grow into a fully detailed character over time as they keep showing up.</p>
           </div>
         </div>
@@ -218,7 +218,7 @@ const t = useTranslations(lang);
             <Clock className="w-7 h-7 text-primary" />
           </div>
           <div>
-            <h3 class="text-xl font-bold mb-3 font-display">Tolerant of neglect</h3>
+            <h3 class="text-xl font-bold mb-3 font-display">Your familiar waits patiently</h3>
             <p class="text-muted-foreground leading-relaxed text-lg">Skip a week of reviews? That's fine. Unreviewed suggestions expire quietly. The system never buries you under an infinite pile of homework.</p>
           </div>
         </div>
@@ -229,8 +229,8 @@ const t = useTranslations(lang);
             <MessageSquare className="w-7 h-7 text-primary" />
           </div>
           <div>
-            <h3 class="text-xl font-bold mb-3 font-display">The AI proposes, you decide</h3>
-            <p class="text-muted-foreground leading-relaxed text-lg">The AI never changes your world on its own. Every suggestion needs your approval, and every suggestion comes with reasoning so you can see why it was proposed.</p>
+            <h3 class="text-xl font-bold mb-3 font-display">Your familiar proposes, you decide</h3>
+            <p class="text-muted-foreground leading-relaxed text-lg">Your familiar never changes your world on its own. Every suggestion needs your approval, and every suggestion comes with reasoning so you can see why it was proposed.</p>
           </div>
         </div>
 
@@ -240,8 +240,19 @@ const t = useTranslations(lang);
             <Swords className="w-7 h-7 text-primary" />
           </div>
           <div>
-            <h3 class="text-xl font-bold mb-3 font-display">It captures the mess</h3>
+            <h3 class="text-xl font-bold mb-3 font-display">Your familiar never judges</h3>
             <p class="text-muted-foreground leading-relaxed text-lg">Retconned something? No problem. Mark things as "established in play but since retconned." The history is preserved, but your familiar stops treating it as current. Your campaign's contradictions are part of the story.</p>
+          </div>
+        </div>
+
+        <!-- Partner with an AI -->
+        <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-start">
+          <div class="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+            <BrainCircuit className="w-7 h-7 text-primary" />
+          </div>
+          <div>
+            <h3 class="text-xl font-bold mb-3 font-display">Your familiar can help</h3>
+            <p class="text-muted-foreground leading-relaxed text-lg">It's hard to be alone as a GM. "How do I introduce the Queen of Andergast while hinting she's subtly evil?" Pair with the familiar that helped you make your wiki to formulate and refine your thoughts.</p>
           </div>
         </div>
       </div>
@@ -249,31 +260,60 @@ const t = useTranslations(lang);
   </Section>
 
   <!-- ═══════════════════════════════════════════ -->
-  <!-- SELF-HOSTING + OPEN SOURCE                  -->
+  <!-- TRUST                                       -->
   <!-- ═══════════════════════════════════════════ -->
-  <Section class="py-20 md:py-24 bg-foreground/[0.02]">
-    <div class="max-w-3xl mx-auto text-center">
-      <div class="inline-flex items-center gap-3 mb-6">
-        <div class="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center">
-          <GitFork className="w-5 h-5 text-gold" />
+  <Section class="py-24 md:py-32 bg-foreground/[0.02]">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="font-display text-3xl md:text-4xl font-bold text-center mb-16">Your table, not ours.</h2>
+
+      <div class="space-y-12">
+        <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
+          <div class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0">
+            <Shield className="w-7 h-7 text-gold" />
+          </div>
+          <div>
+            <h3 class="text-xl font-bold mb-3 font-display">Your Data, Not Ours</h3>
+            <p class="text-muted-foreground leading-relaxed text-lg mb-2">We never sell your data or anything derived from it. You are the customer, not the product.</p>
+            <a href={`/${lang}/privacy`} class="text-primary hover:text-primary/80 font-medium transition-colors">Read the privacy policy</a>
+          </div>
         </div>
-        <div class="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center">
-          <ShieldCheck className="w-5 h-5 text-gold" />
+
+        <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
+          <div class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0">
+            <Globe className="w-7 h-7 text-gold" />
+          </div>
+          <div>
+            <h3 class="text-xl font-bold mb-3 font-display">Every provider is public</h3>
+            <p class="text-muted-foreground leading-relaxed text-lg mb-2">Every provider we use is listed publicly, with why we chose them. All EU/EEA. No US cloud.</p>
+            <div class="flex gap-4">
+              <a href={`/${lang}/blog/2026-03-13-our-providers`} class="text-primary hover:text-primary/80 font-medium transition-colors">See our providers</a>
+              <a href="https://github.com/familiar-systems/familiar/tree/main/infra/pulumi-cloud" target="_blank" rel="noopener noreferrer" class="text-primary hover:text-primary/80 font-medium transition-colors">See the infrastructure config</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
+          <div class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0">
+            <User className="w-7 h-7 text-gold" />
+          </div>
+          <div>
+            <h3 class="text-xl font-bold mb-3 font-display">One person builds this</h3>
+            <p class="text-muted-foreground leading-relaxed text-lg mb-2">Here is his name, his face, and his email.</p>
+            <a href={`/${lang}/about`} class="text-primary hover:text-primary/80 font-medium transition-colors">Meet the developer</a>
+          </div>
+        </div>
+
+        <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
+          <div class="w-14 h-14 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0">
+            <GitFork className="w-7 h-7 text-gold" />
+          </div>
+          <div>
+            <h3 class="text-xl font-bold mb-3 font-display">The code is public</h3>
+            <p class="text-muted-foreground leading-relaxed text-lg mb-2">Read it, audit it, fork it, self-host it. Your campaign is yours forever.</p>
+            <a href="https://github.com/familiar-systems" target="_blank" rel="noopener noreferrer" class="text-primary hover:text-primary/80 font-medium transition-colors">View on GitHub</a>
+          </div>
         </div>
       </div>
-      <h2 class="font-display text-3xl md:text-4xl font-bold mb-6">Open Source. Self-Hostable.</h2>
-      <p class="text-muted-foreground text-lg leading-relaxed mb-8">
-        familiar.systems is open source. Use the hosted version to get started instantly, or run it on your own server with your own AI provider. Your campaign data is yours - we never sell it nor anything that comes from it.
-      </p>
-      <Button
-        href="https://github.com/familiar-systems"
-        variant="secondary"
-        class="px-8 py-4 rounded-full text-base"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        View on GitHub
-      </Button>
     </div>
   </Section>
 

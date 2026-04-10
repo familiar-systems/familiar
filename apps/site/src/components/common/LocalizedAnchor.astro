@@ -1,0 +1,19 @@
+---
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { defaultLang } from '~/i18n/ui';
+
+interface Props {
+  href?: string;
+  [key: string]: any;
+}
+
+const { href, ...rest } = Astro.props;
+const { lang = defaultLang } = Astro.params;
+
+const localizedHref =
+  typeof href === 'string' && href.startsWith('/') && !href.startsWith('//')
+    ? getRelativeLocaleUrl(lang, href.slice(1))
+    : href;
+---
+
+<a href={localizedHref} {...rest}><slot /></a>

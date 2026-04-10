@@ -1,8 +1,7 @@
 ---
 import { type CollectionEntry, getCollection, render } from 'astro:content';
 import BlogPost from '~/layouts/BlogPost.astro';
-
-import { languages } from '~/i18n/ui';
+import LocalizedAnchor from '~/components/common/LocalizedAnchor.astro';
 
 export async function getStaticPaths() {
 	const posts = await getCollection('blog');
@@ -34,5 +33,5 @@ const availableLangs = allPosts
   nofollow={post.data.nofollow}
   availableLangs={availableLangs}
 >
-	<Content />
+	<Content components={{ a: LocalizedAnchor }} />
 </BlogPost>
