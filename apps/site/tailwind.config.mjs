@@ -12,6 +12,8 @@ export default {
         muted: "var(--muted)",
         "muted-foreground": "var(--muted-foreground)",
         gold: "var(--color-gold)",
+        bronze: "var(--color-bronze)",
+        "bronze-muted": "var(--color-bronze-muted)",
       },
       fontFamily: {
         sans: ["Alegreya", "Georgia", "serif"],

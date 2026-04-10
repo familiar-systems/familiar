@@ -3,6 +3,10 @@ node = "24"
 "npm:pnpm" = "10.32"
 rust = "stable"
 python = "3.14"
+uv = "latest"
+
+[settings]
+python.uv_venv_auto = "create|source"
 
 # --- dev ---
 

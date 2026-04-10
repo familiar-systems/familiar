@@ -93,14 +93,21 @@ def main() -> None:
     dark_pbm = threshold_to_pbm(img, args.threshold, invert=False)
     light_pbm = threshold_to_pbm(img, args.threshold, invert=True)
 
-    dark_svg = output_dir / "dark.svg"
-    light_svg = output_dir / "light.svg"
+    # Output naming convention:
+    # The filename indicates which theme the SVG is rendered ON, not
+    # which regions were traced. Dark regions of the source (silhouette
+    # shapes) render well on a light background, so they go to
+    # for-light.svg. Light regions of the source (highlight shapes)
+    # render well on a dark background when tinted with a light color,
+    # so they go to for-dark.svg.
+    for_light_svg = output_dir / "for-light.svg"  # dark regions traced
+    for_dark_svg = output_dir / "for-dark.svg"    # light regions traced
 
-    trace_to_svg(dark_pbm, dark_svg)
-    trace_to_svg(light_pbm, light_svg)
+    trace_to_svg(dark_pbm, for_light_svg)
+    trace_to_svg(light_pbm, for_dark_svg)
 
-    print(f"Dark regions:  {dark_svg}")
-    print(f"Light regions: {light_svg}")
+    print(f"For light theme: {for_light_svg}")
+    print(f"For dark theme:  {for_dark_svg}")
 
 
 if __name__ == "__main__":

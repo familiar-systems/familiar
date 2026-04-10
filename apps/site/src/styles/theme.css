@@ -6,8 +6,10 @@
   --muted-foreground: #57534e;
   --primary-foreground: #ffffff;
   --color-gold: #b89530;
+  --color-bronze: #5c3a1f;
+  --color-bronze-muted: #ead8b8;
   --color-line: #c9c1c5;
-  --color-step-bg: #e8e3df;
+  --color-step-bg: #ebe4ef;
   --color-step-hover: #d8d2d2;
 }
 
@@ -20,8 +22,10 @@
   --muted-foreground: #a8a29e;
   --primary-foreground: #ffffff;
   --color-gold: #d4a944;
+  --color-bronze: #c4956b;
+  --color-bronze-muted: #2a1f14;
   --color-line: #39313a;
-  --color-step-bg: #161312;
+  --color-step-bg: #1f1a24;
   --color-step-hover: #2b252a;
 }
 

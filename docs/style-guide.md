@@ -1,6 +1,6 @@
 # Visual Style Guide
 
-The familiar.systems site uses a warm, parchment-inspired palette with gold accents and serif typography. This guide documents the design system as implemented in `apps/site/`.
+The familiar.systems site uses a warm, parchment-inspired palette with gold and bronze accents and serif typography. The visual voice is cozy arcane meets workshop steampunk: candlelit parchment, plum twilight, gold as ceremony, bronze as mechanism. This guide documents the design system as implemented in `apps/site/`.
 
 ## Color Palette
 
@@ -8,18 +8,20 @@ All colors are defined as CSS custom properties in `src/styles/theme.css` and ma
 
 ### Theme Tokens
 
-| Token                  | Light                  | Dark                    | Usage                           |
-| ---------------------- | ---------------------- | ----------------------- | ------------------------------- |
-| `--background`         | `#f8f4ec` (parchment)  | `#0f0d0a` (charcoal)    | Page background                 |
-| `--foreground`         | `#1c1917` (dark brown) | `#e7e5e4` (light stone) | Body text                       |
-| `--color-primary`      | `#5a4a6a` (plum)       | `#9a86aa` (light plum)  | Accents, links, identity        |
-| `--color-gold`         | `#b89530` (warm gold)  | `#d4a944` (bright gold) | CTAs, badges, trust icons       |
-| `--muted`              | `#ede8dd` (beige)      | `#1c1917` (dark brown)  | Subdued backgrounds             |
-| `--muted-foreground`   | `#57534e` (brown)      | `#a8a29e` (stone)       | Secondary text, descriptions    |
-| `--primary-foreground` | `#ffffff`              | `#ffffff`               | Text on primary backgrounds     |
-| `--color-line`         | `#c9c1c5` (mauve)      | `#39313a` (dark plum)   | Timeline connector lines        |
-| `--color-step-bg`      | `#e8e3df` (parchment)  | `#161312` (deep brown)  | Step icon container backgrounds |
-| `--color-step-hover`   | `#d8d2d2` (taupe)      | `#2b252a` (dark plum)   | Step icon container hover state |
+| Token                  | Light                   | Dark                        | Usage                                       |
+| ---------------------- | ----------------------- | --------------------------- | ------------------------------------------- |
+| `--background`         | `#f8f4ec` (parchment)   | `#0f0d0a` (charcoal)        | Page background                             |
+| `--foreground`         | `#1c1917` (dark brown)  | `#e7e5e4` (light stone)     | Body text                                   |
+| `--color-primary`      | `#5a4a6a` (plum)        | `#9a86aa` (light plum)      | Accents, links, identity                    |
+| `--color-gold`         | `#b89530` (warm gold)   | `#d4a944` (bright gold)     | CTAs, badges, trust icons                   |
+| `--color-bronze`       | `#5c3a1f` (dark walnut) | `#c4956b` (lit bronze)      | Hero masks, icon accents, foreground bronze |
+| `--color-bronze-muted` | `#ead8b8` (pale bronze) | `#2a1f14` (deep ember)      | Card backgrounds, reading surfaces          |
+| `--muted`              | `#ede8dd` (beige)       | `#1c1917` (dark brown)      | Subdued backgrounds                         |
+| `--muted-foreground`   | `#57534e` (brown)       | `#a8a29e` (stone)           | Secondary text, descriptions                |
+| `--primary-foreground` | `#ffffff`               | `#ffffff`                   | Text on primary backgrounds                 |
+| `--color-line`         | `#c9c1c5` (mauve)       | `#39313a` (dark plum)       | Timeline connector lines                    |
+| `--color-step-bg`      | `#ebe4ef` (pale lilac)  | `#1f1a24` (muted dark plum) | Step icon container backgrounds             |
+| `--color-step-hover`   | `#d8d2d2` (taupe)       | `#2b252a` (dark plum)       | Step icon container hover state             |
 
 ### Opacity Conventions
 
@@ -40,6 +42,10 @@ Used sparingly for status indicators and specific UI elements:
 - **Checkmark green**: `text-green-500`
 - **Accent blue**: `bg-blue-600/10`, `text-blue-700 dark:text-blue-300`
 - **Destructive red**: `bg-red-600/10`, `text-red-700 dark:text-red-400`
+
+### Gold vs Bronze
+
+Gold and bronze share the warm metal family but carry different weight. Gold signals trust, CTA, celebration, identity: the color a reader sees when something is meant to feel rewarding or authoritative. Bronze signals systems, mechanism, technical surfaces, reading weight: the color of the mechanical half of the brand, the workshop rather than the ceremony. Use gold on interactive surfaces that ask for user action. Use bronze on structural surfaces that hold or frame content.
 
 ## Typography
 
@@ -208,7 +214,7 @@ animation: fadeUp 0.8s ease-out forwards;
 
 The hero uses a layered background:
 
-1. **Raven woodcut**: Linocut-style SVG imagery. Light theme uses `raven-dark.svg` with sepia/hue-rotate filter at 14% opacity. Dark theme uses `raven-light.svg` at 22% opacity.
+1. **Wizard woodcut**: Linocut-style SVG imagery of two wizards consulting a crystal, rendered as a CSS `mask-image` with `bg-bronze` as the fill rather than a baked SVG color. Light theme uses `/wizard-for-light.svg` at 14% opacity; dark theme uses `/wizard-for-dark.svg` at 22% opacity. The bronze color lives in `--color-bronze` so it can be tuned centrally.
 2. **Ambient glow orbs**: Large blurred circles:
 
 ```html
@@ -229,7 +235,7 @@ The hero uses a layered background:
 | Feature cards   | `w-6 h-6`              |
 | Step indicators | `w-7 h-7` to `w-8 h-8` |
 
-Icon color is typically `text-primary`. Trust/CTA-adjacent icons use `text-gold`. Brand icons (GitHub, Bluesky, LinkedIn) are custom SVG components in `components/icons/BrandIcons.tsx`. The brand icon (`BrandIcon.astro`) is a geometric raven silhouette; the raven also appears as `/raven-icon.svg` (logo) and `/raven-dark.svg` + `/raven-light.svg` (hero woodcut backgrounds).
+Icon color is typically `text-primary`. Trust/CTA-adjacent icons use `text-gold`. Brand icons (GitHub, Bluesky, LinkedIn) are custom SVG components in `components/icons/BrandIcons.tsx`. The brand icon (`BrandIcon.astro`) is a geometric raven silhouette that also appears as `/raven-icon.svg` (logo). The hero woodcut backgrounds are wizard-and-crystal compositions at `/wizard-for-light.svg` and `/wizard-for-dark.svg`, tinted via `bg-bronze` mask-image rather than baked color.
 
 ## Dark Mode
 

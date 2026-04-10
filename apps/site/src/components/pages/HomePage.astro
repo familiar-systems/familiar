@@ -18,10 +18,10 @@ const t = useTranslations(lang);
   <!-- HERO                                        -->
   <!-- ═══════════════════════════════════════════ -->
   <section class="min-h-[75vh] flex items-center justify-center relative overflow-hidden pt-20 bg-background">
-    <!-- Raven woodcut background -->
+    <!-- Wizards and crystals woodcut background -->
     <div class="absolute inset-0 z-0 overflow-hidden">
-      <img src="/raven-dark.svg" alt="" class="w-full h-full object-cover opacity-[0.14] dark:hidden" style="filter: sepia(1) saturate(1.5) brightness(0.4) hue-rotate(240deg);" />
-      <img src="/raven-light.svg" alt="" class="w-full h-full object-cover opacity-[0.22] hidden dark:block" />
+      <div class="absolute inset-0 bg-bronze opacity-[0.14] dark:hidden" style="mask: url('/wizard-for-light.svg') center/cover no-repeat; -webkit-mask: url('/wizard-for-light.svg') center/cover no-repeat;"></div>
+      <div class="absolute inset-0 bg-bronze opacity-[0.22] hidden dark:block" style="mask: url('/wizard-for-dark.svg') center/cover no-repeat; -webkit-mask: url('/wizard-for-dark.svg') center/cover no-repeat;"></div>
     </div>
 
     <!-- Ambient glow -->
@@ -155,36 +155,36 @@ const t = useTranslations(lang);
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Sessions -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
-          <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
-            <ScrollText className="w-6 h-6 text-primary" />
+        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background">
+          <div class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5">
+            <ScrollText className="w-6 h-6 text-bronze" />
           </div>
           <h3 class="text-xl font-bold mb-3 font-display">Sessions</h3>
           <p class="text-muted-foreground leading-relaxed">Write-ups of what happened each time you played, organized chronologically in a writing style of your choice. The living history of your world.</p>
         </div>
 
         <!-- Things -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
-          <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
-            <Users className="w-6 h-6 text-primary" />
+        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background">
+          <div class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5">
+            <Users className="w-6 h-6 text-bronze" />
           </div>
           <h3 class="text-xl font-bold mb-3 font-display">Things</h3>
           <p class="text-muted-foreground leading-relaxed">Every entity in your world: NPCs, locations, items, factions, clocks, spaceships, aspects, whatever your system needs. Each one has its own page that accumulates detail over time.</p>
         </div>
 
         <!-- Connections -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
-          <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
-            <Link2 className="w-6 h-6 text-primary" />
+        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background">
+          <div class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5">
+            <Link2 className="w-6 h-6 text-bronze" />
           </div>
           <h3 class="text-xl font-bold mb-3 font-display">Connections</h3>
           <p class="text-muted-foreground leading-relaxed">How things relate: "Kael frequents the Rusty Anchor," "The Silver Compact is allied with the Crown of Ashenmoor," "The Lampblack League owns the clock Summon The Ghost Ships." A freeform, living graph of your world.</p>
         </div>
 
         <!-- Player Visibility -->
-        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-primary/20 transition-all duration-300 bg-background">
-          <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-5">
-            <Eye className="w-6 h-6 text-primary" />
+        <div class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background">
+          <div class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5">
+            <Eye className="w-6 h-6 text-bronze" />
           </div>
           <h3 class="text-xl font-bold mb-3 font-display">Player Visibility</h3>
           <p class="text-muted-foreground leading-relaxed">You control what players see. Secret notes stay secret. The Good Cleric's dark patron remains hidden until you're ready to reveal it.</p>
@@ -325,8 +325,13 @@ const t = useTranslations(lang);
   <!-- ═══════════════════════════════════════════ -->
   <!-- CTA                                         -->
   <!-- ═══════════════════════════════════════════ -->
-  <Section class="py-24 md:py-32">
-    <div class="max-w-3xl mx-auto text-center">
+  <Section class="py-24 md:py-32 relative overflow-hidden">
+    <!-- Raven woodcut background -->
+    <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+      <div class="absolute inset-0 bg-primary opacity-[0.10] dark:hidden" style="mask: url('/raven-for-light.svg') center/cover no-repeat; -webkit-mask: url('/raven-for-light.svg') center/cover no-repeat;"></div>
+      <div class="absolute inset-0 bg-primary opacity-[0.16] hidden dark:block" style="mask: url('/raven-for-dark.svg') center/cover no-repeat; -webkit-mask: url('/raven-for-dark.svg') center/cover no-repeat;"></div>
+    </div>
+    <div class="max-w-3xl mx-auto text-center relative z-10">
       <h2 class="font-display text-3xl md:text-5xl font-bold mb-6">
         Stop taking notes.<br />
         <span class="text-primary">Start playing.</span>
