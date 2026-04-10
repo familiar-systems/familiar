@@ -8,6 +8,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

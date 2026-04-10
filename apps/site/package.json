@@ -9,6 +9,8 @@
     "preview": "astro preview",
     "typecheck": "astro check",
     "lint": "oxlint .",
+    "format": "prettier --write \"**/*.astro\" && oxfmt .",
+    "format:check": "prettier --check \"**/*.astro\" && oxfmt --check .",
     "test": "echo \"No tests yet\""
   },
   "dependencies": {
@@ -41,6 +43,8 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "astro-compress": "^2.4.0",
+    "prettier": "^3.8.2",
+    "prettier-plugin-astro": "^0.14.1",
     "typescript": "catalog:"
   }
 }
