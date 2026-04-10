@@ -8,18 +8,18 @@ All colors are defined as CSS custom properties in `src/styles/theme.css` and ma
 
 ### Theme Tokens
 
-| Token                  | Light                   | Dark                    | Usage                              |
-| ---------------------- | ----------------------- | ----------------------- | ---------------------------------- |
-| `--background`         | `#f8f4ec` (parchment)   | `#0f0d0a` (charcoal)    | Page background                    |
-| `--foreground`         | `#1c1917` (dark brown)  | `#e7e5e4` (light stone) | Body text                          |
-| `--color-primary`      | `#5a4a6a` (plum)        | `#9a86aa` (light plum)  | Accents, links, identity           |
-| `--color-gold`         | `#b89530` (warm gold)   | `#d4a944` (bright gold) | CTAs, badges, trust icons          |
-| `--muted`              | `#ede8dd` (beige)       | `#1c1917` (dark brown)  | Subdued backgrounds                |
-| `--muted-foreground`   | `#57534e` (brown)       | `#a8a29e` (stone)       | Secondary text, descriptions       |
-| `--primary-foreground` | `#ffffff`               | `#ffffff`               | Text on primary backgrounds        |
-| `--color-line`         | `#c9c1c5` (mauve)       | `#39313a` (dark plum)   | Timeline connector lines           |
-| `--color-step-bg`      | `#e8e3df` (parchment)   | `#161312` (deep brown)  | Step icon container backgrounds    |
-| `--color-step-hover`   | `#d8d2d2` (taupe)       | `#2b252a` (dark plum)   | Step icon container hover state    |
+| Token                  | Light                  | Dark                    | Usage                           |
+| ---------------------- | ---------------------- | ----------------------- | ------------------------------- |
+| `--background`         | `#f8f4ec` (parchment)  | `#0f0d0a` (charcoal)    | Page background                 |
+| `--foreground`         | `#1c1917` (dark brown) | `#e7e5e4` (light stone) | Body text                       |
+| `--color-primary`      | `#5a4a6a` (plum)       | `#9a86aa` (light plum)  | Accents, links, identity        |
+| `--color-gold`         | `#b89530` (warm gold)  | `#d4a944` (bright gold) | CTAs, badges, trust icons       |
+| `--muted`              | `#ede8dd` (beige)      | `#1c1917` (dark brown)  | Subdued backgrounds             |
+| `--muted-foreground`   | `#57534e` (brown)      | `#a8a29e` (stone)       | Secondary text, descriptions    |
+| `--primary-foreground` | `#ffffff`              | `#ffffff`               | Text on primary backgrounds     |
+| `--color-line`         | `#c9c1c5` (mauve)      | `#39313a` (dark plum)   | Timeline connector lines        |
+| `--color-step-bg`      | `#e8e3df` (parchment)  | `#161312` (deep brown)  | Step icon container backgrounds |
+| `--color-step-hover`   | `#d8d2d2` (taupe)      | `#2b252a` (dark plum)   | Step icon container hover state |
 
 ### Opacity Conventions
 
@@ -45,9 +45,9 @@ Used sparingly for status indicators and specific UI elements:
 
 ### Font Families
 
-| Role    | Font              | Fallback       | Tailwind class | Usage                              |
-| ------- | ----------------- | -------------- | -------------- | ---------------------------------- |
-| Body    | Alegreya          | Georgia, serif | `font-sans`    | All body text, default             |
+| Role    | Font               | Fallback       | Tailwind class | Usage                              |
+| ------- | ------------------ | -------------- | -------------- | ---------------------------------- |
+| Body    | Alegreya           | Georgia, serif | `font-sans`    | All body text, default             |
 | Display | Cormorant Garamond | Georgia, serif | `font-display` | Headlines, brand name, pull quotes |
 
 Both are serif fonts. The site has no sans-serif font in use. Fonts are loaded from [Bunny Fonts](https://fonts.bunny.net) (a GDPR-compliant, EU-based alternative to Google Fonts).
@@ -210,10 +210,12 @@ The hero uses a layered background:
 
 1. **Raven woodcut**: Linocut-style SVG imagery. Light theme uses `raven-dark.svg` with sepia/hue-rotate filter at 14% opacity. Dark theme uses `raven-light.svg` at 22% opacity.
 2. **Ambient glow orbs**: Large blurred circles:
+
 ```html
 <div class="bg-primary/30 rounded-full blur-[140px] animate-pulse"></div>
 <div class="bg-gold/20 rounded-full blur-[120px] animate-pulse"></div>
 ```
+
 3. **Texture overlay**: Inline SVG cross-hatch pattern at 3-5% opacity.
 
 ## Icons
