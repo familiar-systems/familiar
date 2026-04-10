@@ -5,7 +5,7 @@
     "lint": "pnpm -r run lint",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "typecheck": "tsc -b",
+    "typecheck": "pnpm -r run typecheck",
     "build:web": "pnpm --filter @familiar-systems/web build",
     "build:site": "pnpm --filter @familiar-systems/site build",
     "test": "vitest run --passWithNoTests"
