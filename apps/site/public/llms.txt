@@ -1,10 +1,10 @@
-# Loreweaver
+# familiar.systems
 
-Loreweaver is an AI-assisted campaign notebook for tabletop RPG game masters.
+familiar.systems is an AI-assisted campaign wiki for tabletop RPG game masters.
 
 It captures session content (audio, notes) and uses AI to assemble a campaign
-knowledge base — NPCs, locations, items, factions, and the relationships between
-them — as a graph that grows from play.
+knowledge base: NPCs, locations, items, factions, and the relationships between
+them, as a graph that grows from play.
 
 ## Status
 
@@ -13,8 +13,8 @@ Pre-launch. The public site is live; the application is under active development
 ## Links
 
 - Website: https://loreweaver.no
-- GitHub: https://github.com/loreweaver-no
-- License: FSL-1.1-Apache-2.0 (converts to Apache 2.0 after two years)
+- GitHub: https://github.com/familiar-systems
+- License: AGPL-3.0
 
 ## Operator
 

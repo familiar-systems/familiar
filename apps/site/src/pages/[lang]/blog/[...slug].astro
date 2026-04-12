@@ -1,18 +1,17 @@
 ---
 import { type CollectionEntry, getCollection, render } from 'astro:content';
 import BlogPost from '~/layouts/BlogPost.astro';
-
-import { languages } from '~/i18n/ui';
+import LocalizedAnchor from '~/components/common/LocalizedAnchor.astro';
 
 export async function getStaticPaths() {
-	const posts = await getCollection('blog');
-	return posts.map((post) => {
+  const posts = await getCollection('blog');
+  return posts.map((post) => {
     const [lang, ...slugParts] = post.id.split('/');
-    const slug = slugParts.join('/').replace(/\.[^/.]+$/, "");
+    const slug = slugParts.join('/').replace(/\.[^/.]+$/, '');
     return {
-		  params: { lang, slug },
-		  props: post,
-	  };
+      params: { lang, slug },
+      props: post,
+    };
   });
 }
 type Props = CollectionEntry<'blog'>;
@@ -24,15 +23,15 @@ const { Content } = await render(post);
 const allPosts = await getCollection('blog');
 const currentBaseSlug = post.id.split('/').slice(1).join('/');
 const availableLangs = allPosts
-    .filter(p => p.id.endsWith(currentBaseSlug))
-    .map(p => p.id.split('/')[0]);
+  .filter((p) => p.id.endsWith(currentBaseSlug))
+  .map((p) => p.id.split('/')[0]);
 ---
 
-<BlogPost 
+<BlogPost
   {...post.data}
   noindex={post.data.noindex}
   nofollow={post.data.nofollow}
   availableLangs={availableLangs}
 >
-	<Content />
+  <Content components={{ a: LocalizedAnchor }} />
 </BlogPost>

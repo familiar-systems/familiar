@@ -6,9 +6,9 @@ interface Props {
   title?: string;
 }
 
-const { src, title = "Audio Episode" } = Astro.props;
+const { src, title = 'Audio Episode' } = Astro.props;
 ---
 
 <div id="audio-player-wrapper" class="w-full relative min-h-20">
-    <AudioPlayerReact src={src} title={title} client:load />
+  <AudioPlayerReact src={src} title={title} client:load />
 </div>

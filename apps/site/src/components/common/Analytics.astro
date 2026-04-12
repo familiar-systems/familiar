@@ -12,35 +12,39 @@ const { vendors, alwaysLoad } = siteConfig.analytics;
 
     // Google Analytics 4
     if (vendors.googleAnalytics?.enabled && vendors.googleAnalytics?.id) {
-        const gaScript = document.createElement('script');
-        gaScript.async = true;
-        gaScript.src = `https://www.googletagmanager.com/gtag/js?id=${vendors.googleAnalytics.id}`;
-        document.head.appendChild(gaScript);
+      const gaScript = document.createElement('script');
+      gaScript.async = true;
+      gaScript.src = `https://www.googletagmanager.com/gtag/js?id=${vendors.googleAnalytics.id}`;
+      document.head.appendChild(gaScript);
 
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', vendors.googleAnalytics.id);
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+      gtag('js', new Date());
+      gtag('config', vendors.googleAnalytics.id);
     }
 
     // Rybbit Analytics
     if (vendors.rybbit?.enabled && vendors.rybbit?.id) {
-        const rybbitScript = document.createElement('script');
-        rybbitScript.defer = true;
-        rybbitScript.setAttribute('data-site-id', vendors.rybbit.id);
-        rybbitScript.src = vendors.rybbit.src || 'https://app.rybbit.io/api/script.js';
-        document.head.appendChild(rybbitScript);
+      const rybbitScript = document.createElement('script');
+      rybbitScript.defer = true;
+      rybbitScript.setAttribute('data-site-id', vendors.rybbit.id);
+      rybbitScript.src =
+        vendors.rybbit.src || 'https://app.rybbit.io/api/script.js';
+      document.head.appendChild(rybbitScript);
     }
 
     // Umami Analytics
     if (vendors.umami?.enabled && vendors.umami?.id) {
-        const umamiScript = document.createElement('script');
-        umamiScript.defer = true;
-        umamiScript.setAttribute('data-website-id', vendors.umami.id);
-        umamiScript.src = vendors.umami.src || 'https://analytics.umami.is/script.js';
-        document.head.appendChild(umamiScript);
+      const umamiScript = document.createElement('script');
+      umamiScript.defer = true;
+      umamiScript.setAttribute('data-website-id', vendors.umami.id);
+      umamiScript.src =
+        vendors.umami.src || 'https://analytics.umami.is/script.js';
+      document.head.appendChild(umamiScript);
     }
-    
+
     console.log('Analytics loaded');
   };
 

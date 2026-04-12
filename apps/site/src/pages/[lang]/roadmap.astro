@@ -16,8 +16,8 @@ const { lang } = Astro.params;
 const t = useTranslations(lang);
 
 const quests = (await getCollection('roadmap'))
-    .filter((entry) => entry.id.startsWith(`${lang}/`))
-    .sort((a, b) => a.data.quest - b.data.quest);
+  .filter((entry) => entry.id.startsWith(`${lang}/`))
+  .sort((a, b) => a.data.quest - b.data.quest);
 ---
 
 <Layout
@@ -31,37 +31,60 @@ const quests = (await getCollection('roadmap'))
 
   <Section class="py-16 md:py-24">
     <Container class="max-w-4xl">
-      {quests.map(async (quest) => {
-        const { Content } = await render(quest);
-        return (
-          <RoadmapItem
-            quest={quest.data.quest}
-            title={quest.data.title}
-            status={quest.data.status}
-          >
-            <Content />
-          </RoadmapItem>
-        );
-      })}
+      {
+        quests.map(async (quest) => {
+          const { Content } = await render(quest);
+          return (
+            <RoadmapItem
+              quest={quest.data.quest}
+              title={quest.data.title}
+              status={quest.data.status}
+            >
+              <Content />
+            </RoadmapItem>
+          );
+        })
+      }
 
       {/* Community CTA */}
       <div class="relative pl-12 pt-8 group scroll-mt-24">
         {/* Timeline line connecting to last quest */}
-        <div class="absolute left-[23px] top-0 h-14 w-px bg-linear-to-b from-foreground/10 to-transparent"></div>
+        <div
+          class="absolute left-[23px] top-0 h-14 w-px bg-linear-to-b from-foreground/10 to-transparent"
+        >
+        </div>
 
-        <div class="absolute left-0 top-8 w-12 h-12 flex items-center justify-center">
+        <div
+          class="absolute left-0 top-8 w-12 h-12 flex items-center justify-center"
+        >
           <div class="relative flex items-center justify-center">
-            <div class="w-10 h-10 rounded-xl border border-dashed border-foreground/20 z-10 relative bg-background flex items-center justify-center group-hover:scale-110 group-hover:border-primary/50 transition-all duration-500">
-              <span class="text-foreground/30 text-lg group-hover:text-primary transition-colors">?</span>
+            <div
+              class="w-10 h-10 rounded-xl border border-dashed border-foreground/20 z-10 relative bg-background flex items-center justify-center group-hover:scale-110 group-hover:border-primary/50 transition-all duration-500"
+            >
+              <span
+                class="text-foreground/30 text-lg group-hover:text-primary transition-colors"
+                >?</span
+              >
             </div>
-            <div class="absolute inset-0 bg-primary/20 rounded-xl blur-md opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div
+              class="absolute inset-0 bg-primary/20 rounded-xl blur-md opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+            </div>
           </div>
         </div>
 
-        <div class="rounded-2xl p-8 border border-dashed border-foreground/15 bg-foreground/2 hover:border-primary/30 transition-all group-hover:bg-foreground/3">
-          <p class="text-lg font-display font-bold text-foreground/70 mb-2">Have a quest in mind?</p>
+        <div
+          class="rounded-2xl p-8 border border-dashed border-foreground/15 bg-foreground/2 hover:border-primary/30 transition-all group-hover:bg-foreground/3"
+        >
+          <p class="text-lg font-display font-bold text-foreground/70 mb-2">
+            Have a quest in mind?
+          </p>
           <p class="text-foreground/50">
-            Join the discussion at <a href="https://github.com/orgs/familiar-systems/discussions" class="text-primary hover:text-primary/80 underline underline-offset-4 transition-colors">our GitHub</a>.
+            Join the discussion at <a
+              href="https://github.com/orgs/familiar-systems/discussions"
+              class="text-primary hover:text-primary/80 underline underline-offset-4 transition-colors"
+              >our GitHub</a
+            >.
           </p>
         </div>
       </div>

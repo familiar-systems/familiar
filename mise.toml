@@ -3,6 +3,10 @@ node = "24"
 "npm:pnpm" = "10.32"
 rust = "stable"
 python = "3.14"
+uv = "latest"
+
+[settings]
+python.uv_venv_auto = "create|source"
 
 # --- dev ---
 
@@ -51,7 +55,11 @@ depends = ["test:*"]
 run = "pnpm test"
 
 [tasks."test:rust"]
-run = "cargo test"
+description = "Run Rust tests and format ts-rs generated TS output"
+run = """
+cargo test --workspace
+pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
+"""
 
 [tasks."test:python"]
 dir = "workers/whisperx"
@@ -81,7 +89,7 @@ run = "uv run ruff check ."
 
 [tasks.format]
 description = "Format all code"
-depends = ["format:*"]
+depends = ["format:ts", "format:rust", "format:python", "format:infra"]
 
 [tasks."format:ts"]
 run = "pnpm format"
@@ -138,11 +146,10 @@ run = "uv run basedpyright"
 # --- generate ---
 
 [tasks.generate-types]
-description = "Generate TS types from Rust via ts-rs (clean + regenerate + format)"
+description = "Clean, regenerate, and format TS types from Rust via ts-rs"
 run = """
 rm -rf packages/types-app/src/generated packages/types-campaign/src/generated
-cargo test --workspace
-pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
+mise run test:rust
 """
 
 # --- clean ---

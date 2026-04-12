@@ -14,17 +14,23 @@ import { useTranslations } from '~/i18n/utils';
 import type { GetStaticPathsOptions, Page } from 'astro';
 import type { CollectionEntry } from 'astro:content';
 
-export async function getStaticPaths({ paginate }: { paginate: GetStaticPathsOptions['paginate'] }) {
+export async function getStaticPaths({
+  paginate,
+}: {
+  paginate: GetStaticPathsOptions['paginate'];
+}) {
   const posts = (await getCollection('blog')).sort(
-    (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+    (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
   );
 
   return Object.keys(languages).flatMap((lang) => {
-      const filteredPosts = posts.filter((post) => post.id.startsWith(`${lang}/`));
-      return paginate(filteredPosts, { 
-          params: { lang }, 
-          pageSize: siteConfig.blog.postsPerPage
-      });
+    const filteredPosts = posts.filter((post) =>
+      post.id.startsWith(`${lang}/`),
+    );
+    return paginate(filteredPosts, {
+      params: { lang },
+      pageSize: siteConfig.blog.postsPerPage,
+    });
   });
 }
 
@@ -33,42 +39,66 @@ const { lang } = Astro.params;
 const t = useTranslations(lang);
 ---
 
-<Layout title={`${t['blog.hero.title']} - ${t['brand.name']}`} description={t['blog.hero.subtitle']}>
-  <PageHeader 
-      title={t['blog.hero.title']}
-      description={t['blog.hero.subtitle']}
+<Layout
+  title={`${t['blog.hero.title']} - ${t['brand.name']}`}
+  description={t['blog.hero.subtitle']}
+>
+  <PageHeader
+    title={t['blog.hero.title']}
+    description={t['blog.hero.subtitle']}
   />
 
   <Container as="section" class="pb-24">
-      <Grid cols={3} class="mb-16">
-        {page.data.map((post: CollectionEntry<'blog'>) => (
-          <BlogCard 
-             title={post.data.title}
-             description={post.data.description}
-             pubDate={post.data.pubDate}
-             heroImage={post.data.heroImage}
-             slug={`/${lang}/blog/${post.id.split('/').slice(1).join('/').replace(/\.[^/.]+$/, "")}`}
-             isVideo={post.data.isVideo}
+    <Grid cols={3} class="mb-16">
+      {
+        page.data.map((post) => (
+          <BlogCard
+            title={post.data.title}
+            description={post.data.description}
+            pubDate={post.data.pubDate}
+            heroImage={post.data.heroImage}
+            slug={`/${lang}/blog/${post.id
+              .split('/')
+              .slice(1)
+              .join('/')
+              .replace(/\.[^/.]+$/, '')}`}
+            isVideo={post.data.isVideo}
           />
-        ))}
-      </Grid>
-      
-      <div class="flex items-center justify-center gap-4">
-        {page.url.prev && (
-            <Button href={page.url.prev} variant="outline" class="gap-2 px-6 py-3 rounded-full bg-white dark:bg-zinc-800">
-                ← {t['blog.prev']}
-            </Button>
-        )}
-        
-        <span class="text-sm font-bold text-muted-foreground">
-            {t['blog.page']} {page.currentPage} {t['blog.of']} {page.lastPage}
-        </span>
+        ))
+      }
+    </Grid>
 
-        {page.url.next && (
-            <Button href={page.url.next} variant="outline" class="gap-2 px-6 py-3 rounded-full bg-white dark:bg-zinc-800">
-                {t['blog.next']} →
-            </Button>
-        )}
-      </div>
+    <div class="flex items-center justify-center gap-4">
+      {
+        page.url.prev && (
+          <Button
+            href={page.url.prev}
+            variant="outline"
+            class="gap-2 px-6 py-3 rounded-full bg-white dark:bg-zinc-800"
+          >
+            ← {t['blog.prev']}
+          </Button>
+        )
+      }
+
+      <span class="text-sm font-bold text-muted-foreground">
+        {t['blog.page']}
+        {page.currentPage}
+        {t['blog.of']}
+        {page.lastPage}
+      </span>
+
+      {
+        page.url.next && (
+          <Button
+            href={page.url.next}
+            variant="outline"
+            class="gap-2 px-6 py-3 rounded-full bg-white dark:bg-zinc-800"
+          >
+            {t['blog.next']} →
+          </Button>
+        )
+      }
+    </div>
   </Container>
 </Layout>

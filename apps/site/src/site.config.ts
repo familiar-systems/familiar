@@ -1,15 +1,15 @@
 export const siteConfig = {
-  name: "Loreweaver",
+  name: "familiar.systems",
   description:
     "AI-assisted campaign wiki for tabletop RPGs. Your world assembles from play. Your familiar takes notes, you play the game. Open Source.",
   logo: {
-    src: "/logo-light.png",
-    srcDark: "/logo-dark.png",
-    alt: "Loreweaver Logo",
-    strategy: "switch" as "invert" | "switch" | "static",
+    src: "/raven-icon.svg",
+    srcDark: "/raven-icon.svg",
+    alt: "familiar.systems",
+    strategy: "invert" as "invert" | "switch" | "static",
   },
   ogImage: "",
-  primaryColor: "#C49A2B",
+  primaryColor: "#5a4a6a",
   search: {
     enabled: true,
   },

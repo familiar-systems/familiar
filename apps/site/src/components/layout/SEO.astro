@@ -8,7 +8,14 @@ interface Props {
   nofollow?: boolean;
 }
 
-const { title, description, image, article = false, noindex = false, nofollow = false } = Astro.props;
+const {
+  title,
+  description,
+  image,
+  article = false,
+  noindex = false,
+  nofollow = false,
+} = Astro.props;
 import { siteConfig } from '~/site.config';
 const canonicalURL = new URL(Astro.url.pathname, Astro.site).toString();
 
@@ -17,15 +24,14 @@ const ogImageUrl = image || siteConfig.ogImage || null;
 
 const robots = [
   noindex ? 'noindex' : 'index',
-  nofollow ? 'nofollow' : 'follow'
+  nofollow ? 'nofollow' : 'follow',
 ].join(', ');
 ---
 
 <!-- Global Metadata -->
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<link rel="icon" type="image/png" href="/favicon.png" />
-<link rel="apple-touch-icon" href="/favicon.png" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <meta name="generator" content={Astro.generator} />
 
 <!-- Robots -->
@@ -44,12 +50,29 @@ const robots = [
 <meta property="og:url" content={Astro.url.toString()} />
 <meta property="og:title" content={title} />
 <meta property="og:description" content={description} />
-{ogImageUrl && <meta property="og:image" content={new URL(ogImageUrl, Astro.url).toString()} />}
-<meta property="og:logo" content={new URL(siteConfig.logo.src, Astro.url).toString()} />
+{
+  ogImageUrl && (
+    <meta
+      property="og:image"
+      content={new URL(ogImageUrl, Astro.url).toString()}
+    />
+  )
+}
+<meta
+  property="og:logo"
+  content={new URL(siteConfig.logo.src, Astro.url).toString()}
+/>
 
 <!-- Twitter -->
 <meta property="twitter:card" content="summary_large_image" />
 <meta property="twitter:url" content={Astro.url.toString()} />
 <meta property="twitter:title" content={title} />
 <meta property="twitter:description" content={description} />
-{ogImageUrl && <meta property="twitter:image" content={new URL(ogImageUrl, Astro.url).toString()} />}
+{
+  ogImageUrl && (
+    <meta
+      property="twitter:image"
+      content={new URL(ogImageUrl, Astro.url).toString()}
+    />
+  )
+}

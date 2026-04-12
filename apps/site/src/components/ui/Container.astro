@@ -11,6 +11,6 @@ interface Props {
 const { class: className, id, as: Tag = 'div' } = Astro.props;
 ---
 
-<Tag id={id} class={twMerge(clsx("max-w-7xl mx-auto px-6", className))}>
+<Tag id={id} class={twMerge(clsx('max-w-7xl mx-auto px-6', className))}>
   <slot />
 </Tag>

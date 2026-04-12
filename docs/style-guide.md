@@ -1,6 +1,6 @@
 # Visual Style Guide
 
-The familiar.systems site uses a warm, parchment-inspired palette with gold accents and serif typography. This guide documents the design system as implemented in `apps/site/`.
+The familiar.systems site uses a warm, parchment-inspired palette with gold and bronze accents and serif typography. The visual voice is cozy arcane meets workshop steampunk: candlelit parchment, plum twilight, gold as ceremony, bronze as mechanism. This guide documents the design system as implemented in `apps/site/`.
 
 ## Color Palette
 
@@ -8,23 +8,30 @@ All colors are defined as CSS custom properties in `src/styles/theme.css` and ma
 
 ### Theme Tokens
 
-| Token                  | Light                  | Dark                    | Usage                        |
-| ---------------------- | ---------------------- | ----------------------- | ---------------------------- |
-| `--background`         | `#f8f4ec` (parchment)  | `#0f0d0a` (charcoal)    | Page background              |
-| `--foreground`         | `#1c1917` (dark brown) | `#e7e5e4` (light stone) | Body text                    |
-| `--color-primary`      | `#c49a2b` (gold)       | `#d4a944` (bright gold) | Accents, links, CTAs         |
-| `--muted`              | `#ede8dd` (beige)      | `#1c1917` (dark brown)  | Subdued backgrounds          |
-| `--muted-foreground`   | `#57534e` (brown)      | `#a8a29e` (stone)       | Secondary text, descriptions |
-| `--primary-foreground` | `#1c1917`              | `#0f0d0a`               | Text on primary backgrounds  |
+| Token                  | Light                   | Dark                        | Usage                                       |
+| ---------------------- | ----------------------- | --------------------------- | ------------------------------------------- |
+| `--background`         | `#f8f4ec` (parchment)   | `#0f0d0a` (charcoal)        | Page background                             |
+| `--foreground`         | `#1c1917` (dark brown)  | `#e7e5e4` (light stone)     | Body text                                   |
+| `--color-primary`      | `#5a4a6a` (plum)        | `#9a86aa` (light plum)      | Accents, links, identity                    |
+| `--color-gold`         | `#b89530` (warm gold)   | `#d4a944` (bright gold)     | CTAs, badges, trust icons                   |
+| `--color-bronze`       | `#5c3a1f` (dark walnut) | `#c4956b` (lit bronze)      | Hero masks, icon accents, foreground bronze |
+| `--color-bronze-muted` | `#ead8b8` (pale bronze) | `#2a1f14` (deep ember)      | Card backgrounds, reading surfaces          |
+| `--muted`              | `#ede8dd` (beige)       | `#1c1917` (dark brown)      | Subdued backgrounds                         |
+| `--muted-foreground`   | `#57534e` (brown)       | `#a8a29e` (stone)           | Secondary text, descriptions                |
+| `--primary-foreground` | `#ffffff`               | `#ffffff`                   | Text on primary backgrounds                 |
+| `--color-line`         | `#c9c1c5` (mauve)       | `#39313a` (dark plum)       | Timeline connector lines                    |
+| `--color-step-bg`      | `#ebe4ef` (pale lilac)  | `#1f1a24` (muted dark plum) | Step icon container backgrounds             |
+| `--color-step-hover`   | `#d8d2d2` (taupe)       | `#2b252a` (dark plum)       | Step icon container hover state             |
 
 ### Opacity Conventions
 
 Colors are used at varying opacities rather than defining new color tokens:
 
-- **Tinted backgrounds**: `bg-primary/5`, `bg-primary/10`, `bg-foreground/[0.02]`
-- **Borders**: `border-primary/20`, `border-foreground/5`, `border-foreground/10`
+- **Tinted backgrounds**: `bg-primary/5`, `bg-primary/10`, `bg-gold/10`, `bg-foreground/[0.02]`
+- **Borders**: `border-primary/20`, `border-gold/20`, `border-gold/40`, `border-foreground/5`, `border-foreground/10`
 - **Text hierarchy**: `text-foreground`, `text-foreground/80`, `text-muted-foreground`, `text-muted-foreground/60`
-- **Shadows**: `shadow-primary/10`, `shadow-primary/25`
+- **Gold text**: `text-gold` for badges, trust icons, and CTA-adjacent elements
+- **Shadows**: `shadow-primary/10`, `shadow-gold/25`
 
 ### Semantic Colors (Non-token)
 
@@ -36,16 +43,20 @@ Used sparingly for status indicators and specific UI elements:
 - **Accent blue**: `bg-blue-600/10`, `text-blue-700 dark:text-blue-300`
 - **Destructive red**: `bg-red-600/10`, `text-red-700 dark:text-red-400`
 
+### Gold vs Bronze
+
+Gold and bronze share the warm metal family but carry different weight. Gold signals trust, CTA, celebration, identity: the color a reader sees when something is meant to feel rewarding or authoritative. Bronze signals systems, mechanism, technical surfaces, reading weight: the color of the mechanical half of the brand, the workshop rather than the ceremony. Use gold on interactive surfaces that ask for user action. Use bronze on structural surfaces that hold or frame content.
+
 ## Typography
 
 ### Font Families
 
-| Role    | Font        | Fallback       | Tailwind class | Usage                              |
-| ------- | ----------- | -------------- | -------------- | ---------------------------------- |
-| Body    | Crimson Pro | Georgia, serif | `font-sans`    | All body text, default             |
-| Display | Cinzel      | Georgia, serif | `font-display` | Headlines, brand name, pull quotes |
+| Role    | Font               | Fallback       | Tailwind class | Usage                              |
+| ------- | ------------------ | -------------- | -------------- | ---------------------------------- |
+| Body    | Alegreya           | Georgia, serif | `font-sans`    | All body text, default             |
+| Display | Cormorant Garamond | Georgia, serif | `font-display` | Headlines, brand name, pull quotes |
 
-Both are serif fonts. The site has no sans-serif font in use.
+Both are serif fonts. The site has no sans-serif font in use. Fonts are loaded from [Bunny Fonts](https://fonts.bunny.net) (a GDPR-compliant, EU-based alternative to Google Fonts).
 
 ### Heading Hierarchy
 
@@ -111,7 +122,7 @@ All buttons: `inline-flex items-center justify-center font-medium transition-col
 
 | Variant   | Classes                                                                              |
 | --------- | ------------------------------------------------------------------------------------ |
-| Primary   | `bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/25`              |
+| Primary   | `bg-gold text-white hover:bg-gold/90 shadow-lg shadow-gold/25`                       |
 | Secondary | `bg-foreground/5 text-foreground hover:bg-foreground/10 border border-foreground/10` |
 | Outline   | `border border-foreground/10 bg-transparent hover:bg-foreground/5`                   |
 | Ghost     | `hover:bg-primary/5 text-primary`                                                    |
@@ -141,6 +152,15 @@ inline-flex items-center px-3 py-1 rounded-full text-xs font-medium
 
 Variants: default, outline, secondary, accent (blue), destructive (red). All use `backdrop-blur-sm`.
 
+### Step Timeline
+
+The "After Every Session" section uses a vertical timeline pattern:
+
+- **Connector line**: `w-px` with `linear-gradient(to bottom, var(--color-background), var(--color-line), var(--color-background))`
+- **Step icon containers**: `w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[var(--color-step-bg)]` with `group-hover:bg-[var(--color-step-hover)]`
+- **Step headings**: `text-xl font-bold font-display`
+- **Quote callout** (step 3): `border-l-[3px] border-gold/40 pl-4` with `italic text-foreground`
+
 ### Border Radius Scale
 
 | Value          | Usage                             |
@@ -160,8 +180,8 @@ Variants: default, outline, secondary, accent (blue), destructive (red). All use
 
 ### Shadows
 
-- Primary glow: `shadow-lg shadow-primary/25` (buttons), `shadow-primary/10` (hover)
-- Custom ambient: `shadow-[0_0_40px_rgba(196,154,43,0.04)]`
+- Gold glow: `shadow-lg shadow-gold/25` (CTA buttons), `shadow-gold/10` (hover)
+- Custom ambient: `shadow-[0_0_40px_rgba(90,74,106,0.04)]`
 - Cards on hover: `shadow-2xl shadow-primary/10`
 
 ### Animations
@@ -190,14 +210,19 @@ animation: fadeUp 0.8s ease-out forwards;
 - Border glow: `hover:border-primary/20` or `hover:border-primary/50`
 - All with `transition-all duration-300` or `duration-500`
 
-### Hero Ambient Glow
+### Hero Background
 
-Large blurred circles behind the hero section:
+The hero uses a layered background:
+
+1. **Wizard woodcut**: Linocut-style SVG imagery of two wizards consulting a crystal, rendered as a CSS `mask-image` with `bg-bronze` as the fill rather than a baked SVG color. Light theme uses `/wizard-for-light.svg` at 14% opacity; dark theme uses `/wizard-for-dark.svg` at 22% opacity. The bronze color lives in `--color-bronze` so it can be tuned centrally.
+2. **Ambient glow orbs**: Large blurred circles:
 
 ```html
-<div class="bg-primary/40 rounded-full blur-[140px] animate-pulse"></div>
-<div class="bg-amber-700/30 rounded-full blur-[120px] animate-pulse"></div>
+<div class="bg-primary/30 rounded-full blur-[140px] animate-pulse"></div>
+<div class="bg-gold/20 rounded-full blur-[120px] animate-pulse"></div>
 ```
+
+3. **Texture overlay**: Inline SVG cross-hatch pattern at 3-5% opacity.
 
 ## Icons
 
@@ -210,7 +235,7 @@ Large blurred circles behind the hero section:
 | Feature cards   | `w-6 h-6`              |
 | Step indicators | `w-7 h-7` to `w-8 h-8` |
 
-Icon color is typically `text-primary`. Brand icons (GitHub, Bluesky, LinkedIn) are custom SVG components in `components/icons/BrandIcons.tsx`.
+Icon color is typically `text-primary`. Trust/CTA-adjacent icons use `text-gold`. Brand icons (GitHub, Bluesky, LinkedIn) are custom SVG components in `components/icons/BrandIcons.tsx`. The brand icon (`BrandIcon.astro`) is a geometric raven silhouette that also appears as `/raven-icon.svg` (logo). The hero woodcut backgrounds are wizard-and-crystal compositions at `/wizard-for-light.svg` and `/wizard-for-dark.svg`, tinted via `bg-bronze` mask-image rather than baked color.
 
 ## Dark Mode
 

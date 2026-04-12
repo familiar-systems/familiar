@@ -1,13 +1,13 @@
 ---
 title: "Our Providers"
-description: "Every service Loreweaver depends on, and why we chose them."
+description: "Every service familiar.systems depends on and why we chose them."
 author: "Michael Grinshpon"
 pubDate: 2026-03-13
 heroImage: "~/assets/blog/2026-03-13-eea-flags.png"
 tags: ["about", "infrastructure"]
 ---
 
-This post lists every third-party service that Loreweaver depends on. Not just the ones that touch your data (that's the [sub-processors page](/sub-processors)), but everything: compute, DNS, email, authentication, deployment. The full stack.
+This post lists every third-party service that familiar.systems depends on. Not just the ones that touch your data (that's the [sub-processors page](/sub-processors)), but everything: compute, DNS, email, authentication, deployment. The full stack.
 
 This was heavily inspired by [Coinerella's "Made in EU" post](https://www.coinerella.com/made-in-eu-it-was-harder-than-i-thought/). Their conclusion matched my experience: building on European infrastructure is mostly doable, but it takes deliberate effort. The defaults in this industry pull toward American services, and resisting that pull means making active choices at every layer.
 
@@ -20,7 +20,7 @@ Every provider listed here is based in the EU or EEA. Your data never leaves thi
 
 ## Infrastructure
 
-These are the services that make up Loreweaver's physical infrastructure: where the code runs, where the data lives, and how it all gets deployed.
+These are the services that make up the familiar.systems physical infrastructure: where the code runs, where the data lives, and how it all gets deployed.
 
 ### Hetzner Cloud
 
@@ -30,7 +30,7 @@ Hetzner is the obvious choice for EU-hosted compute if you care about price-to-p
 
 ### Scaleway
 
-[Scaleway](https://www.scaleway.com) handles container registry, secrets management, and object storage (where Pulumi stores its state). They're a French company with data centers in France, the Netherlands, and Poland. Loreweaver's Scaleway resources run on their Paris data center since it produces the lowest CO2 emissions per unit of compute courtesy of French nuclear power and renewables investment.
+[Scaleway](https://www.scaleway.com) handles container registry, secrets management, and object storage (where Pulumi stores its state). They're a French company with data centers in France, the Netherlands, and Poland. The familiar.systems Scaleway resources run on their Paris data center since it produces the lowest CO2 emissions per unit of compute courtesy of French nuclear power and renewables investment.
 
 Why split between Hetzner and Scaleway? Hetzner's strength is raw compute and storage. Scaleway fills the gaps with managed services that Hetzner doesn't offer: a container registry with vulnerability scanning, a secrets manager with versioning, and a few other odds and ends. Hetzner really is the bulk of what we use.
 
@@ -52,15 +52,15 @@ k3s can also run locally and it'll be the pathway for anyone who is masochistic 
 
 ### Pulumi
 
-[Pulumi](https://www.pulumi.com) is the infrastructure-as-code tool that provisions everything above. The entire infrastructure definition is open source: [github.com/loreweaver-no/loreweaver/tree/main/infra/pulumi-cloud](https://github.com/loreweaver-no/loreweaver/tree/main/infra/pulumi-cloud)
+[Pulumi](https://www.pulumi.com) is the infrastructure-as-code tool that provisions everything above. The entire infrastructure definition is open source: [github.com/familiar-systems/familiar/tree/main/infra/pulumi-cloud](https://github.com/familiar-systems/familiar/tree/main/infra/pulumi-cloud)
 
-You can read exactly what gets created, how it's configured, and why. No secrets in the repo (those live in Scaleway Secrets Manager), but the structure is all there. Pulumi itself is an American company, but nothing runs through their servers. Their open source, self-hosted model powers Loreweaver's infrastructure-as-code. The state backend is [Scaleway Object Storage in the EU](https://github.com/loreweaver-no/loreweaver/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/infra/pulumi-cloud/scripts/bootstrap.sh).
+You can read exactly what gets created, how it's configured, and why. No secrets in the repo (those live in Scaleway Secrets Manager), but the structure is all there. Pulumi itself is an American company, but nothing runs through their servers. Their open source, self-hosted model powers the familiar.systems infrastructure-as-code. The state backend is [Scaleway Object Storage in the EU](https://github.com/familiar-systems/familiar/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/infra/pulumi-cloud/scripts/bootstrap.sh).
 
 One of the frustrating things about Pulumi is the lack of integration of Pulumi with Scaleway's secrets manager. We have yet to properly integrate with it using [the external provider](https://www.pulumi.com/docs/esc/integrations/dynamic-secrets/external/) but it's somewhere on the roadmap.
 
 ## Services
 
-These are external SaaS dependencies that Loreweaver delegates specific functions to.
+These are external SaaS dependencies that familiar.systems delegates specific functions to.
 
 ### Hanko
 
@@ -82,7 +82,7 @@ Hanko was chosen over Auth0, Clerk, and other auth providers because it's EU-bas
 
 ### Nebius
 
-[Nebius](https://nebius.com) provides AI compute for Loreweaver's AI features. Nebius B.V. is a Dutch company with data centers in Finland and France.
+[Nebius](https://nebius.com) provides AI compute for the familiar.systems AI features. Nebius B.V. is a Dutch company with data centers in Finland and France.
 
 Nebius was chosen for three reasons: zero log retention, being an EEA-based neocloud (not a US hyperscaler subsidiary), and running open source models. Your session transcripts and campaign data are never stored on their side.
 
@@ -113,4 +113,4 @@ There are no easily usable EU-sovereign branching databases. Certainly none that
 - [neon.tech](https://neon.tech) is a serverless PostgreSQL database. It's US-based.
 - [turso.tech](https://turso.tech) are the people behind [libSQL](https://github.com/tursodatabase/libsql) and [turso](https://github.com/tursodatabase/turso). They're an American company. Their copy-on-branch model for SQLite is what we based our database strategy on but they are AWS-only right now with no EU-based alternatives.
 
-Our workaround is using [a database-per-campaign strategy](https://github.com/loreweaver-no/loreweaver/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/docs/discovery/2026-03-09-sqlite-over-postgres-decision.md) via libSQL and copy-on-deploy [preview environments via k3s](https://github.com/loreweaver-no/loreweaver/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/docs/plans/2026-03-12-deployment-strategy.md).
+Our workaround is using [a database-per-campaign strategy](https://github.com/familiar-systems/familiar/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/docs/discovery/2026-03-09-sqlite-over-postgres-decision.md) via libSQL and copy-on-deploy [preview environments via k3s](https://github.com/familiar-systems/familiar/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/docs/plans/2026-03-12-deployment-strategy.md).

@@ -1,7 +1,7 @@
 ---
 quest: 5
 title: "Comprehend Languages"
-description: "A pluggable framework so Loreweaver can speak your tongue."
+description: "A pluggable framework so familiar.systems can speak your tongue."
 status: "planned"
 ---
 
