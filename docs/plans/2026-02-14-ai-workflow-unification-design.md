@@ -193,7 +193,7 @@ This is a deliberate choice. The alternative — ephemeral suggestions that the 
 
 ### Auto-Rejection Window
 
-Suggestions that are not acted on within a configurable window (default: ~7 days) are automatically rejected. This prevents the suggestion queue from growing unboundedly when the GM ignores proposals.
+Suggestions that are not acted on within a configurable window (default: ~14 days) are automatically rejected. This prevents the suggestion queue from growing unboundedly when the GM ignores proposals.
 
 The auto-rejection window is a product of the "tolerant of neglect" design principle: the system should stay useful even when the GM doesn't review everything. Stale suggestions that sit forever would undermine that — they'd clutter the queue and make the system feel burdensome. Auto-rejection keeps the queue fresh.
 
@@ -314,6 +314,6 @@ These are explicitly deferred — noted for future design work, not silently ass
 
 - **SessionIngest pipeline stages.** The [audio pipeline doc](../discovery/audio_ingest/audio_overview.md) defines a 6-stage pipeline. This design treats the pipeline as an implementation detail behind the suggestion contract — the pipeline can be refined independently as long as its output is suggestions attached to a system conversation. The pipeline internals are not constrained by this design.
 
-- **Auto-rejection window tuning.** The ~7 day default is a starting point. Whether this should be configurable per campaign, per suggestion type, or globally is not decided.
+- **Auto-rejection window tuning.** The ~14 day default is a starting point. Whether this should be configurable per campaign, per suggestion type, or globally is not decided.
 
 - **Suggestion dependencies.** When the AI proposes "Create NPC Kael" and "Kael frequents Rusty Anchor," rejecting the first makes the second invalid. Whether to model this as explicit dependencies within a batch or handle it at acceptance time (flag the conflict when the GM tries to accept the orphaned relationship) is not decided.

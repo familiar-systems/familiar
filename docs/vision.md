@@ -182,7 +182,7 @@ A **suggestion** is a proposed mutation to the campaign graph. Every AI output t
 - **Always durable.** Suggestions are persisted the moment they're generated. If the GM closes the browser mid-session, every suggestion the AI has produced is still waiting when they come back.
 - **Grouped into batches.** Related suggestions (e.g., "the three NPCs and their relationships from a tavern scene") are grouped into a **SuggestionBatch** — the unit of review. The GM can act on a batch in bulk or expand it and review individual suggestions.
 - **Provenance.** Every suggestion links back to the conversation that produced it — the reasoning, the context, the GM's instructions. A suggestion is never context-free.
-- **Auto-rejection.** Suggestions not acted on within a configurable window (~7 days) are automatically rejected. This keeps the suggestion queue fresh and prevents unbounded accumulation. Auto-rejected suggestions remain visible in their conversation's history.
+- **Auto-rejection.** Suggestions not acted on within a configurable window (~14 days) are automatically rejected. This keeps the suggestion queue fresh and prevents unbounded accumulation. Auto-rejected suggestions remain visible in their conversation's history.
 - **Accepting creates real content.** When the GM accepts a suggestion, the system creates the corresponding node, blocks, or relationship with `gm_only` status (the default for all new content).
 
 ### Agent Conversation
@@ -264,7 +264,7 @@ GM reviews suggestions (accept / edit / reject / dismiss)
   - One-click accept for obvious ones
   - Inline edit for things that need adjustment
   - "Continue from here" to refine interactively via the agent window
-  - Skipping is fine — unreviewed suggestions auto-reject after ~7 days
+  - Skipping is fine — unreviewed suggestions auto-reject after ~14 days
 ```
 
 The entire post-session process should take **15–30 minutes**, not hours. The AI does the heavy lifting; the GM does the judgment calls.
@@ -318,7 +318,7 @@ The AI is an editorial assistant, not an author. It produces suggestions — pro
 
 ### Tolerant of neglect
 
-Not every GM will review every suggestion. The system stays useful even when the GM doesn't review everything. Suggestions that go unreviewed auto-reject after a configurable window (~7 days), keeping the suggestion queue fresh without punishing the GM for skipping a week. The system never piles up infinite unreviewed proposals — it assumes silence is "no" and moves on.
+Not every GM will review every suggestion. The system stays useful even when the GM doesn't review everything. Suggestions that go unreviewed auto-reject after a configurable window (~14 days), keeping the suggestion queue fresh without punishing the GM for a busy fortnight. The system never piles up infinite unreviewed proposals — it assumes silence is "no" and moves on.
 
 ### Structure is discovered, not imposed
 

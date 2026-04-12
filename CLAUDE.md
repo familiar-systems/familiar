@@ -11,6 +11,7 @@ familiar.systems is an AI-assisted campaign notebook for tabletop RPG game maste
 ## Key Design Documents
 
 - `docs/vision.md`: Product vision, core concepts (Campaign, Session, Things, Blocks, Edges, Status, Suggestions)
+- `docs/glossary.md`: Glossary of terms and concepts used across documentation. Intended for coding agents and developers.
 - `docs/plans/2026-03-26-project-structure-design.md`: **Authoritative** project structure (Rust backend + TypeScript frontend + Python ML workers)
 - `docs/plans/2026-02-14-ai-workflow-unification-design.md`: AI workflow architecture (SessionIngest, P&R, Q&A)
 - `docs/plans/2026-02-22-ai-prd.md`: Full AI system requirements (SessionIngest, entity extraction, suggestion lifecycle)
@@ -20,12 +21,15 @@ familiar.systems is an AI-assisted campaign notebook for tabletop RPG game maste
 - `docs/plans/2026-03-30-deployment-architecture.md`: Deployment architecture (platform/campaign service split, graceful restarts, preview environments)
 - `docs/plans/2026-03-25-campaign-collaboration-architecture.md`: **Authoritative** collaboration architecture (Rust/kameo/Loro, supersedes Hocuspocus ADR). Campaign checkout/checkin, actor topology, scaling model.
 - `docs/plans/2026-03-25-campaign-actor-domain-design.md`: Actor topology, trait system, WebSocket architecture, suggestion model
+- `docs/plans/2026-04-10-entity-relationship-temporal-model.md`: Relationship schema, temporal model (sessions as knowledge time), relationship lifecycle (superseded, retconned, deleted)
+- `docs/plans/2026-04-11-app-server-prd.md`: App server PRD (auth, campaign CRUD, routing table, shard coordination, billing)
 - `docs/plans/2026-03-25-ai-serialization-format-v2.md`: Agent serialization format, progressive disclosure tiers, compiler pipeline, tool signatures
 - `docs/plans/2026-03-25-loro-tiptap-spike.md`: Spike plan validating suggestion marks on block UUID ranges in Loro + TipTap
 - `docs/discovery/2026-03-09-sqlite-over-postgres-decision.md`: libSQL over PostgreSQL decision (database-per-campaign, Turso Database upgrade path)
 
 ### Not Worth Reading On Startup
 
+- `docs/discovery/2026-04-11-datalog-vs-sql-query-layer.md`: Datalog vs SQL for campaign query layer. Decided: proceed with libSQL + typed tool calls; datalog is correct model but no viable Rust runtime engine exists.
 - `docs/archive/plans/2026-02-14-spa-vs-ssr-design.md`: Why SPA over SSR (decided: SPA)
 - `docs/archive/plans/2026-02-14-project-structure-design.md`: **Superseded** by the SPA design.
 - `docs/archive/plans/2026-02-14-project-structure-spa-design.md`: **Superseded** by the 2026-03-26 project structure redesign.
@@ -150,7 +154,7 @@ Maximum strictness, no exceptions:
 ## Core Domain Concepts
 
 - **Status** (on nodes, blocks, relationships): `gm_only` → `known` → `retconned`. Default is `gm_only`. Status cascades down (GM-only node = all children GM-only), not up.
-- **Suggestions**: Discriminated union over types (`create_thing`, `update_blocks`, `create_relationship`, `journal_draft`, `contradiction`). Always durable. Auto-reject after ~7 days.
+- **Suggestions**: Discriminated union over types (`create_thing`, `update_blocks`, `create_relationship`, `journal_draft`, `contradiction`). Always durable. Auto-reject after ~14 days.
 - **AgentConversation**: Persisted record of AI interactions. Provenance for suggestions. Roles: `gm`, `player`, `system`.
 - **Mentions** (block→node or block→block): Derived automatically, power backlinks and transclusion.
 - **Relationships** (node→node): Authored/curated, carry semantic labels. Freeform vocabulary.
