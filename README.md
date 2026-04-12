@@ -53,9 +53,12 @@ See [infrastructure](docs/plans/2026-03-30-infrastructure.md) and [libSQL over P
 ## Design documents
 
 - [Vision](docs/vision.md): product vision and core concepts
+- [Glossary](docs/glossary.md): terms and concepts used across documentation
 - [Project structure](docs/plans/2026-03-26-project-structure-design.md): monorepo architecture (authoritative)
 - [Campaign collaboration](docs/plans/2026-03-25-campaign-collaboration-architecture.md): Rust/kameo/Loro collaboration architecture (authoritative)
 - [Campaign actors](docs/plans/2026-03-25-campaign-actor-domain-design.md): actor topology, trait system, WebSocket architecture
+- [Entity-relationship temporal model](docs/plans/2026-04-10-entity-relationship-temporal-model.md): relationship schema, sessions as knowledge time, lifecycle
+- [App server PRD](docs/plans/2026-04-11-app-server-prd.md): auth, campaign CRUD, routing table, shard coordination, billing
 - [AI serialization](docs/plans/2026-03-25-ai-serialization-format-v2.md): agent serialization format, compiler pipeline, tool signatures
 - [AI workflow](docs/plans/2026-02-14-ai-workflow-unification-design.md): interactive and batch AI design
 - [AI PRD](docs/plans/2026-02-22-ai-prd.md): full AI system requirements
