@@ -90,6 +90,7 @@ There are no interstitial sessions. There is no "next session" sentinel. The GM 
 **Retconned.** The GM declares this was never true in the fiction, even if it was established in a prior session. Invalidated with `reason: retconned`. Excluded from historical snapshots. The row is kept in the database because retcons are part of the tapestry of the game. GM-only operation.
 
 **Deleted.** Hard delete, no audit trail. The relationship should never have existed. Two cases only:
+
 - The GM changed their mind about a GM-only relationship that was never established during play.
 - The AI proposed something incorrect and the GM accidentally accepted it.
 
