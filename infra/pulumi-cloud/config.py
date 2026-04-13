@@ -12,6 +12,13 @@ SERVER_TYPE = "cx23"
 IMAGE = "ubuntu-24.04"
 LABELS = {"project": "loreweaver", "managed-by": "pulumi"}
 
+# Domains served by the cluster. Add to these lists to extend coverage.
+# The wildcard cert (k8s.py) and Ingress rules (k8s.py) iterate over them.
+# Prerequisite: the bunny.net account managing `bunny-api-key` must control
+# the DNS zone for any domain added here, so DNS-01 ACME challenges work.
+PRODUCTION_DOMAINS: list[str] = ["loreweaver.no", "familiar.systems"]
+PREVIEW_DOMAINS: list[str] = ["preview.loreweaver.no", "preview.familiar.systems"]
+
 
 def read_secret(name: str) -> pulumi.Output[str]:
     """Read a secret value from Scaleway Secrets Manager.

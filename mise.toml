@@ -5,6 +5,7 @@ rust = "stable"
 python = "3.14"
 uv = "latest"
 actionlint = "latest"
+kubeconform = "latest"
 
 [settings]
 python.uv_venv_auto = "create|source"
@@ -161,6 +162,10 @@ sources = [
   ".github/actions/**/*.yml",
   ".github/actions/**/*.yaml",
 ]
+
+[tasks."lint:k8s"]
+description = "Validate Kubernetes YAML manifests against schemas with kubeconform"
+run = "kubeconform -strict -summary -schema-location default infra/k8s/"
 
 # --- format ---
 

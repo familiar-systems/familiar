@@ -1,7 +1,7 @@
 """Kubernetes resources for the k3s preview + production cluster.
 
 Deploys cert-manager (with bunny.net DNS-01 webhook), a TLS certificate
-covering loreweaver.no and *.preview.loreweaver.no, and the static site.
+covering all production and preview domains, and the static site.
 
 All resources use an explicit k8s Provider bound to the k3s cluster's
 kubeconfig, so nothing touches a default/ambient kubeconfig.
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 from typing import TYPE_CHECKING
 
 import pulumi
@@ -22,11 +21,11 @@ import pulumi_kubernetes as k8s
 # are untyped dicts; always read upstream docs before modifying.
 from pulumi_kubernetes.apiextensions import CustomResource
 
+from config import PREVIEW_DOMAINS, PRODUCTION_DOMAINS
+
 if TYPE_CHECKING:
     import pulumiverse_scaleway as scaleway
 
-PRODUCTION_DOMAIN = "loreweaver.no"
-PREVIEW_DOMAIN = "preview.loreweaver.no"
 CERT_MANAGER_VERSION = "v1.17.2"
 WEBHOOK_BUNNY_VERSION = "1.0.3"
 WEBHOOK_BUNNY_GROUP_NAME = "com.bunny.webhook"
@@ -38,9 +37,18 @@ BUNNY_SECRET_NAME = "bunny-api-key"  # noqa: S105
 BUNNY_SECRET_KEY = "api-key"  # noqa: S105
 WILDCARD_CERT_SECRET = "preview-wildcard-tls"  # noqa: S105
 REGISTRY_PULL_SECRET = "scaleway-registry"  # noqa: S105
-CLUSTER_ISSUER_NAME = "letsencrypt-dns"
 SITE_NAME = "site"
 SITE_PORT = 80
+
+# ACME issuers. Both ClusterIssuers are created; the wildcard cert references
+# whichever name is in ACTIVE_CLUSTER_ISSUER_NAME. Switch to staging during
+# infra changes that could re-issue the cert (rate limits on prod are 50/week);
+# switch back to prod once changes are verified.
+LETSENCRYPT_PROD_URL = "https://acme-v02.api.letsencrypt.org/directory"
+LETSENCRYPT_STAGING_URL = "https://acme-staging-v02.api.letsencrypt.org/directory"
+PROD_CLUSTER_ISSUER_NAME = "letsencrypt-dns"
+STAGING_CLUSTER_ISSUER_NAME = "letsencrypt-staging-dns"
+ACTIVE_CLUSTER_ISSUER_NAME = PROD_CLUSTER_ISSUER_NAME
 
 
 def create_k8s_resources(
@@ -48,6 +56,7 @@ def create_k8s_resources(
     kubeconfig: pulumi.Output[str],
     registry: scaleway.registry.Namespace,
     bunny_api_key: pulumi.Input[str],
+    registry_pull_key: pulumi.Input[str],
     acme_email: str,
 ) -> None:
     """Declare all Kubernetes resources for the preview cluster."""
@@ -131,33 +140,36 @@ def create_k8s_resources(
         ),
     )
 
-    # -- ClusterIssuer (Let's Encrypt staging first, switch to prod later) ----
-    cluster_issuer = CustomResource(
-        "letsencrypt-dns",
+    # -- ClusterIssuers (prod + staging) --------------------------------------
+    # Both are created so the wildcard cert can switch between them via
+    # ACTIVE_CLUSTER_ISSUER_NAME. Use staging during infra changes that could
+    # trigger cert re-issuance; switch back to prod once verified.
+    prod_cluster_issuer = CustomResource(
+        PROD_CLUSTER_ISSUER_NAME,
         api_version="cert-manager.io/v1",
         kind="ClusterIssuer",
-        metadata={"name": CLUSTER_ISSUER_NAME},
-        spec={
-            "acme": {
-                "server": "https://acme-v02.api.letsencrypt.org/directory",
-                "email": acme_email,
-                "privateKeySecretRef": {"name": "letsencrypt-dns-account-key"},
-                "solvers": [
-                    {
-                        "dns01": {
-                            "webhook": {
-                                "groupName": WEBHOOK_BUNNY_GROUP_NAME,
-                                "solverName": "bunny",
-                                "config": {
-                                    "secretRef": BUNNY_SECRET_NAME,
-                                    "secretNamespace": CERT_MANAGER_NS,
-                                },
-                            },
-                        },
-                    },
-                ],
-            },
-        },
+        metadata={"name": PROD_CLUSTER_ISSUER_NAME},
+        spec=_acme_cluster_issuer_spec(
+            server_url=LETSENCRYPT_PROD_URL,
+            account_key_secret_name="letsencrypt-dns-account-key",  # noqa: S106
+            email=acme_email,
+        ),
+        opts=pulumi.ResourceOptions(
+            provider=provider,
+            depends_on=[webhook_bunny],
+        ),
+    )
+
+    staging_cluster_issuer = CustomResource(
+        STAGING_CLUSTER_ISSUER_NAME,
+        api_version="cert-manager.io/v1",
+        kind="ClusterIssuer",
+        metadata={"name": STAGING_CLUSTER_ISSUER_NAME},
+        spec=_acme_cluster_issuer_spec(
+            server_url=LETSENCRYPT_STAGING_URL,
+            account_key_secret_name="letsencrypt-staging-dns-account-key",  # noqa: S106
+            email=acme_email,
+        ),
         opts=pulumi.ResourceOptions(
             provider=provider,
             depends_on=[webhook_bunny],
@@ -165,6 +177,9 @@ def create_k8s_resources(
     )
 
     # -- Wildcard Certificate -------------------------------------------------
+    # SANs cover both production and preview domains plus the preview wildcard
+    # subdomains. Adding a domain to PRODUCTION_DOMAINS or PREVIEW_DOMAINS in
+    # config.py extends the cert automatically on next pulumi up.
     _wildcard_cert = CustomResource(
         "preview-wildcard-cert",
         api_version="cert-manager.io/v1",
@@ -173,28 +188,37 @@ def create_k8s_resources(
         spec={
             "secretName": WILDCARD_CERT_SECRET,
             "issuerRef": {
-                "name": CLUSTER_ISSUER_NAME,
+                "name": ACTIVE_CLUSTER_ISSUER_NAME,
                 "kind": "ClusterIssuer",
             },
             "dnsNames": [
-                PRODUCTION_DOMAIN,
-                PREVIEW_DOMAIN,
-                f"*.{PREVIEW_DOMAIN}",
+                *PRODUCTION_DOMAINS,
+                *PREVIEW_DOMAINS,
+                *[f"*.{d}" for d in PREVIEW_DOMAINS],
             ],
         },
         opts=pulumi.ResourceOptions(
             provider=provider,
-            depends_on=[cluster_issuer],
+            depends_on=[prod_cluster_issuer, staging_cluster_issuer],
         ),
     )
 
     # -- Scaleway Container Registry imagePullSecret --------------------------
-    # Auth: username is always "nologin", password is SCW_SECRET_KEY.
+    # Auth: username is always "nologin", password is a pull-scoped SCW API
+    # key owned end-to-end by Pulumi (see cloud.py::registry_pull_api_key).
+    # Rotation = `pulumi up`, no operator console toil.
+    #
+    # Pulumi's k8s provider treats changes to `Secret.data` as replace-
+    # triggering (not in-place update), empirically confirmed on this
+    # resource. Rotating the credential therefore replaces this single Secret
+    # -- a ~1-second window where `scaleway-registry` doesn't exist and newly
+    # scheduled pods hit ImagePullBackOff and retry. Already-running pods are
+    # unaffected. The replace is confined to this one resource: the k8s
+    # Provider is NOT being replaced, so nothing parented to it cascades.
     # See: https://www.scaleway.com/en/docs/container-registry/how-to/connect-docker-cli/
-    scw_secret_key = pulumi.Output.secret(os.environ["SCW_SECRET_KEY"])
     docker_config = pulumi.Output.all(
         endpoint=registry.endpoint,
-        password=scw_secret_key,
+        password=registry_pull_key,
     ).apply(
         lambda args: _docker_config_json(
             registry=str(args["endpoint"]),  # pyright: ignore[reportAny]
@@ -270,6 +294,7 @@ def create_k8s_resources(
         opts=k8s_opts,
     )
 
+    all_site_hosts = [*PRODUCTION_DOMAINS, *PREVIEW_DOMAINS]
     _site_ingress = k8s.networking.v1.Ingress(
         "site-ingress",
         metadata=k8s.meta.v1.ObjectMetaArgs(
@@ -282,18 +307,12 @@ def create_k8s_resources(
         spec=k8s.networking.v1.IngressSpecArgs(
             tls=[
                 k8s.networking.v1.IngressTLSArgs(
-                    hosts=[PRODUCTION_DOMAIN],
+                    hosts=[host],
                     secret_name=WILDCARD_CERT_SECRET,
-                ),
-                k8s.networking.v1.IngressTLSArgs(
-                    hosts=[PREVIEW_DOMAIN],
-                    secret_name=WILDCARD_CERT_SECRET,
-                ),
+                )
+                for host in all_site_hosts
             ],
-            rules=[
-                _site_ingress_rule(PRODUCTION_DOMAIN),
-                _site_ingress_rule(PREVIEW_DOMAIN),
-            ],
+            rules=[_site_ingress_rule(host) for host in all_site_hosts],
         ),
         opts=k8s_opts,
     )
@@ -326,3 +345,33 @@ def _docker_config_json(*, registry: str, username: str, password: str) -> str:
     """Build a Docker config.json for imagePullSecrets."""
     auth = base64.b64encode(f"{username}:{password}".encode()).decode()
     return json.dumps({"auths": {registry: {"auth": auth}}})
+
+
+def _acme_cluster_issuer_spec(
+    *,
+    server_url: str,
+    account_key_secret_name: str,
+    email: str,
+) -> dict[str, object]:
+    """Build a ClusterIssuer spec for an ACME issuer using the bunny DNS-01 webhook."""
+    return {
+        "acme": {
+            "server": server_url,
+            "email": email,
+            "privateKeySecretRef": {"name": account_key_secret_name},
+            "solvers": [
+                {
+                    "dns01": {
+                        "webhook": {
+                            "groupName": WEBHOOK_BUNNY_GROUP_NAME,
+                            "solverName": "bunny",
+                            "config": {
+                                "secretRef": BUNNY_SECRET_NAME,
+                                "secretNamespace": CERT_MANAGER_NS,
+                            },
+                        },
+                    },
+                },
+            ],
+        },
+    }
