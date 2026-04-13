@@ -22,8 +22,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/mise-tool-versions
-        id: tools
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: "npm:pnpm"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+
+      - name: Resolve pnpm version
+        id: versions
+        shell: bash
+        run: echo "pnpm=$(mise current 'npm:pnpm')" >> "$GITHUB_OUTPUT"
 
       - name: Check if site files or CI changed
         id: changes
@@ -71,7 +78,7 @@ jobs:
           push: true
           build-args: |
             SITE_URL=https://loreweaver.no
-            PNPM_VERSION=${{ steps.tools.outputs.pnpm }}
+            PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
