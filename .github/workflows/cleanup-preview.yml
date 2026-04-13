@@ -1,0 +1,65 @@
+name: Cleanup Preview
+
+# Runs on PR close (merged or unmerged). Intentionally has no `paths:` filter:
+# for unmerged PRs whose head branch is deleted on close, GitHub Actions can
+# no longer compute the PR's file diff (the head commit becomes unreachable),
+# which causes `paths:`-filtered workflows to silently fail to trigger. This
+# workflow must run for every closed PR regardless of what it touched.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      # Sparse checkout: only .github/actions is needed so the local composite
+      # actions below (setup-scw, fetch-scw-secret) can be resolved.
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - uses: ./.github/actions/setup-scw
+        with:
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+
+      - uses: ./.github/actions/fetch-scw-secret
+        id: kubeconfig
+        with:
+          secret-name: k3s-kubeconfig
+
+      - name: Delete PR namespace
+        run: |
+          echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
+          kubectl delete namespace "preview-pr-${{ github.event.pull_request.number }}" \
+            --kubeconfig /tmp/kubeconfig.yaml \
+            --ignore-not-found
+          rm /tmp/kubeconfig.yaml
+
+      - name: Clean up PR images from registry
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          PREFIX="pr-${PR_NUMBER}-"
+
+          # Get the image ID for the site image
+          IMAGE_ID="$(scw registry image list name=site -o json | jq -r '.[0].id')"
+          if [ -z "$IMAGE_ID" ] || [ "$IMAGE_ID" = "null" ]; then
+            echo "No site image found in registry, skipping cleanup"
+            exit 0
+          fi
+
+          # List all tags, filter locally for pr-N- prefix, delete each
+          scw registry tag list image-id="$IMAGE_ID" -o json \
+          | jq -r --arg prefix "$PREFIX" '.[] | select(.name | startswith($prefix)) | .id' \
+          | while read -r TAG_ID; do
+              echo "Deleting tag $TAG_ID"
+              scw registry tag delete "$TAG_ID"
+            done
