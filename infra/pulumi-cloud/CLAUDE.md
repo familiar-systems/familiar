@@ -119,7 +119,13 @@ Pulumi reads secrets from Scaleway SM at deploy time via `config.read_secret(nam
 
 The `k3s-*` secrets are populated by `scripts/bootstrap-pulumi-admin.sh`, not by Pulumi. Pulumi reads them at deploy time via `config.read_secret(name)`. Re-running the bootstrap script is safe (idempotent) and writes new SM versions for all three.
 
-Registry auth uses `nologin` + `SCW_SECRET_KEY` directly (no SM secret needed).
+### Registry pull credential (Pulumi-owned, not in SM)
+
+The cluster's `registry-pull-secret` (`kubernetes.io/dockerconfigjson`) is built from a dedicated, least-privilege Scaleway IAM credential that Pulumi owns end-to-end: `iam.Application` (`k3s-registry-puller`) + `iam.Policy` (scoped to `ContainerRegistryReadOnly` on the registry project) + `iam.ApiKey` (see `cloud.py`). The `api_key.secret_key` Output flows directly into `docker_config` in `k8s.py`. There is no SM secret for this credential, and no operator bootstrap step -- `pulumi up` creates everything.
+
+**Rotation behavior (important):** Pulumi's Kubernetes provider treats changes to `Secret.data` as **replace-triggering**, not in-place update. We verified this empirically on this resource with both `string_data=` and `data=` (base64) declarations -- both produce `+- replace`. The root cause lives in the provider's `forceNewProperties` logic and is not bypassable from user code without writing a custom resource. Rotating the credential therefore deletes-and-recreates this one Secret, producing a ~1-second window where `scaleway-registry` doesn't exist. Already-running pods are unaffected (their images are long since pulled); only pods being scheduled during that exact window hit `ImagePullBackOff` and retry. Acceptable blast radius for a credential that rotates on operator initiative, not on a schedule.
+
+**The replace is confined to this one resource.** The k8s Provider is not being replaced, so nothing parented to it cascades -- no cert-manager churn, no site Deployment/Service/Ingress churn, no wildcard cert re-issue. The "never wire IaC to rotatable credentials" rule from `feedback_iac_credential_decoupling.md` applies specifically to credentials feeding `replaceOnChanges` fields on cascading parents (like `kubernetes.Provider.kubeconfig`). For non-cascading consumers, Pulumi-owning the credential lifecycle is the preferred shape because it eliminates operator toil; the one-second rotation gap on a single Secret resource is the explicit tradeoff we're accepting in exchange.
 
 ## Auth model (k8s Provider)
 

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 from typing import TYPE_CHECKING
 
 import pulumi
@@ -57,6 +56,7 @@ def create_k8s_resources(
     kubeconfig: pulumi.Output[str],
     registry: scaleway.registry.Namespace,
     bunny_api_key: pulumi.Input[str],
+    registry_pull_key: pulumi.Input[str],
     acme_email: str,
 ) -> None:
     """Declare all Kubernetes resources for the preview cluster."""
@@ -204,12 +204,21 @@ def create_k8s_resources(
     )
 
     # -- Scaleway Container Registry imagePullSecret --------------------------
-    # Auth: username is always "nologin", password is SCW_SECRET_KEY.
+    # Auth: username is always "nologin", password is a pull-scoped SCW API
+    # key owned end-to-end by Pulumi (see cloud.py::registry_pull_api_key).
+    # Rotation = `pulumi up`, no operator console toil.
+    #
+    # Pulumi's k8s provider treats changes to `Secret.data` as replace-
+    # triggering (not in-place update), empirically confirmed on this
+    # resource. Rotating the credential therefore replaces this single Secret
+    # -- a ~1-second window where `scaleway-registry` doesn't exist and newly
+    # scheduled pods hit ImagePullBackOff and retry. Already-running pods are
+    # unaffected. The replace is confined to this one resource: the k8s
+    # Provider is NOT being replaced, so nothing parented to it cascades.
     # See: https://www.scaleway.com/en/docs/container-registry/how-to/connect-docker-cli/
-    scw_secret_key = pulumi.Output.secret(os.environ["SCW_SECRET_KEY"])
     docker_config = pulumi.Output.all(
         endpoint=registry.endpoint,
-        password=scw_secret_key,
+        password=registry_pull_key,
     ).apply(
         lambda args: _docker_config_json(
             registry=str(args["endpoint"]),  # pyright: ignore[reportAny]

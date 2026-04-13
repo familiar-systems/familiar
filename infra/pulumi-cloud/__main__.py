@@ -67,6 +67,7 @@ create_k8s_resources(
     kubeconfig=_static_kubeconfig,
     registry=loreweaver_cloud.registry,
     bunny_api_key=loreweaver_config.read_secret("bunny-api-key"),
+    registry_pull_key=loreweaver_cloud.registry_pull_api_key.secret_key,
     acme_email=loreweaver_config.config.require("acme-email"),
 )
 

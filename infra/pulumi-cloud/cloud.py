@@ -106,6 +106,50 @@ registry = scaleway.registry.Namespace(
 )
 
 # ---------------------------------------------------------------------------
+# Scaleway IAM: dedicated pull-scoped principal for cluster image pulls
+# ---------------------------------------------------------------------------
+# The cluster's imagePullSecret needs a Scaleway API key. Baking the admin
+# SCW_SECRET_KEY into the k8s Secret would couple the state graph to a
+# rotatable, per-operator credential (every operator writes their own key,
+# every `pulumi up` shows drift). Having Pulumi own a dedicated application
+# + scoped policy + api key instead makes rotation a `pulumi up` away, zero
+# console toil, and limits blast radius to read-only on the loreweaver
+# container registry project.
+#
+# Safe here (and NOT for the kubeconfig) because the consumed field is
+# k8s.core.v1.Secret.string_data -- an in-place PATCH, not replaceOnChanges.
+# See feedback_iac_credential_decoupling.md for the full rule.
+registry_pull_app = scaleway.iam.Application(
+    "registry-pull-app",
+    name="k3s-registry-puller",
+    description="Cluster imagePullSecret principal (read-only registry access)",
+)
+
+registry_pull_policy = scaleway.iam.Policy(
+    "registry-pull-policy",
+    name="k3s-registry-puller",
+    description="Read-only access to the loreweaver container registry",
+    application_id=registry_pull_app.id,
+    rules=[
+        scaleway.iam.PolicyRuleArgs(
+            permission_set_names=["ContainerRegistryReadOnly"],
+            project_ids=[registry.project_id],
+        ),
+    ],
+)
+
+# depends_on forces Policy -> ApiKey ordering. Without it, Pulumi could
+# create the ApiKey before the Policy (they share no data flow), and the
+# key would briefly exist with zero permissions -- fine in steady state,
+# but a race on first `pulumi up`.
+registry_pull_api_key = scaleway.iam.ApiKey(
+    "registry-pull-api-key",
+    application_id=registry_pull_app.id,
+    description="Cluster imagePullSecret credential (managed by Pulumi)",
+    opts=pulumi.ResourceOptions(depends_on=[registry_pull_policy]),
+)
+
+# ---------------------------------------------------------------------------
 # Scaleway Secrets (empty containers -- filled manually or by GHA)
 # ---------------------------------------------------------------------------
 deploy_ssh_secret = scaleway.secrets.Secret(
