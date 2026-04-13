@@ -60,6 +60,18 @@ depends = ["test:*"]
 
 [tasks."test:ts"]
 run = "pnpm test"
+sources = [
+  "apps/**/*.{ts,tsx,js,jsx}",
+  "packages/**/*.{ts,tsx,js,jsx}",
+  "apps/**/package.json",
+  "packages/**/package.json",
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "vitest.config.*",
+  "apps/**/vitest.config.*",
+  "packages/**/vitest.config.*",
+]
 
 [tasks."test:rust"]
 description = "Run Rust tests and format ts-rs generated TS output"
@@ -67,10 +79,25 @@ run = """
 cargo test --workspace
 pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
 """
+sources = [
+  "apps/platform/**/*.rs",
+  "apps/campaign/**/*.rs",
+  "crates/**/*.rs",
+  "Cargo.toml",
+  "Cargo.lock",
+  "apps/platform/Cargo.toml",
+  "apps/campaign/Cargo.toml",
+  "crates/**/Cargo.toml",
+]
 
 [tasks."test:python"]
 dir = "workers/whisperx"
 run = "uv run pytest"
+sources = [
+  "workers/whisperx/**/*.py",
+  "workers/whisperx/pyproject.toml",
+  "workers/whisperx/uv.lock",
+]
 
 # --- lint ---
 
