@@ -86,6 +86,9 @@ jobs:
           components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-build
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: format
         run: cargo fmt --check
@@ -122,6 +125,9 @@ jobs:
           toolchain: ${{ steps.versions.outputs.rust }}
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-build
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: pnpm/action-setup@v4
         with:
