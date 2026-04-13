@@ -9,6 +9,7 @@ kubeconform = "latest"
 
 [settings]
 python.uv_venv_auto = "create|source"
+lockfile = true
 
 # --- check ---
 
@@ -214,18 +215,12 @@ sources = [
 [tasks."format:check:python"]
 dir = "workers/whisperx"
 run = "uv run ruff format --check ."
-sources = [
-  "workers/whisperx/**/*.py",
-  "workers/whisperx/pyproject.toml",
-]
+sources = ["workers/whisperx/**/*.py", "workers/whisperx/pyproject.toml"]
 
 [tasks."format:check:infra"]
 dir = "infra/pulumi-cloud"
 run = "uv run ruff format --check ."
-sources = [
-  "infra/pulumi-cloud/**/*.py",
-  "infra/pulumi-cloud/pyproject.toml",
-]
+sources = ["infra/pulumi-cloud/**/*.py", "infra/pulumi-cloud/pyproject.toml"]
 
 # --- typecheck ---
 
