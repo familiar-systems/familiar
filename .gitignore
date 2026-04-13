@@ -37,6 +37,9 @@ __pycache__/
 # === mise ===
 .mise.local.toml
 
+# === Git worktrees ===
+.worktrees/
+
 # === Environment ===
 .env
 .env.local

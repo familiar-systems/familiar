@@ -24,16 +24,27 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/mise-tool-versions
-        id: tools
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: "node npm:pnpm"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+
+      - name: Resolve tool versions
+        id: versions
+        shell: bash
+        run: |
+          {
+            echo "node=$(mise current node)"
+            echo "pnpm=$(mise current 'npm:pnpm')"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: pnpm/action-setup@v4
         with:
-          version: ${{ steps.tools.outputs.pnpm }}
+          version: ${{ steps.versions.outputs.pnpm }}
 
       - uses: actions/setup-node@v6
         with:
-          node-version: ${{ steps.tools.outputs.node }}
+          node-version: ${{ steps.versions.outputs.node }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -59,15 +70,25 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/mise-tool-versions
-        id: tools
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: "rust"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+
+      - name: Resolve rust toolchain
+        id: versions
+        shell: bash
+        run: echo "rust=$(mise current rust)" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ steps.tools.outputs.rust }}
+          toolchain: ${{ steps.versions.outputs.rust }}
           components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-build
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: format
         run: cargo fmt --check
@@ -84,22 +105,37 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/mise-tool-versions
-        id: tools
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: "rust node npm:pnpm"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+
+      - name: Resolve tool versions
+        id: versions
+        shell: bash
+        run: |
+          {
+            echo "node=$(mise current node)"
+            echo "pnpm=$(mise current 'npm:pnpm')"
+            echo "rust=$(mise current rust)"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ steps.tools.outputs.rust }}
+          toolchain: ${{ steps.versions.outputs.rust }}
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-build
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: pnpm/action-setup@v4
         with:
-          version: ${{ steps.tools.outputs.pnpm }}
+          version: ${{ steps.versions.outputs.pnpm }}
 
       - uses: actions/setup-node@v6
         with:
-          node-version: ${{ steps.tools.outputs.node }}
+          node-version: ${{ steps.versions.outputs.node }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -124,8 +160,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: "uv"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+
+      - name: Resolve uv version
+        id: versions
+        shell: bash
+        run: echo "uv=$(mise current uv)" >> "$GITHUB_OUTPUT"
+
       - uses: astral-sh/setup-uv@v6
         with:
+          version: ${{ steps.versions.outputs.uv }}
           enable-cache: true
           cache-dependency-glob: "workers/*/uv.lock"
 
@@ -144,10 +191,51 @@ jobs:
       - name: test
         run: uv run pytest
 
+  # ── Infra (Pulumi Python + workflow YAML) ──────────────
+  infra:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/pulumi-cloud
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: "uv actionlint"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+
+      - name: Resolve uv version
+        id: versions
+        shell: bash
+        run: echo "uv=$(mise current uv)" >> "$GITHUB_OUTPUT"
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ steps.versions.outputs.uv }}
+          enable-cache: true
+          cache-dependency-glob: "infra/pulumi-cloud/uv.lock"
+
+      - name: sync
+        run: uv sync --frozen
+
+      - name: format
+        run: uv run ruff format --check .
+
+      - name: lint
+        run: uv run ruff check .
+
+      - name: typecheck
+        run: uv run basedpyright
+
+      - name: actionlint
+        working-directory: ${{ github.workspace }}
+        run: actionlint
+
   # ── Gate ────────────────────────────────────────────────
   ci-ok:
     if: always()
-    needs: [ts, rust, python, generated-types]
+    needs: [ts, rust, python, infra, generated-types]
     runs-on: ubuntu-latest
     steps:
       - run: |
