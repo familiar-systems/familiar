@@ -4,6 +4,7 @@ node = "24"
 rust = "stable"
 python = "3.14"
 uv = "latest"
+actionlint = "latest"
 
 [settings]
 python.uv_venv_auto = "create|source"
@@ -84,6 +85,10 @@ run = "uv run ruff check ."
 [tasks."lint:infra"]
 dir = "infra/pulumi-cloud"
 run = "uv run ruff check ."
+
+[tasks."lint:workflows"]
+description = "Lint GitHub Actions workflow files with actionlint"
+run = "actionlint"
 
 # --- format ---
 
