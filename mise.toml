@@ -9,6 +9,12 @@ actionlint = "latest"
 [settings]
 python.uv_venv_auto = "create|source"
 
+# --- check ---
+
+[tasks.check]
+description = "Run all checks in parallel (format:check, lint, typecheck, test)"
+depends = ["format:check", "lint", "typecheck", "test"]
+
 # --- dev ---
 
 [tasks.dev]
@@ -74,21 +80,60 @@ depends = ["lint:*"]
 
 [tasks."lint:ts"]
 run = "pnpm lint"
+sources = [
+  "apps/**/*.{ts,tsx,js,jsx,astro}",
+  "packages/**/*.{ts,tsx,js,jsx}",
+  "apps/**/package.json",
+  "packages/**/package.json",
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "tsconfig*.json",
+  "apps/**/tsconfig*.json",
+  "packages/**/tsconfig*.json",
+  ".oxlintrc.json",
+]
 
 [tasks."lint:rust"]
 run = "cargo clippy --workspace -- -D warnings"
+sources = [
+  "apps/platform/**/*.rs",
+  "apps/campaign/**/*.rs",
+  "crates/**/*.rs",
+  "Cargo.toml",
+  "Cargo.lock",
+  "apps/platform/Cargo.toml",
+  "apps/campaign/Cargo.toml",
+  "crates/**/Cargo.toml",
+]
 
 [tasks."lint:python"]
 dir = "workers/whisperx"
 run = "uv run ruff check ."
+sources = [
+  "workers/whisperx/**/*.py",
+  "workers/whisperx/pyproject.toml",
+  "workers/whisperx/uv.lock",
+]
 
 [tasks."lint:infra"]
 dir = "infra/pulumi-cloud"
 run = "uv run ruff check ."
+sources = [
+  "infra/pulumi-cloud/**/*.py",
+  "infra/pulumi-cloud/pyproject.toml",
+  "infra/pulumi-cloud/uv.lock",
+]
 
 [tasks."lint:workflows"]
 description = "Lint GitHub Actions workflow files with actionlint"
 run = "actionlint"
+sources = [
+  ".github/workflows/**/*.yml",
+  ".github/workflows/**/*.yaml",
+  ".github/actions/**/*.yml",
+  ".github/actions/**/*.yaml",
+]
 
 # --- format ---
 
@@ -116,17 +161,39 @@ depends = ["format:check:*"]
 
 [tasks."format:check:ts"]
 run = "pnpm format:check"
+sources = [
+  "apps/**/*.{ts,tsx,js,jsx,astro,json,md,css,html}",
+  "packages/**/*.{ts,tsx,js,jsx,json,md,css,html}",
+  "package.json",
+  "pnpm-lock.yaml",
+  ".oxfmtrc.json",
+]
 
 [tasks."format:check:rust"]
 run = "cargo fmt --check"
+sources = [
+  "apps/platform/**/*.rs",
+  "apps/campaign/**/*.rs",
+  "crates/**/*.rs",
+  "rustfmt.toml",
+  ".rustfmt.toml",
+]
 
 [tasks."format:check:python"]
 dir = "workers/whisperx"
 run = "uv run ruff format --check ."
+sources = [
+  "workers/whisperx/**/*.py",
+  "workers/whisperx/pyproject.toml",
+]
 
 [tasks."format:check:infra"]
 dir = "infra/pulumi-cloud"
 run = "uv run ruff format --check ."
+sources = [
+  "infra/pulumi-cloud/**/*.py",
+  "infra/pulumi-cloud/pyproject.toml",
+]
 
 # --- typecheck ---
 
@@ -136,17 +203,50 @@ depends = ["typecheck:*"]
 
 [tasks."typecheck:ts"]
 run = "pnpm typecheck"
+sources = [
+  "apps/**/*.{ts,tsx,js,jsx,astro}",
+  "packages/**/*.{ts,tsx,js,jsx}",
+  "apps/**/package.json",
+  "packages/**/package.json",
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "tsconfig*.json",
+  "apps/**/tsconfig*.json",
+  "packages/**/tsconfig*.json",
+]
 
 [tasks."typecheck:rust"]
 run = "cargo check --workspace"
+sources = [
+  "apps/platform/**/*.rs",
+  "apps/campaign/**/*.rs",
+  "crates/**/*.rs",
+  "Cargo.toml",
+  "Cargo.lock",
+  "apps/platform/Cargo.toml",
+  "apps/campaign/Cargo.toml",
+  "crates/**/Cargo.toml",
+]
 
 [tasks."typecheck:python"]
 dir = "workers/whisperx"
 run = "uv run basedpyright"
+sources = [
+  "workers/whisperx/**/*.py",
+  "workers/whisperx/pyproject.toml",
+  "workers/whisperx/uv.lock",
+]
 
 [tasks."typecheck:infra"]
 dir = "infra/pulumi-cloud"
 run = "uv run basedpyright"
+sources = [
+  "infra/pulumi-cloud/**/*.py",
+  "infra/pulumi-cloud/pyproject.toml",
+  "infra/pulumi-cloud/uv.lock",
+  "infra/pulumi-cloud/pyrightconfig.json",
+]
 
 # --- generate ---
 
