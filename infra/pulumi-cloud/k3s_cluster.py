@@ -1,22 +1,26 @@
 """K3sCluster ComponentResource.
 
-Provisions a single-node k3s cluster on Hetzner Cloud with automated
-kubeconfig extraction. Encapsulates server, volume, and assignments
-behind a typed interface. The floating IP is created externally
-(cloud.py) and passed in.
+Provisions a single-node k3s cluster on Hetzner Cloud. Encapsulates server,
+volume, floating IP assignment, and cloud-init bootstrap behind a typed
+interface. The floating IP is created externally (cloud.py) and passed in.
+
+Auth bootstrap: cloud-init drops a manifest into k3s's auto-apply directory
+that creates a `pulumi-admin` ServiceAccount + cluster-admin binding +
+long-lived token Secret. The Pulumi k8s Provider authenticates via that
+token (read from Scaleway SM by `__main__.py`), not via cert-based auth
+extracted over SSH. This makes the Provider's kubeconfig byte-stable so
+credential rotation never cascades through k8s resources.
 """
 
 from __future__ import annotations
 
 import pulumi
-import pulumi_command as command
 import pulumi_hcloud as hcloud
 
 
 class K3sCluster(pulumi.ComponentResource):
-    """Provisions a k3s server with automated kubeconfig extraction."""
+    """Provisions a k3s server with auto-applied SA bootstrap manifest."""
 
-    kubeconfig: pulumi.Output[str]
     server_ip: pulumi.Output[str]
 
     def __init__(
@@ -29,7 +33,6 @@ class K3sCluster(pulumi.ComponentResource):
         location: str,
         server_type: str,
         image: str,
-        deploy_private_key: pulumi.Input[str],
         labels: dict[str, str],
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
@@ -101,41 +104,7 @@ class K3sCluster(pulumi.ComponentResource):
             opts=child_opts,
         )
 
-        # -- Kubeconfig extraction via SSH ------------------------------------
-        # Waits for cloud-init to finish, then reads the k3s kubeconfig and
-        # replaces 127.0.0.1 with the floating IP so it works remotely.
-        kubeconfig_cmd = command.remote.Command(
-            f"{name}-kubeconfig",
-            connection=command.remote.ConnectionArgs(
-                host=server.ipv4_address,
-                user="root",
-                private_key=deploy_private_key,
-                dial_error_limit=30,
-                per_dial_timeout=30,
-            ),
-            # cloud-init can take 3-5 minutes; wait for it, then extract
-            create=fip.apply(
-                lambda fip: (
-                    "cloud-init status --wait > /dev/null 2>&1 && "
-                    f"sed 's/127\\.0\\.0\\.1/{fip}/g' /etc/rancher/k3s/k3s.yaml"
-                )
-            ),
-            # Re-extract on update (e.g. server replacement)
-            update=fip.apply(
-                lambda fip: f"sed 's/127\\.0\\.0\\.1/{fip}/g' /etc/rancher/k3s/k3s.yaml"
-            ),
-            triggers=[server.id],
-            opts=pulumi.ResourceOptions(parent=self, additional_secret_outputs=["stdout"]),
-        )
-
-        self.kubeconfig = kubeconfig_cmd.stdout
-
-        self.register_outputs(
-            {
-                "kubeconfig": self.kubeconfig,
-                "serverIp": self.server_ip,
-            }
-        )
+        self.register_outputs({"serverIp": self.server_ip})
 
 
 def _render_cloud_init(*, fip: str, device: str, tls_sans: str) -> str:
@@ -164,6 +133,35 @@ write_files:
   - path: /etc/fstab
     append: true
     content: "{device} /data ext4 defaults,nofail 0 2"
+  - path: /var/lib/rancher/k3s/server/manifests/pulumi-admin.yaml
+    content: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: pulumi-admin
+        namespace: kube-system
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: pulumi-admin-cluster-admin
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: cluster-admin
+      subjects:
+        - kind: ServiceAccount
+          name: pulumi-admin
+          namespace: kube-system
+      ---
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: pulumi-admin-token
+        namespace: kube-system
+        annotations:
+          kubernetes.io/service-account.name: pulumi-admin
+      type: kubernetes.io/service-account-token
 runcmd:
   - ip addr add {fip}/32 dev lo
   - mkdir -p /data

@@ -84,94 +84,28 @@ jobs:
           KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           IMAGE: ${{ needs.build-and-push.outputs.image }}
+          REGISTRY: ${{ env.REGISTRY }}
+          SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
         run: |
           echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
           export KUBECONFIG=/tmp/kubeconfig.yaml
-          NS="preview-pr-${PR_NUMBER}"
 
-          # Create namespace
-          kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
+          # Template variables consumed by envsubst in infra/k8s/preview/*.yaml
+          export NAMESPACE="preview-pr-${PR_NUMBER}"
+          export PR_HOST="pr-${PR_NUMBER}.preview.loreweaver.no"
+          # Docker registry auth for imagePullSecret (scaleway-registry)
+          DOCKER_AUTH=$(printf 'nologin:%s' "$SCW_SECRET_KEY" | base64 -w0)
+          DOCKERCONFIG_JSON=$(printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$DOCKER_AUTH")
+          DOCKERCONFIG_B64=$(printf '%s' "$DOCKERCONFIG_JSON" | base64 -w0)
+          export DOCKERCONFIG_B64
 
-          # Copy imagePullSecret into PR namespace
-          # Auth: username is always "nologin", password is SCW_SECRET_KEY
-          kubectl create secret docker-registry scaleway-registry \
-            --namespace "$NS" \
-            --docker-server="${{ env.REGISTRY }}" \
-            --docker-username="nologin" \
-            --docker-password="${{ secrets.SCW_SECRET_KEY }}" \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-          # Apply deployment, service, ingress
-          cat <<EOF | kubectl apply -f -
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: site
-            namespace: $NS
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: site
-            template:
-              metadata:
-                labels:
-                  app: site
-              spec:
-                imagePullSecrets:
-                  - name: scaleway-registry
-                containers:
-                  - name: site
-                    image: ${IMAGE}
-                    imagePullPolicy: Always
-                    ports:
-                      - containerPort: 80
-                    resources:
-                      requests:
-                        cpu: 10m
-                        memory: 32Mi
-                      limits:
-                        memory: 64Mi
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: site
-            namespace: $NS
-          spec:
-            selector:
-              app: site
-            ports:
-              - port: 80
-                targetPort: 80
-          ---
-          apiVersion: networking.k8s.io/v1
-          kind: Ingress
-          metadata:
-            name: site
-            namespace: $NS
-            annotations:
-              traefik.ingress.kubernetes.io/router.entrypoints: websecure
-          spec:
-            tls:
-              - hosts:
-                  - pr-${PR_NUMBER}.preview.loreweaver.no
-                secretName: preview-wildcard-tls
-            rules:
-              - host: pr-${PR_NUMBER}.preview.loreweaver.no
-                http:
-                  paths:
-                    - path: /
-                      pathType: Prefix
-                      backend:
-                        service:
-                          name: site
-                          port:
-                            number: 80
-          EOF
+          # Apply manifests in dependency order (namespace must exist before children)
+          for manifest in namespace registry-pull-secret deployment service ingress; do
+            envsubst < "infra/k8s/preview/${manifest}.yaml" | kubectl apply -f -
+          done
 
           kubectl rollout status deployment/site \
-            --namespace "$NS" \
+            --namespace "$NAMESPACE" \
             --timeout=120s
 
           rm /tmp/kubeconfig.yaml

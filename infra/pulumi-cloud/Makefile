@@ -5,9 +5,10 @@ K3S_KUBECONFIG_SECRET_ID := $(shell pulumi stack output k3s_kubeconfig_secret_id
 SSH_KEY := $(HOME)/.ssh/loreweaver-deploy
 
 .PHONY: kubeconfig
-kubeconfig: ## Export k3s kubeconfig and merge into ~/.kube/config
+kubeconfig: ## Export k3s kubeconfig from Scaleway SM and merge into ~/.kube/config
 	@mkdir -p $(HOME)/.kube
-	pulumi stack output k3s_kubeconfig --show-secrets > $(KUBECONFIG_FILE)
+	scw secret version access $(K3S_KUBECONFIG_SECRET_ID) revision=latest region=fr-par -o json \
+		| jq -r '.data' | base64 -d > $(KUBECONFIG_FILE)
 	kubectl --kubeconfig $(KUBECONFIG_FILE) config rename-context default $(CONTEXT_NAME) 2>/dev/null || true
 	KUBECONFIG=$(HOME)/.kube/config:$(KUBECONFIG_FILE) kubectl config view --flatten > $(HOME)/.kube/config.merged
 	mv $(HOME)/.kube/config.merged $(HOME)/.kube/config
@@ -29,23 +30,6 @@ up: ## pulumi up
 .PHONY: lint
 lint: ## Lint, format, and typecheck
 	uv run ruff check --fix . && uv run ruff format . && uv run basedpyright
-
-.PHONY: rotate-certs
-rotate-certs: ## Rotate k3s client certs, re-extract kubeconfig, push to Scaleway SM
-	ssh root@$(K3S_FLOATING_IP) -i $(SSH_KEY) \
-		"systemctl stop k3s && k3s certificate rotate --service admin && systemctl start k3s"
-	@echo "Waiting for k3s to restart..."
-	@sleep 5
-	ssh root@$(K3S_FLOATING_IP) -i $(SSH_KEY) \
-		"cat /etc/rancher/k3s/k3s.yaml" \
-		| sed 's/127\.0\.0\.1/$(K3S_FLOATING_IP)/g' \
-		> $(KUBECONFIG_FILE)
-	scw secret version create $(K3S_KUBECONFIG_SECRET_ID) data=@$(KUBECONFIG_FILE)
-	@echo "Kubeconfig rotated and pushed to Scaleway SM"
-	kubectl --kubeconfig $(KUBECONFIG_FILE) config rename-context default $(CONTEXT_NAME) 2>/dev/null || true
-	KUBECONFIG=$(HOME)/.kube/config:$(KUBECONFIG_FILE) kubectl config view --flatten > $(HOME)/.kube/config.merged
-	mv $(HOME)/.kube/config.merged $(HOME)/.kube/config
-	@echo "Context '$(CONTEXT_NAME)' merged into ~/.kube/config"
 
 .PHONY: help
 help: ## Show this help
