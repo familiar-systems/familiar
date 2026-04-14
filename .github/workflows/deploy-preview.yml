@@ -62,7 +62,7 @@ jobs:
           file: apps/site/Dockerfile
           push: true
           build-args: |
-            SITE_URL=https://preview.loreweaver.no
+            SITE_URL=https://preview.familiar.systems
             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
@@ -99,7 +99,7 @@ jobs:
 
           # Template variables consumed by envsubst in infra/k8s/preview/*.yaml
           export NAMESPACE="preview-pr-${PR_NUMBER}"
-          export PR_HOST="pr-${PR_NUMBER}.preview.loreweaver.no"
+          export PR_HOST="pr-${PR_NUMBER}.preview.familiar.systems"
           # Docker registry auth for imagePullSecret (scaleway-registry)
           DOCKER_AUTH=$(printf 'nologin:%s' "$SCW_SECRET_KEY" | base64 -w0)
           DOCKERCONFIG_JSON=$(printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$DOCKER_AUTH")
@@ -122,7 +122,7 @@ jobs:
         with:
           script: |
             const prNumber = context.payload.pull_request.number;
-            const url = `https://pr-${prNumber}.preview.loreweaver.no`;
+            const url = `https://pr-${prNumber}.preview.familiar.systems`;
             const body = `Preview deployed: ${url}`;
 
             // Update or create comment
