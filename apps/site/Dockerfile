@@ -26,7 +26,7 @@ RUN pnpm install --frozen-lockfile --filter @familiar-systems/site...
 COPY apps/site/ apps/site/
 
 # Build static site + pagefind index
-ARG SITE_URL=https://preview.loreweaver.no
+ARG SITE_URL=https://preview.familiar.systems
 ENV SITE_URL=$SITE_URL
 RUN pnpm --filter @familiar-systems/site build
 
