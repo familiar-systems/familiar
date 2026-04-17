@@ -458,6 +458,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     fn with_env<F: FnOnce()>(vars: &[(&str, &str)], f: F) {
         for (k, v) in vars { unsafe { std::env::set_var(k, v); } }
@@ -466,6 +467,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn parses_cors_origins_csv() {
         with_env(&[
             ("HANKO_API_URL", "https://x.hanko.io"),
@@ -474,10 +476,12 @@ mod tests {
             let c = Config::from_env();
             assert_eq!(c.cors_origins, vec!["http://localhost:5173", "https://app.familiar.systems"]);
             assert_eq!(c.port, 3000);
+            assert_eq!(c.database_url, "sqlite::memory:");
         });
     }
 
     #[test]
+    #[serial]
     #[should_panic(expected = "HANKO_API_URL is required")]
     fn panics_on_missing_hanko_url() {
         unsafe { std::env::remove_var("HANKO_API_URL"); }
@@ -492,7 +496,7 @@ mod tests {
 feat(platform): add Config with env parsing
 ```
 
-**Notes:** Tests must serialize env access across threads. The `with_env` helper works because `cargo test` threads are joined synchronously per test; for production we'd use `serial_test`, but two tests with non-overlapping vars are safe here.
+**Notes:** `cargo test` parallelises tests within a single process, so two tests that both touch `HANKO_API_URL` race on the shared env namespace. The `#[serial]` annotation from `serial_test` forces sequential execution of marked tests. Add `serial_test = "3"` to `apps/platform/Cargo.toml` under `[dev-dependencies]`.
 
 ---
 
