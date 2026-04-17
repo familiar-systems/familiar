@@ -210,6 +210,7 @@ pub struct HankoClaims {
 #[derive(Debug, Clone, Deserialize)]
 pub struct HankoEmail {
     pub address: String,
+    pub is_primary: bool,
     pub is_verified: bool,
 }
 
@@ -229,15 +230,25 @@ mod tests {
 
     #[test]
     fn claims_deserialize_from_hanko_response_shape() {
-        let raw = r#"{"subject":"sub-1","email":{"address":"a@b.com","is_verified":true},"expiration":"2099-12-31T00:00:00Z","session_id":"s1"}"#;
+        let raw = r#"{"subject":"sub-1","email":{"address":"a@b.com","is_primary":true,"is_verified":true},"expiration":"2099-12-31T00:00:00Z","session_id":"s1"}"#;
         let c: HankoClaims = serde_json::from_str(raw).unwrap();
         assert_eq!(c.subject, "sub-1");
-        assert!(c.email.unwrap().is_verified);
+        let email = c.email.unwrap();
+        assert_eq!(email.address, "a@b.com");
+        assert!(email.is_primary);
+        assert!(email.is_verified);
     }
 
     #[test]
     fn claims_deserialize_with_null_email() {
         let raw = r#"{"subject":"sub-1","email":null,"expiration":"2099-12-31T00:00:00Z","session_id":"s1"}"#;
+        let c: HankoClaims = serde_json::from_str(raw).unwrap();
+        assert!(c.email.is_none());
+    }
+
+    #[test]
+    fn claims_deserialize_with_absent_email() {
+        let raw = r#"{"subject":"sub-1","expiration":"2099-12-31T00:00:00Z","session_id":"s1"}"#;
         let c: HankoClaims = serde_json::from_str(raw).unwrap();
         assert!(c.email.is_none());
     }
@@ -323,7 +334,7 @@ async fn validate_returns_claims_on_is_valid_true() {
             "is_valid": true,
             "claims": {
                 "subject": "u-1",
-                "email": {"address": "x@y.com", "is_verified": true},
+                "email": {"address": "x@y.com", "is_primary": true, "is_verified": true},
                 "expiration": "2099-01-01T00:00:00Z",
                 "session_id": "sess-1"
             }
@@ -1134,7 +1145,7 @@ async fn valid_token_returns_user_row_and_persists_it() {
             "is_valid": true,
             "claims": {
                 "subject": "test-sub",
-                "email": {"address": "t@ex.com", "is_verified": true},
+                "email": {"address": "t@ex.com", "is_primary": true, "is_verified": true},
                 "expiration": "2099-01-01T00:00:00Z",
                 "session_id": "s"
             }
