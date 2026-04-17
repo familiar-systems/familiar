@@ -5,8 +5,11 @@ edition.workspace = true
 publish = false
 
 [dependencies]
+chrono.workspace = true
 nanoid.workspace = true
+reqwest.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 ts-rs.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
