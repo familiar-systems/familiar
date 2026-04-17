@@ -6,7 +6,7 @@
 
 **Architecture:** SPA (`apps/web`) authenticates against Hanko Cloud directly (no proxy). The browser attaches the Hanko session JWT as a Bearer header to `/api/me` on the platform server (`apps/platform`, Axum + SeaORM + SQLite). The platform validates the JWT by POSTing it to Hanko's `/sessions/validate`, upserts a `users` row keyed by `claims.subject`, and returns it. Hanko tenant URL is config (not a secret).
 
-**Tech Stack:** Rust stable + edition 2024; Axum; SeaORM 2.0 RC; SQLite via `sqlx-sqlite`; `reqwest` with `rustls-tls`; `tower-http` CORS; React 19 + Vite 7; `@teamhanko/hanko-elements` 1.x; k3s + Traefik; Scaleway Container Registry; Pulumi (Python).
+**Tech Stack:** Rust stable + edition 2024; Axum; SeaORM 2.0 RC; SQLite via `sqlx-sqlite`; `reqwest` with `rustls`; `tower-http` CORS; React 19 + Vite 7; `@teamhanko/hanko-elements` 1.x; k3s + Traefik; Scaleway Container Registry; Pulumi (Python).
 
 ---
 
@@ -145,7 +145,7 @@ Tasks are ordered by dependency. Tasks with disjoint scope (e.g., frontend vs in
 **Depends on:** none
 
 **Steps:**
-- [ ] 1. Run `cargo add --package familiar-systems-app-shared reqwest --no-default-features --features json,rustls-tls thiserror` from repo root. Cargo adds these to both `[workspace.dependencies]` (root) and `app-shared` (`workspace = true`), following the convention already used for `serde`/`tokio`.
+- [ ] 1. Run `cargo add --package familiar-systems-app-shared reqwest --no-default-features --features json,rustls thiserror` from repo root. Cargo adds these to both `[workspace.dependencies]` (root) and `app-shared` (`workspace = true`), following the convention already used for `serde`/`tokio`. (In reqwest 0.13.x the TLS-via-rustls feature is named `rustls`; older versions used `rustls-tls`.)
 - [ ] 2. Run `cargo add --package familiar-systems-app-shared chrono --features serde`.
 - [ ] 3. Open root `Cargo.toml` and verify `reqwest`, `thiserror`, `chrono` entries exist under `[workspace.dependencies]`. Open `crates/app-shared/Cargo.toml` and verify they reference `workspace = true`.
 - [ ] 4. Run `mise run typecheck:rust`. Expect PASS (empty code still compiles).
