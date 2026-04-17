@@ -6,7 +6,7 @@
 
 **Architecture:** SPA (`apps/web`) authenticates against Hanko Cloud directly (no proxy). The browser attaches the Hanko session JWT as a Bearer header to `/api/me` on the platform server (`apps/platform`, Axum + SeaORM + SQLite). The platform validates the JWT by POSTing it to Hanko's `/sessions/validate`, upserts a `users` row keyed by `claims.subject`, and returns it. Hanko tenant URL is config (not a secret).
 
-**Tech Stack:** Rust stable + edition 2024; Axum; SeaORM 2.0 RC; SQLite via `sqlx-sqlite`; `reqwest` with `rustls`; `tower-http` CORS; React 19 + Vite 7; `@teamhanko/hanko-elements` 1.x; k3s + Traefik; Scaleway Container Registry; Pulumi (Python).
+**Tech Stack:** Rust stable + edition 2024; Axum 0.8; SeaORM 1.1; SQLite via `sqlx-sqlite`; `reqwest` with `rustls`; `tower-http` CORS; React 19 + Vite 7; `@teamhanko/hanko-elements` 1.x; k3s + Traefik; Scaleway Container Registry; Pulumi (Python).
 
 ---
 
@@ -18,7 +18,7 @@ Design source: `INITIAL_APP.md` (committed as an untracked file at repo root). T
 
 Resolved open questions (from context7):
 - **Hanko JS SDK session-token accessor:** `hanko.getSessionToken()` returns the JWT or `null`. Source: `docs.hanko.io/resources/frontend-sdk`, `docs.hanko.io/guides/hanko-elements/using-frontend-sdk`.
-- **SeaORM 2.0 feature flags:** Unchanged from 1.x naming. For our stack: `sqlx-sqlite`, `runtime-tokio-rustls`, `macros`, `with-uuid`, `with-chrono`. Source: `docs.rs/sea-orm/2.0.0-rc.34`.
+- **SeaORM feature flags:** For our stack (sea-orm 1.1.x stable, which cargo prefers over the 2.0 RC channel): `sqlx-sqlite`, `runtime-tokio-rustls`, `macros`, `with-uuid`, `with-chrono`. These names are identical in both 1.1 and 2.0 RC lines. Source: `docs.rs/sea-orm/1.1`.
 
 Verified current-state facts from exploration (not re-verified in tasks):
 - `apps/platform/src/main.rs` is literally `fn main() {}`.
@@ -168,7 +168,7 @@ deps(app-shared): add reqwest, thiserror, chrono for Hanko validator
 
 **Steps:**
 - [ ] 1. Run `cargo add --package familiar-systems-platform axum`.
-- [ ] 2. Run `cargo add --package familiar-systems-platform sea-orm --features sqlx-sqlite,runtime-tokio-rustls,macros,with-uuid,with-chrono` (these flag names are confirmed from `docs.rs/sea-orm/2.0.0-rc.34`).
+- [ ] 2. Run `cargo add --package familiar-systems-platform sea-orm --features sqlx-sqlite,runtime-tokio-rustls,macros,with-uuid,with-chrono` (these flag names match sea-orm 1.1.x stable, which cargo prefers over 2.0 RC).
 - [ ] 3. Run `cargo add --package familiar-systems-platform sea-orm-migration --features sqlx-sqlite,runtime-tokio-rustls`.
 - [ ] 4. Run `cargo add --package familiar-systems-platform tower-http --features cors,trace`.
 - [ ] 5. Run `cargo add --package familiar-systems-platform tracing tracing-subscriber --features env-filter`. (Second invocation because `--features` is per-crate in `cargo add`.)
@@ -982,7 +982,7 @@ where
 feat(platform): AuthenticatedUser extractor with upsert
 ```
 
-**Notes:** Docs checked: `sea-orm Insert::on_conflict` from `docs.rs/sea-orm/2.0.0-rc.34`. `FromRef` is Axum's way to let a shared `AppState` be the source of the extractor state.
+**Notes:** Docs checked: `sea-orm Insert::on_conflict` (stable in both 1.1 and 2.0 RC). `FromRef` is Axum's way to let a shared `AppState` be the source of the extractor state.
 
 ---
 
