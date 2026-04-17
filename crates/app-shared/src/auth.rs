@@ -122,11 +122,54 @@ mod tests {
                     "session_id": "sess-1"
                 }
             })))
+            .expect(1)
             .mount(&srv)
             .await;
         let v = HankoSessionValidator::new(srv.uri());
         let c = v.validate("tok").await.unwrap();
         assert_eq!(c.subject, "u-1");
         assert_eq!(c.session_id, "sess-1");
+    }
+
+    #[tokio::test]
+    async fn validate_rejects_on_http_401() {
+        use wiremock::{matchers::{method, path}, Mock, MockServer, ResponseTemplate};
+        let srv = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sessions/validate"))
+            .respond_with(ResponseTemplate::new(401))
+            .expect(1)
+            .mount(&srv)
+            .await;
+        let v = HankoSessionValidator::new(srv.uri());
+        assert!(matches!(v.validate("t").await, Err(AuthError::SessionRejected(_))));
+    }
+
+    #[tokio::test]
+    async fn validate_rejects_on_is_valid_false() {
+        use wiremock::{matchers::{method, path}, Mock, MockServer, ResponseTemplate};
+        let srv = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sessions/validate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"is_valid": false})))
+            .expect(1)
+            .mount(&srv)
+            .await;
+        let v = HankoSessionValidator::new(srv.uri());
+        assert!(matches!(v.validate("t").await, Err(AuthError::SessionRejected(_))));
+    }
+
+    #[tokio::test]
+    async fn validate_rejects_when_claims_missing() {
+        use wiremock::{matchers::{method, path}, Mock, MockServer, ResponseTemplate};
+        let srv = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sessions/validate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"is_valid": true})))
+            .expect(1)
+            .mount(&srv)
+            .await;
+        let v = HankoSessionValidator::new(srv.uri());
+        assert!(matches!(v.validate("t").await, Err(AuthError::SessionRejected(_))));
     }
 }
