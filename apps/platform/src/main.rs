@@ -10,7 +10,6 @@ async fn main() {
         .init();
     let config = Arc::new(Config::from_env());
     let db = Database::connect(&config.database_url).await.expect("db connect");
-    // Migrations wired in Task 12.
     let validator = Arc::new(HankoSessionValidator::new(config.hanko_api_url.clone()));
     let state = AppState { db, validator, config: config.clone() };
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port)).await.unwrap();

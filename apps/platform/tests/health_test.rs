@@ -14,7 +14,7 @@ async fn health_returns_200() {
         cors_origins: vec![],
     });
     let db = Database::connect(&config.database_url).await.unwrap();
-    let validator = Arc::new(HankoSessionValidator::new(&*config.hanko_api_url));
+    let validator = Arc::new(HankoSessionValidator::new(&config.hanko_api_url));
     let state = AppState { db, validator, config };
     let app = router().with_state(state);
     let resp = app
