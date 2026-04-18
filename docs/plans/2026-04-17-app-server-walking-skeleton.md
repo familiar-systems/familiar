@@ -728,7 +728,7 @@ impl ActiveModelBehavior for ActiveModel {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm::ActiveValue::Set;
+    use sea_orm::ActiveValue::Unchanged;
 
     #[test]
     fn model_into_active_model_roundtrip() {
@@ -741,7 +741,10 @@ mod tests {
             updated_at: now,
         };
         let am: ActiveModel = m.clone().into();
-        assert_eq!(am.hanko_sub, Set("sub-1".to_string()));
+        // From<Model> for ActiveModel maps each field to ActiveValue::Unchanged
+        // (preserving the loaded-from-db semantics). Use `Set(..)` only when
+        // constructing an ActiveModel for an insert/update.
+        assert_eq!(am.hanko_sub, Unchanged("sub-1".to_string()));
     }
 }
 ```
