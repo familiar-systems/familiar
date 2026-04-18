@@ -30,6 +30,7 @@ run = "pnpm --filter @familiar-systems/site dev"
 [tasks."dev:web"]
 description = "Vite dev server (port 5173)"
 run = "pnpm --filter @familiar-systems/web dev"
+env = { VITE_HANKO_API_URL = "<dev-tenant-url>" }
 
 [tasks."dev:platform"]
 description = "Platform server (port 3000)"
