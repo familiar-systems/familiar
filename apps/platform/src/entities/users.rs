@@ -23,11 +23,10 @@ impl ActiveModelBehavior for ActiveModel {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sea_orm::ActiveValue::Unchanged;
 
     #[test]
     fn model_into_active_model_roundtrip() {
-        use sea_orm::ActiveValue::Unchanged;
-
         let now = Utc::now();
         let m = Model {
             id: Uuid::now_v7(),
@@ -39,6 +38,10 @@ mod tests {
         let am: ActiveModel = m.clone().into();
         // Model -> ActiveModel marks all fields Unchanged (they came from an existing row).
         // Set is for fields you intend to write; Unchanged preserves the loaded value.
+        assert_eq!(am.id, Unchanged(m.id));
         assert_eq!(am.hanko_sub, Unchanged("sub-1".to_string()));
+        assert_eq!(am.email, Unchanged(Some("a@b.com".to_string())));
+        assert_eq!(am.created_at, Unchanged(now));
+        assert_eq!(am.updated_at, Unchanged(now));
     }
 }
