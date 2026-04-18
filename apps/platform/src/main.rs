@@ -16,5 +16,5 @@ async fn main() {
     let state = AppState { db, validator, config: config.clone() };
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port)).await.unwrap();
     tracing::info!("platform listening on :{}", config.port);
-    axum::serve(listener, router().with_state(state)).await.unwrap();
+    axum::serve(listener, router(config.cors_origins.clone()).with_state(state)).await.unwrap();
 }

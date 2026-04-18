@@ -32,8 +32,9 @@ pub async fn spawn_app() -> TestApp {
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
+    let origins = state.config.cors_origins.clone();
     tokio::spawn(async move {
-        axum::serve(listener, router().with_state(state)).await.unwrap();
+        axum::serve(listener, router(origins).with_state(state)).await.unwrap();
     });
 
     TestApp {

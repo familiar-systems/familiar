@@ -19,7 +19,7 @@ async fn boot_migrates_and_serves_health() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
-        axum::serve(listener, router().with_state(state)).await.unwrap();
+        axum::serve(listener, router(vec![]).with_state(state)).await.unwrap();
     });
     let body = reqwest::get(format!("http://{addr}/health")).await.unwrap();
     assert_eq!(body.status().as_u16(), 200);
