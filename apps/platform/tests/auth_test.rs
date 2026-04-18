@@ -131,7 +131,8 @@ async fn upsert_is_idempotent() {
         .expect("first call should insert the row");
     let updated_at_1 = row1.updated_at;
 
-    // Sleep so updated_at advances on conflict.
+    // 10ms is well above SQLite TEXT timestamp precision (microseconds via ISO 8601),
+    // so updated_at is guaranteed to advance on the conflict path.
     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
     // Second call: conflict path updates email + updated_at.
