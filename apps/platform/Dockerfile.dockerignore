@@ -1,0 +1,28 @@
+# Dockerfile-specific ignore for apps/platform/Dockerfile.
+# BuildKit picks this up when building with -f apps/platform/Dockerfile.
+# All four Cargo workspace members must be present; only non-Rust content is excluded.
+
+# Version control and compiled output
+.git
+target
+
+# Frontend JS/TS packages and tooling
+node_modules
+**/node_modules
+packages
+apps/web
+apps/site
+**/dist
+**/.astro
+**/.turbo
+
+# Python workers and ML
+workers
+**/.venv
+
+# Infra and docs
+infra
+docs
+
+# Editor/tooling config (not needed inside container)
+tooling
