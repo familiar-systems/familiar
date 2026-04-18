@@ -21,7 +21,7 @@ import pulumi_kubernetes as k8s
 # are untyped dicts; always read upstream docs before modifying.
 from pulumi_kubernetes.apiextensions import CustomResource
 
-from config import PREVIEW_DOMAINS, PRODUCTION_DOMAINS
+from config import HANKO_API_URL_PROD, PREVIEW_DOMAINS, PRODUCTION_DOMAINS
 
 if TYPE_CHECKING:
     import pulumiverse_scaleway as scaleway
@@ -39,6 +39,9 @@ WILDCARD_CERT_SECRET = "preview-wildcard-tls"  # noqa: S105
 REGISTRY_PULL_SECRET = "scaleway-registry"  # noqa: S105
 SITE_NAME = "site"
 SITE_PORT = 80
+PLATFORM_NAME = "platform"
+PLATFORM_PORT = 3000
+PLATFORM_IMAGE_TAG = "latest"
 
 # ACME issuers. Both ClusterIssuers are created; the wildcard cert references
 # whichever name is in ACTIVE_CLUSTER_ISSUER_NAME. Switch to staging during
@@ -313,6 +316,177 @@ def create_k8s_resources(
                 for host in all_site_hosts
             ],
             rules=[_site_ingress_rule(host) for host in all_site_hosts],
+        ),
+        opts=k8s_opts,
+    )
+
+    # -- Platform PersistentVolume + PersistentVolumeClaim + Deployment + Service + Ingress --
+    _platform_pv = k8s.core.v1.PersistentVolume(
+        "platform-pv",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name="platform-pv",
+            labels={"app": PLATFORM_NAME},
+        ),
+        spec=k8s.core.v1.PersistentVolumeSpecArgs(
+            capacity={"storage": "1Gi"},
+            access_modes=["ReadWriteOnce"],
+            persistent_volume_reclaim_policy="Retain",
+            storage_class_name="",
+            host_path=k8s.core.v1.HostPathVolumeSourceArgs(
+                path="/data/platform",
+                type="DirectoryOrCreate",
+            ),
+            claim_ref=k8s.core.v1.ObjectReferenceArgs(
+                namespace="default",
+                name="platform-pvc",
+            ),
+        ),
+        opts=pulumi.ResourceOptions(provider=provider, depends_on=[_wildcard_cert]),
+    )
+
+    _platform_pvc = k8s.core.v1.PersistentVolumeClaim(
+        "platform-pvc",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name="platform-pvc",
+            namespace="default",
+        ),
+        spec=k8s.core.v1.PersistentVolumeClaimSpecArgs(
+            access_modes=["ReadWriteOnce"],
+            storage_class_name="",
+            volume_name="platform-pv",
+            resources=k8s.core.v1.VolumeResourceRequirementsArgs(
+                requests={"storage": "1Gi"},
+            ),
+        ),
+        opts=pulumi.ResourceOptions(provider=provider, depends_on=[_platform_pv]),
+    )
+
+    platform_labels = {"app": PLATFORM_NAME}
+    platform_image = registry.endpoint.apply(
+        lambda ep: f"{ep}/{PLATFORM_NAME}:{PLATFORM_IMAGE_TAG}"
+    )
+
+    _platform_deployment = k8s.apps.v1.Deployment(
+        "platform-deployment",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name=PLATFORM_NAME,
+            namespace="default",
+        ),
+        spec=k8s.apps.v1.DeploymentSpecArgs(
+            replicas=1,
+            selector=k8s.meta.v1.LabelSelectorArgs(match_labels=platform_labels),
+            template=k8s.core.v1.PodTemplateSpecArgs(
+                metadata=k8s.meta.v1.ObjectMetaArgs(labels=platform_labels),
+                spec=k8s.core.v1.PodSpecArgs(
+                    image_pull_secrets=[
+                        k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
+                    ],
+                    containers=[
+                        k8s.core.v1.ContainerArgs(
+                            name=PLATFORM_NAME,
+                            image=platform_image,
+                            image_pull_policy="IfNotPresent",
+                            ports=[k8s.core.v1.ContainerPortArgs(container_port=PLATFORM_PORT)],
+                            env=[
+                                k8s.core.v1.EnvVarArgs(
+                                    name="HANKO_API_URL",
+                                    value=HANKO_API_URL_PROD,
+                                ),
+                                k8s.core.v1.EnvVarArgs(
+                                    name="DATABASE_URL",
+                                    value="sqlite:///data/platform/platform.db?mode=rwc",
+                                ),
+                                k8s.core.v1.EnvVarArgs(
+                                    name="CORS_ORIGINS",
+                                    value="https://app.familiar.systems,https://familiar.systems",
+                                ),
+                                k8s.core.v1.EnvVarArgs(name="PORT", value=str(PLATFORM_PORT)),
+                                k8s.core.v1.EnvVarArgs(name="RUST_LOG", value="info"),
+                            ],
+                            volume_mounts=[
+                                k8s.core.v1.VolumeMountArgs(
+                                    name="platform-data",
+                                    mount_path="/data/platform",
+                                ),
+                            ],
+                            resources=k8s.core.v1.ResourceRequirementsArgs(
+                                requests={"cpu": "10m", "memory": "32Mi"},
+                                limits={"memory": "64Mi"},
+                            ),
+                        ),
+                    ],
+                    volumes=[
+                        k8s.core.v1.VolumeArgs(
+                            name="platform-data",
+                            persistent_volume_claim=k8s.core.v1.PersistentVolumeClaimVolumeSourceArgs(
+                                claim_name="platform-pvc",
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        opts=pulumi.ResourceOptions(
+            provider=provider,
+            depends_on=[image_pull_secret, _platform_pvc],
+        ),
+    )
+
+    _platform_service = k8s.core.v1.Service(
+        "platform-service",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name="platform-service",
+            namespace="default",
+        ),
+        spec=k8s.core.v1.ServiceSpecArgs(
+            selector=platform_labels,
+            ports=[
+                k8s.core.v1.ServicePortArgs(
+                    port=PLATFORM_PORT,
+                    target_port=PLATFORM_PORT,
+                ),
+            ],
+        ),
+        opts=k8s_opts,
+    )
+
+    _platform_ingress = k8s.networking.v1.Ingress(
+        "platform-ingress",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name=PLATFORM_NAME,
+            namespace="default",
+            annotations={
+                "traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
+            },
+        ),
+        spec=k8s.networking.v1.IngressSpecArgs(
+            tls=[
+                k8s.networking.v1.IngressTLSArgs(
+                    hosts=["api.familiar.systems"],
+                    secret_name=WILDCARD_CERT_SECRET,
+                ),
+            ],
+            rules=[
+                k8s.networking.v1.IngressRuleArgs(
+                    host="api.familiar.systems",
+                    http=k8s.networking.v1.HTTPIngressRuleValueArgs(
+                        paths=[
+                            k8s.networking.v1.HTTPIngressPathArgs(
+                                path="/",
+                                path_type="Prefix",
+                                backend=k8s.networking.v1.IngressBackendArgs(
+                                    service=k8s.networking.v1.IngressServiceBackendArgs(
+                                        name="platform-service",
+                                        port=k8s.networking.v1.ServiceBackendPortArgs(
+                                            number=PLATFORM_PORT,
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ],
+                    ),
+                ),
+            ],
         ),
         opts=k8s_opts,
     )
