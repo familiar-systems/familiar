@@ -1938,6 +1938,7 @@ The slice is done when all of these pass without manual intervention.
 - Campaign CRUD, routing table, shard registry, billing, suggestions — follow-up plans.
 - Observability beyond `tracing_subscriber` with `EnvFilter` — follow-up plan.
 - Token refresh / explicit `sessionExpired` handling on the client beyond redirect-to-login on 401.
+- Response-body sanitization of internal errors. `AppError::Db(e)` currently renders `format!("db: {e}")` into the HTTP body, which exposes `sea_orm::DbErr` Display content (constraint names, column names, SQL fragments). `AppError::Auth(_)` surfaces the inner `AuthError::RequestFailed(reqwest::Error)` Display, which may include the Hanko tenant URL. Hardening pass: log full error at `tracing::error!`, return a generic string to clients. Track for a dedicated follow-up plan before prod traffic arrives.
 
 ---
 
