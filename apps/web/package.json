@@ -16,6 +16,7 @@
     "@familiar-systems/editor": "workspace:*",
     "@familiar-systems/types-app": "workspace:*",
     "@familiar-systems/types-campaign": "workspace:*",
+    "@teamhanko/hanko-elements": "^2.6.0",
     "react": "^19",
     "react-dom": "^19"
   },
