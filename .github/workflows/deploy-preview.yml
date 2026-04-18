@@ -107,7 +107,7 @@ jobs:
           export DOCKERCONFIG_B64
 
           # Apply manifests in dependency order (namespace must exist before children)
-          for manifest in namespace registry-pull-secret deployment service ingress; do
+          for manifest in namespace registry-pull-secret site-deployment site-service site-ingress; do
             envsubst < "infra/k8s/preview/${manifest}.yaml" | kubectl apply -f -
           done
 
