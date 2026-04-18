@@ -4,9 +4,7 @@ use axum::{
     http::request::Parts,
 };
 use chrono::Utc;
-use sea_orm::{
-    sea_query::OnConflict, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter,
-};
+use sea_orm::{ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, sea_query::OnConflict};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -29,7 +27,9 @@ where
             .headers
             .get(axum::http::header::AUTHORIZATION)
             .and_then(|h| h.to_str().ok())
-            .ok_or(AppError::Unauthorized("missing authorization header".into()))?;
+            .ok_or(AppError::Unauthorized(
+                "missing authorization header".into(),
+            ))?;
         let token = header
             .strip_prefix("Bearer ")
             .ok_or(AppError::Unauthorized("expected Bearer scheme".into()))?;

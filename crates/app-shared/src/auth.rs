@@ -55,11 +55,16 @@ impl HankoSessionValidator {
         let resp = self
             .client
             .post(&url)
-            .json(&ValidatePayload { session_token: token })
+            .json(&ValidatePayload {
+                session_token: token,
+            })
             .send()
             .await?;
         if !resp.status().is_success() {
-            return Err(AuthError::SessionRejected(format!("HTTP {}", resp.status())));
+            return Err(AuthError::SessionRejected(format!(
+                "HTTP {}",
+                resp.status()
+            )));
         }
         let body: ValidateResponse = resp.json().await?;
         if !body.is_valid {
@@ -101,14 +106,17 @@ mod tests {
 
     #[test]
     fn auth_error_display_is_stable() {
-        assert_eq!(AuthError::MissingHeader.to_string(), "missing authorization header");
+        assert_eq!(
+            AuthError::MissingHeader.to_string(),
+            "missing authorization header"
+        );
     }
 
     #[tokio::test]
     async fn validate_returns_claims_on_is_valid_true() {
         use wiremock::{
-            matchers::{method, path},
             Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
         };
         let srv = MockServer::start().await;
         Mock::given(method("POST"))
@@ -133,7 +141,10 @@ mod tests {
 
     #[tokio::test]
     async fn validate_rejects_on_http_401() {
-        use wiremock::{matchers::{method, path}, Mock, MockServer, ResponseTemplate};
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
         let srv = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/sessions/validate"))
@@ -142,34 +153,53 @@ mod tests {
             .mount(&srv)
             .await;
         let v = HankoSessionValidator::new(srv.uri());
-        assert!(matches!(v.validate("t").await, Err(AuthError::SessionRejected(_))));
+        assert!(matches!(
+            v.validate("t").await,
+            Err(AuthError::SessionRejected(_))
+        ));
     }
 
     #[tokio::test]
     async fn validate_rejects_on_is_valid_false() {
-        use wiremock::{matchers::{method, path}, Mock, MockServer, ResponseTemplate};
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
         let srv = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/sessions/validate"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"is_valid": false})))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"is_valid": false})),
+            )
             .expect(1)
             .mount(&srv)
             .await;
         let v = HankoSessionValidator::new(srv.uri());
-        assert!(matches!(v.validate("t").await, Err(AuthError::SessionRejected(_))));
+        assert!(matches!(
+            v.validate("t").await,
+            Err(AuthError::SessionRejected(_))
+        ));
     }
 
     #[tokio::test]
     async fn validate_rejects_when_claims_missing() {
-        use wiremock::{matchers::{method, path}, Mock, MockServer, ResponseTemplate};
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
         let srv = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/sessions/validate"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"is_valid": true})))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"is_valid": true})),
+            )
             .expect(1)
             .mount(&srv)
             .await;
         let v = HankoSessionValidator::new(srv.uri());
-        assert!(matches!(v.validate("t").await, Err(AuthError::SessionRejected(_))));
+        assert!(matches!(
+            v.validate("t").await,
+            Err(AuthError::SessionRejected(_))
+        ));
     }
 }

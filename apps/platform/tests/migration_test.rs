@@ -15,7 +15,10 @@ async fn migrator_creates_users_table_with_hanko_sub_unique() {
         .unwrap()
         .expect("users table not found");
     let sql: String = result.try_get("", "sql").unwrap();
-    assert!(sql.contains("hanko_sub"), "expected hanko_sub column in DDL, got: {sql}");
+    assert!(
+        sql.contains("hanko_sub"),
+        "expected hanko_sub column in DDL, got: {sql}"
+    );
     assert!(
         sql.to_lowercase().contains("unique"),
         "expected UNIQUE constraint in DDL, got: {sql}"

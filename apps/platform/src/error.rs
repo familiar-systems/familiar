@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use familiar_systems_app_shared::auth::AuthError;
 use serde::Serialize;

@@ -2,7 +2,10 @@ mod common;
 
 use familiar_systems_platform::entities::users;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use wiremock::{matchers::{method, path}, Mock, ResponseTemplate};
+use wiremock::{
+    Mock, ResponseTemplate,
+    matchers::{method, path},
+};
 
 #[tokio::test]
 async fn no_token_returns_401() {
@@ -149,7 +152,11 @@ async fn upsert_is_idempotent() {
         .all(&app.db)
         .await
         .unwrap();
-    assert_eq!(rows.len(), 1, "upsert must produce exactly one row across two calls");
+    assert_eq!(
+        rows.len(),
+        1,
+        "upsert must produce exactly one row across two calls"
+    );
     assert!(
         rows[0].updated_at > updated_at_1,
         "updated_at must advance on conflict; was {updated_at_1:?}, now {:?}",
