@@ -931,6 +931,7 @@ dependencies = [
 name = "familiar-systems-platform"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
  "axum",
  "chrono",
  "familiar-systems-app-shared",
