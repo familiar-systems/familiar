@@ -29,6 +29,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     fn with_env<F: FnOnce()>(vars: &[(&str, &str)], f: F) {
         for (k, v) in vars {
@@ -41,6 +42,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn parses_cors_origins_csv() {
         with_env(&[
             ("HANKO_API_URL", "https://x.hanko.io"),
@@ -54,10 +56,10 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     #[should_panic(expected = "HANKO_API_URL is required")]
     fn panics_on_missing_hanko_url() {
         unsafe { std::env::remove_var("HANKO_API_URL"); }
-        unsafe { std::env::set_var("CORS_ORIGINS", "http://localhost"); }
         let _ = Config::from_env();
     }
 }
