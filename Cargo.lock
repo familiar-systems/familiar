@@ -936,6 +936,7 @@ dependencies = [
  "chrono",
  "familiar-systems-app-shared",
  "garde",
+ "reqwest",
  "sea-orm",
  "sea-orm-migration",
  "serde",
