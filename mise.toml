@@ -11,6 +11,15 @@ kubeconform = "latest"
 python.uv_venv_auto = "create|source"
 lockfile = true
 
+# --- env ---
+# Public, non-secret config available to all tasks. Canonical home for
+# HANKO_API_URL_DEV (see docs/plans/2026-04-11-app-server-prd.md
+# "Authentication and signup": auth-mode-agnostic platform). The dev URL
+# also appears in .github/workflows/deploy-preview.yml as a documented
+# derived copy because GHA cannot read TOML natively.
+[env]
+HANKO_API_URL_DEV = "https://auth.preview.familiar.systems"
+
 # --- check ---
 
 [tasks.check]
@@ -30,12 +39,12 @@ run = "pnpm --filter @familiar-systems/site dev"
 [tasks."dev:web"]
 description = "Vite dev server (port 5173)"
 run = "pnpm --filter @familiar-systems/web dev"
-env = { VITE_HANKO_API_URL = "<dev-tenant-url>" }
+env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}" }
 
 [tasks."dev:platform"]
 description = "Platform server (port 3000)"
 run = "cargo run -p familiar-systems-platform"
-env = { HANKO_API_URL = "<dev-tenant-url>", DATABASE_URL = "sqlite://data/dev-platform.db?mode=rwc", PORT = "3000", CORS_ORIGINS = "http://localhost:5173", RUST_LOG = "info,familiar_systems_platform=debug" }
+env = { HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", DATABASE_URL = "sqlite://data/dev-platform.db?mode=rwc", PORT = "3000", CORS_ORIGINS = "http://localhost:5173", RUST_LOG = "info,familiar_systems_platform=debug" }
 
 [tasks."dev:campaign"]
 description = "Campaign server (port 3001)"
