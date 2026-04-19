@@ -29,7 +29,13 @@
 	}
 
 	# SPA: DO NOT strip. Vite is built with base=/app/ and expects
-	# to receive URLs that already start with /app/.
+	# to receive URLs that already start with /app/. The bare-path
+	# redirect catches "/app" (no slash) so it doesn't fall through
+	# to the Astro site and 404 — keeps contributors out of a
+	# confusing cross-service dead-end.
+	@appBare path /app
+	redir @appBare /app/ 308
+
 	handle /app/* {
 		reverse_proxy localhost:5173
 	}
