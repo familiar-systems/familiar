@@ -25,9 +25,21 @@ Both binaries verify Hanko JWTs independently. Shared auth code lives in `crates
 
 ### Authentication and signup
 
-- Hanko JWT verification middleware on all authenticated endpoints
-- User registration flow (Hanko-mediated)
-- User profile storage in the platform database
+The platform is **auth-mode-agnostic**. It always validates bearer tokens against an upstream identity provider that speaks the Hanko wire protocol. The platform itself never decides whether auth is enabled, what the tenant URL is, or who the authority is. All of that is configured at deploy time via the `HANKO_API_URL` environment variable.
+
+**Implications:**
+
+- One code path. The auth middleware does not branch on "is auth enabled?" There is no sentinel value, no `Option<HankoConfig>`, no special-case logic. A misconfigured deployment fails closed (token validation fails, requests are rejected) rather than failing open.
+- Pluggable upstream. Production points at a managed Hanko tenant (`auth.familiar.systems`); contributor preview points at a separate Hanko tenant restricted to registered contributors (`auth.preview.familiar.systems`). A future self-host configuration will point at a locally-run fake auth provider: a small, separate binary that speaks the Hanko wire protocol and accepts any email with no password. Self-hosters opt in by running that binary; the platform code does not change.
+- Hanko JWT verification middleware on all authenticated endpoints.
+- User registration flow handled by the upstream provider.
+- User profile storage in the platform database.
+
+**Why this shape:**
+
+A self-hoster does not configure "no auth"; they configure "a different auth." Because the platform sees every deployment mode as an ordinary auth flow, every downstream feature (campaign ownership, suggestion provenance, audit trails, billing) works identically across all three modes. The fake auth provider also makes the system trivially scriptable for LLM agents that need a real platform identity without a Hanko account.
+
+The fake auth provider is **not implemented today**. Today the only path is the Hanko-backed flow (preview tenant for contributor dev, prod tenant for production). The architecture above is the chosen shape; the self-host fake-provider work is a separate future deliverable.
 
 ### Campaign metadata CRUD
 
@@ -166,3 +178,4 @@ This transition is the one place where the two-server architecture is visible to
 - Usage reporting interval and actor design on the campaign server side
 - Invite flow mechanics (link-based, code-based, or both)
 - Whether campaign metadata updates (name, description) should propagate to checked-out shards or only matter on the platform side
+- Fake auth provider for self-hosters: wire protocol coverage, packaging (separate binary vs. embedded dev mode), distribution channel
