@@ -11,7 +11,7 @@ use uuid::Uuid;
 pub struct AuthenticatedUser {
     pub id: Uuid,
     pub hanko_sub: String,
-    pub email: Option<String>,
+    pub email: String,
 }
 
 impl<S> FromRequestParts<S> for AuthenticatedUser
@@ -35,7 +35,11 @@ where
             .ok_or(AppError::Unauthorized("expected Bearer scheme".into()))?;
 
         let claims = app_state.validator.validate(token).await?;
-        let email = claims.email.as_ref().map(|e| e.address.clone());
+        let email = claims
+            .email
+            .as_ref()
+            .map(|e| e.address.clone())
+            .ok_or_else(|| AppError::Unauthorized("hanko claims missing email".into()))?;
         let now = Utc::now();
 
         let am = users::ActiveModel {

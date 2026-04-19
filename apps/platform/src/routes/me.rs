@@ -7,7 +7,7 @@ use uuid::Uuid;
 pub struct MeResponse {
     pub id: Uuid,
     pub hanko_sub: String,
-    pub email: Option<String>,
+    pub email: String,
 }
 
 pub async fn me(user: AuthenticatedUser) -> Json<MeResponse> {
