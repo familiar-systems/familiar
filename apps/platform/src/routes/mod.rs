@@ -26,6 +26,12 @@ pub fn router(origins: Vec<String>) -> Router<AppState> {
             let Ok(o) = origin.to_str() else { return false };
             origins.iter().any(|allowed| origin_matches(allowed, o))
         }));
+
+    // Route paths here are post-strip: they reflect what the platform sees
+    // after the reverse proxy (Caddy in dev, Traefik in prod) has removed
+    // the /api prefix. /health is reached by browsers at /api/health; /me
+    // at /api/me. A route whose path begins with /api will never arrive
+    // here; do not add one.
     Router::new()
         .route("/health", get(health::health))
         .route("/me", get(me::me))

@@ -3,6 +3,23 @@ use sea_orm::entity::prelude::*;
 use serde::Serialize;
 use uuid::Uuid;
 
+/// Local projection of a Hanko user.
+///
+/// `hanko_sub` is the stable join key against Hanko (OIDC `sub` claim);
+/// `email` is mirrored here so downstream features (campaign invites,
+/// billing, notifications) can query by email without a round-trip to Hanko.
+///
+/// **Email is NOT NULL + UNIQUE here even though Hanko itself allows null
+/// email** (passkey-only accounts are supported upstream). The product
+/// invariant "every user has a verified email" is enforced at the auth
+/// boundary in `crates/app-shared/src/auth/domain.rs`
+/// (`HankoClaims::try_from`), so by the time a row is inserted here the
+/// email has already been validated. Keeping the DB column non-null means
+/// no code path downstream of this table has to reason about the
+/// null-email case.
+///
+/// Upstream Hanko user object schema (for contrast):
+/// <https://docs.hanko.io/api-reference/public/user-management/get-a-user-by-id>
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize)]
 #[sea_orm(table_name = "users")]
 pub struct Model {

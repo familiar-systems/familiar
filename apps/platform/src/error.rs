@@ -25,6 +25,13 @@ struct ErrorBody {
     error: String,
 }
 
+// TODO(hardening): internal error Display content leaks into HTTP response
+// bodies. `AppError::Db(e)` formats `sea_orm::DbErr` directly (exposes
+// constraint names, column names, SQL fragments); `AppError::Auth(_)` via
+// `self.to_string()` can surface `AuthError::RequestFailed(reqwest::Error)`,
+// which may include the Hanko tenant URL. Fix: log the full error at
+// `tracing::error!` and return a generic string to clients. Must land
+// before prod traffic arrives.
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, msg) = match &self {

@@ -15,6 +15,20 @@ use chrono::{DateTime, Utc};
 ///
 /// Callers holding a `HankoClaims` may assume these invariants without
 /// re-checking.
+///
+/// ## Why email is required here, though Hanko makes it optional
+///
+/// Hanko's session/user schema allows null/absent email (passkey-only and
+/// identifier-only accounts are supported upstream). Our product decision is
+/// that every familiar.systems user has a verified email (for campaign
+/// invites, billing, GM notifications, suggestion digests). Enforcing that
+/// invariant at the domain boundary here means downstream code, including
+/// the `users` schema (NOT NULL + UNIQUE on `email`), never has to handle
+/// the null case.
+///
+/// Upstream references:
+/// - Session/claims shape: <https://docs.hanko.io/api-reference/public/session-management/validate-a-session>
+/// - User object (email nullability): <https://docs.hanko.io/api-reference/public/user-management/get-a-user-by-id>
 #[derive(Debug, Clone)]
 pub struct HankoClaims {
     pub subject: String,
