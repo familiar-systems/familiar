@@ -1,5 +1,14 @@
 # App Server Walking Skeleton: Implementation Plan
 
+> **URL architecture update (2026-04-19):** This plan was written for per-PR subdomains (`app-pr-N.preview.familiar.systems`, `api-pr-N.preview.familiar.systems`, etc.). That scheme has been replaced by **path-based routing under a single apex per environment** — see `docs/plans/2026-04-11-app-server-prd.md` "URL architecture" for the authoritative structure. Tasks that reference `WEB_HOST`, `PLATFORM_HOST`, `PR_HOST`, `VITE_API_BASE_URL`, or wildcard CORS should be read in light of that change:
+>
+> - `WEB_HOST`/`PLATFORM_HOST`/`PR_HOST` collapse into a shared `preview.familiar.systems` apex plus `PR_NUMBER` path prefix.
+> - `VITE_API_BASE_URL` is removed; the SPA derives the API base from `import.meta.env.BASE_URL` in `apps/web/src/lib/paths.ts`.
+> - `CorsLayer` has no wildcard matcher under path-based routing; exact-match only. The preview origin is `https://preview.familiar.systems`, shared across every PR.
+> - Preview Ingress manifests include a Traefik `Middleware` CRD for `StripPrefix`.
+>
+> Unchanged: the auth flow, token validation, database shape, and test structure. Start from the PRD before executing any ingress- or URL-touching task in this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship the minimum end-to-end slice proving browser → Hanko Cloud → Axum → SeaORM → SQLite → browser, deployed on localhost and per-PR preview environments.

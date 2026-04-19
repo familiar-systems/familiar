@@ -1,3 +1,19 @@
+# Per-PR preview SPA served at preview.familiar.systems/pr-${PR_NUMBER}/app.
+# The Vite bundle is built with VITE_BASE_PATH=/pr-${PR_NUMBER}/app/ so all
+# asset URLs resolve under this prefix. StripPrefix removes the PR+app
+# prefix before the request reaches the nginx backend, which serves the
+# built SPA from its root directory.
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: web-strip-prefix
+  namespace: ${NAMESPACE}
+spec:
+  stripPrefix:
+    prefixes:
+      - /pr-${PR_NUMBER}/app
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -5,16 +21,17 @@ metadata:
   namespace: ${NAMESPACE}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.middlewares: ${NAMESPACE}-web-strip-prefix@kubernetescrd
 spec:
   tls:
     - hosts:
-        - ${WEB_HOST}
+        - preview.familiar.systems
       secretName: preview-wildcard-tls
   rules:
-    - host: ${WEB_HOST}
+    - host: preview.familiar.systems
       http:
         paths:
-          - path: /
+          - path: /pr-${PR_NUMBER}/app
             pathType: Prefix
             backend:
               service:

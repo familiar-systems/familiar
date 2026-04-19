@@ -13,14 +13,19 @@ IMAGE = "ubuntu-24.04"
 LABELS = {"project": "loreweaver", "managed-by": "pulumi"}
 
 # Domains served by the cluster. Add to these lists to extend coverage.
-# The wildcard cert (k8s.py) and Ingress rules (k8s.py) iterate over them.
+# The TLS cert (k8s.py) and Ingress rules (k8s.py) iterate over them.
 # Prerequisite: the bunny.net account managing `bunny-api-key` must control
 # the DNS zone for any domain added here, so DNS-01 ACME challenges work.
+#
+# All user-facing traffic terminates on a single apex per environment and
+# is routed by path prefix (/app, /api, /campaign, /). Per-service
+# subdomains (api.*, app.*) were removed alongside the switch to
+# path-based routing; see docs/plans/2026-04-11-app-server-prd.md
+# "URL architecture". Hanko tenant subdomains (auth.*, auth.preview.*)
+# are not listed here because Hanko manages their DNS and TLS.
 PRODUCTION_DOMAINS: list[str] = [
     "loreweaver.no",
     "familiar.systems",
-    "api.familiar.systems",
-    "app.familiar.systems",
 ]
 PREVIEW_DOMAINS: list[str] = ["preview.loreweaver.no", "preview.familiar.systems"]
 

@@ -42,32 +42,25 @@ crates/
 
 Both binaries compile from the same workspace. The crate boundaries enforce separation at the compiler level.
 
-### Docker Compose as the local and self-hosting topology
+### One topology everywhere
 
-There is no standalone "all-in-one" binary. Local development, preview environments, production, and self-hosting all run the same split topology: platform and campaign server as separate processes communicating over HTTP.
+There is no standalone "all-in-one" binary. Local development, preview environments, and production all run the same split topology: platform and campaign server as separate processes communicating over HTTP, fronted by a reverse proxy that enforces the path-based URL contract. The `Remote*` trait implementation (HTTP calls to the platform) is the only implementation; it's always tested because it's always used. No `Local*` implementations, no "does standalone exercise the same paths as split?" invariant to maintain.
 
-```yaml
-# docker-compose.yml (local dev / self-hosting)
-services:
-    platform:
-        build: { context: ., dockerfile: Dockerfile.platform }
-        ports: ["3000:3000"]
-        volumes: ["./data:/data"]
-        environment:
-            DATABASE_URL: /data/platform.db
+**Local dev** runs via `mise run dev`, which launches five processes in parallel:
 
-    campaign:
-        build: { context: ., dockerfile: Dockerfile.campaign }
-        ports: ["3001:3001"]
-        volumes: ["./data:/data"]
-        environment:
-            PLATFORM_URL: http://platform:3000
-            CAMPAIGN_DATA_DIR: /data/campaigns
-```
+| Task | Command | Port |
+|---|---|---|
+| `dev:site` | `pnpm --filter @familiar-systems/site dev` (Astro) | 4321 |
+| `dev:web` | `pnpm --filter @familiar-systems/web dev` (Vite, `base=/app/`) | 5173 |
+| `dev:platform` | `cargo run -p familiar-systems-platform` | 3000 |
+| `dev:campaign` | `cargo run -p familiar-systems-campaign` | 3001 |
+| `dev:proxy` | `caddy run --config Caddyfile.dev` | **8080** |
 
-This eliminates an entire class of code: no `Local*` trait implementations, no standalone binary, no "does standalone exercise the same paths as split?" invariant to maintain. The `Remote*` trait implementation (HTTP calls to the platform) is the only implementation. It's always tested because it's always used.
+Contributors only ever open `http://localhost:8080`. Caddy owns the path-based routing (`/` → site, `/app/*` → SPA, `/api/*` → platform, `/campaign/*` → campaign), identical to what Traefik does in k3s. Same-origin everywhere; cargo's incremental compiler and Vite HMR continue to give sub-second iteration on source changes because the binaries run natively, not inside containers.
 
-Docker Compose is also the self-hosting story: `docker compose up` runs the full stack without k8s, Pulumi, or any cloud infrastructure. Users mount a data directory with their libSQL files and they're running.
+**Preview and prod** deploy the same binaries to k3s, as separate pods in either a per-PR namespace (preview) or the default namespace (prod). Traefik replaces Caddy as the reverse proxy, but the path contract is the same. See §URL routing and §Preview environments below for the cluster-side details.
+
+**Self-hosting (deferred)** is planned as `docker compose up` with a mounted data directory: same two binaries, same split, same path contract enforced by a containerized Caddy or Traefik. Neither a committed `docker-compose.yml` nor the self-host fake-auth binary (per [app-server PRD §Authentication](./2026-04-11-app-server-prd.md#authentication-and-signup)) exists yet; both are future deliverables. The Caddy-in-dev approach shortens the path to self-hosting because the same reverse-proxy shape (and config semantics) carries over.
 
 > **Deferred: self-hosting without object storage.** The managed hosting architecture treats object storage as the source of truth with local disk as cache. A self-hosted user on a home server doesn't have S3-compatible object storage. Local disk needs to be a valid "source of truth" mode, configured by environment variable, where the object storage writeback is simply disabled. This is straightforward (a config flag and an if-else in the writeback path) but the exact semantics need design when self-hosting is prioritized.
 
@@ -78,7 +71,7 @@ The platform owns everything that exists before a campaign is checked out and in
 - **Authentication.** Hanko JWT verification. Token validation happens on both sides of the boundary (the platform verifies tokens for its own routes; the campaign server verifies tokens on WebSocket upgrade), but user identity, profiles, and session management live on the platform.
 - **Campaign CRUD.** Create, list, delete, transfer ownership. Campaign metadata lives in platform.db. The campaign's libSQL data file lives in object storage — the platform never opens it.
 - **The routing table.** Maps campaign ID → campaign server address. Lease-based: each checkout is a lease with a heartbeat. The platform is the single source of truth for "which server owns which campaign."
-- **The discover endpoint.** `GET /api/campaigns/:id/connect` → `{ websocket: "wss://c1.familiar.systems/ws", api: "https://c1.familiar.systems/api", token: "..." }`. The SPA calls this to find its campaign server. If the campaign isn't checked out, the platform assigns it to the least-loaded campaign server. The SPA uses the returned `api` URL for all campaign-scoped REST (suggestion review, entity queries, conversation messages) and the `websocket` URL for CRDT sync. Each campaign server has its own routable subdomain (`c1`, `c2`, ...), which scales to multi-server without changing the routing pattern.
+- **The checkout endpoint.** `POST /api/campaigns/:id/checkout` → `{ ws_url: "wss://{apex}/campaign/:id/ws", api_base: "https://{apex}/campaign/:id", token: "..." }`. The SPA calls this to acquire access to a campaign. If the campaign isn't checked out, the platform assigns it to the least-loaded campaign server, instructs that server to check out the campaign, and records the assignment in the routing table. The returned URLs are **shard-agnostic** — they carry `campaign_id` but never a `shard_id`, because shard selection is an ingress-layer concern (see §URL routing). At N=1 shard the Ingress routes `/campaign/*` straight to the single shard; at N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the routing table. The SPA never observes shard identity.
 - **Campaign server health monitoring.** Receives heartbeats from campaign servers, tracks load, detects failed leases.
 - **Future: community marketplace.** Starter packs, community templates, contributor profiles, content curation. This is cross-campaign, stateless, CDN-cacheable — a completely different traffic pattern from the campaign server's long-lived WebSocket connections.
 
@@ -109,27 +102,27 @@ Job state lives in platform.db — a `jobs` table tracking audio processing work
 
 ---
 
-### URL routing and subdomain model
+### URL routing
 
-Each service class gets its own subdomain:
+URL structure is governed by [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture). All environments (dev, preview, prod) share one apex per environment with path-based routing for every application service. From a deployment standpoint, the relevant operational properties are:
 
-- `familiar.systems` → CDN (Astro static site)
-- `app.familiar.systems` → CDN (Vite SPA)
-- `api.familiar.systems` → platform pod
-- `c1.familiar.systems` → campaign server pod (in single-server mode, there's one; in multi-server, `c1`, `c2`, `c3`, etc.)
+- **Single apex per environment.** Site, SPA, platform API, and campaign shards share one host (`familiar.systems` in prod, `preview.familiar.systems` in preview, `localhost:8080` in local dev) and are routed by path prefix.
+- **Priority-ordered path rules on a single reverse-proxy Ingress per host.** Longer prefixes win: `/app`, `/api`, `/campaign` each land at their service; `/` catches the rest and serves the Astro site.
+- **`StripPrefix` middleware** strips the path prefix before requests reach backends, so the platform continues to own `/me`, `/campaigns/:id/checkout` on its own routes without prefix-awareness. In k3s this is a Traefik `Middleware` CRD; in local dev it's Caddy's `handle_path` directive.
+- **Shard-agnostic campaign URLs.** The checkout API returns `wss://{apex}/campaign/{campaign_id}/ws`; the SPA opens it verbatim. At N=1 shard the Ingress routes `/campaign/*` straight to the single shard. At N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the routing table. The SPA never observes shard identity.
 
-The SPA talks to the platform for authentication, campaign listing, and discover. After discover, the SPA talks directly to the campaign server for everything campaign-scoped (WebSocket sync, REST queries, conversation messages). No path-based routing ambiguity between platform and campaign traffic.
+Subdomains outside the application's apex (Hanko tenants at `auth.*`, plus any future docs/status/blog surfaces) live on their own DNS and are not part of this routing contract.
 
 #### Bookmarked links and cold checkout
 
-When a user hits a bookmarked link like `/campaign/123/page/456`:
+When a user hits a bookmarked link like `/app/campaigns/123/page/456`:
 
-1. **CDN serves the SPA.** The URL is a client-side route. `app.familiar.systems` returns `index.html` for all paths. The SPA boots instantly.
-2. **SPA calls discover.** `GET api.familiar.systems/api/campaigns/123/connect`. The platform checks the routing table.
-3. **If the campaign is already checked out:** Platform returns the campaign server's address. SPA connects.
-4. **If the campaign is not checked out (cold start):** Platform assigns it to the least-loaded campaign server and records the assignment. Returns that server's address. The campaign server receives the WebSocket connection, sees it doesn't have campaign 123 locally, acquires the lease from the platform, pulls the libSQL file from object storage (or opens it from local disk if cached), spawns the CampaignSupervisor and actors. The SPA shows a loading skeleton during checkout. When actors are ready, the SPA syncs page 456 via loro-dev/protocol and renders.
+1. **Reverse proxy routes `/app/*` to the web service**, which serves `index.html` for every subpath (SPA fallback). The SPA boots.
+2. **SPA calls checkout.** `POST /api/campaigns/123/checkout` — same-origin fetch, no CORS preflight. The reverse proxy routes `/api/*` to the platform. The platform consults the routing table.
+3. **If the campaign is already checked out:** the platform returns `{ws_url: "wss://{apex}/campaign/123/ws", ...}`. The SPA opens the WebSocket.
+4. **If the campaign is not checked out (cold start):** the platform picks the least-loaded shard, instructs it to check out campaign 123 (shard downloads the libSQL file from object storage, spawns CampaignSupervisor + actors), writes the routing-table entry, and returns the same URL shape. The SPA shows a loading skeleton during checkout; when actors are ready the WebSocket upgrade succeeds, the SPA subscribes to the room for `page/456`, hydrates the TipTap doc, and scrolls.
 
-The cold checkout path is the same async flow described in the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md). The bookmark just works — it's a few seconds slower on a cold start while the libSQL file downloads from object storage.
+The cold-checkout flow is the same async protocol described in the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md). Only the URL format changed (path vs subdomain); the protocol is unchanged.
 
 ---
 
@@ -204,7 +197,7 @@ The `terminationGracePeriodSeconds` on the k8s pod provides the time budget. 30 
 #### Reconnection sequence (new binary starts)
 
 1. The new binary starts and registers with the platform.
-2. Clients reconnect via the SPA's standard reconnection logic. The SPA calls the discover endpoint, gets the (same or new) server address, opens a new WebSocket.
+2. Clients reconnect via the SPA's standard reconnection logic. The SPA calls the checkout endpoint, gets the (same or new) shard-agnostic URL, opens a new WebSocket.
 3. Campaign files are still on the local Hetzner Volume — they survived the restart. Checkout from local disk is "open the file" — sub-millisecond. The expensive object storage download only happens on cold start (a campaign not previously on this server).
 4. Actors reconstruct LoroDocs from relational data via `restore()`. Clients sync via the loro-dev/protocol's rejoin flow.
 
@@ -225,7 +218,7 @@ The cost of an interrupted turn is one LLM call on retry, not data corruption.
 When multiple campaign servers exist, restarts are sequential:
 
 1. Drain server A: run the per-campaign shutdown sequence above. Each campaign independently writes back to object storage and releases its lease.
-2. Clients reconnect. The discover endpoint assigns their campaigns to server B (or C). Campaigns check out from object storage onto the new server.
+2. Clients reconnect. The checkout endpoint assigns their campaigns to server B (or C) and returns a shard-agnostic URL; ingress-layer routing points `/campaign/{id}/*` at the new shard. Campaigns check out from object storage onto the new server.
 3. Server A restarts with the new binary. New campaigns and rebalanced campaigns begin routing to it.
 
 The platform service is not restarted during campaign server rolls. Login, campaign listing, and discovery stay available throughout.
@@ -234,17 +227,32 @@ The platform service is not restarted during campaign server rolls. Login, campa
 
 ### Preview environments
 
-Every PR gets a full preview environment that exercises the production deployment topology.
+Every PR gets a full preview environment that exercises the production deployment topology. Manifests live in `infra/k8s/preview/*.yaml`; the CI workflow at `.github/workflows/deploy-preview.yml` substitutes per-PR variables via `envsubst` and applies them.
 
 #### What's deployed per PR
 
-- **Platform pod + campaign server pod** in split mode (two pods). Running branch builds of both binaries. The platform pod is ~64MB RAM for SQLite CRUD — negligible overhead for the confidence of testing the real service topology on every PR.
-- **SPA** serving the branch frontend build.
+- **Site + SPA + platform + campaign** pods, all in split mode, running branch builds. The platform pod is ~64MB RAM for SQLite CRUD; negligible overhead for the confidence of exercising the real service topology on every PR.
 - **ML workers** available as k8s Jobs (branch build of the Python worker container).
-- **Real LLM inference** via Nebius. The product is AI-assisted — excluding AI from preview means not testing the product.
+- **Real LLM inference** via Nebius. The product is AI-assisted; excluding AI from preview means not testing the product.
 - **Copied campaign data.** Real campaign files, not fixtures.
 
-All deployed in a k8s namespace `preview-pr-${PR_NUMBER}` with subdomain routing: `app-pr-N.preview.familiar.systems` (SPA), `api-pr-N.preview.familiar.systems` (platform), `c1-pr-N.preview.familiar.systems` (campaign server). Hyphens instead of dots because wildcard TLS certs only cover one subdomain level.
+All resources live in a k8s namespace `preview-pr-${PR_NUMBER}` on the shared cluster. Every PR reaches the cluster through a shared preview apex and is distinguished by path prefix.
+
+#### Path-based routing per PR
+
+All PRs share the apex `preview.familiar.systems`. Per-PR routing is a path prefix: `/pr-${PR_NUMBER}`. Each PR namespace contains three `Middleware` + `Ingress` pairs, all bound to that apex:
+
+| Path prefix | Service | `StripPrefix` strips |
+|---|---|---|
+| `/pr-${N}/app` | `web` (nginx serving built SPA) | `/pr-${N}/app` |
+| `/pr-${N}/api` | `platform` (:3000) | `/pr-${N}/api` |
+| `/pr-${N}` | `site` (nginx serving Astro build) | `/pr-${N}` |
+
+Traefik merges Ingress rules from every namespace bound to the same host and resolves collisions by rule length (longest path prefix wins). PR 42 and PR 43 coexist on `preview.familiar.systems` with no cross-talk: `/pr-42/*` paths route into PR 42's namespace, `/pr-43/*` paths route into PR 43's.
+
+The SPA for each PR is built with Vite `base = /pr-${PR_NUMBER}/app/`, so asset URLs and internal routes resolve under the PR prefix. API and campaign calls are derived at runtime by `apps/web/src/lib/paths.ts` from `import.meta.env.BASE_URL`, producing `/pr-${N}/api/...` and `/pr-${N}/campaign/...` respectively — same origin as the SPA, so no CORS preflight.
+
+The routing pattern in prod is the same shape without the `/pr-${N}` prefix: `familiar.systems/app/`, `familiar.systems/api/`, `familiar.systems/campaign/`, `familiar.systems/`. See §URL routing above.
 
 #### Data setup
 
@@ -255,195 +263,37 @@ The preview data pipeline runs as a k8s Job at namespace creation:
 3. **Copy contributor campaign files** from production object storage to a preview-scoped prefix.
 4. **Run branch migrations** on the copied platform.db and all copied campaign files. This tests the migration path, not just the post-migration state.
 
-The scrubbed platform.db is the access control mechanism. Non-contributors authenticate against the shared Hanko instance (valid JWT) but find no user record in the preview's platform.db. The server returns 403. No separate Hanko configuration needed.
+The scrubbed platform.db is the access-control mechanism. Non-contributors authenticate against the preview Hanko tenant (valid JWT) but find no user record in the preview's platform.db, so the server returns 403.
 
-#### Authentication in preview
+#### Authentication
 
-Hanko's `allowed_redirect_urls` supports wildcard globbing: `https://*.preview.familiar.systems` covers all PR preview environments. This is configured once alongside the production URL. Contributors log in with their normal credentials — same Hanko instance, same passkeys. The preview SPA hides the registration UI to prevent accidental account creation by non-contributors.
+Preview uses a **separate Hanko tenant** from production:
+
+| Environment | Hanko tenant URL | Registered origin(s) |
+|---|---|---|
+| Prod | `auth.familiar.systems` | `https://familiar.systems` |
+| Preview (all PRs + local dev) | `auth.preview.familiar.systems` | `https://preview.familiar.systems`, `http://localhost:8080` |
+
+Each tenant registers exactly one apex origin per environment. Hanko Cloud does not accept wildcard origins (`https://*.preview.familiar.systems` is rejected with "Origin is not a valid URL or Android APK key hash"), and it exposes no admin API to register origins from CI. Path-based routing is what makes the preview tenant workable: every PR reuses the same preview apex, so the origin list never changes across PRs.
+
+**Consequences of the shared apex in preview:**
+
+- Cookies, localStorage, and sessionStorage at `preview.familiar.systems` are shared across every PR's SPA. Single sign-in covers all PRs; conversely, a storage bug in one PR can pollute state seen by others until the user clears site data.
+- Passkeys are technically viable under a single rpID (`preview.familiar.systems`) but are disabled on the preview tenant for contributor-workflow simplicity. Email/passcode is sufficient.
+
+Contributors are added manually by email on the preview tenant; registration is disabled there. The prod tenant opens registration when the product launches publicly.
+
+#### TLS
+
+A single cert-manager `Certificate` covers both apex domains (`familiar.systems`, `preview.familiar.systems`), issued once via DNS-01 + bunny.net. No per-PR certs, no wildcard SANs. See [Infrastructure](./2026-03-30-infrastructure.md) for the cert-manager configuration.
 
 #### Lifecycle
 
-**PR open/push:**
+**PR open / sync:** `.github/workflows/deploy-preview.yml` builds the three images (site, web, platform), runs the data-setup Job, then applies the manifests in `infra/k8s/preview/*.yaml` via `envsubst` templating. Template variables are `NAMESPACE` (`preview-pr-${PR_NUMBER}`), `PR_NUMBER`, and per-image tags. A single PR comment posts one URL to open: `https://preview.familiar.systems/pr-${N}/app/`.
 
-1. GHA builds images, tags with `pr-${PR_NUMBER}`, pushes to Scaleway CR.
-2. Create the namespace and deploy all services:
+**PR close:** `.github/workflows/cleanup-preview.yml` deletes the namespace, which cascade-removes all resources inside (Deployments, Services, Ingresses, Middlewares, PVCs, Jobs). The preview object-storage prefix is cleaned separately.
 
-```bash
-# Create namespace
-kubectl create namespace preview-pr-${PR_NUMBER} --dry-run=client -o yaml | kubectl apply -f -
-
-# Run data setup job (copy + scrub platform.db, copy campaign files, run migrations)
-kubectl -n preview-pr-${PR_NUMBER} apply -f preview-data-setup-job.yaml
-kubectl -n preview-pr-${PR_NUMBER} wait --for=condition=complete job/data-setup --timeout=120s
-
-# Deploy platform pod, campaign pod, SPA, and ingress
-kubectl -n preview-pr-${PR_NUMBER} apply -f - <<EOF
-# Platform Deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: platform
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: platform
-  template:
-    metadata:
-      labels:
-        app: platform
-    spec:
-      containers:
-      - name: platform
-        image: ${REGISTRY_ENDPOINT}/platform:pr-${PR_NUMBER}
-        ports:
-        - containerPort: 3000
-        env:
-        - name: DATABASE_URL
-          value: /data/preview/pr-${PR_NUMBER}/platform.db
-      imagePullSecrets:
-      - name: scaleway-cr
----
-# Campaign Server Deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: campaign
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: campaign
-  template:
-    metadata:
-      labels:
-        app: campaign
-    spec:
-      containers:
-      - name: campaign
-        image: ${REGISTRY_ENDPOINT}/campaign:pr-${PR_NUMBER}
-        ports:
-        - containerPort: 3001
-        env:
-        - name: PLATFORM_URL
-          value: http://platform:3000
-        - name: CAMPAIGN_DATA_DIR
-          value: /data/preview/pr-${PR_NUMBER}/campaigns
-      imagePullSecrets:
-      - name: scaleway-cr
----
-# SPA Deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: web
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: web
-  template:
-    metadata:
-      labels:
-        app: web
-    spec:
-      containers:
-      - name: web
-        image: ${REGISTRY_ENDPOINT}/web:pr-${PR_NUMBER}
-        ports:
-        - containerPort: 80
-      imagePullSecrets:
-      - name: scaleway-cr
----
-# Services
-apiVersion: v1
-kind: Service
-metadata:
-  name: platform
-spec:
-  selector:
-    app: platform
-  ports:
-  - port: 3000
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: campaign
-spec:
-  selector:
-    app: campaign
-  ports:
-  - port: 3001
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: web
-spec:
-  selector:
-    app: web
-  ports:
-  - port: 80
----
-# Ingress — subdomain routing matches production topology
-# Note: subdomains use hyphens (app-pr-N) not dots (app.pr-N) because
-# wildcard certs only cover one level. *.preview.familiar.systems covers
-# app-pr-1.preview.familiar.systems but NOT app.pr-1.preview.familiar.systems.
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: preview
-spec:
-  tls:
-  - hosts:
-    - app-pr-${PR_NUMBER}.preview.familiar.systems
-    - api-pr-${PR_NUMBER}.preview.familiar.systems
-    - c1-pr-${PR_NUMBER}.preview.familiar.systems
-    secretName: preview-wildcard-tls
-  rules:
-  - host: api-pr-${PR_NUMBER}.preview.familiar.systems
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: platform
-            port:
-              number: 3000
-  - host: c1-pr-${PR_NUMBER}.preview.familiar.systems
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: campaign
-            port:
-              number: 3001
-  - host: app-pr-${PR_NUMBER}.preview.familiar.systems
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: web
-            port:
-              number: 80
-EOF
-```
-
-The wildcard TLS cert (`*.preview.familiar.systems`) is shared across all preview namespaces, issued once by cert-manager via DNS-01 + bunny.net. See [Infrastructure](./2026-03-30-infrastructure.md) for cert-manager configuration.
-
-**PR close:**
-
-```bash
-kubectl delete namespace preview-pr-${PR_NUMBER}
-```
-
-Namespace deletion cascades — all Deployments, Services, Ingress, and Jobs are torn down. Preview object storage prefix is cleaned up separately.
+Per-PR manifests are plain YAML with `${VAR}` placeholders rather than Pulumi-managed. Pulumi owns permanent cluster state (cert-manager, ClusterIssuers, the TLS cert, prod deployments, RBAC, the k8s Provider itself); CI owns ephemeral per-PR state. Ephemeral resources don't deserve Pulumi state overhead, and `kubectl apply` on raw YAML is ~2s per resource.
 
 #### Why real data, not fixtures
 
@@ -457,8 +307,8 @@ Campaign files are self-contained libSQL databases. Copying them is a file opera
 
 - **Independent deployment lifecycles.** The platform can go weeks without a deploy while the campaign server ships daily. Campaign server restarts don't affect login or campaign discovery. Platform deploys don't disconnect editing sessions.
 - **Blast radius isolation.** A panic in the actor hierarchy, a LoroDoc reconstruction bug, or a compiler edge case crashes the campaign server. The platform stays up. Users can log in and see their campaign list. The error is "I can't open my campaign" not "the site is down."
-- **One topology everywhere.** Docker Compose locally, k8s in prod and preview — but always the same two services communicating over HTTP. No standalone binary, no `Local*` implementations, no "does dev match prod?" uncertainty. What you run on your laptop is what runs in production.
-- **Self-hosting for free.** Docker Compose with a data directory is the self-hosting story. No k8s required. The same images, the same config, the same split.
+- **One topology everywhere.** Native `mise run dev` locally (with Caddy as the front-door reverse proxy on :8080), k3s in preview and prod — but always the same two binaries communicating over HTTP behind a reverse proxy that enforces the path-based URL contract. No standalone binary, no `Local*` implementations, no "does dev match prod?" uncertainty. What you run on your laptop is URL-shaped identically to what runs in production.
+- **Self-hosting on a clear path.** The planned `docker compose up` self-hosting story reuses the same split + path-based shape; the Caddy config in dev is the same kind of reverse-proxy config a self-hoster would run. Not yet shipped.
 - **Preview environments that test reality.** Every PR exercises the same service topology, data setup, migration path, and auth flow as production. Infra surprises are absorbed at zero cost, not under load.
 - **Clear contributor boundaries.** A contributor working on marketplace features touches `crates/platform/` and never needs to understand the actor hierarchy. A contributor working on the collaboration layer touches `crates/campaign/` and never needs to understand marketplace routing. The Cargo workspace enforces compilation boundaries.
 - **Graceful restarts are cheap.** A few seconds of "reconnecting..." per deploy, bounded by the per-campaign writeback time (small SQLite files to local disk, then object storage). No data loss beyond in-flight LLM tokens. No split-brain because lease release happens only after writeback confirms.
@@ -477,7 +327,7 @@ Campaign files are self-contained libSQL databases. Copying them is a file opera
 - **The platform is the single source of truth for campaign → server routing.** Campaign servers never communicate with each other. All coordination flows through the platform's routing table.
 - **A campaign has at most one owning server at any time.** Enforced by the lease model in the platform. Concurrent lease acquisitions resolve atomically — exactly one succeeds.
 - **Lease release happens only after writeback.** During shutdown, each campaign's lease is released only after its data has been confirmed written to object storage. The heartbeat continues throughout the drain — it is the first thing to start on boot and the last thing to stop before exit — preventing the platform from expiring leases during writeback.
-- **One topology everywhere.** Local dev (Docker Compose), preview (k8s), production (k8s), and self-hosting (Docker Compose) all run the same split binaries communicating over HTTP. No standalone-only code paths.
+- **One topology everywhere.** Local dev (`mise run dev` + Caddy on :8080), preview (k3s preview namespace + Traefik), production (k3s default namespace + Traefik), and future self-hosting (`docker compose up` + containerized reverse proxy) all run the same split binaries communicating over HTTP behind a path-based reverse proxy. No standalone-only code paths.
 - **Preview environments always use split mode.** PR previews deploy both binaries as separate pods to test the real service topology, internal API, and lease protocol on every PR.
 - **All cross-service interfaces are defined as traits in `crates/shared/`.** No implicit dependencies between platform and campaign server. If it's not in a trait, it doesn't cross the boundary.
 

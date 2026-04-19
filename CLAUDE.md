@@ -160,11 +160,24 @@ Maximum strictness, no exceptions:
 - **Relationships** (node→node): Authored/curated, carry semantic labels. Freeform vocabulary.
 - **Prototypes (templates)**: A template is a Thing with `isTemplate: true`. No separate `Template` entity. Creating a thing from a template clones the prototype's block structure. `prototypeId?: ThingId` tracks lineage. Tags are Things connected via `tagged` relationships, not a `tags: string[]` field.
 
+## Deployment Targets
+
+Three deployment environments, one URL contract. **All traffic terminates on a single apex per environment and is routed by path prefix.** Per-service subdomains (`api.*`, `app.*`, `c1.*`) are not used. This is the structural fix for the Hanko Cloud wildcard-origin problem and it keeps preview isomorphic with prod (preview = prod + `/pr-{N}` prefix).
+
+| Target | Host (what you open) | SPA base path | Auth tenant | Fabric |
+|---|---|---|---|---|
+| **Local dev** | `http://localhost:8080` | `/app/` | preview Hanko (`HANKO_API_URL_DEV` in `mise.toml`) | `mise run dev` launches the Astro site (4321), Vite SPA (5173, `base=/app/`), platform (cargo, 3000), campaign (cargo, 3001), and a **Caddy reverse proxy on 8080** (`Caddyfile.dev`) that unifies them under one origin: `/` → site, `/app/*` → SPA, `/api/*` → platform, `/campaign/*` → campaign. Matches prod routing exactly. Data in `data/dev-platform.db`. |
+| **PR preview** | `https://preview.familiar.systems` | `/pr-${PR_NUMBER}/app/` | preview Hanko (same tenant as local dev) | k3s namespace `preview-pr-${PR_NUMBER}`. Traefik Ingress + `StripPrefix` middleware per PR. All PRs share the apex origin, so browser state and auth session are shared across PRs by design. |
+| **Prod** | `https://familiar.systems` | `/app/` | prod Hanko (`HANKO_API_URL_PROD` in Pulumi) | k3s default namespace, single apex, priority-ordered Traefik path rules (`/app`, `/api`, `/campaign`, `/`). Data on Hetzner Volume + object storage. |
+
+**Scope of this contract:** the application's own services (site, SPA, platform API, campaign shards) share the apex. Subdomains that host separate systems (Hanko's `auth.*`, and any future out-of-band surfaces like `docs.`, `status.`, `blog.`, etc.) are outside this scope and manage their own routing, TLS, and auth.
+
+**URL-structure authority:** [`docs/plans/2026-04-11-app-server-prd.md` §URL architecture](docs/plans/2026-04-11-app-server-prd.md).
+**Service topology + lifecycle:** [`docs/plans/2026-03-30-deployment-architecture.md`](docs/plans/2026-03-30-deployment-architecture.md).
+**Helper paths in SPA code:** `apps/web/src/lib/paths.ts` (`apiPath`, `campaignPath`, `spaRoute`) — always use these instead of hardcoded `/api/...` or `/login`.
+
 ## Development Notes
 
-- Subdomain routing: `familiar.systems` (site), `app.familiar.systems` (SPA), `api.familiar.systems` (platform), `c1.familiar.systems` (campaign server). Traefik Ingress routes by subdomain.
-- In dev, Docker Compose runs platform (localhost:3000) and campaign server (localhost:3001). Vite proxies `/api/*` to the platform. Campaign server requests go direct (discover returns localhost:3001).
-- The SPA calls the platform for auth, campaign listing, and discover. After discover, the SPA talks directly to the campaign server for all campaign-scoped work (WebSocket, REST, AI).
 - The `@familiar-systems/editor` package is the most architecturally important. It defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and the campaign server (for LoroDoc reconstruction and serialization compiler).
-- LLM provider is pluggable: hosted instance uses managed keys, self-hosters bring their own
+- LLM provider is pluggable: hosted instance uses managed keys, self-hosters bring their own.
 - No Docker database container needed for local development. libSQL files on disk. `:memory:` databases for tests.

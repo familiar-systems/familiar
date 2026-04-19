@@ -7,16 +7,15 @@ use axum::{Router, routing::get};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 pub(crate) fn origin_matches(allowed: &str, origin: &str) -> bool {
-    if let Some(suffix) = allowed.strip_prefix("https://*.") {
-        origin
-            .strip_prefix("https://")
-            .is_some_and(|rest| rest == suffix || rest.ends_with(&format!(".{suffix}")))
-    } else {
-        origin == allowed
-    }
+    origin == allowed
 }
 
 pub fn router(origins: Vec<String>) -> Router<AppState> {
+    // Browser traffic is same-origin under path-based routing (SPA and
+    // platform share an apex), so CORS preflights don't fire in practice.
+    // The layer stays for any future non-same-origin callers (e.g. a
+    // curl-from-a-tool Origin header); CORS_ORIGINS is a simple exact-
+    // match allowlist since wildcard subdomains are no longer in use.
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST])
         .allow_headers([
@@ -54,66 +53,23 @@ mod tests {
     }
 
     #[test]
-    fn wildcard_matches_subdomain() {
-        let allowed = "https://*.preview.familiar.systems";
-        assert!(origin_matches(
-            allowed,
-            "https://app-pr-1.preview.familiar.systems"
-        ));
-        assert!(origin_matches(
-            allowed,
-            "https://api-pr-1.preview.familiar.systems"
-        ));
-        assert!(origin_matches(
-            allowed,
-            "https://multi.level.preview.familiar.systems"
-        ));
+    fn apex_origin_matches_exactly() {
+        let allowed = "https://familiar.systems";
+        assert!(origin_matches(allowed, "https://familiar.systems"));
+        // Subdomains are not the apex. Under path-based routing the only
+        // allowed origin is the apex itself, so cross-subdomain callers
+        // are rejected by default.
+        assert!(!origin_matches(allowed, "https://app.familiar.systems"));
+        assert!(!origin_matches(allowed, "https://evil.familiar.systems"));
+        assert!(!origin_matches(allowed, "http://familiar.systems"));
     }
 
     #[test]
-    fn wildcard_matches_bare_suffix() {
-        let allowed = "https://*.preview.familiar.systems";
-        assert!(origin_matches(allowed, "https://preview.familiar.systems"));
-    }
-
-    #[test]
-    fn wildcard_rejects_http_scheme() {
-        let allowed = "https://*.preview.familiar.systems";
+    fn suffix_extension_attacks_blocked() {
+        let allowed = "https://familiar.systems";
         assert!(!origin_matches(
             allowed,
-            "http://app-pr-1.preview.familiar.systems"
-        ));
-    }
-
-    #[test]
-    fn wildcard_rejects_suffix_extension_attack() {
-        // Prevent: attacker registers preview.familiar.systems.evil.com and tries to spoof.
-        let allowed = "https://*.preview.familiar.systems";
-        assert!(!origin_matches(
-            allowed,
-            "https://preview.familiar.systems.evil.com"
-        ));
-        assert!(!origin_matches(
-            allowed,
-            "https://app.preview.familiar.systems.evil.com"
-        ));
-    }
-
-    #[test]
-    fn wildcard_rejects_unrelated_domain() {
-        let allowed = "https://*.preview.familiar.systems";
-        assert!(!origin_matches(allowed, "https://evil.com"));
-        assert!(!origin_matches(allowed, "https://familiar.systems"));
-    }
-
-    #[test]
-    fn wildcard_rejects_prefix_match_only() {
-        // The leftmost dot is the boundary. "preview.familiar.systems" must be the suffix
-        // following a dot, not a substring.
-        let allowed = "https://*.preview.familiar.systems";
-        assert!(!origin_matches(
-            allowed,
-            "https://xpreview.familiar.systems"
+            "https://familiar.systems.evil.com"
         ));
     }
 }

@@ -31,11 +31,14 @@ COPY packages/types-app/ packages/types-app/
 COPY packages/types-campaign/ packages/types-campaign/
 COPY tooling/tsconfig/ tooling/tsconfig/
 
-# Vite bakes these into the bundle at build time
+# Vite bakes these into the bundle at build time.
+# VITE_BASE_PATH sets Vite's `base` (asset URL prefix + import.meta.env.BASE_URL).
+# Default /app/ matches prod's path-based layout under familiar.systems/app/.
+# Preview builds override to /pr-N/app/ via the deploy workflow.
 ARG VITE_HANKO_API_URL
-ARG VITE_API_BASE_URL
+ARG VITE_BASE_PATH=/app/
 ENV VITE_HANKO_API_URL=${VITE_HANKO_API_URL}
-ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
 RUN pnpm --filter @familiar-systems/web build
 

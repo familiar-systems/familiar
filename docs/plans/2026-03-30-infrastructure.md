@@ -218,7 +218,7 @@ cluster_issuer = k8s.apiextensions.CustomResource("letsencrypt-dns",
 )
 ```
 
-Wildcard certificate covering production and all preview environments:
+Certificate covering the prod and preview apex domains (path-based routing under a single apex per environment removed the need for wildcard SANs; see [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture)):
 
 ```python
 wildcard_cert = k8s.apiextensions.CustomResource("preview-wildcard",
@@ -234,13 +234,14 @@ wildcard_cert = k8s.apiextensions.CustomResource("preview-wildcard",
             "issuerRef": {"name": "letsencrypt-dns", "kind": "ClusterIssuer"},
             "dnsNames": [
                 "familiar.systems",
-                "*.familiar.systems",
-                "*.preview.familiar.systems",
+                "preview.familiar.systems",
             ],
         },
     },
 )
 ```
+
+The secret name remains `preview-wildcard-tls` for continuity with existing Ingress references, but the cert itself is no longer a wildcard. See `infra/pulumi-cloud/k8s.py` for the authoritative resource declaration.
 
 Certificates survive server replacement — stored as Kubernetes Secrets in k3s's datastore on the Volume at `/data/k3s`.
 

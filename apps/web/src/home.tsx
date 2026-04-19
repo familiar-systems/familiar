@@ -1,6 +1,7 @@
 import type { MeResponse } from "@familiar-systems/types-app";
 import { useEffect, useState } from "react";
 import { getSessionToken } from "./lib/hanko";
+import { apiPath, spaRoute } from "./lib/paths";
 
 export function Home() {
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -9,13 +10,13 @@ export function Home() {
   useEffect(() => {
     const token = getSessionToken();
     if (!token) {
-      window.location.assign("/login");
+      window.location.assign(spaRoute("login"));
       return;
     }
-    fetch("/api/me", { headers: { Authorization: `Bearer ${token}` } })
+    fetch(apiPath("me"), { headers: { Authorization: `Bearer ${token}` } })
       .then(async (r) => {
         if (r.status === 401) {
-          window.location.assign("/login");
+          window.location.assign(spaRoute("login"));
           return;
         }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);

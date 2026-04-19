@@ -1,0 +1,41 @@
+# Local-dev reverse proxy that mirrors the prod URL contract.
+#
+# Run via `mise run dev:proxy` alongside `mise run dev`. Opens
+# http://localhost:8080 as the single front door for the full stack:
+#
+#   /           -> Astro site (port 4321)
+#   /app/*      -> Vite SPA (port 5173, built with base=/app/)
+#   /api/*      -> platform server (port 3000, cargo run)
+#   /campaign/* -> campaign server (port 3001, cargo run)
+#
+# Why this file exists: mise-based dev runs each service on its own port,
+# which is fine for SPA+backend same-origin (Vite's own proxy handles it),
+# but leaves the marketing site on a separate origin. That gap becomes
+# invisible to dev but real in prod. Caddy unifies everything under one
+# origin so local dev matches the prod topology exactly.
+#
+# WebSockets (Vite HMR, Astro HMR, campaign-server Loro sync) upgrade
+# automatically through `reverse_proxy` in Caddy v2; no ws: true flag.
+
+:8080 {
+	# Platform API: strip /api so the backend sees /me, /health, etc.
+	handle_path /api/* {
+		reverse_proxy localhost:3000
+	}
+
+	# Campaign shards: strip /campaign so the backend sees /ws, /checkout, etc.
+	handle_path /campaign/* {
+		reverse_proxy localhost:3001
+	}
+
+	# SPA: DO NOT strip. Vite is built with base=/app/ and expects
+	# to receive URLs that already start with /app/.
+	handle /app/* {
+		reverse_proxy localhost:5173
+	}
+
+	# Everything else falls through to the Astro marketing site.
+	handle {
+		reverse_proxy localhost:4321
+	}
+}

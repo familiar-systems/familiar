@@ -43,6 +43,10 @@ PLATFORM_NAME = "platform"
 PLATFORM_PORT = 3000
 PLATFORM_IMAGE_TAG = "latest"
 
+# Traefik Middleware reference for the platform Ingress. The `@kubernetescrd`
+# suffix tells Traefik to resolve the name against the Kubernetes CRD store.
+PLATFORM_STRIP_API_MIDDLEWARE = "default-strip-api-prefix@kubernetescrd"
+
 # ACME issuers. Both ClusterIssuers are created; the wildcard cert references
 # whichever name is in ACTIVE_CLUSTER_ISSUER_NAME. Switch to staging during
 # infra changes that could re-issue the cert (rate limits on prod are 50/week);
@@ -179,10 +183,15 @@ def create_k8s_resources(
         ),
     )
 
-    # -- Wildcard Certificate -------------------------------------------------
-    # SANs cover both production and preview domains plus the preview wildcard
-    # subdomains. Adding a domain to PRODUCTION_DOMAINS or PREVIEW_DOMAINS in
-    # config.py extends the cert automatically on next pulumi up.
+    # -- TLS Certificate ------------------------------------------------------
+    # SANs are just the prod and preview apex domains. Path-based routing
+    # under a single apex per environment removed the need for per-service
+    # subdomains (api.*, app.*) and per-PR preview subdomains (*-pr-N.*),
+    # so the cert's SAN list shrinks to one entry per environment apex.
+    # See docs/plans/2026-04-11-app-server-prd.md "URL architecture".
+    #
+    # The secret name remains `preview-wildcard-tls` for continuity with
+    # existing Ingress references; the cert itself is no longer a wildcard.
     _wildcard_cert = CustomResource(
         "preview-wildcard-cert",
         api_version="cert-manager.io/v1",
@@ -197,7 +206,6 @@ def create_k8s_resources(
             "dnsNames": [
                 *PRODUCTION_DOMAINS,
                 *PREVIEW_DOMAINS,
-                *[f"*.{d}" for d in PREVIEW_DOMAINS],
             ],
         },
         opts=pulumi.ResourceOptions(
@@ -398,7 +406,11 @@ def create_k8s_resources(
                                 ),
                                 k8s.core.v1.EnvVarArgs(
                                     name="CORS_ORIGINS",
-                                    value="https://app.familiar.systems,https://familiar.systems",
+                                    # Browser traffic is same-origin under
+                                    # the apex, so CORS preflights do not
+                                    # fire; this entry is for non-browser
+                                    # consumers that send an Origin header.
+                                    value="https://familiar.systems",
                                 ),
                                 k8s.core.v1.EnvVarArgs(name="PORT", value=str(PLATFORM_PORT)),
                                 k8s.core.v1.EnvVarArgs(name="RUST_LOG", value="info"),
@@ -450,6 +462,23 @@ def create_k8s_resources(
         opts=k8s_opts,
     )
 
+    # Strip `/api` from request paths before they hit the platform backend.
+    # Traefik Middleware is a CRD; it lives alongside the Ingress that
+    # references it via the router.middlewares annotation. The annotation
+    # value is "<namespace>-<name>@kubernetescrd".
+    _platform_strip_prefix = CustomResource(
+        "platform-strip-api-prefix",
+        api_version="traefik.io/v1alpha1",
+        kind="Middleware",
+        metadata={"name": "strip-api-prefix", "namespace": "default"},
+        spec={"stripPrefix": {"prefixes": ["/api"]}},
+        opts=k8s_opts,
+    )
+
+    # Platform reachable at <apex>/api/* (path-based, not a subdomain).
+    # Longer PathPrefix wins over the site's "/" catch-all in Traefik's
+    # default router-priority-by-rule-length model, so /api/* lands here
+    # and everything else falls through to the site.
     _platform_ingress = k8s.networking.v1.Ingress(
         "platform-ingress",
         metadata=k8s.meta.v1.ObjectMetaArgs(
@@ -457,22 +486,23 @@ def create_k8s_resources(
             namespace="default",
             annotations={
                 "traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
+                "traefik.ingress.kubernetes.io/router.middlewares": PLATFORM_STRIP_API_MIDDLEWARE,
             },
         ),
         spec=k8s.networking.v1.IngressSpecArgs(
             tls=[
                 k8s.networking.v1.IngressTLSArgs(
-                    hosts=["api.familiar.systems"],
+                    hosts=["familiar.systems"],
                     secret_name=WILDCARD_CERT_SECRET,
                 ),
             ],
             rules=[
                 k8s.networking.v1.IngressRuleArgs(
-                    host="api.familiar.systems",
+                    host="familiar.systems",
                     http=k8s.networking.v1.HTTPIngressRuleValueArgs(
                         paths=[
                             k8s.networking.v1.HTTPIngressPathArgs(
-                                path="/",
+                                path="/api",
                                 path_type="Prefix",
                                 backend=k8s.networking.v1.IngressBackendArgs(
                                     service=k8s.networking.v1.IngressServiceBackendArgs(
@@ -488,7 +518,7 @@ def create_k8s_resources(
                 ),
             ],
         ),
-        opts=k8s_opts,
+        opts=pulumi.ResourceOptions(provider=provider, depends_on=[_platform_strip_prefix]),
     )
 
 

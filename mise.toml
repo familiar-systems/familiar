@@ -6,6 +6,7 @@ python = "3.14"
 uv = "latest"
 actionlint = "latest"
 kubeconform = "latest"
+caddy = "latest"
 
 [settings]
 python.uv_venv_auto = "create|source"
@@ -29,7 +30,7 @@ depends = ["format:check", "lint", "typecheck", "test"]
 # --- dev ---
 
 [tasks.dev]
-description = "Start all dev servers"
+description = "Start all dev servers (site, SPA, platform, campaign, proxy). Open http://localhost:8080."
 depends = ["dev:*"]
 
 [tasks."dev:site"]
@@ -37,18 +38,30 @@ description = "Astro dev server (port 4321)"
 run = "pnpm --filter @familiar-systems/site dev"
 
 [tasks."dev:web"]
-description = "Vite dev server (port 5173)"
+description = "Vite dev server (port 5173, SPA served under /app/; reach it through Caddy at :8080)"
 run = "pnpm --filter @familiar-systems/web dev"
-env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}" }
+# Dev mirrors prod path layout: SPA at /app/, platform at /api/, campaign at
+# /campaign/, site at /. Caddy (dev:proxy) unifies all four services under
+# http://localhost:8080 so the browser sees one origin.
+env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", VITE_BASE_PATH = "/app/" }
 
 [tasks."dev:platform"]
 description = "Platform server (port 3000)"
 run = "cargo run -p familiar-systems-platform"
-env = { HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", DATABASE_URL = "sqlite://data/dev-platform.db?mode=rwc", PORT = "3000", CORS_ORIGINS = "http://localhost:5173", RUST_LOG = "info,familiar_systems_platform=debug" }
+# CORS origin is the Caddy front door, not Vite's dev server, because that's
+# the apex the browser actually sees. Non-browser callers using an Origin
+# header against :3000 directly will need to match this.
+env = { HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", DATABASE_URL = "sqlite://data/dev-platform.db?mode=rwc", PORT = "3000", CORS_ORIGINS = "http://localhost:8080", RUST_LOG = "info,familiar_systems_platform=debug" }
 
 [tasks."dev:campaign"]
 description = "Campaign server (port 3001)"
 run = "cargo run -p familiar-systems-campaign"
+
+[tasks."dev:proxy"]
+description = "Caddy reverse proxy on :8080 unifying site + SPA + platform + campaign under one origin"
+# Caddy retries upstreams with 502s until they come up, so ordering within
+# the parallel `dev:*` graph doesn't matter — start this alongside the rest.
+run = "caddy run --config Caddyfile.dev --adapter caddyfile"
 
 # --- build ---
 
@@ -181,7 +194,16 @@ sources = [
 
 [tasks."lint:k8s"]
 description = "Validate Kubernetes YAML manifests against schemas with kubeconform"
-run = "kubeconform -strict -summary -schema-location default infra/k8s/"
+# Core K8s schemas come from the default location. CRD schemas (e.g. Traefik's
+# Middleware) come from the datreeio/CRDs-catalog, the community-maintained
+# JSON-schema mirror. The `{% raw %}` block keeps mise's tera templater away
+# from kubeconform's own `{{.Group}}`-style placeholders in the URL.
+run = """
+{% raw %}kubeconform -strict -summary \
+  -schema-location default \
+  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+  infra/k8s/{% endraw %}
+"""
 
 # --- format ---
 

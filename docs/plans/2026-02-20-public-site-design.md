@@ -67,29 +67,26 @@ This defers real-time public campaign pages until there's demand. Static snapsho
 
 ## Routing
 
-Subdomain-based split. Each service gets its own subdomain:
+Path-based split under a single apex per environment. Every application service reaches the cluster through one host, routed by path prefix:
 
 ```
-familiar.systems                → apps/site     (landing page, blog, public campaign showcase)
-app.familiar.systems            → apps/web      (SPA, behind auth)
-api.familiar.systems            → apps/platform (auth, CRUD, routing table, discover)
-c1.familiar.systems             → apps/campaign (actors, collab, AI, campaign-scoped REST + WebSocket)
+familiar.systems/                             → apps/site     (landing page, blog, public campaign showcase)
+familiar.systems/app/                         → apps/web      (SPA, behind auth)
+familiar.systems/api/                         → apps/platform (auth, CRUD, routing table, checkout)
+familiar.systems/campaign/{campaign_id}/      → apps/campaign (actors, collab, AI, campaign-scoped REST + WebSocket)
 ```
 
 ### Reverse proxy rules (Traefik via k3s Ingress)
 
-```
-familiar.systems        → apps/site static files
-app.familiar.systems    → apps/web static files (SPA fallback: all paths serve index.html)
-api.familiar.systems    → platform pod (port 3000, HTTP)
-c1.familiar.systems     → campaign server pod (port 3001, HTTP + WebSocket)
-```
+One Ingress per host with priority-ordered path rules (longest prefix wins). `StripPrefix` middleware removes `/api`, `/campaign` before requests reach the backend. The site's `/` rule catches everything not matched by a longer prefix.
 
-Each subdomain routes to its own pod. No path-prefix ambiguity between services. A wildcard TLS certificate (`*.familiar.systems`) covers all subdomains.
+### Why path-based routing
 
-### Why subdomain-based routing
+Short answer: Hanko Cloud does not accept wildcard origins, and the subdomain-per-service scheme multiplies SPA origins across PR previews. Collapsing every service onto a single apex (one origin per environment) means each Hanko tenant registers exactly one origin that never changes; the problem vanishes structurally.
 
-The platform/campaign server split requires independently addressable services. The campaign server handles campaign-scoped REST alongside WebSocket, so the SPA needs to call it directly (not through path-based routing on a shared domain). Subdomains make each service routable and scale naturally to multiple campaign servers (`c1`, `c2`, `c3`). See [Deployment Architecture](./2026-03-30-deployment-architecture.md) for the full routing model.
+Same-origin across the application also eliminates CORS preflight, cross-subdomain cookie handling, and TLS cert complexity. Shard identity stays an internal concern — the platform's checkout API returns shard-agnostic URLs (`familiar.systems/campaign/{id}/...`) and ingress-layer routing resolves the owning shard.
+
+See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture) for the full reasoning and [Deployment Architecture §URL routing](./2026-03-30-deployment-architecture.md#url-routing) for the cluster-side details.
 
 ---
 
