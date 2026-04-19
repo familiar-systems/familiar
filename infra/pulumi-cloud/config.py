@@ -24,10 +24,13 @@ PRODUCTION_DOMAINS: list[str] = [
 ]
 PREVIEW_DOMAINS: list[str] = ["preview.loreweaver.no", "preview.familiar.systems"]
 
-# Hanko tenant URLs (public per plan §4.8 -- appears in TLS SNI on every browser request).
-# Operator: substitute actual tenant URLs before running pulumi up.
-HANKO_API_URL_DEV: str = "<dev-tenant-url>"
-HANKO_API_URL_PROD: str = "<prod-tenant-url>"
+# Hanko tenant URL for production (public per plan §4.8 -- appears in TLS SNI
+# on every browser request). Custom domain CNAMEd to the prod Hanko tenant.
+# The contributor preview URL (auth.preview.familiar.systems) is intentionally
+# not declared here: Pulumi has no consumer for it. PR previews are GHA-driven
+# and read the dev URL from .github/workflows/deploy-preview.yml, which in
+# turn names mise.toml [env].HANKO_API_URL_DEV as the canonical source.
+HANKO_API_URL_PROD: str = "https://auth.familiar.systems"
 
 
 def read_secret(name: str) -> pulumi.Output[str]:
