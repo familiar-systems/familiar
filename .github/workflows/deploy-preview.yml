@@ -24,10 +24,14 @@ concurrency:
 env:
   REGISTRY: rg.fr-par.scw.cloud/loreweaver
   DO_NOT_TRACK: 1
-  # Public Hanko tenant URL for dev environment.
-  # Canonical source: infra/pulumi-cloud/config.py HANKO_API_URL_DEV.
-  # Duplication is acceptable: this is non-secret public config (see plan §4.8).
-  HANKO_API_URL_DEV: "<dev-tenant-url>"
+  # Public Hanko tenant URL for the contributor preview environment.
+  # Canonical source: mise.toml [env].HANKO_API_URL_DEV. A single dev URL
+  # feeds both `mise run dev:platform` and `mise run dev:web` via mise's
+  # tera templating. GHA cannot import TOML or Python natively; this is a
+  # documented derived copy. Drift is visible in code review and breaks
+  # PR-preview signin loudly. The value is non-secret (it appears in TLS
+  # SNI on every browser request).
+  HANKO_API_URL_DEV: "https://auth.preview.familiar.systems"
 
 jobs:
   build:
