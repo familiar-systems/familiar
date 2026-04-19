@@ -16,6 +16,12 @@ impl Config {
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(3000);
+        // Required even in same-origin deployments (SPA and platform share an
+        // apex through Caddy/ingress), where the CorsLayer is a no-op in practice.
+        // Keeping it required forces split-service self-hosts (SPA at
+        // `app.example.com`, this binary at `api.example.com`) to set it at
+        // deploy time rather than silently failing in the browser later. See
+        // routes/mod.rs for the matching layer-level note.
         let cors_origins = std::env::var("CORS_ORIGINS")
             .expect("CORS_ORIGINS is required (comma-separated list of allowed origins)")
             .split(',')
