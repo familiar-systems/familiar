@@ -102,6 +102,10 @@ sources = [
   "apps/campaign/Cargo.toml",
   "crates/**/Cargo.toml",
 ]
+outputs = [
+  "packages/types-app/src/generated/**/*.ts",
+  "packages/types-campaign/src/generated/**/*.ts",
+]
 
 [tasks."test:python"]
 dir = "workers/whisperx"

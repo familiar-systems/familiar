@@ -35,17 +35,12 @@ where
             .ok_or(AppError::Unauthorized("expected Bearer scheme".into()))?;
 
         let claims = app_state.validator.validate(token).await?;
-        let email = claims
-            .email
-            .as_ref()
-            .map(|e| e.address.clone())
-            .ok_or_else(|| AppError::Unauthorized("hanko claims missing email".into()))?;
         let now = Utc::now();
 
         let am = users::ActiveModel {
             id: Set(Uuid::now_v7()),
             hanko_sub: Set(claims.subject.clone()),
-            email: Set(email.clone()),
+            email: Set(claims.email.clone()),
             created_at: Set(now),
             updated_at: Set(now),
         };

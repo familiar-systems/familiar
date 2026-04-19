@@ -1,20 +1,31 @@
-use chrono::{DateTime, Utc};
-use serde::Deserialize;
+//! Authentication types.
+//!
+//! This module spans three distinct contracts that must not be conflated.
+//! Each lives in its own submodule so the boundary is structural, not just a
+//! comment convention:
+//!
+//! 1. **External wire format (Hanko)** — [`wire`]. The shape Hanko sends us
+//!    over HTTP. We don't control it. Private to this module; never leaks.
+//! 2. **Domain types** — [`domain`]. Our invariant-enforcing view of a
+//!    session. [`HankoClaims`] is constructed via `TryFrom<HankoClaimsWire>`,
+//!    which rejects sessions that don't satisfy our invariants (one verified
+//!    email).
+//! 3. **API wire format (ours)** — [`api`]. Shapes we emit to our own clients.
+//!    [`MeResponse`] is exported to TypeScript via ts-rs; changes are
+//!    breaking changes to the frontend.
+//!
+//! The parse-don't-validate boundary lives at
+//! [`domain::HankoClaims::try_from`]. [`HankoSessionValidator::validate`] is
+//! the single production entry point that crosses from (1) to (2).
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct HankoClaims {
-    pub subject: String,
-    pub email: Option<HankoEmail>,
-    pub expiration: DateTime<Utc>,
-    pub session_id: String,
-}
+mod api;
+mod domain;
+mod wire;
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct HankoEmail {
-    pub address: String,
-    pub is_primary: bool,
-    pub is_verified: bool,
-}
+pub use api::MeResponse;
+pub use domain::HankoClaims;
+
+use wire::{ValidatePayloadWire, ValidateResponseWire};
 
 #[derive(thiserror::Error, Debug)]
 pub enum AuthError {
@@ -31,17 +42,6 @@ pub struct HankoSessionValidator {
     api_url: String,
 }
 
-#[derive(serde::Deserialize)]
-struct ValidateResponse {
-    is_valid: bool,
-    claims: Option<HankoClaims>,
-}
-
-#[derive(serde::Serialize)]
-struct ValidatePayload<'a> {
-    session_token: &'a str,
-}
-
 impl HankoSessionValidator {
     pub fn new(api_url: impl Into<String>) -> Self {
         Self {
@@ -50,12 +50,17 @@ impl HankoSessionValidator {
         }
     }
 
+    /// Validates a session token with Hanko and returns domain claims.
+    ///
+    /// Single crossing point from external wire format to domain. Downstream
+    /// callers holding a [`HankoClaims`] may trust the invariants documented
+    /// on that type.
     pub async fn validate(&self, token: &str) -> Result<HankoClaims, AuthError> {
         let url = format!("{}/sessions/validate", self.api_url.trim_end_matches('/'));
         let resp = self
             .client
             .post(&url)
-            .json(&ValidatePayload {
+            .json(&ValidatePayloadWire {
                 session_token: token,
             })
             .send()
@@ -66,43 +71,20 @@ impl HankoSessionValidator {
                 resp.status()
             )));
         }
-        let body: ValidateResponse = resp.json().await?;
+        let body: ValidateResponseWire = resp.json().await?;
         if !body.is_valid {
             return Err(AuthError::SessionRejected("is_valid=false".into()));
         }
-        body.claims
-            .ok_or_else(|| AuthError::SessionRejected("no claims".into()))
+        let wire = body
+            .claims
+            .ok_or_else(|| AuthError::SessionRejected("no claims".into()))?;
+        HankoClaims::try_from(wire)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn claims_deserialize_from_hanko_response_shape() {
-        let raw = r#"{"subject":"sub-1","email":{"address":"a@b.com","is_primary":true,"is_verified":true},"expiration":"2099-12-31T00:00:00Z","session_id":"s1"}"#;
-        let c: HankoClaims = serde_json::from_str(raw).unwrap();
-        assert_eq!(c.subject, "sub-1");
-        let email = c.email.unwrap();
-        assert_eq!(email.address, "a@b.com");
-        assert!(email.is_primary);
-        assert!(email.is_verified);
-    }
-
-    #[test]
-    fn claims_deserialize_with_null_email() {
-        let raw = r#"{"subject":"sub-1","email":null,"expiration":"2099-12-31T00:00:00Z","session_id":"s1"}"#;
-        let c: HankoClaims = serde_json::from_str(raw).unwrap();
-        assert!(c.email.is_none());
-    }
-
-    #[test]
-    fn claims_deserialize_with_absent_email() {
-        let raw = r#"{"subject":"sub-1","expiration":"2099-12-31T00:00:00Z","session_id":"s1"}"#;
-        let c: HankoClaims = serde_json::from_str(raw).unwrap();
-        assert!(c.email.is_none());
-    }
 
     #[test]
     fn auth_error_display_is_stable() {
@@ -136,6 +118,7 @@ mod tests {
         let v = HankoSessionValidator::new(srv.uri());
         let c = v.validate("tok").await.unwrap();
         assert_eq!(c.subject, "u-1");
+        assert_eq!(c.email, "x@y.com");
         assert_eq!(c.session_id, "sess-1");
     }
 
@@ -193,6 +176,33 @@ mod tests {
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(serde_json::json!({"is_valid": true})),
             )
+            .expect(1)
+            .mount(&srv)
+            .await;
+        let v = HankoSessionValidator::new(srv.uri());
+        assert!(matches!(
+            v.validate("t").await,
+            Err(AuthError::SessionRejected(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn validate_rejects_when_email_missing_from_claims() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+        let srv = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sessions/validate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "is_valid": true,
+                "claims": {
+                    "subject": "u-1",
+                    "expiration": "2099-01-01T00:00:00Z",
+                    "session_id": "sess-1"
+                }
+            })))
             .expect(1)
             .mount(&srv)
             .await;

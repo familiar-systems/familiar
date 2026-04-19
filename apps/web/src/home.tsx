@@ -1,10 +1,9 @@
+import type { MeResponse } from "@familiar-systems/types-app";
 import { useEffect, useState } from "react";
 import { getSessionToken } from "./lib/hanko";
 
-type Me = { id: string; hanko_sub: string; email: string | null };
-
 export function Home() {
-  const [me, setMe] = useState<Me | null>(null);
+  const [me, setMe] = useState<MeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -20,7 +19,7 @@ export function Home() {
           return;
         }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        setMe((await r.json()) as Me);
+        setMe((await r.json()) as MeResponse);
       })
       .catch((e: unknown) => setError(String(e)));
   }, []);
