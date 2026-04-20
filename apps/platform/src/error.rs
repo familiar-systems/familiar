@@ -25,23 +25,36 @@ struct ErrorBody {
     error: String,
 }
 
-// TODO(hardening): internal error Display content leaks into HTTP response
-// bodies. `AppError::Db(e)` formats `sea_orm::DbErr` directly (exposes
-// constraint names, column names, SQL fragments); `AppError::Auth(_)` via
-// `self.to_string()` can surface `AuthError::RequestFailed(reqwest::Error)`,
-// which may include the Hanko tenant URL. Fix: log the full error at
-// `tracing::error!` and return a generic string to clients. Must land
-// before prod traffic arrives.
+// Error-body policy: clients see a stable, generic message per variant; the
+// full error (including sea-orm detail or reqwest URLs) goes to the log as a
+// structured `error_kind` + `error_detail` event. This closes two leaks:
+// - `AppError::Db(_)` no longer echoes constraint/column names or SQL;
+// - `AppError::Auth(_)` no longer surfaces reqwest error strings that can
+//   include the Hanko tenant URL.
+// `Unauthorized(m)` intentionally echoes `m` because that variant is
+// constructed only with caller-facing, PII-free messages (missing header,
+// wrong scheme) — it's a small API affordance, not a leak.
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let (status, msg) = match &self {
-            AppError::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone()),
-            AppError::NotFound => (StatusCode::NOT_FOUND, "not found".into()),
-            AppError::Internal(m) => (StatusCode::INTERNAL_SERVER_ERROR, m.clone()),
-            AppError::Db(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("db: {e}")),
-            AppError::Auth(_) => (StatusCode::UNAUTHORIZED, self.to_string()),
+        let (status, public_msg, kind) = match &self {
+            AppError::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone(), "Unauthorized"),
+            AppError::NotFound => (StatusCode::NOT_FOUND, "not found".into(), "NotFound"),
+            AppError::Internal(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal error".into(),
+                "Internal",
+            ),
+            AppError::Db(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal error".into(),
+                "Db",
+            ),
+            AppError::Auth(_) => (StatusCode::UNAUTHORIZED, "unauthorized".into(), "Auth"),
         };
-        (status, Json(ErrorBody { error: msg })).into_response()
+        // Inherits request_id / user_id / session_id from the enclosing
+        // request span (see routes::make_request_span + middleware::auth).
+        tracing::error!(error_kind = kind, error_detail = %self, "request failed");
+        (status, Json(ErrorBody { error: public_msg })).into_response()
     }
 }
 

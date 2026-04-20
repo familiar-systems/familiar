@@ -12,6 +12,9 @@ async fn no_token_returns_401() {
     let app = common::spawn_app().await;
     let resp = reqwest::get(format!("{}/me", app.base_url)).await.unwrap();
     assert_eq!(resp.status().as_u16(), 401);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    // Unauthorized(m) echoes its caller-facing message; no PII, no DB detail.
+    assert_eq!(body["error"], "missing authorization header");
 }
 
 #[tokio::test]
@@ -70,6 +73,11 @@ async fn invalid_token_returns_401() {
         .await
         .unwrap();
     assert_eq!(resp.status().as_u16(), 401);
+    // Lock the hardening guarantee: Auth errors must return a generic body,
+    // never echo the underlying reqwest/Hanko detail (which can include the
+    // tenant URL) back to the client.
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["error"], "unauthorized");
     let count = users::Entity::find().all(&app.db).await.unwrap().len();
     assert_eq!(count, 0, "rejected request must not insert a user row");
 }

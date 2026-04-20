@@ -59,6 +59,15 @@ where
             .await?
             .ok_or_else(|| AppError::Internal("upsert did not land".into()))?;
 
+        // Populate the wide-event correlation fields declared as Empty on the
+        // request span (see routes::make_request_span). These IDs are
+        // pseudonymous and logged under legitimate interest (application
+        // reliability); email is *not* recorded here and must not be logged
+        // on the success path.
+        let span = tracing::Span::current();
+        span.record("user_id", tracing::field::display(row.id));
+        span.record("session_id", tracing::field::display(&claims.session_id));
+
         Ok(AuthenticatedUser {
             id: row.id,
             hanko_sub: row.hanko_sub,

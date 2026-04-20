@@ -2,12 +2,39 @@ mod health;
 mod me;
 
 use crate::state::AppState;
+use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, Method};
 use axum::{Router, routing::get};
-use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::{
+    cors::{AllowOrigin, CorsLayer},
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    trace::{DefaultOnResponse, TraceLayer},
+};
+use tracing::{Level, Span};
 
 pub(crate) fn origin_matches(allowed: &str, origin: &str) -> bool {
     origin == allowed
+}
+
+// One span per HTTP request. Declares user_id and session_id as Empty so the
+// auth extractor can record() into them; those fields then appear on every
+// log event emitted within the request (including the TraceLayer's
+// on_response wide event and any handler-emitted events), making the whole
+// thing queryable by user or session in the logs.
+fn make_request_span(req: &Request) -> Span {
+    let request_id = req
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    tracing::info_span!(
+        "http_request",
+        method = %req.method(),
+        uri = %req.uri(),
+        request_id = %request_id,
+        user_id = tracing::field::Empty,
+        session_id = tracing::field::Empty,
+    )
 }
 
 pub fn router(origins: Vec<String>) -> Router<AppState> {
@@ -27,14 +54,27 @@ pub fn router(origins: Vec<String>) -> Router<AppState> {
             origins.iter().any(|allowed| origin_matches(allowed, o))
         }));
 
+    let trace = TraceLayer::new_for_http()
+        .make_span_with(make_request_span)
+        .on_response(DefaultOnResponse::new().level(Level::INFO));
+
     // Route paths here are post-strip: they reflect what the platform sees
     // after the reverse proxy (Caddy in dev, Traefik in prod) has removed
     // the /api prefix. /health is reached by browsers at /api/health; /me
     // at /api/me. A route whose path begins with /api will never arrive
     // here; do not add one.
+    //
+    // Layer ordering: Axum applies the *last* .layer() outermost. A request
+    // travels outermost→innermost, so:
+    //   cors -> set_request_id -> trace -> propagate_request_id -> handler
+    // set_request_id must precede trace (trace reads the id into the span);
+    // propagate must be inside trace so the outgoing response carries the id.
     Router::new()
         .route("/health", get(health::health))
         .route("/me", get(me::me))
+        .layer(PropagateRequestIdLayer::x_request_id())
+        .layer(trace)
+        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(cors)
 }
 
