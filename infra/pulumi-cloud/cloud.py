@@ -1,4 +1,4 @@
-"""Hetzner Cloud + Scaleway resources for Loreweaver.
+"""Hetzner Cloud + Scaleway resources for familiar.systems.
 
 Shared infrastructure: SSH keys, firewall, Scaleway Container Registry,
 and Scaleway Secrets Manager entries. The k3s cluster (k3s_cluster.py)
@@ -29,13 +29,15 @@ deploy_key = hcloud.SshKey(
 )
 
 # ---------------------------------------------------------------------------
-# Floating IP (public entry point -- DNS A record for loreweaver.no)
+# Floating IP (public entry point -- DNS A records for familiar.systems,
+# app.familiar.systems, preview.familiar.systems, app.preview.familiar.systems,
+# and the legacy loreweaver.no apexes all point here)
 # ---------------------------------------------------------------------------
 floating_ip = hcloud.FloatingIp(
     "floating-ip",
     type="ipv4",
     home_location=LOCATION,
-    description="Public IP for loreweaver.no (DNS, TLS, ingress)",
+    description="Public IP for familiar.systems + loreweaver.no (DNS, TLS, ingress)",
     labels=LABELS,
     # Alias: this resource was previously named "k3s-floating-ip" as a child
     # of K3sCluster. Safe to remove after one successful `pulumi up`.
@@ -100,7 +102,7 @@ firewall = hcloud.Firewall(
 registry = scaleway.registry.Namespace(
     "container-registry",
     name="loreweaver",
-    description="Loreweaver container images",
+    description="familiar.systems container images",
     is_public=False,
     region="fr-par",
 )

@@ -1,4 +1,4 @@
-"""Shared configuration constants for Loreweaver cloud infrastructure."""
+"""Shared configuration constants for familiar.systems cloud infrastructure."""
 
 import base64
 
@@ -10,7 +10,7 @@ config = pulumi.Config()
 LOCATION = "hel1"
 SERVER_TYPE = "cx23"
 IMAGE = "ubuntu-24.04"
-LABELS = {"project": "loreweaver", "managed-by": "pulumi"}
+LABELS = {"project": "familiar-systems", "managed-by": "pulumi"}
 
 # Domains served by the cluster. Add to these lists to extend coverage.
 # The TLS cert (k8s.py) and Ingress rules (k8s.py) iterate over them.

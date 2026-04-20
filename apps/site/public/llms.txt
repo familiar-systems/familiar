@@ -12,7 +12,7 @@ Pre-launch. The public site is live; the application is under active development
 
 ## Links
 
-- Website: https://loreweaver.no
+- Website: https://familiar.systems
 - GitHub: https://github.com/familiar-systems
 - License: AGPL-3.0
 

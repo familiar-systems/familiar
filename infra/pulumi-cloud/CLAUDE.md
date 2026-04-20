@@ -2,9 +2,9 @@
 
 ## What This Is
 
-Pulumi Python project for Loreweaver's cloud infrastructure on Hetzner Cloud + Scaleway Container Registry + Scaleway Secrets Manager. State is stored in Scaleway Object Storage, secrets are encrypted with a passphrase from Scaleway Secrets Manager.
+Pulumi Python project for familiar.systems cloud infrastructure on Hetzner Cloud + Scaleway Container Registry + Scaleway Secrets Manager. State is stored in Scaleway Object Storage, secrets are encrypted with a passphrase from Scaleway Secrets Manager.
 
-Single deployment target: **k3s cluster** serving `loreweaver.no` (production) and `preview.loreweaver.no` (PR previews).
+Single deployment target: **k3s cluster** serving `familiar.systems` + `app.familiar.systems` (production) and `preview.familiar.systems` + `app.preview.familiar.systems` (PR previews), plus the legacy `loreweaver.no` apex set until it retires. The two-apex layout (marketing vs app) is documented in [Deployment Architecture §URL routing](../../docs/plans/2026-03-30-deployment-architecture.md#url-routing).
 
 ## Key Files
 
@@ -26,7 +26,7 @@ Single deployment target: **k3s cluster** serving `loreweaver.no` (production) a
 
 ### k3s (k3s_cluster.py + k8s.py)
 
-The **Floating IP** (`cloud.py`) is the public entry point: DNS A record for `loreweaver.no` points here. It is a top-level resource, not owned by any cluster. The IP is passed into `K3sCluster` as an input.
+The **Floating IP** (`cloud.py`) is the public entry point: DNS A records for every apex served by the cluster (the four familiar.systems apexes plus the legacy loreweaver.no apexes) point here. It is a top-level resource, not owned by any cluster. The IP is passed into `K3sCluster` as an input.
 
 `K3sCluster` ComponentResource encapsulates:
 
@@ -38,12 +38,12 @@ The **Floating IP** (`cloud.py`) is the public entry point: DNS A record for `lo
 
 - cert-manager (Jetstack Helm chart, v1.17.2)
 - cert-manager-webhook-bunny (DNS-01 for bunny.net)
-- ClusterIssuer (prod + staging), wildcard Certificate covering all `PRODUCTION_DOMAINS` + `PREVIEW_DOMAINS` + `*.preview.<domain>` SANs
-- Site Deployment + Service + Ingress (serves both production and preview domains; Ingress rules are generated from the domain lists in `config.py`)
+- ClusterIssuer (prod + staging), Certificate covering the aggregated `PRODUCTION_DOMAINS` + `PREVIEW_DOMAINS` from `config.py` (marketing + app apexes for each environment; the cert is not a wildcard — SAN list is the exact apex set)
+- Site Deployment + Service + Ingress bound to marketing apexes only (`MARKETING_*_DOMAINS` in `config.py`); the SPA + platform + campaign bind to the app apexes separately
 
 ### Provider cascade hazard
 
-Pulumi manages both the Hetzner server and the k8s workloads running on it. The k8s Provider's `kubeconfig` field is `replaceOnChanges`, so any change to it cascades through every k8s resource parented to the provider (delete-and-recreate, which momentarily breaks cert-manager, the wildcard cert, and the site ingress).
+Pulumi manages both the Hetzner server and the k8s workloads running on it. The k8s Provider's `kubeconfig` field is `replaceOnChanges`, so any change to it cascades through every k8s resource parented to the provider (delete-and-recreate, which momentarily breaks cert-manager, the TLS cert, and the site ingress).
 
 **Two fronts of mitigation:**
 
@@ -167,13 +167,13 @@ The preview manifests live in `infra/k8s/preview/` as plain Kubernetes YAML with
 | Variable | Source | Example |
 |---|---|---|
 | `NAMESPACE` | workflow: `preview-pr-${PR_NUMBER}` | `preview-pr-42` |
-| `IMAGE` | workflow: built image tag | `rg.fr-par.scw.cloud/loreweaver/site:pr-42-abc1234` |
-| `PR_HOST` | workflow: `pr-${PR_NUMBER}.preview.loreweaver.no` | `pr-42.preview.loreweaver.no` |
+| `PR_NUMBER` | workflow: the PR number; consumed by Ingress manifests to build `/pr-${N}` path prefixes and by the web build's `VITE_BASE_PATH` | `42` |
+| `SITE_IMAGE` / `WEB_IMAGE` / `PLATFORM_IMAGE` | workflow: built image tags | `rg.fr-par.scw.cloud/loreweaver/site:pr-42-abc1234` (registry namespace retains the legacy project name) |
 | `DOCKERCONFIG_B64` | workflow: base64-encoded dockerconfigjson for the SCW registry | (computed) |
 
 **To edit preview behavior**, edit the YAML files directly — the workflow only handles substitution and apply. **To validate changes**, run `mise run lint:k8s` (kubeconform).
 
-**Why this split, rather than Pulumi-managing the preview resources:** PR previews are ephemeral (seconds of creation, minutes of lifetime) and per-PR (one namespace per open PR, potentially dozens at once). Pulumi's state model is designed for long-lived, named resources; spinning up a Pulumi stack per PR would be wildly over-engineered. GitHub Actions can apply raw YAML in ~2s per resource, which is the right tool. The separation is: **Pulumi for permanent cluster state** (cert-manager, the wildcard cert, the prod site deployment, RBAC, the provider itself), **YAML-applied-by-CI for ephemeral per-PR resources**.
+**Why this split, rather than Pulumi-managing the preview resources:** PR previews are ephemeral (seconds of creation, minutes of lifetime) and per-PR (one namespace per open PR, potentially dozens at once). Pulumi's state model is designed for long-lived, named resources; spinning up a Pulumi stack per PR would be wildly over-engineered. GitHub Actions can apply raw YAML in ~2s per resource, which is the right tool. The separation is: **Pulumi for permanent cluster state** (cert-manager, the TLS cert, the prod site + platform deployments, RBAC, the provider itself), **YAML-applied-by-CI for ephemeral per-PR resources**.
 
 ## Commands
 

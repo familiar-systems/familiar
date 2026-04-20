@@ -77,7 +77,7 @@ jobs:
           file: apps/site/Dockerfile
           push: true
           build-args: |
-            SITE_URL=https://loreweaver.no
+            SITE_URL=https://familiar.systems
             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
