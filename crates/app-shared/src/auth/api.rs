@@ -14,10 +14,12 @@ use utoipa::ToSchema;
 ///
 /// **Wire format we own (API contract with the SPA).** Exported to TypeScript
 /// as `MeResponse` via ts-rs. Changes are breaking changes to the frontend.
+///
+/// `id` is the Hanko subject (= `users.id`); see
+/// `apps/platform/src/entities/users.rs`.
 #[derive(Debug, Clone, Serialize, TS, ToSchema)]
 #[ts(export, export_to = "types-app/src/generated/auth/")]
 pub struct MeResponse {
     pub id: UserId,
-    pub hanko_sub: String,
     pub email: String,
 }

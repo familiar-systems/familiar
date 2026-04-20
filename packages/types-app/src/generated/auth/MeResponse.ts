@@ -6,5 +6,8 @@ import type { UserId } from "../id/UserId";
  *
  * **Wire format we own (API contract with the SPA).** Exported to TypeScript
  * as `MeResponse` via ts-rs. Changes are breaking changes to the frontend.
+ *
+ * `id` is the Hanko subject (= `users.id`); see
+ * `apps/platform/src/entities/users.rs`.
  */
-export type MeResponse = { id: UserId; hanko_sub: string; email: string };
+export type MeResponse = { id: UserId; email: string };

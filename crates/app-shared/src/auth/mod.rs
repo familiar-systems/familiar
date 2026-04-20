@@ -100,13 +100,14 @@ mod tests {
             Mock, MockServer, ResponseTemplate,
             matchers::{method, path},
         };
+        let sub = "0195b4a0-0000-7000-8000-000000000001";
         let srv = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/sessions/validate"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "is_valid": true,
                 "claims": {
-                    "subject": "u-1",
+                    "subject": sub,
                     "email": {"address": "x@y.com", "is_primary": true, "is_verified": true},
                     "expiration": "2099-01-01T00:00:00Z",
                     "session_id": "sess-1"
@@ -117,7 +118,7 @@ mod tests {
             .await;
         let v = HankoSessionValidator::new(srv.uri());
         let c = v.validate("tok").await.unwrap();
-        assert_eq!(c.subject, "u-1");
+        assert_eq!(c.subject.to_string(), sub);
         assert_eq!(c.email, "x@y.com");
         assert_eq!(c.session_id, "sess-1");
     }

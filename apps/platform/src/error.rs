@@ -14,6 +14,13 @@ pub enum AppError {
     NotFound,
     #[error("internal: {0}")]
     Internal(String),
+    /// Email UNIQUE violation during upsert. Arises when our local mirror
+    /// is stale vs. Hanko's current state (e.g. user B changed email in
+    /// Hanko but hasn't logged in since; user A now claims that address at
+    /// Hanko and logs in). Surfaces as 409; the auth middleware logs both
+    /// ids so the stale row can be reconciled out-of-band.
+    #[error("email conflict")]
+    EmailConflict,
     #[error(transparent)]
     Db(#[from] sea_orm::DbErr),
     #[error(transparent)]
@@ -27,13 +34,11 @@ struct ErrorBody {
 
 // Error-body policy: clients see a stable, generic message per variant; the
 // full error (including sea-orm detail or reqwest URLs) goes to the log as a
-// structured `error_kind` + `error_detail` event. This closes two leaks:
-// - `AppError::Db(_)` no longer echoes constraint/column names or SQL;
-// - `AppError::Auth(_)` no longer surfaces reqwest error strings that can
-//   include the Hanko tenant URL.
-// `Unauthorized(m)` intentionally echoes `m` because that variant is
-// constructed only with caller-facing, PII-free messages (missing header,
-// wrong scheme) — it's a small API affordance, not a leak.
+// structured `error_kind` + `error_detail` event. This keeps constraint
+// names, SQL fragments, and the Hanko tenant URL out of HTTP responses.
+// `Unauthorized(m)` is the sole exception: its message is echoed because
+// the variant is only constructed with caller-facing, PII-free strings
+// (missing header, wrong scheme).
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, public_msg, kind) = match &self {
@@ -43,6 +48,11 @@ impl IntoResponse for AppError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal error".into(),
                 "Internal",
+            ),
+            AppError::EmailConflict => (
+                StatusCode::CONFLICT,
+                "email already registered to another account; contact support".into(),
+                "EmailConflict",
             ),
             AppError::Db(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,

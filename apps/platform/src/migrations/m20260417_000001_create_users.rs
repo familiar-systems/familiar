@@ -7,7 +7,6 @@ pub struct Migration;
 enum Users {
     Table,
     Id,
-    HankoSub,
     Email,
     CreatedAt,
     UpdatedAt,
@@ -15,6 +14,15 @@ enum Users {
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
+    // `users.id` is the Hanko subject, stored as a native UUID. Foreign keys
+    // elsewhere reference this column directly. See
+    // `crates/app-shared/src/auth/domain.rs::HankoClaims` for the parse step
+    // that guarantees the subject is a UUID before it reaches this table.
+    //
+    // Email is UNIQUE for billing (one customer per address). Hanko is
+    // authoritative for uniqueness at login time; this constraint is the
+    // local guarantee. Collision handling lives in
+    // `apps/platform/src/middleware/auth.rs`; see `AppError::EmailConflict`.
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
             .create_table(
@@ -22,12 +30,6 @@ impl MigrationTrait for Migration {
                     .table(Users::Table)
                     .if_not_exists()
                     .col(ColumnDef::new(Users::Id).uuid().not_null().primary_key())
-                    .col(
-                        ColumnDef::new(Users::HankoSub)
-                            .string()
-                            .not_null()
-                            .unique_key(),
-                    )
                     .col(
                         ColumnDef::new(Users::Email)
                             .string()

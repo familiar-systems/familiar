@@ -4,13 +4,18 @@ use axum::{
     http::request::Parts,
 };
 use chrono::Utc;
-use sea_orm::{ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, sea_query::OnConflict};
+use sea_orm::{
+    ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, SqlErr, sea_query::OnConflict,
+};
 use uuid::Uuid;
 
+/// Authenticated user, proven via Hanko and persisted in `users`.
+///
+/// `id` is the Hanko subject (= the `users` primary key); see
+/// `apps/platform/src/entities/users.rs`.
 #[derive(Debug, Clone)]
 pub struct AuthenticatedUser {
     pub id: Uuid,
-    pub hanko_sub: String,
     pub email: String,
 }
 
@@ -36,28 +41,54 @@ where
 
         let claims = app_state.validator.validate(token).await?;
         let now = Utc::now();
+        let id = claims.subject;
 
+        // Upsert by id (= Hanko subject). ON CONFLICT (id) handles the normal
+        // repeat-login case; a UNIQUE(email) violation on either the INSERT
+        // or the UPDATE path surfaces as AppError::EmailConflict → 409.
+        // exec_with_returning uses SQLite's RETURNING clause to get the row
+        // back in one round-trip.
         let am = users::ActiveModel {
-            id: Set(Uuid::now_v7()),
-            hanko_sub: Set(claims.subject.clone()),
+            id: Set(id),
             email: Set(claims.email.clone()),
             created_at: Set(now),
             updated_at: Set(now),
         };
-        users::Entity::insert(am)
+        let row = match users::Entity::insert(am)
             .on_conflict(
-                OnConflict::column(users::Column::HankoSub)
+                OnConflict::column(users::Column::Id)
                     .update_columns([users::Column::Email, users::Column::UpdatedAt])
                     .to_owned(),
             )
-            .exec(&app_state.db)
-            .await?;
-
-        let row = users::Entity::find()
-            .filter(users::Column::HankoSub.eq(&claims.subject))
-            .one(&app_state.db)
-            .await?
-            .ok_or_else(|| AppError::Internal("upsert did not land".into()))?;
+            .exec_with_returning(&app_state.db)
+            .await
+        {
+            Ok(row) => row,
+            Err(e) => {
+                if let Some(SqlErr::UniqueConstraintViolation(detail)) = e.sql_err()
+                    && detail.contains("email")
+                {
+                    // Look up the other row to give the log event both
+                    // parties' ids. Best-effort; if the lookup itself
+                    // errors, we still emit the event with what we have.
+                    let other_id = users::Entity::find()
+                        .filter(users::Column::Email.eq(&claims.email))
+                        .one(&app_state.db)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|r| r.id);
+                    tracing::error!(
+                        incoming_user_id = %id,
+                        colliding_user_id = ?other_id,
+                        email = %claims.email,
+                        "email unique collision during upsert; local mirror likely stale vs. Hanko"
+                    );
+                    return Err(AppError::EmailConflict);
+                }
+                return Err(AppError::from(e));
+            }
+        };
 
         // Populate the wide-event correlation fields declared as Empty on the
         // request span (see routes::make_request_span). These IDs are
@@ -70,7 +101,6 @@ where
 
         Ok(AuthenticatedUser {
             id: row.id,
-            hanko_sub: row.hanko_sub,
             email: row.email,
         })
     }
