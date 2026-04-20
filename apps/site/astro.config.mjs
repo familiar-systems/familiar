@@ -78,6 +78,10 @@ const DEFAULT_LOCALE = "en";
 // https://astro.build/config
 export default defineConfig({
   site: process.env.SITE_URL || "https://loreweaver.no",
+  // SITE_BASE_PATH mirrors the marketing apex's path prefix.
+  // Prod + dev: "/". Preview: "/pr-${PR_NUMBER}/".
+  // See docs/plans/2026-03-30-deployment-architecture.md §URL routing.
+  base: process.env.SITE_BASE_PATH || "/",
   output: "static",
   image: {
     domains: [],

@@ -67,24 +67,24 @@ This defers real-time public campaign pages until there's demand. Static snapsho
 
 ## Routing
 
-Path-based split under a single apex per environment. Every application service reaches the cluster through one host, routed by path prefix:
+Path-based split within each of two apexes per environment — a marketing apex for the Astro site and an app apex for the SPA + platform + campaign. Each apex is its own browser origin:
 
 ```
-familiar.systems/                             → apps/site     (landing page, blog, public campaign showcase)
-familiar.systems/app/                         → apps/web      (SPA, behind auth)
-familiar.systems/api/                         → apps/platform (auth, CRUD, routing table, checkout)
-familiar.systems/campaign/{campaign_id}/      → apps/campaign (actors, collab, AI, campaign-scoped REST + WebSocket)
+familiar.systems/                                 → apps/site     (landing page, blog, public campaign showcase)
+app.familiar.systems/                             → apps/web      (SPA at root, behind auth)
+app.familiar.systems/api/                         → apps/platform (auth, CRUD, routing table, checkout)
+app.familiar.systems/campaign/{campaign_id}/      → apps/campaign (actors, collab, AI, campaign-scoped REST + WebSocket)
 ```
 
 ### Reverse proxy rules (Traefik via k3s Ingress)
 
-One Ingress per host with priority-ordered path rules (longest prefix wins). `StripPrefix` middleware removes `/api`, `/campaign` before requests reach the backend. The site's `/` rule catches everything not matched by a longer prefix.
+One IngressRoute per host. The marketing host has a single `/` rule → Astro. The app host has priority-ordered path rules (longest prefix wins): `/api` and `/campaign` each strip their prefix via `StripPrefix` middleware before reaching the backend; `/` catches everything else and serves the SPA.
 
-### Why path-based routing
+### Why path-based routing within the app apex
 
-Short answer: Hanko Cloud does not accept wildcard origins, and the subdomain-per-service scheme multiplies SPA origins across PR previews. Collapsing every service onto a single apex (one origin per environment) means each Hanko tenant registers exactly one origin that never changes; the problem vanishes structurally.
+Short answer: Hanko Cloud does not accept wildcard origins, and a per-PR subdomain scheme multiplies app origins across preview deployments. The app's services (SPA + platform + campaign) share one app apex per environment (`app.familiar.systems` in prod, `app.preview.familiar.systems` in preview); path-based routing within that apex keeps each Hanko tenant's registered-origin list to exactly one stable entry that never changes across PRs.
 
-Same-origin across the application also eliminates CORS preflight, cross-subdomain cookie handling, and TLS cert complexity. Shard identity stays an internal concern — the platform's checkout API returns shard-agnostic URLs (`familiar.systems/campaign/{id}/...`) and ingress-layer routing resolves the owning shard.
+Same-origin between the SPA and the services it calls also eliminates CORS preflight and cross-subdomain cookie handling within the app. The marketing apex is a separate origin so its cookies, storage, and caching rules stay isolated from the app. Shard identity stays an internal concern — the platform's checkout API returns shard-agnostic URLs (`app.familiar.systems/campaign/{id}/...`) and ingress-layer routing resolves the owning shard.
 
 See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture) for the full reasoning and [Deployment Architecture §URL routing](./2026-03-30-deployment-architecture.md#url-routing) for the cluster-side details.
 

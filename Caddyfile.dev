@@ -1,23 +1,40 @@
 # Local-dev reverse proxy that mirrors the prod URL contract.
 #
-# Run via `mise run dev:proxy` alongside `mise run dev`. Opens
-# http://localhost:8080 as the single front door for the full stack:
+# Run via `mise run dev:proxy` alongside `mise run dev`. Opens two hosts
+# on port 8080 — a marketing apex and an app apex — matching the two-apex
+# split used in preview and prod:
 #
-#   /           -> Astro site (port 4321)
-#   /app/*      -> Vite SPA (port 5173, built with base=/app/)
-#   /api/*      -> platform server (port 3000, cargo run)
-#   /campaign/* -> campaign server (port 3001, cargo run)
+#   http://localhost:8080                 -> Astro marketing site (port 4321)
+#   http://app.localhost:8080/            -> Vite SPA at root (port 5173)
+#   http://app.localhost:8080/api/*       -> platform server (port 3000)
+#   http://app.localhost:8080/campaign/*  -> campaign server (port 3001)
 #
-# Why this file exists: mise-based dev runs each service on its own port,
-# which is fine for SPA+backend same-origin (Vite's own proxy handles it),
-# but leaves the marketing site on a separate origin. That gap becomes
-# invisible to dev but real in prod. Caddy unifies everything under one
-# origin so local dev matches the prod topology exactly.
+# Why two hosts: the marketing site and the app must live on different
+# browser origins so that cookie / localStorage scope, CORS, and Hanko's
+# registered-origin contract all match what preview and prod enforce.
+# Running them on one localhost port hid that boundary and produced
+# dev/prod drift that only surfaced in deployment.
+#
+# Why *.localhost: modern browsers (Chrome/Firefox/Safari) treat any
+# *.localhost name as loopback by convention — no /etc/hosts entries,
+# no dnsmasq. Caddy serves both host matchers from a single :8080 bind.
 #
 # WebSockets (Vite HMR, Astro HMR, campaign-server Loro sync) upgrade
 # automatically through `reverse_proxy` in Caddy v2; no ws: true flag.
 
-:8080 {
+# `http://` prefix is load-bearing: without it, Caddy sees a hostname+non-
+# standard-port address (`localhost:8080`) and engages auto-HTTPS — it tries
+# to install its local CA, issue a cert, and serve TLS on 8080, which
+# (a) prompts for sudo on the first run and (b) breaks plain-HTTP curls.
+# Forcing `http://` makes Caddy listen on 8080 as unencrypted HTTP, which is
+# what we want for localhost dev. TLS in prod is Traefik's job.
+
+http://localhost:8080 {
+	# Marketing: the Astro static site. No authenticated surfaces live here.
+	reverse_proxy localhost:4321
+}
+
+http://app.localhost:8080 {
 	# Platform API: strip /api so the backend sees /me, /health, etc.
 	handle_path /api/* {
 		reverse_proxy localhost:3000
@@ -28,20 +45,10 @@
 		reverse_proxy localhost:3001
 	}
 
-	# SPA: DO NOT strip. Vite is built with base=/app/ and expects
-	# to receive URLs that already start with /app/. The bare-path
-	# redirect catches "/app" (no slash) so it doesn't fall through
-	# to the Astro site and 404 — keeps contributors out of a
-	# confusing cross-service dead-end.
-	@appBare path /app
-	redir @appBare /app/ 308
-
-	handle /app/* {
-		reverse_proxy localhost:5173
-	}
-
-	# Everything else falls through to the Astro marketing site.
+	# SPA catch-all. Vite is built with base=/ on this apex, so it receives
+	# URLs as-is. This handler is last because the handle_path blocks above
+	# match longer prefixes first.
 	handle {
-		reverse_proxy localhost:4321
+		reverse_proxy localhost:5173
 	}
 }

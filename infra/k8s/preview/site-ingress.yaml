@@ -1,7 +1,8 @@
 # Per-PR preview Astro site served at preview.familiar.systems/pr-${PR_NUMBER}.
-# StripPrefix middleware removes the PR path so the nginx backend serves
-# from its usual root. Longer-path ingresses (web, platform) take priority
-# via Traefik's rule-length router priority.
+# This ingress binds to the marketing apex; the SPA, platform, and campaign
+# ingresses bind to the app apex (app.preview.familiar.systems) so every apex
+# has exactly the surfaces it should. StripPrefix removes the PR path so the
+# nginx backend serves from its usual root.
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware

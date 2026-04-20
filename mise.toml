@@ -38,20 +38,24 @@ description = "Astro dev server (port 4321)"
 run = "pnpm --filter @familiar-systems/site dev"
 
 [tasks."dev:web"]
-description = "Vite dev server (port 5173, SPA served under /app/; reach it through Caddy at :8080)"
+description = "Vite dev server (port 5173, SPA served at root of the app apex; reach it through Caddy at http://app.localhost:8080)"
 run = "pnpm --filter @familiar-systems/web dev"
-# Dev mirrors prod path layout: SPA at /app/, platform at /api/, campaign at
-# /campaign/, site at /. Caddy (dev:proxy) unifies all four services under
-# http://localhost:8080 so the browser sees one origin.
-env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", VITE_BASE_PATH = "/app/" }
+# Dev mirrors the prod two-apex layout: marketing at http://localhost:8080/ →
+# Astro, app at http://app.localhost:8080/ → SPA, /api → platform, /campaign →
+# campaign. Caddy (dev:proxy) binds both host matchers on :8080 so the
+# browser sees two distinct origins — identical to what Traefik enforces in
+# k3s. VITE_BASE_PATH is intentionally unset: vite.config.ts defaults to "/"
+# for dev/prod; CI overrides it per-PR (/pr-${N}/) for preview builds.
+env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}" }
 
 [tasks."dev:platform"]
 description = "Platform server (port 3000)"
 run = "cargo run -p familiar-systems-platform"
-# CORS origin is the Caddy front door, not Vite's dev server, because that's
-# the apex the browser actually sees. Non-browser callers using an Origin
-# header against :3000 directly will need to match this.
-env = { HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", DATABASE_URL = "sqlite://data/dev-platform.db?mode=rwc", PORT = "3000", CORS_ORIGINS = "http://localhost:8080", RUST_LOG = "info,familiar_systems_platform=debug" }
+# CORS origin is the app-apex front door, not the marketing apex. The SPA
+# lives on app.localhost:8080 and any browser fetch from it to /api/* is
+# same-origin, so no preflight fires; this entry is defense-in-depth for
+# non-browser callers that send an Origin header against :3000 directly.
+env = { HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", DATABASE_URL = "sqlite://data/dev-platform.db?mode=rwc", PORT = "3000", CORS_ORIGINS = "http://app.localhost:8080", RUST_LOG = "info,familiar_systems_platform=debug" }
 
 [tasks."dev:campaign"]
 description = "Campaign server (port 3001)"

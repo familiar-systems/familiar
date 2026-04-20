@@ -422,12 +422,12 @@ This sets the base to `packages/`. Each Rust type's `#[ts(export_to = "...")]` a
                                   └─────────────┘
 ```
 
-Traefik (via k3s Ingress) routes by path prefix under a single apex per environment:
+Traefik (via k3s Ingress) routes by path prefix within each of two apexes per environment — a marketing apex for the Astro site and an app apex for the SPA + platform + campaign:
 
-- `familiar.systems/` -> apps/site static files
-- `familiar.systems/app/` -> apps/web static files (SPA, all paths under `/app/` serve `index.html`)
-- `familiar.systems/api/` -> platform pod (port 3000, HTTP) via `StripPrefix` middleware
-- `familiar.systems/campaign/{campaign_id}/` -> campaign server pod (port 3001, HTTP + WebSocket) via `StripPrefix` middleware
+- `familiar.systems/` -> apps/site static files (marketing apex)
+- `app.familiar.systems/` -> apps/web static files (SPA at root; all unmatched paths serve `index.html`)
+- `app.familiar.systems/api/` -> platform pod (port 3000, HTTP) via `StripPrefix` middleware
+- `app.familiar.systems/campaign/{campaign_id}/` -> campaign server pod (port 3001, HTTP + WebSocket) via `StripPrefix` middleware
 
 See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture) for the authoritative URL contract. The SPA talks to the platform for login, campaign listing, and checkout. The checkout endpoint returns a shard-agnostic URL. The SPA opens that URL directly; ingress routes `/campaign/{id}/*` to the owning shard. The platform is never in the CRDT hot path.
 
@@ -439,15 +439,15 @@ Workers run on separate GPU infrastructure (Nebius) as k8s Jobs, not as persiste
 mise run dev
 ```
 
-Launches five processes in parallel, unified behind a Caddy reverse proxy on :8080 that mirrors the prod path contract:
+Launches five processes in parallel, unified behind a Caddy reverse proxy on :8080 that mirrors the prod two-apex contract. Caddy binds both host matchers; `*.localhost` is loopback by browser convention, so no `/etc/hosts` entries are needed:
 
-- `apps/site` (Astro): `http://localhost:4321` (proxied at `localhost:8080/`)
-- `apps/web` (Vite, `base=/app/`): `http://localhost:5173` (proxied at `localhost:8080/app/`)
-- `apps/platform` (`cargo run`): `http://localhost:3000` (proxied at `localhost:8080/api/`)
-- `apps/campaign` (`cargo run`): `http://localhost:3001` (proxied at `localhost:8080/campaign/`)
-- Caddy reverse proxy: `http://localhost:8080` (defined in `Caddyfile.dev`)
+- `apps/site` (Astro): `http://localhost:4321` (proxied at `http://localhost:8080/`)
+- `apps/web` (Vite, `base=/`): `http://localhost:5173` (proxied at `http://app.localhost:8080/`)
+- `apps/platform` (`cargo run`): `http://localhost:3000` (proxied at `http://app.localhost:8080/api/`)
+- `apps/campaign` (`cargo run`): `http://localhost:3001` (proxied at `http://app.localhost:8080/campaign/`)
+- Caddy reverse proxy: listens on `:8080`, two host blocks (defined in `Caddyfile.dev`)
 
-Contributors only ever open `http://localhost:8080`. Caddy handles path-based routing and `StripPrefix` behavior so backends continue to own their own routes. Same-origin means no CORS preflight in dev; cargo's incremental compiler + Vite HMR keep iteration sub-second because the binaries run natively (not in containers).
+Contributors open the marketing apex at `http://localhost:8080/` and the app apex at `http://app.localhost:8080/`. Caddy handles path-based routing and `StripPrefix` behavior within each apex so backends continue to own their own routes. SPA→API and SPA→campaign calls are same-origin on the app apex; cargo's incremental compiler + Vite HMR keep iteration sub-second because the binaries run natively (not in containers).
 
 See [Deployment Architecture §One topology everywhere](./2026-03-30-deployment-architecture.md#one-topology-everywhere) and [app-server PRD §Deployment targets](./2026-04-11-app-server-prd.md#deployment-targets) for the full per-environment detail.
 

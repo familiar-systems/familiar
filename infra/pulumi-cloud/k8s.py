@@ -21,7 +21,14 @@ import pulumi_kubernetes as k8s
 # are untyped dicts; always read upstream docs before modifying.
 from pulumi_kubernetes.apiextensions import CustomResource
 
-from config import HANKO_API_URL_PROD, PREVIEW_DOMAINS, PRODUCTION_DOMAINS
+from config import (
+    APP_PROD_DOMAINS,
+    HANKO_API_URL_PROD,
+    MARKETING_PREVIEW_DOMAINS,
+    MARKETING_PROD_DOMAINS,
+    PREVIEW_DOMAINS,
+    PRODUCTION_DOMAINS,
+)
 
 if TYPE_CHECKING:
     import pulumiverse_scaleway as scaleway
@@ -184,14 +191,14 @@ def create_k8s_resources(
     )
 
     # -- TLS Certificate ------------------------------------------------------
-    # SANs are just the prod and preview apex domains. Path-based routing
-    # under a single apex per environment removed the need for per-service
-    # subdomains (api.*, app.*) and per-PR preview subdomains (*-pr-N.*),
-    # so the cert's SAN list shrinks to one entry per environment apex.
+    # SANs cover all four apex domains: marketing + app, prod + preview.
+    # Path-based routing within each apex removes the need for per-PR or
+    # per-service subdomains, so the SAN list is exactly the apex set.
     # See docs/plans/2026-04-11-app-server-prd.md "URL architecture".
     #
     # The secret name remains `preview-wildcard-tls` for continuity with
-    # existing Ingress references; the cert itself is no longer a wildcard.
+    # existing Ingress references, despite the cert being neither a wildcard
+    # nor preview-only.
     _wildcard_cert = CustomResource(
         "preview-wildcard-cert",
         api_version="cert-manager.io/v1",
@@ -305,7 +312,10 @@ def create_k8s_resources(
         opts=k8s_opts,
     )
 
-    all_site_hosts = [*PRODUCTION_DOMAINS, *PREVIEW_DOMAINS]
+    # Site (Astro) serves the marketing apexes only. The app apexes
+    # (app.familiar.systems, app.preview.familiar.systems) belong to the
+    # SPA + platform + campaign ingresses on the other side of the split.
+    all_site_hosts = [*MARKETING_PROD_DOMAINS, *MARKETING_PREVIEW_DOMAINS]
     _site_ingress = k8s.networking.v1.Ingress(
         "site-ingress",
         metadata=k8s.meta.v1.ObjectMetaArgs(
@@ -406,11 +416,12 @@ def create_k8s_resources(
                                 ),
                                 k8s.core.v1.EnvVarArgs(
                                     name="CORS_ORIGINS",
-                                    # Browser traffic is same-origin under
-                                    # the apex, so CORS preflights do not
-                                    # fire; this entry is for non-browser
-                                    # consumers that send an Origin header.
-                                    value="https://familiar.systems",
+                                    # Browser traffic is same-origin within
+                                    # the app apex, so CORS preflights do
+                                    # not fire; this entry is for non-
+                                    # browser consumers that send an Origin
+                                    # header.
+                                    value="https://app.familiar.systems",
                                 ),
                                 k8s.core.v1.EnvVarArgs(name="PORT", value=str(PLATFORM_PORT)),
                                 k8s.core.v1.EnvVarArgs(name="RUST_LOG", value="info"),
@@ -475,10 +486,12 @@ def create_k8s_resources(
         opts=k8s_opts,
     )
 
-    # Platform reachable at <apex>/api/* (path-based, not a subdomain).
-    # Longer PathPrefix wins over the site's "/" catch-all in Traefik's
-    # default router-priority-by-rule-length model, so /api/* lands here
-    # and everything else falls through to the site.
+    # Platform reachable at <app-apex>/api/* (path-based within the app
+    # apex, not a per-service subdomain). The SPA, platform, and campaign
+    # shards all share the app apex so browser calls are same-origin.
+    # Longer PathPrefix wins in Traefik's default router-priority-by-rule-
+    # length model, so /api/* lands here while /campaign/* and the SPA
+    # catch-all bind separately.
     _platform_ingress = k8s.networking.v1.Ingress(
         "platform-ingress",
         metadata=k8s.meta.v1.ObjectMetaArgs(
@@ -492,13 +505,13 @@ def create_k8s_resources(
         spec=k8s.networking.v1.IngressSpecArgs(
             tls=[
                 k8s.networking.v1.IngressTLSArgs(
-                    hosts=["familiar.systems"],
+                    hosts=list(APP_PROD_DOMAINS),
                     secret_name=WILDCARD_CERT_SECRET,
                 ),
             ],
             rules=[
                 k8s.networking.v1.IngressRuleArgs(
-                    host="familiar.systems",
+                    host=host,
                     http=k8s.networking.v1.HTTPIngressRuleValueArgs(
                         paths=[
                             k8s.networking.v1.HTTPIngressPathArgs(
@@ -515,7 +528,8 @@ def create_k8s_resources(
                             ),
                         ],
                     ),
-                ),
+                )
+                for host in APP_PROD_DOMAINS
             ],
         ),
         opts=pulumi.ResourceOptions(provider=provider, depends_on=[_platform_strip_prefix]),

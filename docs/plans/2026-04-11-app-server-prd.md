@@ -17,35 +17,46 @@ Clients interact with two servers independently. The SPA calls the app server fo
 
 Campaign servers are the only processes that touch campaign data. The app server never reads from or writes to campaign libSQL files or object storage. This is structural: "nothing happens to a campaign without checkout" applies to the app server too.
 
-Both binaries verify Hanko JWTs independently. Shared auth code lives in `crates/shared/`. All traffic (app server, campaign server, SPA) shares a single apex origin per environment — see "URL architecture" below — so browser calls are same-origin and do not trigger CORS preflight. The CORS layer remains as defense-in-depth for any non-browser caller that sends an Origin header. Auth tokens are bearer JWTs and are origin-agnostic.
+Both binaries verify Hanko JWTs independently. Shared auth code lives in `crates/shared/`. The SPA, app server, and campaign server share the **app apex** (`app.familiar.systems` in prod) — see "URL architecture" below — so browser calls between them are same-origin and do not trigger CORS preflight. The marketing site lives on a separate apex (`familiar.systems`) and does not make authenticated calls into the app. The CORS layer remains as defense-in-depth for any non-browser caller that sends an Origin header. Auth tokens are bearer JWTs and are origin-agnostic.
 
 ### URL architecture
 
-All user-facing traffic terminates on a single apex per environment and is routed by path prefix. Per-service subdomains (`api.*`, `app.*`, `c1.*`) are not used. This is the structural answer to the Hanko Cloud "wildcard origin" problem: each Hanko tenant registers exactly one origin — the environment apex — and that origin never changes.
+User-facing traffic is split across two apexes per environment: a **marketing apex** for the Astro static site and an **app apex** for the SPA, platform API, and campaign shards. Path-based routing applies within each apex. Per-service subdomains (`api.*`, `c1.*`, per-PR subdomains) are not used. Each Hanko tenant registers exactly one origin — the app apex — and that origin never changes. This is the structural answer to Hanko Cloud's refusal of wildcard origins and its lack of an admin API for per-PR origin registration.
+
+**Apex per environment:**
+
+| Environment | Marketing apex | App apex |
+|---|---|---|
+| Prod | `familiar.systems` | `app.familiar.systems` |
+| Preview | `preview.familiar.systems` | `app.preview.familiar.systems` |
+| Local dev | `localhost:8080` | `app.localhost:8080` |
 
 **Prod path scheme:**
 
 - `familiar.systems/` — Astro static site
-- `familiar.systems/app/` — Vite SPA
-- `familiar.systems/api/` — platform server
-- `familiar.systems/campaign/{campaign_id}/` — campaign shard hosting that campaign
+- `app.familiar.systems/` — Vite SPA (at root)
+- `app.familiar.systems/api/` — platform server
+- `app.familiar.systems/campaign/{campaign_id}/` — campaign shard hosting that campaign
 
-**Preview path scheme (per PR):** identical, nested under `/pr-{PR_NUMBER}/`:
+**Preview path scheme (per PR):** identical, with `/pr-{PR_NUMBER}/` prefix applied to each apex:
 
-- `preview.familiar.systems/pr-42/app/` — SPA for PR 42
-- `preview.familiar.systems/pr-42/api/` — platform for PR 42
-- `preview.familiar.systems/pr-42/campaign/{campaign_id}/` — campaign shard for PR 42
+- `preview.familiar.systems/pr-42/` — Astro site for PR 42
+- `app.preview.familiar.systems/pr-42/` — SPA for PR 42
+- `app.preview.familiar.systems/pr-42/api/` — platform for PR 42
+- `app.preview.familiar.systems/pr-42/campaign/{campaign_id}/` — campaign shard for PR 42
 
-**Scope.** This path-based contract governs the application itself: site, SPA, platform API, and campaign shards. Subdomains that host separate systems — notably `auth.familiar.systems` / `auth.preview.familiar.systems` (Hanko tenants) — are outside this scope and manage their own routing and TLS. Future out-of-band surfaces (docs, status page, blog, community forums, anything that is not the application) can freely live on their own subdomains without breaking this contract, because the constraint is about *the app's* URL shape, not about the registered domain as a whole.
+**Scope.** This two-apex contract governs the application. Subdomains that host separate systems — `auth.familiar.systems` / `auth.preview.familiar.systems` (Hanko tenants) — are outside this scope and manage their own routing and TLS. Future out-of-band surfaces (docs, status page, blog, community forums) live on their own subdomains.
+
+**Origin isolation.** The marketing apex and the app apex are distinct browser origins. Cookies, localStorage, and sessionStorage at one are invisible to the other. Authenticated session state lives on the app apex and is unreachable from marketing code. Cross-apex calls (if any) go through CORS; the public campaign showcase endpoint on the app server is the one known candidate and is expected to be consumed at Astro build time, so no runtime cross-origin fetch is required.
 
 **Shard-agnostic URLs.** The platform's checkout API returns URLs that contain `campaign_id` but never a `shard_id`. The SPA treats them opaquely. When a campaign's shard assignment changes (lease expiry, reclaim), the URL is unchanged — ingress-layer re-resolution handles routing to the new shard. At N=1 shard the routing is a direct Ingress rule pointing `/campaign/*` at the only shard; at N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the platform's routing table. The app server is never in the CRDT hot path under either topology.
 
-**Single Hanko origin per environment.** Each tenant registers exactly one origin for the life of the project:
+**Hanko origin mapping.** Each tenant registers exactly one apex as its origin for the life of the project:
 
-- Prod tenant: `https://familiar.systems`
-- Preview tenant: `https://preview.familiar.systems`
+- Prod tenant: `https://app.familiar.systems`
+- Preview tenant: `https://app.preview.familiar.systems` (plus `http://app.localhost:8080` for local dev against the preview tenant)
 
-This replaces the earlier plan that assigned each PR its own subdomain (`app-pr-42.preview.familiar.systems`) and required per-PR Hanko origin registration — which Hanko Cloud does not support via wildcard or Admin API.
+The marketing apex is not a Hanko origin — marketing has no authenticated flows. Per-PR origin registration is not needed because every PR reuses the app apex with a different `/pr-{N}/` path prefix.
 
 ---
 
@@ -95,7 +106,7 @@ The fake auth provider is **not implemented today**. Today the only path is the 
 - Consulted by the app server when minting a checkout response; consulted by `campaign-router` (when N>1 shards exist) for per-request resolution
 - Updated when campaigns are checked out, released, or reassigned
 - Single-server ownership enforced by leases
-- The SPA never sees the shard name. The checkout response contains shard-agnostic URLs (`familiar.systems/campaign/{campaign_id}/*`).
+- The SPA never sees the shard name. The checkout response contains shard-agnostic URLs (`app.familiar.systems/campaign/{campaign_id}/*` in prod; same path scheme under the preview app apex).
 
 ### Shard registry
 
@@ -187,29 +198,29 @@ Three environments, same application shape. What changes between them is the fab
 
 ### Local dev
 
-- **Entry point:** `mise run dev` starts five parallel processes: Astro site (:4321), Vite SPA (:5173, `base=/app/`), platform (cargo run, :3000), campaign (cargo run, :3001), and a Caddy reverse proxy (:8080) configured by `Caddyfile.dev`.
-- **URLs the browser sees:** only `http://localhost:8080`. Caddy routes `/` → site, `/app/*` → SPA, `/api/*` → platform, `/campaign/*` → campaign — identical to the prod path contract. Dev/prod URL-shape drift is a class of bug that tends to hide in preview and surface in production; Caddy closes that gap.
-- **Auth:** preview Hanko tenant via `HANKO_API_URL_DEV` in `mise.toml`. Email/passcode works against `http://localhost:8080`; passkeys don't (rpID mismatch, intentional).
+- **Entry point:** `mise run dev` starts five parallel processes: Astro site (:4321), Vite SPA (:5173, `base=/`), platform (cargo run, :3000), campaign (cargo run, :3001), and a Caddy reverse proxy (:8080) configured by `Caddyfile.dev`.
+- **URLs the browser sees:** `http://localhost:8080` (marketing) and `http://app.localhost:8080` (app). Caddy binds both host matchers on port 8080; `*.localhost` is loopback by browser convention, so no `/etc/hosts` entries are required. The marketing host routes `/` → Astro; the app host routes `/api/*` → platform, `/campaign/*` → campaign, `/*` → SPA. Dev topology mirrors prod exactly — two apexes, same path rules within each.
+- **Auth:** preview Hanko tenant via `HANKO_API_URL_DEV` in `mise.toml`. Registered origin on the preview tenant is `http://app.localhost:8080`. Email/passcode works; passkeys don't (rpID mismatch, intentional).
 - **Data:** local libSQL files under `data/`. `:memory:` for tests.
 
 ### PR preview
 
 - **Entry point:** `.github/workflows/deploy-preview.yml` runs on PR open/sync. Each PR deploys to k3s namespace `preview-pr-${PR_NUMBER}` on the shared cluster.
-- **URLs:** every PR lives under `https://preview.familiar.systems/pr-${PR_NUMBER}/{app,api,campaign}/...`. All PRs share the apex origin, so browser state and auth session carry across PRs by design (single sign-in, shared localStorage).
-- **Routing:** Traefik Ingress per PR with `StripPrefix` middleware that removes `/pr-${PR_NUMBER}` before the request reaches backends.
-- **Auth:** preview Hanko tenant (same tenant as local dev), registered origin `https://preview.familiar.systems` (one entry, stable across all PRs forever).
+- **URLs:** each PR gets a `/pr-${PR_NUMBER}/` prefix on both apexes. Marketing at `https://preview.familiar.systems/pr-${PR_NUMBER}/`; app (SPA + API + campaign) at `https://app.preview.familiar.systems/pr-${PR_NUMBER}/...`. All PRs share the app apex origin, so browser state and auth session carry across PRs by design (single sign-in, shared localStorage).
+- **Routing:** Traefik IngressRoutes per PR on both hosts, with `StripPrefix` middleware that removes `/pr-${PR_NUMBER}` before the request reaches backends.
+- **Auth:** preview Hanko tenant (same tenant as local dev), registered origin `https://app.preview.familiar.systems` (one entry, stable across all PRs forever).
 - **Data:** per-PR, scoped by namespace. Copy + scrub of the production platform.db at namespace creation; contributor campaign files copied from object storage to a preview-scoped prefix. See the deployment-architecture ADR for the full lifecycle.
 
 ### Prod
 
 - **Entry point:** Pulumi-managed k3s resources in the default namespace. `pulumi up` from `infra/pulumi-cloud/`.
-- **URLs:** `https://familiar.systems/{app,api,campaign}/...`. Single priority-ordered Traefik Ingress per host, path-prefix rules.
-- **Auth:** prod Hanko tenant via `HANKO_API_URL` (value is `HANKO_API_URL_PROD` constant from Pulumi config, injected into the platform deployment). Registered origin is exactly `https://familiar.systems`.
+- **URLs:** `https://familiar.systems/` (Astro); `https://app.familiar.systems/{,api,campaign}/...`. Two host-scoped Traefik IngressRoutes; longest-prefix rules apply within the app apex.
+- **Auth:** prod Hanko tenant via `HANKO_API_URL` (value is `HANKO_API_URL_PROD` constant from Pulumi config, injected into the platform deployment). Registered origin is exactly `https://app.familiar.systems`.
 - **Data:** platform DB on Hetzner Volume at `/data/platform/platform.db`. Campaign libSQL files on the volume + mirrored to Hetzner Object Storage (source of truth for recovery + cross-shard handoff).
 
 ### What's the same across all three
 
-- The URL contract (paths, not subdomains).
+- The URL contract (two apexes per environment, path routing within each).
 - The JWT verification code path. One `HANKO_API_URL`, no branching on "is auth enabled."
 - The SPA bundle. Only `base` path and `VITE_HANKO_API_URL` change between builds.
 - The platform and campaign server binaries, identical bits.

@@ -51,12 +51,12 @@ There is no standalone "all-in-one" binary. Local development, preview environme
 | Task | Command | Port |
 |---|---|---|
 | `dev:site` | `pnpm --filter @familiar-systems/site dev` (Astro) | 4321 |
-| `dev:web` | `pnpm --filter @familiar-systems/web dev` (Vite, `base=/app/`) | 5173 |
+| `dev:web` | `pnpm --filter @familiar-systems/web dev` (Vite, `base=/`) | 5173 |
 | `dev:platform` | `cargo run -p familiar-systems-platform` | 3000 |
 | `dev:campaign` | `cargo run -p familiar-systems-campaign` | 3001 |
 | `dev:proxy` | `caddy run --config Caddyfile.dev` | **8080** |
 
-Contributors only ever open `http://localhost:8080`. Caddy owns the path-based routing (`/` → site, `/app/*` → SPA, `/api/*` → platform, `/campaign/*` → campaign), identical to what Traefik does in k3s. Same-origin everywhere; cargo's incremental compiler and Vite HMR continue to give sub-second iteration on source changes because the binaries run natively, not inside containers.
+Contributors open `http://localhost:8080` for marketing and `http://app.localhost:8080` for the app. Caddy binds both host matchers on port 8080; `*.localhost` is loopback by browser convention, so no `/etc/hosts` entries are required. On the marketing host, `/` → Astro. On the app host, `/api/*` → platform, `/campaign/*` → campaign, `/*` → SPA (at root). This mirrors what Traefik does in k3s. Same-origin between the SPA and the services it calls; cargo's incremental compiler and Vite HMR continue to give sub-second iteration on source changes because the binaries run natively, not inside containers.
 
 **Preview and prod** deploy the same binaries to k3s, as separate pods in either a per-PR namespace (preview) or the default namespace (prod). Traefik replaces Caddy as the reverse proxy, but the path contract is the same. See §URL routing and §Preview environments below for the cluster-side details.
 
@@ -71,7 +71,7 @@ The platform owns everything that exists before a campaign is checked out and in
 - **Authentication.** Hanko JWT verification. Token validation happens on both sides of the boundary (the platform verifies tokens for its own routes; the campaign server verifies tokens on WebSocket upgrade), but user identity, profiles, and session management live on the platform.
 - **Campaign CRUD.** Create, list, delete, transfer ownership. Campaign metadata lives in platform.db. The campaign's libSQL data file lives in object storage — the platform never opens it.
 - **The routing table.** Maps campaign ID → campaign server address. Lease-based: each checkout is a lease with a heartbeat. The platform is the single source of truth for "which server owns which campaign."
-- **The checkout endpoint.** `POST /api/campaigns/:id/checkout` → `{ ws_url: "wss://{apex}/campaign/:id/ws", api_base: "https://{apex}/campaign/:id", token: "..." }`. The SPA calls this to acquire access to a campaign. If the campaign isn't checked out, the platform assigns it to the least-loaded campaign server, instructs that server to check out the campaign, and records the assignment in the routing table. The returned URLs are **shard-agnostic** — they carry `campaign_id` but never a `shard_id`, because shard selection is an ingress-layer concern (see §URL routing). At N=1 shard the Ingress routes `/campaign/*` straight to the single shard; at N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the routing table. The SPA never observes shard identity.
+- **The checkout endpoint.** `POST /api/campaigns/:id/checkout` → `{ ws_url: "wss://{app-apex}/campaign/:id/ws", api_base: "https://{app-apex}/campaign/:id", token: "..." }`. The SPA calls this to acquire access to a campaign. If the campaign isn't checked out, the platform assigns it to the least-loaded campaign server, instructs that server to check out the campaign, and records the assignment in the routing table. The returned URLs are **shard-agnostic** — they carry `campaign_id` but never a `shard_id`, because shard selection is an ingress-layer concern (see §URL routing). At N=1 shard the Ingress routes `/campaign/*` straight to the single shard; at N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the routing table. The SPA never observes shard identity.
 - **Campaign server health monitoring.** Receives heartbeats from campaign servers, tracks load, detects failed leases.
 - **Future: community marketplace.** Starter packs, community templates, contributor profiles, content curation. This is cross-campaign, stateless, CDN-cacheable — a completely different traffic pattern from the campaign server's long-lived WebSocket connections.
 
@@ -104,22 +104,23 @@ Job state lives in platform.db — a `jobs` table tracking audio processing work
 
 ### URL routing
 
-URL structure is governed by [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture). All environments (dev, preview, prod) share one apex per environment with path-based routing for every application service. From a deployment standpoint, the relevant operational properties are:
+URL structure is governed by [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture). Every environment terminates traffic on **two apexes** — a marketing apex and an app apex — with path-based routing applied within each. From a deployment standpoint, the relevant operational properties are:
 
-- **Single apex per environment.** Site, SPA, platform API, and campaign shards share one host (`familiar.systems` in prod, `preview.familiar.systems` in preview, `localhost:8080` in local dev) and are routed by path prefix.
-- **Priority-ordered path rules on a single reverse-proxy Ingress per host.** Longer prefixes win: `/app`, `/api`, `/campaign` each land at their service; `/` catches the rest and serves the Astro site.
+- **Two apexes per environment.** Marketing (`familiar.systems` / `preview.familiar.systems` / `localhost:8080`) serves the Astro site. App (`app.familiar.systems` / `app.preview.familiar.systems` / `app.localhost:8080`) serves the SPA, platform API, and campaign shards.
+- **Priority-ordered path rules within the app apex.** Longer prefixes win: `/api`, `/campaign` each land at their service; `/` catches the rest and serves the SPA at root. The marketing apex has one rule: `/` → Astro.
 - **`StripPrefix` middleware** strips the path prefix before requests reach backends, so the platform continues to own `/me`, `/campaigns/:id/checkout` on its own routes without prefix-awareness. In k3s this is a Traefik `Middleware` CRD; in local dev it's Caddy's `handle_path` directive.
-- **Shard-agnostic campaign URLs.** The checkout API returns `wss://{apex}/campaign/{campaign_id}/ws`; the SPA opens it verbatim. At N=1 shard the Ingress routes `/campaign/*` straight to the single shard. At N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the routing table. The SPA never observes shard identity.
+- **Shard-agnostic campaign URLs.** The checkout API returns `wss://{app-apex}/campaign/{campaign_id}/ws`; the SPA opens it verbatim. At N=1 shard the Ingress routes `/campaign/*` straight to the single shard. At N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the routing table. The SPA never observes shard identity.
+- **Origin isolation between marketing and app.** Cookies, localStorage, and sessionStorage at the marketing apex are invisible to the app apex, and vice versa. Authenticated session state lives on the app apex; the marketing apex has no authenticated surfaces.
 
-Subdomains outside the application's apex (Hanko tenants at `auth.*`, plus any future docs/status/blog surfaces) live on their own DNS and are not part of this routing contract.
+Subdomains outside either apex (Hanko tenants at `auth.*`, plus any future docs/status/blog surfaces) live on their own DNS and are not part of this routing contract.
 
 #### Bookmarked links and cold checkout
 
-When a user hits a bookmarked link like `/app/campaigns/123/page/456`:
+When a user hits a bookmarked link like `app.familiar.systems/campaigns/123/page/456` (or `app.preview.familiar.systems/pr-42/campaigns/123/page/456` in preview):
 
-1. **Reverse proxy routes `/app/*` to the web service**, which serves `index.html` for every subpath (SPA fallback). The SPA boots.
-2. **SPA calls checkout.** `POST /api/campaigns/123/checkout` — same-origin fetch, no CORS preflight. The reverse proxy routes `/api/*` to the platform. The platform consults the routing table.
-3. **If the campaign is already checked out:** the platform returns `{ws_url: "wss://{apex}/campaign/123/ws", ...}`. The SPA opens the WebSocket.
+1. **Reverse proxy routes the request to the web service on the app apex**, which serves `index.html` for every subpath (SPA fallback). The SPA boots.
+2. **SPA calls checkout.** `POST /api/campaigns/123/checkout` — same-origin fetch on the app apex, no CORS preflight. The reverse proxy routes `/api/*` to the platform. The platform consults the routing table.
+3. **If the campaign is already checked out:** the platform returns `{ws_url: "wss://{app-apex}/campaign/123/ws", ...}`. The SPA opens the WebSocket.
 4. **If the campaign is not checked out (cold start):** the platform picks the least-loaded shard, instructs it to check out campaign 123 (shard downloads the libSQL file from object storage, spawns CampaignSupervisor + actors), writes the routing-table entry, and returns the same URL shape. The SPA shows a loading skeleton during checkout; when actors are ready the WebSocket upgrade succeeds, the SPA subscribes to the room for `page/456`, hydrates the TipTap doc, and scrolls.
 
 The cold-checkout flow is the same async protocol described in the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md). Only the URL format changed (path vs subdomain); the protocol is unchanged.
@@ -240,19 +241,27 @@ All resources live in a k8s namespace `preview-pr-${PR_NUMBER}` on the shared cl
 
 #### Path-based routing per PR
 
-All PRs share the apex `preview.familiar.systems`. Per-PR routing is a path prefix: `/pr-${PR_NUMBER}`. Each PR namespace contains three `Middleware` + `Ingress` pairs, all bound to that apex:
+Each PR gets a `/pr-${PR_NUMBER}` path prefix on **both** apexes. Per-PR IngressRoutes bind to each host and share the preview cert.
+
+**Marketing apex (`preview.familiar.systems`) — one rule per PR:**
 
 | Path prefix | Service | `StripPrefix` strips |
 |---|---|---|
-| `/pr-${N}/app` | `web` (nginx serving built SPA) | `/pr-${N}/app` |
-| `/pr-${N}/api` | `platform` (:3000) | `/pr-${N}/api` |
 | `/pr-${N}` | `site` (nginx serving Astro build) | `/pr-${N}` |
 
-Traefik merges Ingress rules from every namespace bound to the same host and resolves collisions by rule length (longest path prefix wins). PR 42 and PR 43 coexist on `preview.familiar.systems` with no cross-talk: `/pr-42/*` paths route into PR 42's namespace, `/pr-43/*` paths route into PR 43's.
+**App apex (`app.preview.familiar.systems`) — three rules per PR, longest-prefix wins:**
 
-The SPA for each PR is built with Vite `base = /pr-${PR_NUMBER}/app/`, so asset URLs and internal routes resolve under the PR prefix. API and campaign calls are derived at runtime by `apps/web/src/lib/paths.ts` from `import.meta.env.BASE_URL`, producing `/pr-${N}/api/...` and `/pr-${N}/campaign/...` respectively — same origin as the SPA, so no CORS preflight.
+| Path prefix | Service | `StripPrefix` strips |
+|---|---|---|
+| `/pr-${N}/api` | `platform` (:3000) | `/pr-${N}/api` |
+| `/pr-${N}/campaign` | `campaign` (or `campaign-router` at N>1 shards) | `/pr-${N}/campaign` |
+| `/pr-${N}` | `web` (nginx serving built SPA at root) | `/pr-${N}` |
 
-The routing pattern in prod is the same shape without the `/pr-${N}` prefix: `familiar.systems/app/`, `familiar.systems/api/`, `familiar.systems/campaign/`, `familiar.systems/`. See §URL routing above.
+Traefik merges Ingress rules from every namespace bound to the same host and resolves collisions by rule length (longest path prefix wins). PR 42 and PR 43 coexist on both apexes with no cross-talk: `/pr-42/*` paths route into PR 42's namespace, `/pr-43/*` paths route into PR 43's.
+
+The SPA for each PR is built with Vite `base = /pr-${PR_NUMBER}/`, so asset URLs and internal routes resolve under the PR prefix. API and campaign calls are derived at runtime by `apps/web/src/lib/paths.ts` from `import.meta.env.BASE_URL`, producing `/pr-${N}/api/...` and `/pr-${N}/campaign/...` respectively — same origin as the SPA (both on the app apex), so no CORS preflight.
+
+The routing pattern in prod is the same shape without the `/pr-${N}` prefix: `familiar.systems/` on the marketing apex, `app.familiar.systems/`, `app.familiar.systems/api/`, `app.familiar.systems/campaign/` on the app apex. See §URL routing above.
 
 #### Data setup
 
@@ -271,25 +280,25 @@ Preview uses a **separate Hanko tenant** from production:
 
 | Environment | Hanko tenant URL | Registered origin(s) |
 |---|---|---|
-| Prod | `auth.familiar.systems` | `https://familiar.systems` |
-| Preview (all PRs + local dev) | `auth.preview.familiar.systems` | `https://preview.familiar.systems`, `http://localhost:8080` |
+| Prod | `auth.familiar.systems` | `https://app.familiar.systems` |
+| Preview (all PRs + local dev) | `auth.preview.familiar.systems` | `https://app.preview.familiar.systems`, `http://app.localhost:8080` |
 
-Each tenant registers exactly one apex origin per environment. Hanko Cloud does not accept wildcard origins (`https://*.preview.familiar.systems` is rejected with "Origin is not a valid URL or Android APK key hash"), and it exposes no admin API to register origins from CI. Path-based routing is what makes the preview tenant workable: every PR reuses the same preview apex, so the origin list never changes across PRs.
+Each tenant's registered origin is the environment's **app apex** — the marketing apex has no authenticated surfaces and is not a Hanko origin. The second entry on the preview tenant is the local-dev app apex. Hanko Cloud does not accept wildcard origins (`https://*.preview.familiar.systems` is rejected with "Origin is not a valid URL or Android APK key hash"), and it exposes no admin API to register origins from CI. Path-based routing within the app apex is what makes the preview tenant workable: every PR reuses the same app apex, so the origin list never changes across PRs.
 
-**Consequences of the shared apex in preview:**
+**Consequences of the shared app apex in preview:**
 
-- Cookies, localStorage, and sessionStorage at `preview.familiar.systems` are shared across every PR's SPA. Single sign-in covers all PRs; conversely, a storage bug in one PR can pollute state seen by others until the user clears site data.
-- Passkeys are technically viable under a single rpID (`preview.familiar.systems`) but are disabled on the preview tenant for contributor-workflow simplicity. Email/passcode is sufficient.
+- Cookies, localStorage, and sessionStorage at `app.preview.familiar.systems` are shared across every PR's SPA. Single sign-in covers all PRs; conversely, a storage bug in one PR can pollute state seen by others until the user clears site data.
+- Passkeys are technically viable under a single rpID (`app.preview.familiar.systems`) but are disabled on the preview tenant for contributor-workflow simplicity. Email/passcode is sufficient.
 
 Contributors are added manually by email on the preview tenant; registration is disabled there. The prod tenant opens registration when the product launches publicly.
 
 #### TLS
 
-A single cert-manager `Certificate` covers both apex domains (`familiar.systems`, `preview.familiar.systems`), issued once via DNS-01 + bunny.net. No per-PR certs, no wildcard SANs. See [Infrastructure](./2026-03-30-infrastructure.md) for the cert-manager configuration.
+A single cert-manager `Certificate` covers all four apex domains — `familiar.systems`, `app.familiar.systems`, `preview.familiar.systems`, `app.preview.familiar.systems` — issued once via DNS-01 + bunny.net. No per-PR certs, no wildcard SANs. See [Infrastructure](./2026-03-30-infrastructure.md) for the cert-manager configuration.
 
 #### Lifecycle
 
-**PR open / sync:** `.github/workflows/deploy-preview.yml` builds the three images (site, web, platform), runs the data-setup Job, then applies the manifests in `infra/k8s/preview/*.yaml` via `envsubst` templating. Template variables are `NAMESPACE` (`preview-pr-${PR_NUMBER}`), `PR_NUMBER`, and per-image tags. A single PR comment posts one URL to open: `https://preview.familiar.systems/pr-${N}/app/`.
+**PR open / sync:** `.github/workflows/deploy-preview.yml` builds the three images (site, web, platform), runs the data-setup Job, then applies the manifests in `infra/k8s/preview/*.yaml` via `envsubst` templating. Template variables are `NAMESPACE` (`preview-pr-${PR_NUMBER}`), `PR_NUMBER`, and per-image tags. A single PR comment posts one URL to open: `https://app.preview.familiar.systems/pr-${N}/`.
 
 **PR close:** `.github/workflows/cleanup-preview.yml` deletes the namespace, which cascade-removes all resources inside (Deployments, Services, Ingresses, Middlewares, PVCs, Jobs). The preview object-storage prefix is cleaned separately.
 
@@ -307,7 +316,7 @@ Campaign files are self-contained libSQL databases. Copying them is a file opera
 
 - **Independent deployment lifecycles.** The platform can go weeks without a deploy while the campaign server ships daily. Campaign server restarts don't affect login or campaign discovery. Platform deploys don't disconnect editing sessions.
 - **Blast radius isolation.** A panic in the actor hierarchy, a LoroDoc reconstruction bug, or a compiler edge case crashes the campaign server. The platform stays up. Users can log in and see their campaign list. The error is "I can't open my campaign" not "the site is down."
-- **One topology everywhere.** Native `mise run dev` locally (with Caddy as the front-door reverse proxy on :8080), k3s in preview and prod — but always the same two binaries communicating over HTTP behind a reverse proxy that enforces the path-based URL contract. No standalone binary, no `Local*` implementations, no "does dev match prod?" uncertainty. What you run on your laptop is URL-shaped identically to what runs in production.
+- **One topology everywhere.** Native `mise run dev` locally (with Caddy as the front-door reverse proxy on :8080 serving both the marketing and app host matchers), k3s in preview and prod — but always the same two binaries communicating over HTTP behind a reverse proxy that enforces the two-apex URL contract. No standalone binary, no `Local*` implementations, no "does dev match prod?" uncertainty. What you run on your laptop is URL-shaped identically to what runs in production.
 - **Self-hosting on a clear path.** The planned `docker compose up` self-hosting story reuses the same split + path-based shape; the Caddy config in dev is the same kind of reverse-proxy config a self-hoster would run. Not yet shipped.
 - **Preview environments that test reality.** Every PR exercises the same service topology, data setup, migration path, and auth flow as production. Infra surprises are absorbed at zero cost, not under load.
 - **Clear contributor boundaries.** A contributor working on marketplace features touches `crates/platform/` and never needs to understand the actor hierarchy. A contributor working on the collaboration layer touches `crates/campaign/` and never needs to understand marketplace routing. The Cargo workspace enforces compilation boundaries.
@@ -327,7 +336,7 @@ Campaign files are self-contained libSQL databases. Copying them is a file opera
 - **The platform is the single source of truth for campaign → server routing.** Campaign servers never communicate with each other. All coordination flows through the platform's routing table.
 - **A campaign has at most one owning server at any time.** Enforced by the lease model in the platform. Concurrent lease acquisitions resolve atomically — exactly one succeeds.
 - **Lease release happens only after writeback.** During shutdown, each campaign's lease is released only after its data has been confirmed written to object storage. The heartbeat continues throughout the drain — it is the first thing to start on boot and the last thing to stop before exit — preventing the platform from expiring leases during writeback.
-- **One topology everywhere.** Local dev (`mise run dev` + Caddy on :8080), preview (k3s preview namespace + Traefik), production (k3s default namespace + Traefik), and future self-hosting (`docker compose up` + containerized reverse proxy) all run the same split binaries communicating over HTTP behind a path-based reverse proxy. No standalone-only code paths.
+- **One topology everywhere.** Local dev (`mise run dev` + Caddy on :8080), preview (k3s preview namespace + Traefik), production (k3s default namespace + Traefik), and future self-hosting (`docker compose up` + containerized reverse proxy) all run the same split binaries communicating over HTTP behind a two-apex path-based reverse proxy. No standalone-only code paths.
 - **Preview environments always use split mode.** PR previews deploy both binaries as separate pods to test the real service topology, internal API, and lease protocol on every PR.
 - **All cross-service interfaces are defined as traits in `crates/shared/`.** No implicit dependencies between platform and campaign server. If it's not in a trait, it doesn't cross the boundary.
 

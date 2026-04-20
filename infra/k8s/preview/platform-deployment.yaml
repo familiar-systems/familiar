@@ -25,11 +25,12 @@ spec:
             - name: HANKO_API_URL
               value: ${HANKO_API_URL_DEV}
             - name: CORS_ORIGINS
-              # All preview SPAs share a single apex origin regardless of
-              # PR number. Browser calls from /pr-N/app to /pr-N/api are
-              # same-origin (preview.familiar.systems) and don't trigger
-              # CORS preflight; this entry exists for non-browser callers.
-              value: https://preview.familiar.systems
+              # All preview SPAs share the app apex origin regardless of PR
+              # number. Browser calls from /pr-N/ (SPA) to /pr-N/api
+              # (platform) are same-origin on app.preview.familiar.systems
+              # and don't trigger CORS preflight; this entry exists for
+              # non-browser callers that send an Origin header.
+              value: https://app.preview.familiar.systems
             - name: DATABASE_URL
               value: sqlite:///data/platform/platform.db?mode=rwc
             - name: PORT

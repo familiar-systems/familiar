@@ -84,6 +84,7 @@
 #           push: true
 #           build-args: |
 #             SITE_URL=https://preview.familiar.systems
+#             SITE_BASE_PATH=/pr-${{ github.event.pull_request.number }}/
 #             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
 #           tags: ${{ steps.meta.outputs.tag }}
 #           cache-from: type=gha
@@ -98,7 +99,7 @@
 #           push: true
 #           build-args: |
 #             VITE_HANKO_API_URL=${{ env.HANKO_API_URL_DEV }}
-#             VITE_BASE_PATH=/pr-${{ github.event.pull_request.number }}/app/
+#             VITE_BASE_PATH=/pr-${{ github.event.pull_request.number }}/
 #           tags: ${{ steps.meta.outputs.tag }}
 #           cache-from: type=gha
 #           cache-to: type=gha,mode=max
@@ -146,10 +147,10 @@
 #           SHA="${GITHUB_SHA:0:7}"
 
 #           # Template variables consumed by envsubst in infra/k8s/preview/*.yaml.
-#           # Under path-based routing, all PR previews share a single apex host
-#           # (preview.familiar.systems). The PR number only appears in the path
-#           # prefix, not the host. Ingress manifests reference ${PR_NUMBER} to
-#           # build path + StripPrefix middleware values.
+#           # Every PR shares two apex hosts — preview.familiar.systems (marketing)
+#           # and app.preview.familiar.systems (SPA + API + campaign). The PR
+#           # number appears only in the path prefix, not in the host. Ingress
+#           # manifests reference ${PR_NUMBER} to build path + StripPrefix values.
 #           export NAMESPACE="preview-pr-${PR_NUMBER}"
 #           export PR_NUMBER="${PR_NUMBER}"
 
@@ -186,16 +187,17 @@
 #         with:
 #           script: |
 #             const prNumber = parseInt(process.env.PR_NUMBER, 10);
-#             const prRoot = `https://preview.familiar.systems/pr-${prNumber}`;
+#             const marketingRoot = `https://preview.familiar.systems/pr-${prNumber}`;
+#             const appRoot = `https://app.preview.familiar.systems/pr-${prNumber}`;
 
 #             const marker = '<!-- preview-urls -->';
 #             const body = [
 #               marker,
 #               'Preview deployed:',
 #               '',
-#               `Site: ${prRoot}/`,
-#               `App:  ${prRoot}/app/`,
-#               `API:  ${prRoot}/api/`,
+#               `Site: ${marketingRoot}/`,
+#               `App:  ${appRoot}/`,
+#               `API:  ${appRoot}/api/`,
 #             ].join('\n');
 
 #             const { data: comments } = await github.rest.issues.listComments({

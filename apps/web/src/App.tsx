@@ -2,8 +2,9 @@ import { Login } from "./login";
 import { Home } from "./home";
 import { spaRoute } from "./lib/paths";
 
-// Under path-based deployment the SPA lives at a prefix (e.g. "/app/" in
-// prod, "/pr-42/app/" in preview). Strip that prefix before matching routes.
+// The SPA lives at the root of the app apex in dev/prod (base "/") and
+// under a per-PR prefix in preview (base "/pr-42/"). Strip the base prefix
+// before matching routes so the matcher sees e.g. "login" regardless of env.
 function currentRoute(): string {
   const base = spaRoute("");
   const path = window.location.pathname;

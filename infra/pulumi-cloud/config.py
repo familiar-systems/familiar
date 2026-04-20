@@ -17,17 +17,27 @@ LABELS = {"project": "loreweaver", "managed-by": "pulumi"}
 # Prerequisite: the bunny.net account managing `bunny-api-key` must control
 # the DNS zone for any domain added here, so DNS-01 ACME challenges work.
 #
-# All user-facing traffic terminates on a single apex per environment and
-# is routed by path prefix (/app, /api, /campaign, /). Per-service
-# subdomains (api.*, app.*) were removed alongside the switch to
-# path-based routing; see docs/plans/2026-04-11-app-server-prd.md
-# "URL architecture". Hanko tenant subdomains (auth.*, auth.preview.*)
-# are not listed here because Hanko manages their DNS and TLS.
-PRODUCTION_DOMAINS: list[str] = [
+# Each environment terminates traffic on two apexes: a marketing apex (Astro
+# site) and an app apex (SPA, platform API, campaign shards). Routing within
+# each apex is path-based. See docs/plans/2026-04-11-app-server-prd.md
+# "URL architecture". Hanko tenant subdomains (auth.*, auth.preview.*) are
+# not listed here because Hanko manages their DNS and TLS.
+MARKETING_PROD_DOMAINS: list[str] = [
     "loreweaver.no",
     "familiar.systems",
 ]
-PREVIEW_DOMAINS: list[str] = ["preview.loreweaver.no", "preview.familiar.systems"]
+APP_PROD_DOMAINS: list[str] = ["app.familiar.systems"]
+
+MARKETING_PREVIEW_DOMAINS: list[str] = [
+    "preview.loreweaver.no",
+    "preview.familiar.systems",
+]
+APP_PREVIEW_DOMAINS: list[str] = ["app.preview.familiar.systems"]
+
+# Aggregates — used by the TLS cert's dnsNames and anywhere the full set of
+# SANs is needed.
+PRODUCTION_DOMAINS: list[str] = [*MARKETING_PROD_DOMAINS, *APP_PROD_DOMAINS]
+PREVIEW_DOMAINS: list[str] = [*MARKETING_PREVIEW_DOMAINS, *APP_PREVIEW_DOMAINS]
 
 # Hanko tenant URL for production (public per plan §4.8 -- appears in TLS SNI
 # on every browser request). Custom domain CNAMEd to the prod Hanko tenant.

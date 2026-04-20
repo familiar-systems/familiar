@@ -145,11 +145,12 @@ Both tiers use the same file-on-disk model. The Hetzner Volume, the PR preview c
 
 ```
 docker-compose.yml
-├── site      → nginx serving Astro build (port 80/443, /*)
-├── web       → nginx serving Vite build (/app/*)
-├── api       → Hono container (port 3001)
-├── collab    → Hocuspocus container (port 3002)
-├── worker    → job consumer container
+├── reverse-proxy → Caddy/Traefik serving two apexes on the host's ports
+├── site          → nginx serving Astro build (marketing apex: /)
+├── web           → nginx serving Vite build (app apex: /)
+├── platform      → Rust container (app apex: /api)
+├── campaign      → Rust container (app apex: /campaign)
+├── worker        → job consumer container
 └── (no database container needed)
 
 volumes:

@@ -1,8 +1,8 @@
-# Per-PR preview platform API served at preview.familiar.systems/pr-${PR_NUMBER}/api.
-# StripPrefix removes the PR+api prefix so the platform server sees its
-# usual route table (/health, /me, /campaigns/...). Same-origin with the
-# SPA (both under preview.familiar.systems), so browser calls don't trigger
-# CORS preflight.
+# Per-PR preview platform API served at
+# app.preview.familiar.systems/pr-${PR_NUMBER}/api. StripPrefix removes the
+# PR+api prefix so the platform server sees its usual route table (/health,
+# /me, /campaigns/...). Same-origin with the SPA (both on the app apex), so
+# browser calls don't trigger CORS preflight.
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -25,10 +25,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - preview.familiar.systems
+        - app.preview.familiar.systems
       secretName: preview-wildcard-tls
   rules:
-    - host: preview.familiar.systems
+    - host: app.preview.familiar.systems
       http:
         paths:
           - path: /pr-${PR_NUMBER}/api
