@@ -1,223 +1,223 @@
-# name: Deploy Preview
+name: Deploy Preview
 
-# on:
-#   pull_request:
-#     types: [opened, synchronize]
-#     paths:
-#       - apps/site/**
-#       - apps/web/**
-#       - apps/platform/**
-#       - crates/app-shared/**
-#       - Cargo.toml
-#       - Cargo.lock
-#       - infra/k8s/preview/**
-#       - .github/workflows/deploy-preview.yml
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - apps/site/**
+      - apps/web/**
+      - apps/platform/**
+      - crates/app-shared/**
+      - Cargo.toml
+      - Cargo.lock
+      - infra/k8s/preview/**
+      - .github/workflows/deploy-preview.yml
 
-# permissions:
-#   contents: read
-#   pull-requests: write
+permissions:
+  contents: read
+  pull-requests: write
 
-# concurrency:
-#   group: deploy-preview-${{ github.event.pull_request.number }}
-#   cancel-in-progress: true
+concurrency:
+  group: deploy-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
-# env:
-#   REGISTRY: rg.fr-par.scw.cloud/loreweaver
-#   DO_NOT_TRACK: 1
-#   # Public Hanko tenant URL for the contributor preview environment.
-#   # Canonical source: mise.toml [env].HANKO_API_URL_DEV. A single dev URL
-#   # feeds both `mise run dev:platform` and `mise run dev:web` via mise's
-#   # tera templating. GHA cannot import TOML or Python natively; this is a
-#   # documented derived copy. Drift is visible in code review and breaks
-#   # PR-preview signin loudly. The value is non-secret (it appears in TLS
-#   # SNI on every browser request).
-#   HANKO_API_URL_DEV: "https://auth.preview.familiar.systems"
+env:
+  REGISTRY: rg.fr-par.scw.cloud/loreweaver
+  DO_NOT_TRACK: 1
+  # Public Hanko tenant URL for the contributor preview environment.
+  # Canonical source: mise.toml [env].HANKO_API_URL_DEV. A single dev URL
+  # feeds both `mise run dev:platform` and `mise run dev:web` via mise's
+  # tera templating. GHA cannot import TOML or Python natively; this is a
+  # documented derived copy. Drift is visible in code review and breaks
+  # PR-preview signin loudly. The value is non-secret (it appears in TLS
+  # SNI on every browser request).
+  HANKO_API_URL_DEV: "https://auth.preview.familiar.systems"
 
-# jobs:
-#   build:
-#     runs-on: ubuntu-latest
-#     strategy:
-#       matrix:
-#         include:
-#           - target: site
-#             dockerfile: apps/site/Dockerfile
-#           - target: web
-#             dockerfile: apps/web/Dockerfile
-#           - target: platform
-#             dockerfile: apps/platform/Dockerfile
-#     steps:
-#       - uses: actions/checkout@v6
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: site
+            dockerfile: apps/site/Dockerfile
+          - target: web
+            dockerfile: apps/web/Dockerfile
+          - target: platform
+            dockerfile: apps/platform/Dockerfile
+    steps:
+      - uses: actions/checkout@v6
 
-#       - uses: jdx/mise-action@v4
-#         with:
-#           install_args: "npm:pnpm"
-#           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: "npm:pnpm"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
 
-#       - name: Resolve pnpm version
-#         id: versions
-#         shell: bash
-#         run: echo "pnpm=$(mise current 'npm:pnpm')" >> "$GITHUB_OUTPUT"
+      - name: Resolve pnpm version
+        id: versions
+        shell: bash
+        run: echo "pnpm=$(mise current 'npm:pnpm')" >> "$GITHUB_OUTPUT"
 
-#       - name: Compute image tag
-#         id: meta
-#         run: |
-#           SHA="${GITHUB_SHA:0:7}"
-#           echo "tag=${{ env.REGISTRY }}/${{ matrix.target }}:pr-${{ github.event.pull_request.number }}-${SHA}" >> "$GITHUB_OUTPUT"
+      - name: Compute image tag
+        id: meta
+        run: |
+          SHA="${GITHUB_SHA:0:7}"
+          echo "tag=${{ env.REGISTRY }}/${{ matrix.target }}:pr-${{ github.event.pull_request.number }}-${SHA}" >> "$GITHUB_OUTPUT"
 
-#       - uses: ./.github/actions/setup-scw
-#         with:
-#           access-key: ${{ secrets.SCW_ACCESS_KEY }}
-#           secret-key: ${{ secrets.SCW_SECRET_KEY }}
-#           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
-#           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
-#           registry-login: true
+      - uses: ./.github/actions/setup-scw
+        with:
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+          registry-login: true
 
-#       - name: Set up Docker Buildx
-#         uses: docker/setup-buildx-action@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
-#       - name: Build and push site
-#         if: matrix.target == 'site'
-#         uses: docker/build-push-action@v7
-#         with:
-#           context: .
-#           file: ${{ matrix.dockerfile }}
-#           push: true
-#           build-args: |
-#             SITE_URL=https://preview.familiar.systems
-#             SITE_BASE_PATH=/pr-${{ github.event.pull_request.number }}/
-#             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
-#           tags: ${{ steps.meta.outputs.tag }}
-#           cache-from: type=gha
-#           cache-to: type=gha,mode=max
+      - name: Build and push site
+        if: matrix.target == 'site'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          build-args: |
+            SITE_URL=https://preview.familiar.systems
+            SITE_BASE_PATH=/pr-${{ github.event.pull_request.number }}/
+            PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
+          tags: ${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-#       - name: Build and push web
-#         if: matrix.target == 'web'
-#         uses: docker/build-push-action@v7
-#         with:
-#           context: .
-#           file: ${{ matrix.dockerfile }}
-#           push: true
-#           build-args: |
-#             VITE_HANKO_API_URL=${{ env.HANKO_API_URL_DEV }}
-#             VITE_BASE_PATH=/pr-${{ github.event.pull_request.number }}/
-#           tags: ${{ steps.meta.outputs.tag }}
-#           cache-from: type=gha
-#           cache-to: type=gha,mode=max
+      - name: Build and push web
+        if: matrix.target == 'web'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          build-args: |
+            VITE_HANKO_API_URL=${{ env.HANKO_API_URL_DEV }}
+            VITE_BASE_PATH=/pr-${{ github.event.pull_request.number }}/
+          tags: ${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-#       - name: Build and push platform
-#         if: matrix.target == 'platform'
-#         uses: docker/build-push-action@v7
-#         with:
-#           context: .
-#           file: ${{ matrix.dockerfile }}
-#           push: true
-#           tags: ${{ steps.meta.outputs.tag }}
-#           cache-from: type=gha
-#           cache-to: type=gha,mode=max
+      - name: Build and push platform
+        if: matrix.target == 'platform'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-#   deploy-pr-preview:
-#     needs: build
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v6
+  deploy-pr-preview:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
 
-#       - uses: ./.github/actions/setup-scw
-#         with:
-#           access-key: ${{ secrets.SCW_ACCESS_KEY }}
-#           secret-key: ${{ secrets.SCW_SECRET_KEY }}
-#           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
-#           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+      - uses: ./.github/actions/setup-scw
+        with:
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
 
-#       - uses: ./.github/actions/fetch-scw-secret
-#         id: kubeconfig
-#         with:
-#           secret-name: k3s-kubeconfig
+      - uses: ./.github/actions/fetch-scw-secret
+        id: kubeconfig
+        with:
+          secret-name: k3s-kubeconfig
 
-#       - name: Deploy PR preview
-#         env:
-#           KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
-#           PR_NUMBER: ${{ github.event.pull_request.number }}
-#           REGISTRY: ${{ env.REGISTRY }}
-#           SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
-#           HANKO_API_URL_DEV: ${{ env.HANKO_API_URL_DEV }}
-#         run: |
-#           echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
-#           export KUBECONFIG=/tmp/kubeconfig.yaml
+      - name: Deploy PR preview
+        env:
+          KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REGISTRY: ${{ env.REGISTRY }}
+          SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          HANKO_API_URL_DEV: ${{ env.HANKO_API_URL_DEV }}
+        run: |
+          echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
+          export KUBECONFIG=/tmp/kubeconfig.yaml
 
-#           SHA="${GITHUB_SHA:0:7}"
+          SHA="${GITHUB_SHA:0:7}"
 
-#           # Template variables consumed by envsubst in infra/k8s/preview/*.yaml.
-#           # Every PR shares two apex hosts — preview.familiar.systems (marketing)
-#           # and app.preview.familiar.systems (SPA + API + campaign). The PR
-#           # number appears only in the path prefix, not in the host. Ingress
-#           # manifests reference ${PR_NUMBER} to build path + StripPrefix values.
-#           export NAMESPACE="preview-pr-${PR_NUMBER}"
-#           export PR_NUMBER="${PR_NUMBER}"
+          # Template variables consumed by envsubst in infra/k8s/preview/*.yaml.
+          # Every PR shares two apex hosts — preview.familiar.systems (marketing)
+          # and app.preview.familiar.systems (SPA + API + campaign). The PR
+          # number appears only in the path prefix, not in the host. Ingress
+          # manifests reference ${PR_NUMBER} to build path + StripPrefix values.
+          export NAMESPACE="preview-pr-${PR_NUMBER}"
+          export PR_NUMBER="${PR_NUMBER}"
 
-#           # Image tags — deterministic from PR number + short SHA
-#           export SITE_IMAGE="${REGISTRY}/site:pr-${PR_NUMBER}-${SHA}"
-#           export WEB_IMAGE="${REGISTRY}/web:pr-${PR_NUMBER}-${SHA}"
-#           export PLATFORM_IMAGE="${REGISTRY}/platform:pr-${PR_NUMBER}-${SHA}"
+          # Image tags — deterministic from PR number + short SHA
+          export SITE_IMAGE="${REGISTRY}/site:pr-${PR_NUMBER}-${SHA}"
+          export WEB_IMAGE="${REGISTRY}/web:pr-${PR_NUMBER}-${SHA}"
+          export PLATFORM_IMAGE="${REGISTRY}/platform:pr-${PR_NUMBER}-${SHA}"
 
-#           # Docker registry auth for imagePullSecret (scaleway-registry)
-#           DOCKER_AUTH=$(printf 'nologin:%s' "$SCW_SECRET_KEY" | base64 -w0)
-#           DOCKERCONFIG_JSON=$(printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$DOCKER_AUTH")
-#           DOCKERCONFIG_B64=$(printf '%s' "$DOCKERCONFIG_JSON" | base64 -w0)
-#           export DOCKERCONFIG_B64
+          # Docker registry auth for imagePullSecret (scaleway-registry)
+          DOCKER_AUTH=$(printf 'nologin:%s' "$SCW_SECRET_KEY" | base64 -w0)
+          DOCKERCONFIG_JSON=$(printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$DOCKER_AUTH")
+          DOCKERCONFIG_B64=$(printf '%s' "$DOCKERCONFIG_JSON" | base64 -w0)
+          export DOCKERCONFIG_B64
 
-#           # Apply manifests in dependency order (namespace must exist before children)
-#           for manifest in namespace registry-pull-secret \
-#                           platform-pv platform-pvc \
-#                           site-deployment site-service site-ingress \
-#                           web-deployment web-service web-ingress \
-#                           platform-deployment platform-service platform-ingress; do
-#             envsubst < "infra/k8s/preview/${manifest}.yaml" | kubectl apply -f -
-#           done
+          # Apply manifests in dependency order (namespace must exist before children)
+          for manifest in namespace registry-pull-secret \
+                          platform-pv platform-pvc \
+                          site-deployment site-service site-ingress \
+                          web-deployment web-service web-ingress \
+                          platform-deployment platform-service platform-ingress; do
+            envsubst < "infra/k8s/preview/${manifest}.yaml" | kubectl apply -f -
+          done
 
-#           kubectl -n "$NAMESPACE" rollout status deployment/site --timeout=180s
-#           kubectl -n "$NAMESPACE" rollout status deployment/web --timeout=180s
-#           kubectl -n "$NAMESPACE" rollout status deployment/platform --timeout=180s
+          kubectl -n "$NAMESPACE" rollout status deployment/site --timeout=180s
+          kubectl -n "$NAMESPACE" rollout status deployment/web --timeout=180s
+          kubectl -n "$NAMESPACE" rollout status deployment/platform --timeout=180s
 
-#           rm /tmp/kubeconfig.yaml
+          rm /tmp/kubeconfig.yaml
 
-#       - name: Comment PR URLs
-#         uses: actions/github-script@v8
-#         env:
-#           PR_NUMBER: ${{ github.event.pull_request.number }}
-#         with:
-#           script: |
-#             const prNumber = parseInt(process.env.PR_NUMBER, 10);
-#             const marketingRoot = `https://preview.familiar.systems/pr-${prNumber}`;
-#             const appRoot = `https://app.preview.familiar.systems/pr-${prNumber}`;
+      - name: Comment PR URLs
+        uses: actions/github-script@v8
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          script: |
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
+            const marketingRoot = `https://preview.familiar.systems/pr-${prNumber}`;
+            const appRoot = `https://app.preview.familiar.systems/pr-${prNumber}`;
 
-#             const marker = '<!-- preview-urls -->';
-#             const body = [
-#               marker,
-#               'Preview deployed:',
-#               '',
-#               `Site: ${marketingRoot}/`,
-#               `App:  ${appRoot}/`,
-#               `API:  ${appRoot}/api/`,
-#             ].join('\n');
+            const marker = '<!-- preview-urls -->';
+            const body = [
+              marker,
+              'Preview deployed:',
+              '',
+              `Site: ${marketingRoot}/`,
+              `App:  ${appRoot}/`,
+              `API:  ${appRoot}/api/`,
+            ].join('\n');
 
-#             const { data: comments } = await github.rest.issues.listComments({
-#               owner: context.repo.owner,
-#               repo: context.repo.repo,
-#               issue_number: prNumber,
-#             });
-#             const existing = comments.find(c => c.body && c.body.includes(marker));
-#             if (existing) {
-#               await github.rest.issues.updateComment({
-#                 owner: context.repo.owner,
-#                 repo: context.repo.repo,
-#                 comment_id: existing.id,
-#                 body,
-#               });
-#             } else {
-#               await github.rest.issues.createComment({
-#                 owner: context.repo.owner,
-#                 repo: context.repo.repo,
-#                 issue_number: prNumber,
-#                 body,
-#               });
-#             }
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }
