@@ -5,7 +5,6 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-async-trait = "0.1.89"
 axum.workspace = true
 chrono.workspace = true
 familiar-systems-app-shared = { path = "../../crates/app-shared" }

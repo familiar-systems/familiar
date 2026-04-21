@@ -59,7 +59,35 @@ impl IntoResponse for AppError {
                 "internal error".into(),
                 "Db",
             ),
-            AppError::Auth(_) => (StatusCode::UNAUTHORIZED, "unauthorized".into(), "Auth"),
+            // Auth sub-variants get their own `kind` so log aggregation can
+            // answer questions like "how many Hanko timeouts per minute" with
+            // a first-class filter instead of regex over `error_detail`.
+            // Status choices follow the semantics we want to surface to the
+            // SPA: 401 for "your token is the problem" (MissingHeader /
+            // SessionRejected → redirect to login), 504/502 for "upstream
+            // dep is the problem" (retry with backoff).
+            AppError::Auth(e) => match e {
+                AuthError::MissingHeader => (
+                    StatusCode::UNAUTHORIZED,
+                    "unauthorized".into(),
+                    "AuthMissingHeader",
+                ),
+                AuthError::SessionRejected(_) => (
+                    StatusCode::UNAUTHORIZED,
+                    "unauthorized".into(),
+                    "AuthRejected",
+                ),
+                AuthError::UpstreamTimeout => (
+                    StatusCode::GATEWAY_TIMEOUT,
+                    "authentication service timed out".into(),
+                    "AuthUpstreamTimeout",
+                ),
+                AuthError::UpstreamError(_) => (
+                    StatusCode::BAD_GATEWAY,
+                    "authentication service unavailable".into(),
+                    "AuthUpstreamError",
+                ),
+            },
         };
         // Inherits request_id / user_id / session_id from the enclosing
         // request span (see routes::make_request_span + middleware::auth).
@@ -80,9 +108,28 @@ mod tests {
     }
 
     #[test]
-    fn auth_error_maps_to_401() {
+    fn auth_missing_header_maps_to_401() {
         let r = AppError::Auth(AuthError::MissingHeader).into_response();
         assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn auth_session_rejected_maps_to_401() {
+        let r = AppError::Auth(AuthError::SessionRejected("bad token".into())).into_response();
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn auth_upstream_timeout_maps_to_504() {
+        let r = AppError::Auth(AuthError::UpstreamTimeout).into_response();
+        assert_eq!(r.status(), StatusCode::GATEWAY_TIMEOUT);
+    }
+
+    #[test]
+    fn auth_upstream_error_maps_to_502() {
+        let r =
+            AppError::Auth(AuthError::UpstreamError("connection refused".into())).into_response();
+        assert_eq!(r.status(), StatusCode::BAD_GATEWAY);
     }
 
     #[test]

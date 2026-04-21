@@ -1,0 +1,47 @@
+# Deletes the platform's hostPath data directory on the node after a PR is
+# closed. Paired with the explicit PV delete in .github/workflows/cleanup-
+# preview.yml.
+#
+# Why this exists: platform-pv.yaml uses persistentVolumeReclaimPolicy=Retain
+# so a brief pod crash doesn't wipe the database. That policy applies to the
+# k8s-side reservation, not to the bytes on disk — the hostPath directory
+# survives PV deletion. Without this Job, reopening PR N would bind a new
+# PV to the same path and boot the platform on PR N's stale schema.
+#
+# Runs in the default namespace because the PR's own namespace is being
+# torn down in parallel. generateName + kubectl create keeps re-runs idempotent
+# (each invocation gets a fresh suffix); ttlSecondsAfterFinished garbage-
+# collects the Job object after success.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: platform-hostpath-cleanup-pr-${PR_NUMBER}-
+  namespace: default
+  labels:
+    app: platform-hostpath-cleanup
+    pr: "${PR_NUMBER}"
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: platform-hostpath-cleanup
+        pr: "${PR_NUMBER}"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: rm
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - rm -rf "/host-data/preview-pr-${PR_NUMBER}"
+          volumeMounts:
+            - name: host
+              mountPath: /host-data
+      volumes:
+        - name: host
+          hostPath:
+            path: /data/preview
+            type: DirectoryOrCreate

@@ -24,7 +24,7 @@ mod wire;
 
 pub use api::MeResponse;
 pub use domain::HankoClaims;
-
+use std::time::Duration;
 use wire::{ValidatePayloadWire, ValidateResponseWire};
 
 #[derive(thiserror::Error, Debug)]
@@ -33,8 +33,12 @@ pub enum AuthError {
     MissingHeader,
     #[error("hanko rejected session: {0}")]
     SessionRejected(String),
+    #[error("hanko timed out")]
+    UpstreamTimeout,
     #[error("hanko request failed: {0}")]
-    RequestFailed(#[from] reqwest::Error),
+    UpstreamError(String),
+    // #[error("hanko request failed: {0}")]
+    // RequestFailed(#[from] reqwest::Error),
 }
 
 pub struct HankoSessionValidator {
@@ -42,10 +46,23 @@ pub struct HankoSessionValidator {
     api_url: String,
 }
 
+impl From<reqwest::Error> for AuthError {
+    fn from(err: reqwest::Error) -> Self {
+        if err.is_timeout() {
+            Self::UpstreamTimeout
+        } else {
+            Self::UpstreamError(err.to_string())
+        }
+    }
+}
+
 impl HankoSessionValidator {
     pub fn new(api_url: impl Into<String>) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap(),
             api_url: api_url.into(),
         }
     }

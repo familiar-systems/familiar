@@ -17,7 +17,7 @@ spec:
         - name: scaleway-registry
       containers:
         - name: site
-          image: ${IMAGE}
+          image: ${SITE_IMAGE}
           imagePullPolicy: Always
           ports:
             - containerPort: 80
