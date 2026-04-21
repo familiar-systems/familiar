@@ -1,7 +1,8 @@
 [tools]
+"github:bnjbvr/cargo-machete" = "latest"
 node = "24"
 "npm:pnpm" = "10.32"
-rust = { version = "stable", profile = 'default', components = "rust-analyzer,rust-src" }
+rust = { version = "latest", profile = 'default', components = "rust-analyzer,rust-src" }
 python = "3.14"
 uv = "latest"
 actionlint = "latest"
@@ -156,7 +157,11 @@ sources = [
 ]
 
 [tasks."lint:rust"]
-run = "cargo clippy --workspace -- -D warnings"
+description = "Clippy + cargo-machete (fails on warnings or unused Cargo dependencies)"
+# Chained with && so machete doesn't bury clippy errors with dep-hygiene noise.
+# cargo-machete reads every workspace Cargo.toml and greps every .rs file, so
+# its trigger set is identical to clippy's — the same `sources` covers both.
+run = "cargo clippy --workspace -- -D warnings && cargo machete"
 sources = [
   "apps/platform/**/*.rs",
   "apps/campaign/**/*.rs",

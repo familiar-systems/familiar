@@ -6,3 +6,6 @@ publish = false
 
 [dependencies]
 familiar-systems-app-shared = { path = "../../crates/app-shared" }
+
+[package.metadata.cargo-machete]
+ignored = ['familiar-systems-app-shared']

@@ -8,7 +8,6 @@ publish = false
 axum.workspace = true
 chrono.workspace = true
 familiar-systems-app-shared = { path = "../../crates/app-shared" }
-garde.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
