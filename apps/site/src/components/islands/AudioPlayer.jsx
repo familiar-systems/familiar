@@ -152,7 +152,7 @@ export default function AudioPlayer({ src, title = "Audio" }) {
 
           {/* Controls row */}
           <div className="flex items-center gap-4">
-            {/* Play/Pause — circular seal button */}
+            {/* Play/Pause - circular seal button */}
             <button
               onClick={togglePlay}
               aria-label={isPlaying ? "Pause audio" : "Play audio"}

@@ -44,7 +44,7 @@ run = "pnpm --filter @familiar-systems/web dev"
 # Dev mirrors the prod two-apex layout: marketing at http://localhost:8080/ →
 # Astro, app at http://app.localhost:8080/ → SPA, /api → platform, /campaign →
 # campaign. Caddy (dev:proxy) binds both host matchers on :8080 so the
-# browser sees two distinct origins — identical to what Traefik enforces in
+# browser sees two distinct origins - identical to what Traefik enforces in
 # k3s. VITE_BASE_PATH is intentionally unset: vite.config.ts defaults to "/"
 # for dev/prod; CI overrides it per-PR (/pr-${N}/) for preview builds.
 env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}" }
@@ -65,7 +65,7 @@ run = "cargo run -p familiar-systems-campaign"
 [tasks."dev:proxy"]
 description = "Caddy reverse proxy on :8080 unifying site + SPA + platform + campaign under one origin"
 # Caddy retries upstreams with 502s until they come up, so ordering within
-# the parallel `dev:*` graph doesn't matter — start this alongside the rest.
+# the parallel `dev:*` graph doesn't matter - start this alongside the rest.
 run = "caddy run --config Caddyfile.dev --adapter caddyfile"
 
 # --- build ---
@@ -160,7 +160,7 @@ sources = [
 description = "Clippy + cargo-machete (fails on warnings or unused Cargo dependencies)"
 # Chained with && so machete doesn't bury clippy errors with dep-hygiene noise.
 # cargo-machete reads every workspace Cargo.toml and greps every .rs file, so
-# its trigger set is identical to clippy's — the same `sources` covers both.
+# its trigger set is identical to clippy's - the same `sources` covers both.
 run = "cargo clippy --workspace -- -D warnings && cargo machete"
 sources = [
   "apps/platform/**/*.rs",

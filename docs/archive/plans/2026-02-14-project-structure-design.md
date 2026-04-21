@@ -1,4 +1,4 @@
-# familiar.systems — Project Structure Design
+# familiar.systems - Project Structure Design
 
 > **Superseded.** This was the original project structure based on Next.js (SSR). The [SPA vs SSR analysis](./2026-02-14-spa-vs-ssr-design.md) concluded that SSR provides no meaningful benefit for an authenticated, editor-centric application. The current authoritative structure is the [SPA project structure](./2026-02-14-project-structure-spa-design.md).
 
@@ -6,9 +6,9 @@
 
 familiar.systems is a web application with three workloads that have **different deployment lifecycles**:
 
-1. **Web layer** (Next.js) — serves pages, handles CRUD via tRPC. Stateless, request-response. Needs fast restarts and blue/green deploys.
-2. **Collaboration layer** (Hocuspocus) — holds persistent WebSocket connections for real-time document editing via Yjs CRDTs. Must be a separate process because WebSockets don't survive a Next.js deploy.
-3. **Worker layer** (AI pipeline) — dequeues long-running jobs (audio transcription, entity extraction, journal drafting). A single job may run 10+ minutes. Must survive deploys of the other two layers.
+1. **Web layer** (Next.js) - serves pages, handles CRUD via tRPC. Stateless, request-response. Needs fast restarts and blue/green deploys.
+2. **Collaboration layer** (Hocuspocus) - holds persistent WebSocket connections for real-time document editing via Yjs CRDTs. Must be a separate process because WebSockets don't survive a Next.js deploy.
+3. **Worker layer** (AI pipeline) - dequeues long-running jobs (audio transcription, entity extraction, journal drafting). A single job may run 10+ minutes. Must survive deploys of the other two layers.
 
 The web layer **enqueues** work; the worker **dequeues and processes** independently. Deploying the web server does not interrupt in-flight AI jobs.
 
@@ -33,9 +33,9 @@ The web layer **enqueues** work; the worker **dequeues and processes** independe
 ```
 familiar/
 ├── apps/
-│   ├── web/              # Next.js — UI + tRPC API routes
-│   ├── collab/           # Hocuspocus — WebSocket collaboration server
-│   └── worker/           # Job consumer — dequeues and runs AI pipeline
+│   ├── web/              # Next.js - UI + tRPC API routes
+│   ├── collab/           # Hocuspocus - WebSocket collaboration server
+│   └── worker/           # Job consumer - dequeues and runs AI pipeline
 ├── packages/
 │   ├── domain/           # Pure types: Node, Block, Edge, Status, Campaign, User
 │   ├── db/               # Drizzle schema, migrations, query helpers
@@ -52,7 +52,7 @@ familiar/
 │       └── base.json
 ├── pnpm-workspace.yaml   # Declares apps/*, packages/*, tooling/*
 ├── turbo.json            # Build orchestration (dependency graph, caching)
-├── package.json          # Root — workspace scripts, shared devDependencies
+├── package.json          # Root - workspace scripts, shared devDependencies
 ├── .gitignore
 ├── .nvmrc                # Pins Node.js version
 └── README.md
@@ -60,9 +60,9 @@ familiar/
 
 ### Workspace tooling
 
-- **pnpm** — strict dependency resolution, native workspace support. Prevents phantom dependencies: a package cannot import a dependency it hasn't declared.
-- **Turborepo** — orchestrates builds across the dependency graph. Caches unchanged builds. `turbo build` rebuilds only what changed.
-- **`.nvmrc`** — pins Node.js version for consistency across environments.
+- **pnpm** - strict dependency resolution, native workspace support. Prevents phantom dependencies: a package cannot import a dependency it hasn't declared.
+- **Turborepo** - orchestrates builds across the dependency graph. Caches unchanged builds. `turbo build` rebuilds only what changed.
+- **`.nvmrc`** - pins Node.js version for consistency across environments.
 
 ---
 
@@ -115,11 +115,11 @@ Arrows point from consumer to dependency ("depends on"). Green = `domain` (found
 
 Everything points toward `domain`. Nothing in `domain` knows about the database, the editor, or the AI pipeline.
 
-### `@familiar-systems/domain` — Pure types, zero dependencies
+### `@familiar-systems/domain` - Pure types, zero dependencies
 
 ```
 packages/domain/src/
-├── index.ts              # Public API — re-exports everything
+├── index.ts              # Public API - re-exports everything
 ├── campaign.ts           # Campaign, Arc, Session types
 ├── node.ts               # Node (Thing) types, templates
 ├── block.ts              # Block types, content variants
@@ -132,7 +132,7 @@ Pure TypeScript types, enums, and status logic functions. No runtime dependencie
 
 **Depends on:** nothing
 
-### `@familiar-systems/db` — Schema, migrations, queries
+### `@familiar-systems/db` - Schema, migrations, queries
 
 ```
 packages/db/src/
@@ -157,7 +157,7 @@ Drizzle ORM schema definitions and typed query helpers. Migration files (generat
 
 **Depends on:** `@familiar-systems/domain`, `drizzle-orm`, `postgres`
 
-### `@familiar-systems/auth` — Authentication + authorization
+### `@familiar-systems/auth` - Authentication + authorization
 
 ```
 packages/auth/src/
@@ -171,12 +171,12 @@ Shared across `apps/web` (HTTP request auth) and `apps/collab` (WebSocket connec
 
 **Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`
 
-### `@familiar-systems/editor` — The shared contract
+### `@familiar-systems/editor` - The shared contract
 
 ```
 packages/editor/src/
 ├── index.ts
-├── schema.ts             # TipTap extensions list — THE contract
+├── schema.ts             # TipTap extensions list - THE contract
 ├── extensions/
 │   ├── mention.ts        # Entity mention (configured Mention extension)
 │   ├── status-block.ts   # Block with status attribute
@@ -191,11 +191,11 @@ packages/editor/src/
 
 The most architecturally important package. Defines the TipTap/ProseMirror schema that both the web app (rendering the editor in the browser) and the worker (reading/writing Y.Doc binaries on the server) must agree on.
 
-The `helpers/` directory enables server-side document manipulation: parsing documents for mention extraction, and writing suggestion marks back into documents from the AI pipeline — all without a browser.
+The `helpers/` directory enables server-side document manipulation: parsing documents for mention extraction, and writing suggestion marks back into documents from the AI pipeline - all without a browser.
 
 **Depends on:** `@familiar-systems/domain`, `@tiptap/core`, `yjs`
 
-### `@familiar-systems/ai` — LLM orchestration
+### `@familiar-systems/ai` - LLM orchestration
 
 ```
 packages/ai/src/
@@ -217,14 +217,14 @@ The `provider.ts` abstraction handles the hosted vs. self-hosted requirement: th
 
 **Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`
 
-### `@familiar-systems/queue` — Job definitions + runner
+### `@familiar-systems/queue` - Job definitions + runner
 
 ```
 packages/queue/src/
 ├── index.ts
 ├── jobs.ts               # Job type definitions (typed payloads)
-├── producer.ts           # enqueue() — called by apps/web
-└── consumer.ts           # Job handler registry — used by apps/worker
+├── producer.ts           # enqueue() - called by apps/web
+└── consumer.ts           # Job handler registry - used by apps/worker
 ```
 
 Defines typed job payloads and provides enqueue/dequeue functions backed by PostgreSQL (via pg-boss or graphile-worker). The web app imports `producer` to enqueue; the worker imports `consumer` to dequeue and dispatch.
@@ -235,9 +235,9 @@ Defines typed job payloads and provides enqueue/dequeue functions backed by Post
 
 ## Apps
 
-Apps are thin deployment targets that wire packages together. Domain logic, database queries, AI prompts, and editor schema belong in packages — not in apps.
+Apps are thin deployment targets that wire packages together. Domain logic, database queries, AI prompts, and editor schema belong in packages - not in apps.
 
-### `apps/web` — Next.js (UI + tRPC API)
+### `apps/web` - Next.js (UI + tRPC API)
 
 ```
 apps/web/src/
@@ -286,16 +286,16 @@ The route structure encodes the access hierarchy: everything under `campaign/[ca
 
 **Depends on:** all `@familiar-systems/*` packages, `next`, `react`, `@hocuspocus/provider`
 
-### `apps/collab` — Hocuspocus (WebSocket collaboration)
+### `apps/collab` - Hocuspocus (WebSocket collaboration)
 
 ```
 apps/collab/src/
 ├── index.ts              # Server entrypoint
 ├── hooks/
-│   ├── auth.ts           # onAuthenticate — verify token via @familiar-systems/auth
-│   ├── load.ts           # onLoadDocument — load Y.Doc from DB
-│   ├── store.ts          # onStoreDocument — persist Y.Doc to DB
-│   └── change.ts         # onChange — validation, mention extraction trigger
+│   ├── auth.ts           # onAuthenticate - verify token via @familiar-systems/auth
+│   ├── load.ts           # onLoadDocument - load Y.Doc from DB
+│   ├── store.ts          # onStoreDocument - persist Y.Doc to DB
+│   └── change.ts         # onChange - validation, mention extraction trigger
 └── config.ts             # Server configuration (port, Redis for scaling)
 ```
 
@@ -303,11 +303,11 @@ The thinnest app. A Hocuspocus server with 4 lifecycle hooks, each delegating to
 
 **Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`, `@familiar-systems/auth`, `@familiar-systems/editor`, `@hocuspocus/server`, `yjs`
 
-### `apps/worker` — AI pipeline runner
+### `apps/worker` - AI pipeline runner
 
 ```
 apps/worker/src/
-├── index.ts                      # Entrypoint — starts the job consumer
+├── index.ts                      # Entrypoint - starts the job consumer
 ├── handlers/
 │   ├── transcribe.ts             # Handles transcribe-session jobs
 │   ├── draft-journal.ts          # Handles draft-journal jobs
@@ -333,25 +333,25 @@ A pg-boss consumer process. Each handler maps to a job type from `@familiar-syst
 | Testing                | **Vitest**                 | Native TypeScript support, fast, Jest-compatible API.                                                                                             |
 | Dev runner             | **tsx**                    | Runs `.ts` files directly via esbuild. No compile step during development.                                                                        |
 | Linting                | **oxlint 1.0**             | Rust-based, 520+ built-in rules, 50-100x faster than ESLint. Strictest config from day one.                                                       |
-| Type-aware linting     | **tsgolint** (when stable) | Uses tsgo (Microsoft's official Go port of TypeScript). Real TS type system, not a reimplementation. Currently alpha — enable when it stabilizes. |
+| Type-aware linting     | **tsgolint** (when stable) | Uses tsgo (Microsoft's official Go port of TypeScript). Real TS type system, not a reimplementation. Currently alpha - enable when it stabilizes. |
 | Formatting             | **oxfmt** (alpha)          | Rust-based, Prettier-compatible, 30x faster than Prettier. Fallback to Prettier if needed (compatible output).                                    |
 
 ### Type checking strategy
 
 TypeScript's `strict: true` enables a bundle of ~10 strict flags. Combined with additional flags, this is the equivalent of basedpyright's strict mode:
 
-- `strict: true` — all standard strict checks
-- `noUncheckedIndexedAccess` — `array[0]` is `T | undefined`, not `T`
-- `exactOptionalPropertyTypes` — distinguishes `undefined` from "property missing"
-- `noUnusedLocals` + `noUnusedParameters` — dead code detection
+- `strict: true` - all standard strict checks
+- `noUncheckedIndexedAccess` - `array[0]` is `T | undefined`, not `T`
+- `exactOptionalPropertyTypes` - distinguishes `undefined` from "property missing"
+- `noUnusedLocals` + `noUnusedParameters` - dead code detection
 
-TypeScript types are erased at runtime (the compiled JavaScript has no type information). Zod fills this gap at system boundaries — API inputs, database rows, environment variables — the same role Pydantic plays in Python.
+TypeScript types are erased at runtime (the compiled JavaScript has no type information). Zod fills this gap at system boundaries - API inputs, database rows, environment variables - the same role Pydantic plays in Python.
 
 ### Linting strategy
 
-**oxlint** (stable, 1.0) for all lint rules from day one. Strictest configuration — ban `any`, enforce exhaustive switches, require explicit return types at module boundaries.
+**oxlint** (stable, 1.0) for all lint rules from day one. Strictest configuration - ban `any`, enforce exhaustive switches, require explicit return types at module boundaries.
 
-**tsgolint** for type-aware rules (e.g., `no-floating-promises`, `no-misused-promises`, `await-thenable`) when it reaches stable. tsgolint wraps tsgo — Microsoft's official Go port of the TypeScript compiler — so type-aware rules use the real TypeScript type system, not a reimplementation. This guarantees full alignment with `tsc`'s behavior.
+**tsgolint** for type-aware rules (e.g., `no-floating-promises`, `no-misused-promises`, `await-thenable`) when it reaches stable. tsgolint wraps tsgo - Microsoft's official Go port of the TypeScript compiler - so type-aware rules use the real TypeScript type system, not a reimplementation. This guarantees full alignment with `tsc`'s behavior.
 
 **oxfmt** (alpha) for formatting. Prettier-compatible output, so falling back to Prettier is a one-line config change if needed. Default `printWidth: 100` (oxfmt's default, sensible for TypeScript).
 
@@ -371,4 +371,4 @@ In development, `tsx` runs TypeScript files directly (no compile step). In CI an
 
 **Each package's `src/index.ts` is its public API.** Other packages import from `@familiar-systems/db`, not from `@familiar-systems/db/src/schema/nodes`. Anything not re-exported from `index.ts` is a private implementation detail.
 
-**Maximum strictness, no exceptions.** TypeScript `strict: true`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, lint ban on `any`, Zod at every system boundary. pnpm's strict dependency resolution prevents phantom imports. The compiler is the first line of defense — if it compiles, the type-level guarantees are real. We do not weaken these settings.
+**Maximum strictness, no exceptions.** TypeScript `strict: true`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, lint ban on `any`, Zod at every system boundary. pnpm's strict dependency resolution prevents phantom imports. The compiler is the first line of defense - if it compiles, the type-level guarantees are real. We do not weaken these settings.

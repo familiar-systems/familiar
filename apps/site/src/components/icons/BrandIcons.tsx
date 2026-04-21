@@ -2,7 +2,7 @@ import type { SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
-/** GitHub mark — from Simple Icons (CC0) */
+/** GitHub mark - from Simple Icons (CC0) */
 export function SiGithub(props: IconProps) {
   return (
     <svg role="img" viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -11,7 +11,7 @@ export function SiGithub(props: IconProps) {
   );
 }
 
-/** Bluesky butterfly — from Simple Icons (CC0) */
+/** Bluesky butterfly - from Simple Icons (CC0) */
 export function SiBluesky(props: IconProps) {
   return (
     <svg role="img" viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -20,7 +20,7 @@ export function SiBluesky(props: IconProps) {
   );
 }
 
-/** LinkedIn mark — from Simple Icons (CC0), normalized to 0 0 24 24 */
+/** LinkedIn mark - from Simple Icons (CC0), normalized to 0 0 24 24 */
 export function SiLinkedin(props: IconProps) {
   return (
     <svg role="img" viewBox="0 0 24 24" fill="currentColor" {...props}>

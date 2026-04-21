@@ -8,7 +8,6 @@ use std::sync::Arc;
 use wiremock::MockServer;
 
 // Each tests/*.rs is compiled as its own binary; spawn_smoke uses base_url only,
-// so hanko + db look unused there. Tasks 15-18 use both.
 #[allow(dead_code)]
 pub struct TestApp {
     pub base_url: String,

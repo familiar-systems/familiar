@@ -147,14 +147,14 @@
 #           SHA="${GITHUB_SHA:0:7}"
 
 #           # Template variables consumed by envsubst in infra/k8s/preview/*.yaml.
-#           # Every PR shares two apex hosts — preview.familiar.systems (marketing)
+#           # Every PR shares two apex hosts - preview.familiar.systems (marketing)
 #           # and app.preview.familiar.systems (SPA + API + campaign). The PR
 #           # number appears only in the path prefix, not in the host. Ingress
 #           # manifests reference ${PR_NUMBER} to build path + StripPrefix values.
 #           export NAMESPACE="preview-pr-${PR_NUMBER}"
 #           export PR_NUMBER="${PR_NUMBER}"
 
-#           # Image tags — deterministic from PR number + short SHA
+#           # Image tags - deterministic from PR number + short SHA
 #           export SITE_IMAGE="${REGISTRY}/site:pr-${PR_NUMBER}-${SHA}"
 #           export WEB_IMAGE="${REGISTRY}/web:pr-${PR_NUMBER}-${SHA}"
 #           export PLATFORM_IMAGE="${REGISTRY}/platform:pr-${PR_NUMBER}-${SHA}"

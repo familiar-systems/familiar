@@ -43,6 +43,10 @@ where
         let now = Utc::now();
         let id = claims.subject;
 
+        // TODO add rate limiting cached by user ID
+        // Currently, every login writes a row to the database.
+        // This is wildly inefficient.
+
         // Upsert by id (= Hanko subject). ON CONFLICT (id) handles the normal
         // repeat-login case; a UNIQUE(email) violation on either the INSERT
         // or the UPDATE path surfaces as AppError::EmailConflict → 409.
@@ -67,6 +71,7 @@ where
             Err(e) => {
                 if let Some(SqlErr::UniqueConstraintViolation(detail)) = e.sql_err()
                     && detail.contains("email")
+                // FIXME we probably want a detail.contains that's less dialect-fragile
                 {
                     // Look up the other row to give the log event both
                     // parties' ids. Best-effort; if the lookup itself

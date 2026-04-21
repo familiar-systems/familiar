@@ -1,6 +1,6 @@
 # Per-PR preview SPA served at app.preview.familiar.systems/pr-${PR_NUMBER}/.
 # The SPA lives at the root of the app apex, so the Vite bundle is built with
-# VITE_BASE_PATH=/pr-${PR_NUMBER}/ — no /app/ prefix. StripPrefix removes the
+# VITE_BASE_PATH=/pr-${PR_NUMBER}/ - no /app/ prefix. StripPrefix removes the
 # PR path before the request reaches the nginx backend, which serves the built
 # SPA from its root directory. Within this host, the /api and /campaign
 # ingresses below use longer prefixes and win by Traefik's rule-length

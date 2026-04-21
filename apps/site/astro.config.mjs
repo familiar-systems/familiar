@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 
-// Helper to find noindex URLs — excludes them from the sitemap
+// Helper to find noindex URLs - excludes them from the sitemap
 function getNoIndexUrls() {
   const urls = new Set();
   const contentDir = path.resolve("./src/content");

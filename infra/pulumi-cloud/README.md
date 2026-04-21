@@ -4,7 +4,7 @@ Pulumi (Python) project for provisioning familiar.systems cloud infrastructure o
 
 ## Architecture
 
-- **State backend**: Scaleway Object Storage (`s3://loreweaver-pulumi-state` in `fr-par` — bucket name retained from the project's prior identity; renaming the bucket is a Tier 2 coordinated migration)
+- **State backend**: Scaleway Object Storage (`s3://loreweaver-pulumi-state` in `fr-par` - bucket name retained from the project's prior identity; renaming the bucket is a Tier 2 coordinated migration)
 - **Secrets encryption**: Passphrase-based (AES-256-GCM), passphrase stored in Scaleway Secrets Manager
 - **Infrastructure target**: Hetzner Cloud
 - **CI secrets**: Scaleway credentials stored as GitHub repository secrets

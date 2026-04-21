@@ -1,4 +1,4 @@
-# PostgreSQL vs Turso — Storage Re-evaluation
+# PostgreSQL vs Turso - Storage Re-evaluation
 
 > **Decided: PostgreSQL.** Turso (libSQL) offered structural campaign isolation and trivial `:memory:` testing, but is locked to AWS with no plans to expand to independent EU infrastructure. PostgreSQL is universally available across every EU provider (UpCloud, Scaleway, OVH, Exoscale, Hetzner, Ubicloud) and every managed platform (Railway, Render, Fly.io). Provider flexibility and ecosystem maturity won. See also [storage overview](./2026-02-14-storage-overview.md) for the initial analysis.
 
@@ -11,7 +11,7 @@ Since then, several architectural decisions have been made:
 - **SPA architecture** with 4 apps: `web` (static), `api` (Hono+tRPC), `collab` (Hocuspocus), `worker` (job consumer). See [SPA project structure](../plans/2026-02-14-project-structure-spa-design.md).
 - **AI workflow unification** with durable suggestions, agent conversations, and the interactive/batch AI split. See [AI workflow design](../../plans/2026-02-14-ai-workflow-unification-design.md).
 - **Drizzle ORM** as the database abstraction (supports both PostgreSQL and SQLite/libSQL).
-- **Self-hosted deployment** as a first-class requirement — the same codebase must run on the customer's own infrastructure.
+- **Self-hosted deployment** as a first-class requirement - the same codebase must run on the customer's own infrastructure.
 
 This document re-evaluates PostgreSQL vs Turso in light of these decisions.
 
@@ -23,15 +23,15 @@ This document re-evaluates PostgreSQL vs Turso in light of these decisions.
 
 The SPA project structure specified **pg-boss** (PostgreSQL-backed job queue) and **pgvector** (AI embeddings). These were treated as hard dependencies on PostgreSQL. On re-examination:
 
-**pg-boss is a convenience, not a necessity.** familiar.systems's job volume is tiny — a few SessionIngest jobs per day per GM. A simple polling job table (`SELECT ... WHERE status = 'pending' LIMIT 1`) works at this scale. pg-boss solves problems (exponential backoff, priority queues, dead letter queues) that familiar.systems won't need for a long time.
+**pg-boss is a convenience, not a necessity.** familiar.systems's job volume is tiny - a few SessionIngest jobs per day per GM. A simple polling job table (`SELECT ... WHERE status = 'pending' LIMIT 1`) works at this scale. pg-boss solves problems (exponential backoff, priority queues, dead letter queues) that familiar.systems won't need for a long time.
 
-**pgvector vs libSQL vector search is not a differentiator at familiar.systems's scale.** A large campaign has ~20,000 blocks — that's 20,000 vectors. pgvector handles tens of millions; libSQL handles this trivially. Both offer SQL-native interfaces. The maturity gap (pgvector is more battle-tested, libSQL vector search is newer) doesn't matter when the dataset is 3-4 orders of magnitude below where performance differences emerge.
+**pgvector vs libSQL vector search is not a differentiator at familiar.systems's scale.** A large campaign has ~20,000 blocks - that's 20,000 vectors. pgvector handles tens of millions; libSQL handles this trivially. Both offer SQL-native interfaces. The maturity gap (pgvector is more battle-tested, libSQL vector search is newer) doesn't matter when the dataset is 3-4 orders of magnitude below where performance differences emerge.
 
 ### New concerns that emerged
 
-**Testing with realistic data is expensive.** familiar.systems's test data requires actual audio transcription and AI processing ($2+ in tokens per session, plus wall clock time). You can't faker.js a realistic campaign — the entity mentions, relationship graph, suggestion history, and journal narrative are all deeply interconnected. Once you have a realistic seed database, the ability to branch it instantly (rather than rebuilding it) saves real time and money.
+**Testing with realistic data is expensive.** familiar.systems's test data requires actual audio transcription and AI processing ($2+ in tokens per session, plus wall clock time). You can't faker.js a realistic campaign - the entity mentions, relationship graph, suggestion history, and journal narrative are all deeply interconnected. Once you have a realistic seed database, the ability to branch it instantly (rather than rebuilding it) saves real time and money.
 
-**Campaign isolation is a security-critical concern.** Every query in a multi-tenant PostgreSQL database must include `campaign_id`. Forget it once — in a query, a join, an RLS policy — and you have a cross-campaign data leak. This is one of the most common security bugs in SaaS applications. It's enforced by discipline, not structure.
+**Campaign isolation is a security-critical concern.** Every query in a multi-tenant PostgreSQL database must include `campaign_id`. Forget it once - in a query, a join, an RLS policy - and you have a cross-campaign data leak. This is one of the most common security bugs in SaaS applications. It's enforced by discipline, not structure.
 
 ---
 
@@ -65,14 +65,14 @@ UpCloud (or any cloud)
 - Branching: Neon free tier (unlimited branches) or dump/restore
 - CI: PostgreSQL service container
 
-**Self-hosted:** Run PostgreSQL. Universal — every cloud, every VPS, Docker Compose. Well-documented, massive community.
+**Self-hosted:** Run PostgreSQL. Universal - every cloud, every VPS, Docker Compose. Well-documented, massive community.
 
 **What it gives you:**
 
 - The most conventional path. Fewest surprises. Largest ecosystem.
 - Every ORM, migration tool, hosting provider, tutorial assumes PostgreSQL.
 - pgvector is the most mature SQL-native vector search.
-- RLS provides database-level tenant isolation (with caveats — see below).
+- RLS provides database-level tenant isolation (with caveats - see below).
 - pg-boss is a turnkey job queue.
 
 **What it costs you:**
@@ -80,7 +80,7 @@ UpCloud (or any cloud)
 - `campaign_id` on every table, every query, every join, every RLS policy. Miss it once → data leak.
 - RLS policies that span tables (e.g., mention visibility requires joining to parent block's status) add complexity and can affect query performance.
 - Testing requires Docker or an external PostgreSQL instance. No `:memory:` option.
-- No native database branching — requires Neon (external service) or dump/restore.
+- No native database branching - requires Neon (external service) or dump/restore.
 
 ### Path 2: Turso / libSQL (database-per-campaign)
 
@@ -119,12 +119,12 @@ UpCloud (or any cloud)
 | Billing                                      | Agent conversations             |
 | Cross-campaign search index (if needed)      | Session sources                 |
 
-The platform database is standard — one database, no per-campaign isolation needed. Campaign databases hold all graph content. The application routes to the correct campaign database based on the request.
+The platform database is standard - one database, no per-campaign isolation needed. Campaign databases hold all graph content. The application routes to the correct campaign database based on the request.
 
 **Development workflow:**
 
 - Local: libSQL or SQLite files. No Docker needed.
-- Testing: `:memory:` databases — instant, in-process, zero config.
+- Testing: `:memory:` databases - instant, in-process, zero config.
 - Branching: Native copy-on-write branching (Turso) or just copy a file (libSQL/SQLite).
 - CI: No service containers needed. Tests run against in-memory databases.
 
@@ -132,7 +132,7 @@ The platform database is standard — one database, no per-campaign isolation ne
 
 **What it gives you:**
 
-- **Structural campaign isolation.** Cross-campaign data leaks are impossible — the wrong data doesn't exist in the database you're querying.
+- **Structural campaign isolation.** Cross-campaign data leaks are impossible - the wrong data doesn't exist in the database you're querying.
 - **Trivial testing.** `:memory:` databases with zero setup, instant creation, no Docker.
 - **Native branching.** Copy-on-write database branches for development and CI.
 - **Natural "campaign as data" model.** A campaign IS a database. Backup, export, or delete a campaign by operating on its database.
@@ -153,11 +153,11 @@ The platform database is standard — one database, no per-campaign isolation ne
 | Concern                    | PostgreSQL                                                              | Turso / libSQL                                                                            |
 | -------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | **Campaign isolation**     | Convention (`campaign_id` + RLS). Discipline-dependent.                 | Structural (database-per-campaign). Cannot leak.                                          |
-| **Testing**                | Docker + testcontainers (~2-3s startup). CI needs service config.       | `:memory:` — instant, in-process, zero config.                                            |
+| **Testing**                | Docker + testcontainers (~2-3s startup). CI needs service config.       | `:memory:` - instant, in-process, zero config.                                            |
 | **Database branching**     | Neon (external service, free tier) or dump/restore.                     | Native copy-on-write. Instant.                                                            |
-| **AI embeddings**          | pgvector — mature, battle-tested. Overkill at familiar.systems's scale. | libSQL vector search — adequate at familiar.systems's scale. Newer.                       |
-| **Full-text search**       | tsvector/tsquery — powerful, built-in.                                  | FTS5 — powerful, built-in. Roughly equivalent.                                            |
-| **Job queue**              | pg-boss — turnkey, PostgreSQL-native.                                   | Simple polling table. Fine at familiar.systems's scale.                                   |
+| **AI embeddings**          | pgvector - mature, battle-tested. Overkill at familiar.systems's scale. | libSQL vector search - adequate at familiar.systems's scale. Newer.                       |
+| **Full-text search**       | tsvector/tsquery - powerful, built-in.                                  | FTS5 - powerful, built-in. Roughly equivalent.                                            |
+| **Job queue**              | pg-boss - turnkey, PostgreSQL-native.                                   | Simple polling table. Fine at familiar.systems's scale.                                   |
 | **Cross-campaign queries** | Trivial: `WHERE user_id = ?`                                            | ATTACH (read-only) or application-level aggregation.                                      |
 | **Schema migrations**      | Run against one database. Standard.                                     | Propagate across N databases. Turso automates this; self-hosted needs scripting.          |
 | **Connection management**  | Single connection pool. Standard.                                       | Connection-per-campaign. HTTP client mitigates pooling concerns.                          |
@@ -194,7 +194,7 @@ SELECT m.*, b.status FROM mentions m
 Campaign data lives in its own database. No campaign_id needed.
 
 ```sql
--- No campaign_id — this database IS the campaign
+-- No campaign_id - this database IS the campaign
 SELECT * FROM nodes WHERE status != 'retconned';
 
 -- Relationships: simpler join, no campaign scoping
@@ -223,7 +223,7 @@ SELECT c.* FROM campaigns c
   WHERE cm.user_id = ?;
 ```
 
-The cross-campaign query difference only matters for operations that need to _aggregate content across campaigns_ — e.g., "search all my campaigns for mentions of 'dragon'". This is a rare operation that could be solved by a search index in the platform database.
+The cross-campaign query difference only matters for operations that need to _aggregate content across campaigns_ - e.g., "search all my campaigns for mentions of 'dragon'". This is a rare operation that could be solved by a search index in the platform database.
 
 ---
 
@@ -257,7 +257,7 @@ Listing databases: `GET /v1/organizations/{org}/databases` returns all databases
 
 ### The platform database
 
-With database-per-campaign, the platform database becomes remarkably simple — just routing and metadata:
+With database-per-campaign, the platform database becomes remarkably simple - just routing and metadata:
 
 ```sql
 -- Platform database (one, shared across all campaigns)
@@ -299,7 +299,7 @@ job_queue (
 
 Four tables. No nodes, no blocks, no relationships, no suggestions, no conversations. All graph content lives in the campaign databases.
 
-Compare this to the PostgreSQL model where every table has `campaign_id`, every query filters by it, and RLS policies enforce it. The Turso model splits the concern: the platform database answers "which campaigns exist and who can access them?" (simple relational queries), and the campaign database answers "what's in this campaign?" (graph traversals, mention resolution, suggestion management — all the complex stuff, with zero multi-tenancy overhead).
+Compare this to the PostgreSQL model where every table has `campaign_id`, every query filters by it, and RLS policies enforce it. The Turso model splits the concern: the platform database answers "which campaigns exist and who can access them?" (simple relational queries), and the campaign database answers "what's in this campaign?" (graph traversals, mention resolution, suggestion management - all the complex stuff, with zero multi-tenancy overhead).
 
 ### Request flow
 
@@ -332,7 +332,7 @@ Compare this to the PostgreSQL model where every table has `campaign_id`, every 
 
 3. Worker connects to campaign DB, runs the pipeline:
    const campaignDb = drizzle(createClient({ url: `libsql://...` }));
-   // Transcribe, extract entities, create suggestions — all in campaign DB
+   // Transcribe, extract entities, create suggestions - all in campaign DB
 ```
 
 ### Self-hosted deployment
@@ -341,13 +341,13 @@ For a self-hoster (single GM, local deployment), the same architecture simplifie
 
 ```
 Self-hosted (single machine)
-├── platform.db          # SQLite file — users, campaigns, job queue
+├── platform.db          # SQLite file - users, campaigns, job queue
 ├── campaigns/
-│   ├── campaign-abc.db  # SQLite file — first campaign's data
-│   └── campaign-def.db  # SQLite file — second campaign's data
+│   ├── campaign-abc.db  # SQLite file - first campaign's data
+│   └── campaign-def.db  # SQLite file - second campaign's data
 ```
 
-No Turso account needed. No network. The application code is identical — `createClient({ url: "file:./campaigns/campaign-abc.db" })` instead of `libsql://...turso.io`. Drizzle doesn't care. This is arguably a simpler self-hosted story than PostgreSQL — no database server to install, configure, or maintain.
+No Turso account needed. No network. The application code is identical - `createClient({ url: "file:./campaigns/campaign-abc.db" })` instead of `libsql://...turso.io`. Drizzle doesn't care. This is arguably a simpler self-hosted story than PostgreSQL - no database server to install, configure, or maintain.
 
 ---
 
@@ -355,7 +355,7 @@ No Turso account needed. No network. The application code is identical — `crea
 
 ### The problem branching solves
 
-familiar.systems's test data is expensive to create — audio transcription costs money, AI entity extraction costs tokens ($2+ per session), and building up a realistic campaign graph takes many processed sessions. Once you have a database with realistic data, the ability to branch it instantly (rather than rebuilding it) saves real time and money.
+familiar.systems's test data is expensive to create - audio transcription costs money, AI entity extraction costs tokens ($2+ per session), and building up a realistic campaign graph takes many processed sessions. Once you have a database with realistic data, the ability to branch it instantly (rather than rebuilding it) saves real time and money.
 
 ### PostgreSQL + Neon
 
@@ -372,7 +372,7 @@ DATABASE_URL=postgresql://...fix-suggestion-review...
 neonctl branches delete fix-suggestion-review
 ```
 
-Simple — one command, one connection string. But you get every campaign in the branch, whether you need them or not.
+Simple - one command, one connection string. But you get every campaign in the branch, whether you need them or not.
 
 For automated tests, you still need Docker + testcontainers (~2-3s startup per suite) or a running PostgreSQL instance. No `:memory:` option.
 
@@ -414,7 +414,7 @@ const campaignDb = drizzle(createClient({ url: ":memory:" }));
 await runMigrations(platformDb, "platform");
 await runMigrations(campaignDb, "campaign");
 await seed(platformDb, campaignDb);
-// Run tests — instant setup, instant teardown
+// Run tests - instant setup, instant teardown
 ```
 
 ### Branching comparison
@@ -439,7 +439,7 @@ These would need to be resolved before committing to Turso:
 
 3. **ATTACH becoming read-write.** Turso has stated they're working on read-write ATTACH. If/when this ships, cross-campaign writes (e.g., "copy this NPC to another campaign") become possible without application-level orchestration.
 
-4. **Hocuspocus + libSQL.** Does Hocuspocus's PostgreSQL storage adapter have a libSQL/SQLite equivalent, or would we need to write one? Hocuspocus stores Y.Doc state — this could live in the platform database or in the campaign database.
+4. **Hocuspocus + libSQL.** Does Hocuspocus's PostgreSQL storage adapter have a libSQL/SQLite equivalent, or would we need to write one? Hocuspocus stores Y.Doc state - this could live in the platform database or in the campaign database.
 
 5. **Connection overhead at scale.** With 100 GMs and 3 campaigns each, the API server handles 300 potential campaign databases. Turso's HTTP-based client (no persistent connections) should handle this, but it's worth validating.
 
@@ -449,11 +449,11 @@ These would need to be resolved before committing to Turso:
 
 ### PostgreSQL
 
-- [pgvector — open-source vector similarity search](https://github.com/pgvector/pgvector)
+- [pgvector - open-source vector similarity search](https://github.com/pgvector/pgvector)
 - [pgvector 0.8.0 performance improvements](https://www.instaclustr.com/education/vector-database/pgvector-key-features-tutorial-and-pros-and-cons-2026-guide/)
 - [UpCloud managed PostgreSQL](https://upcloud.com/postgresql-managed-databases/)
 - [Neon pricing (database branching)](https://neon.com/pricing)
-- [Neon — open source serverless PostgreSQL](https://github.com/neondatabase/neon)
+- [Neon - open source serverless PostgreSQL](https://github.com/neondatabase/neon)
 
 ### Turso / libSQL
 
@@ -469,9 +469,9 @@ These would need to be resolved before committing to Turso:
 
 - [Create database](https://docs.turso.tech/api-reference/databases/create)
 - [List databases](https://docs.turso.tech/api-reference/databases/list)
-- [Turso concepts — database](https://docs.turso.tech/concepts)
+- [Turso concepts - database](https://docs.turso.tech/concepts)
 
 ### Testing & Development Workflow
 
-- [Neon free tier — unlimited branches](https://neon.com/docs/introduction/plans)
+- [Neon free tier - unlimited branches](https://neon.com/docs/introduction/plans)
 - [PostgreSQL branching comparison (Xata vs Neon vs Supabase)](https://xata.io/blog/neon-vs-supabase-vs-xata-postgres-branching-part-2)

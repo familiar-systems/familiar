@@ -1,7 +1,7 @@
 # Local-dev reverse proxy that mirrors the prod URL contract.
 #
 # Run via `mise run dev:proxy` alongside `mise run dev`. Opens two hosts
-# on port 8080 — a marketing apex and an app apex — matching the two-apex
+# on port 8080 - a marketing apex and an app apex - matching the two-apex
 # split used in preview and prod:
 #
 #   http://localhost:8080                 -> Astro marketing site (port 4321)
@@ -16,14 +16,14 @@
 # dev/prod drift that only surfaced in deployment.
 #
 # Why *.localhost: modern browsers (Chrome/Firefox/Safari) treat any
-# *.localhost name as loopback by convention — no /etc/hosts entries,
+# *.localhost name as loopback by convention - no /etc/hosts entries,
 # no dnsmasq. Caddy serves both host matchers from a single :8080 bind.
 #
 # WebSockets (Vite HMR, Astro HMR, campaign-server Loro sync) upgrade
 # automatically through `reverse_proxy` in Caddy v2; no ws: true flag.
 
 # `http://` prefix is load-bearing: without it, Caddy sees a hostname+non-
-# standard-port address (`localhost:8080`) and engages auto-HTTPS — it tries
+# standard-port address (`localhost:8080`) and engages auto-HTTPS - it tries
 # to install its local CA, issue a cert, and serve TLS on 8080, which
 # (a) prompts for sudo on the first run and (b) breaks plain-HTTP curls.
 # Forcing `http://` makes Caddy listen on 8080 as unencrypted HTTP, which is

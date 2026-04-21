@@ -1,4 +1,4 @@
-# familiar.systems — Deployment Strategy
+# familiar.systems - Deployment Strategy
 
 ## Decision
 
@@ -31,7 +31,7 @@ Everything runs on the developer's machine:
 
 - **5 apps** via `turbo dev`: `site` (Astro dev server), `web` (Vite dev server), `api` (Hono), `collab` (Hocuspocus), `worker` (job consumer)
 - **No Docker, no database server.** libSQL files on disk. `:memory:` databases for tests.
-- **No remote dependencies** — development works fully offline.
+- **No remote dependencies** - development works fully offline.
 
 ### Production
 
@@ -63,9 +63,9 @@ rm -rf /data/previews/pr-${PR_ID}/
 
 **Access control (three layers):**
 
-1. **Traefik basic auth** on preview subdomains — shared credentials all contributors know. Outer gate.
-2. **Hanko authentication** — preview runs same app code, same Hanko instance. Contributors authenticate with real accounts.
-3. **Platform DB filtering** — cleanup script deletes all users except contributors. Contributor emails in version-controlled `contributors.sql`.
+1. **Traefik basic auth** on preview subdomains - shared credentials all contributors know. Outer gate.
+2. **Hanko authentication** - preview runs same app code, same Hanko instance. Contributors authenticate with real accounts.
+3. **Platform DB filtering** - cleanup script deletes all users except contributors. Contributor emails in version-controlled `contributors.sql`.
 
 ---
 
@@ -98,7 +98,7 @@ See the [libSQL decision doc](../../discovery/2026-03-09-sqlite-over-postgres-de
 
 ## Routing
 
-Traefik (via Coolify) routes all traffic through a single domain. Order matters — specific paths match first:
+Traefik (via Coolify) routes all traffic through a single domain. Order matters - specific paths match first:
 
 - `/app/api/*` → `apps/api` (port 3001)
 - `/app/collab/*` → `apps/collab` (port 3002, WebSocket upgrade)
@@ -111,7 +111,7 @@ No CORS in production. All five deployment targets share one domain.
 
 ## Five Deployment Targets
 
-Each app has a different lifecycle — deploying one does not affect the others. Each is a separate Coolify resource.
+Each app has a different lifecycle - deploying one does not affect the others. Each is a separate Coolify resource.
 
 | Target     | Runtime                       | Deploy                                      | Notes                                                                 |
 | ---------- | ----------------------------- | ------------------------------------------- | --------------------------------------------------------------------- |
@@ -144,7 +144,7 @@ All containers mount the data directory. A self-hoster's experience:
 
 - No PostgreSQL to install, configure, or maintain
 - Backup = copy files
-- The application code is identical — just file paths
+- The application code is identical - just file paths
 
 ---
 
@@ -154,9 +154,9 @@ libSQL files on the Hetzner Volume are backed up to Hetzner Object Storage.
 
 1. **WAL checkpoint** before backup (`PRAGMA wal_checkpoint(TRUNCATE)`) to ensure the `.db` file contains all committed data
 2. **Copy files** to Object Storage on a schedule (daily minimum, configurable)
-3. **Retention** — keep daily backups for 30 days, weekly for 6 months
+3. **Retention** - keep daily backups for 30 days, weekly for 6 months
 
-Campaign databases are independent files — individual campaigns can be backed up, restored, or exported without affecting others.
+Campaign databases are independent files - individual campaigns can be backed up, restored, or exported without affecting others.
 
 ---
 
@@ -183,10 +183,10 @@ Campaign databases are independent files — individual campaigns can be backed 
 
 ## References
 
-- [libSQL over PostgreSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md) — why the database changed
-- [SPA project structure](./2026-02-14-project-structure-spa-design.md) — the 5-app architecture this strategy deploys
-- [Solo dev deployment landscape (archived)](../discovery/2026-02-18-solo-dev-deployment-landscape.md) — full provider and tooling exploration
-- [EU deployment landscape (archived)](../discovery/2026-02-18-eu-deployment-landscape.md) — team-scale deployment options
-- [Previous deployment strategy (archived)](./2026-02-18-deployment-strategy.md) — PostgreSQL-era strategy
+- [libSQL over PostgreSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md) - why the database changed
+- [SPA project structure](./2026-02-14-project-structure-spa-design.md) - the 5-app architecture this strategy deploys
+- [Solo dev deployment landscape (archived)](../discovery/2026-02-18-solo-dev-deployment-landscape.md) - full provider and tooling exploration
+- [EU deployment landscape (archived)](../discovery/2026-02-18-eu-deployment-landscape.md) - team-scale deployment options
+- [Previous deployment strategy (archived)](./2026-02-18-deployment-strategy.md) - PostgreSQL-era strategy
 - [Coolify PR preview deploy docs](https://coolify.io/docs/applications/ci-cd/github/preview-deploy)
 - [Coolify Traefik basic auth middleware](https://coolify.io/docs/knowledge-base/proxy/traefik/basic-auth)

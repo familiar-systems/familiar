@@ -34,7 +34,7 @@ MARKETING_PREVIEW_DOMAINS: list[str] = [
 ]
 APP_PREVIEW_DOMAINS: list[str] = ["app.preview.familiar.systems"]
 
-# Aggregates — used by the TLS cert's dnsNames and anywhere the full set of
+# Aggregates - used by the TLS cert's dnsNames and anywhere the full set of
 # SANs is needed.
 PRODUCTION_DOMAINS: list[str] = [*MARKETING_PROD_DOMAINS, *APP_PROD_DOMAINS]
 PREVIEW_DOMAINS: list[str] = [*MARKETING_PREVIEW_DOMAINS, *APP_PREVIEW_DOMAINS]

@@ -1,4 +1,4 @@
-/* Light Theme (Default) — Warm parchment */
+/* Light Theme (Default) - Warm parchment */
 :root {
   --background: #f8f4ec;
   --foreground: #1c1917;
@@ -13,7 +13,7 @@
   --color-step-hover: #d8d2d2;
 }
 
-/* Dark Theme — Deep warm charcoal */
+/* Dark Theme - Deep warm charcoal */
 .dark {
   --background: #0f0d0a;
   --foreground: #e7e5e4;

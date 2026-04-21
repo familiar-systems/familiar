@@ -228,7 +228,7 @@ Handles everything before a campaign opens:
 - **Authentication** -- Hanko JWT verification. User identity, profiles, session management.
 - **Campaign CRUD** -- create, list, delete, transfer ownership. Metadata lives in platform.db.
 - **Routing table** -- maps campaign ID to campaign server address. Lease-based: each checkout is a lease with a heartbeat.
-- **Checkout endpoint** -- `POST /api/campaigns/:id/checkout` returns `{ ws_url: "wss://{apex}/campaign/:id/ws", api_base: "https://{apex}/campaign/:id" }`. The SPA calls this to acquire access to a campaign. URLs are **shard-agnostic**: they carry `campaign_id` but never a `shard_id` — ingress-layer routing resolves the owning shard. See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture).
+- **Checkout endpoint** -- `POST /api/campaigns/:id/checkout` returns `{ ws_url: "wss://{apex}/campaign/:id/ws", api_base: "https://{apex}/campaign/:id" }`. The SPA calls this to acquire access to a campaign. URLs are **shard-agnostic**: they carry `campaign_id` but never a `shard_id` - ingress-layer routing resolves the owning shard. See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture).
 - **Campaign server health monitoring** -- receives heartbeats, tracks load, detects failed leases.
 
 Talks to **platform.db**: users, campaigns, subscriptions, the routing table. Stateless HTTP; traffic is bursty, short-lived requests.
@@ -422,7 +422,7 @@ This sets the base to `packages/`. Each Rust type's `#[ts(export_to = "...")]` a
                                   └─────────────┘
 ```
 
-Traefik (via k3s Ingress) routes by path prefix within each of two apexes per environment — a marketing apex for the Astro site and an app apex for the SPA + platform + campaign:
+Traefik (via k3s Ingress) routes by path prefix within each of two apexes per environment - a marketing apex for the Astro site and an app apex for the SPA + platform + campaign:
 
 - `familiar.systems/` -> apps/site static files (marketing apex)
 - `app.familiar.systems/` -> apps/web static files (SPA at root; all unmatched paths serve `index.html`)

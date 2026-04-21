@@ -4,7 +4,7 @@
 #
 # Why this exists: platform-pv.yaml uses persistentVolumeReclaimPolicy=Retain
 # so a brief pod crash doesn't wipe the database. That policy applies to the
-# k8s-side reservation, not to the bytes on disk — the hostPath directory
+# k8s-side reservation, not to the bytes on disk - the hostPath directory
 # survives PV deletion. Without this Job, reopening PR N would bind a new
 # PV to the same path and boot the platform on PR N's stale schema.
 #

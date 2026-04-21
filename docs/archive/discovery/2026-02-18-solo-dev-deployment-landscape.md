@@ -1,6 +1,6 @@
 > **Superseded.** Deployment decided: Coolify on Hetzner with libSQL database-per-campaign. See [deployment strategy](../plans/2026-03-09-deployment-strategy.md). This document's research informed that decision.
 
-# familiar.systems — Solo-Dev Deployment Landscape
+# familiar.systems - Solo-Dev Deployment Landscape
 
 ## Context
 
@@ -15,7 +15,7 @@ This document explores what deployment looks like when you strip away the team-s
 - **Local-first development**: Everything runs on the developer's machine during active development
 - **One remote environment**: A single VPS that starts as a sandbox and grows into production. No staging.
 - **EU/EEA data sovereignty**: EU-headquartered providers preferred; non-EU providers acceptable where no EU alternative exists for a needed capability
-- **The "branching comfort"**: The developer values the ability to experiment freely and roll back to known-good database state — but doesn't necessarily need copy-on-write branching to get it
+- **The "branching comfort"**: The developer values the ability to experiment freely and roll back to known-good database state - but doesn't necessarily need copy-on-write branching to get it
 - **Self-hosting**: The same codebase must run on customer infrastructure (unchanged from before)
 - **Low operational overhead**: Solo dev time spent on infrastructure is time not spent on the product
 
@@ -53,7 +53,7 @@ Compose                    (self-hosted PaaS)  Fly.io             (fully managed
                  VPS       + 500MB overhead
 ```
 
-You can move right on this spectrum at any time (add tooling, switch to managed). Moving left is harder — you have to learn what the managed platform was hiding from you.
+You can move right on this spectrum at any time (add tooling, switch to managed). Moving left is harder - you have to learn what the managed platform was hiding from you.
 
 ---
 
@@ -74,7 +74,7 @@ A single VPS (Hetzner, UpCloud, etc.) running Docker. You manage everything: the
 
 **Kamal** is a deployment _script_ with best practices baked in. Nothing runs on your server except your apps and a tiny reverse proxy. It's what you'd do manually over SSH, automated and with zero-downtime as the default. 37signals uses it to deploy Basecamp and HEY.
 
-**Coolify** is "Heroku on your own VPS." It gives you a web dashboard, git-push deploys, PR preview environments, and database management — but it consumes ~500MB RAM on your server and is another piece of software to maintain.
+**Coolify** is "Heroku on your own VPS." It gives you a web dashboard, git-push deploys, PR preview environments, and database management - but it consumes ~500MB RAM on your server and is another piece of software to maintain.
 
 **Dokploy** is similar to Coolify with a slightly different UX. Smaller community (~24k GitHub stars vs Coolify's ~45k) but growing.
 
@@ -145,18 +145,18 @@ Push code, it runs. No server to manage. These platforms handle building, deploy
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **HQ**                 | US                                                                                                                                       |
 | **EU region**          | Frankfurt (on AWS eu-central-1)                                                                                                          |
-| **Monorepo**           | Supported — configure root directory per service. Less automated than Railway.                                                           |
+| **Monorepo**           | Supported - configure root directory per service. Less automated than Railway.                                                           |
 | **PR previews**        | Yes, via "Preview Environments."                                                                                                         |
 | **WebSocket**          | Supported on web services.                                                                                                               |
 | **Long-running jobs**  | Background Worker is a first-class service type. Runs continuously on paid plans.                                                        |
 | **Database**           | Managed PostgreSQL from ~$7/mo. PITR for 7 days on paid plans.                                                                           |
 | **Database branching** | No.                                                                                                                                      |
-| **Pricing**            | 3 services at Starter ($7/mo each) + free static site + PostgreSQL (~$7-20/mo) = ~$28-41/mo. Fixed-price tiers — you pay even when idle. |
+| **Pricing**            | 3 services at Starter ($7/mo each) + free static site + PostgreSQL (~$7-20/mo) = ~$28-41/mo. Fixed-price tiers - you pay even when idle. |
 | **Lock-in**            | Low. Standard Docker containers or buildpack-based deploys.                                                                              |
 
 **Strengths:** Frankfurt region (closer to Hetzner if you ever co-locate). Background workers are a first-class concept. Fixed pricing is predictable.
 
-**Concerns:** Fixed-price tiers mean you pay per service even when idle. Starter tier (512MB, 0.5 vCPU) may be tight for the worker during AI processing — you might need Standard ($25/mo) for that service.
+**Concerns:** Fixed-price tiers mean you pay per service even when idle. Starter tier (512MB, 0.5 vCPU) may be tight for the worker during AI processing - you might need Standard ($25/mo) for that service.
 
 #### Fly.io (~$15-70/mo)
 
@@ -164,11 +164,11 @@ Push code, it runs. No server to manage. These platforms handle building, deploy
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | **HQ**                 | US                                                                                                                |
 | **EU regions**         | Amsterdam, Frankfurt, London, Paris, Stockholm, Warsaw, Madrid (excellent coverage)                               |
-| **Monorepo**           | Manual — each service is a separate Fly app with its own `fly.toml`.                                              |
+| **Monorepo**           | Manual - each service is a separate Fly app with its own `fly.toml`.                                              |
 | **PR previews**        | Not built-in (scriptable via CLI).                                                                                |
-| **WebSocket**          | Excellent — Fly was designed for edge-deployed, latency-sensitive apps.                                           |
+| **WebSocket**          | Excellent - Fly was designed for edge-deployed, latency-sensitive apps.                                           |
 | **Long-running jobs**  | Machines can run indefinitely. Machines API lets you start/stop workers programmatically (pay only when running). |
-| **Database**           | Self-managed Fly Postgres (~$4/mo) or Managed Postgres (starts at $38/mo — expensive).                            |
+| **Database**           | Self-managed Fly Postgres (~$4/mo) or Managed Postgres (starts at $38/mo - expensive).                            |
 | **Database branching** | No.                                                                                                               |
 | **Pricing**            | 4 small machines (~$8-28/mo) + Postgres ($4-38/mo). Wide range depending on choices.                              |
 | **Lock-in**            | Low-medium. Standard Docker containers. `fly.toml` is Fly-specific but trivial to replace.                        |
@@ -206,13 +206,13 @@ This is functionally identical to Tier 1 (Docker Compose on a VPS) but on AWS. Y
 
 The ALB and NAT Gateway are the cost killers. You can avoid the NAT Gateway with public subnets (less secure) and avoid the ALB with a single Fargate task + nginx sidecar (defeats the purpose of independent deployment).
 
-**SST v3** (Serverless Stack) can deploy this setup from a single `sst.config.ts` file with first-class Hono support. It handles VPC, subnets, security groups, and NAT gateways automatically. SST itself is free — you pay AWS prices.
+**SST v3** (Serverless Stack) can deploy this setup from a single `sst.config.ts` file with first-class Hono support. It handles VPC, subnets, security groups, and NAT gateways automatically. SST itself is free - you pay AWS prices.
 
 **When to choose AWS:** You already know AWS. Or you want to co-locate with Neon (which runs on AWS) for sub-millisecond database latency. Otherwise, the pricing and complexity penalty is hard to justify for a solo dev.
 
 ---
 
-### IaC Tools (Not a Tier — a Cross-Cutting Concern)
+### IaC Tools (Not a Tier - a Cross-Cutting Concern)
 
 **SST v3**: TypeScript IaC focused on AWS. Deploys Hono to Lambda or ECS Fargate. ~10 lines to define an ECS service. Free tool, AWS pricing applies.
 
@@ -224,13 +224,13 @@ Neither provides a deployment platform. They deploy _to_ a platform. Relevant if
 
 ## EU-Native Provider Landscape
 
-These providers are EU-headquartered. They sit underneath the tiers above — the tier is _how_ you deploy; the provider is _where_ the server lives.
+These providers are EU-headquartered. They sit underneath the tiers above - the tier is _how_ you deploy; the provider is _where_ the server lives.
 
 ### Compute-Only (VPS / Bare Metal)
 
 | Provider    | HQ      | Managed DB? | Compute (2 vCPU, 4GB) | Regions                                    | Notes                                         |
 | ----------- | ------- | ----------- | --------------------- | ------------------------------------------ | --------------------------------------------- |
-| **Hetzner** | Germany | No          | ~€5/mo                | Falkenstein, Nuremberg (DE), Helsinki (FI) | Cheapest. Compute only — no managed services. |
+| **Hetzner** | Germany | No          | ~€5/mo                | Falkenstein, Nuremberg (DE), Helsinki (FI) | Cheapest. Compute only - no managed services. |
 
 ### Mini-Clouds (VPS + Managed Services)
 
@@ -244,15 +244,15 @@ These providers are EU-headquartered. They sit underneath the tiers above — th
 
 ### Key Distinction
 
-**Hetzner** is compute-only — you manage everything yourself. **UpCloud, Scaleway, OVH, and Exoscale** are mini-clouds — they offer managed PostgreSQL, object storage, sometimes K8s and serverless. This matters because with Hetzner you run PostgreSQL in Docker and manage backups yourself; with UpCloud or Scaleway you can offload database operations while still running your apps on a cheap VPS.
+**Hetzner** is compute-only - you manage everything yourself. **UpCloud, Scaleway, OVH, and Exoscale** are mini-clouds - they offer managed PostgreSQL, object storage, sometimes K8s and serverless. This matters because with Hetzner you run PostgreSQL in Docker and manage backups yourself; with UpCloud or Scaleway you can offload database operations while still running your apps on a cheap VPS.
 
 ---
 
 ## Database Branching Without a Branching Provider
 
-No deployment platform or EU-native provider offers copy-on-write database branching. That's exclusively a Neon (PostgreSQL) or Turso (libSQL) feature — both US/Canadian companies running on AWS.
+No deployment platform or EU-native provider offers copy-on-write database branching. That's exclusively a Neon (PostgreSQL) or Turso (libSQL) feature - both US/Canadian companies running on AWS.
 
-For a solo developer, the "branching comfort" — the ability to experiment freely and roll back to known-good state — can be achieved with simpler tools:
+For a solo developer, the "branching comfort" - the ability to experiment freely and roll back to known-good state - can be achieved with simpler tools:
 
 ### PostgreSQL
 
@@ -278,11 +278,11 @@ cp campaign-abc.db campaign-abc.db.snapshot
 cp campaign-abc.db.snapshot campaign-abc.db
 ```
 
-**Instant.** The simplest possible "branching" — free, local, zero infrastructure.
+**Instant.** The simplest possible "branching" - free, local, zero infrastructure.
 
 ### When you'd upgrade to real branching
 
-If `pg_dump`/`cp` starts feeling painful — likely when the database grows past ~1GB or when you're branching multiple times per day — that's the signal to add Neon or Turso. Both can be layered onto any compute tier without changing how you deploy your apps.
+If `pg_dump`/`cp` starts feeling painful - likely when the database grows past ~1GB or when you're branching multiple times per day - that's the signal to add Neon or Turso. Both can be layered onto any compute tier without changing how you deploy your apps.
 
 ---
 
@@ -309,7 +309,7 @@ If `pg_dump`/`cp` starts feeling painful — likely when the database grows past
 
 2. **UpCloud vs Scaleway for Tier 1.5.** If managed PostgreSQL is desired without leaving the EU, both are strong options. UpCloud has better Nordic presence (Helsinki); Scaleway has a broader service catalog. Worth comparing their managed PostgreSQL features (HA, PITR retention, connection pooling, extensions).
 
-3. **When to add Neon.** The Hetzner + Neon free tier combination is interesting — you get real CoW branching for $0 extra, but you're adding a US/AWS dependency for the database. The question is whether the branching comfort is worth the dependency this early.
+3. **When to add Neon.** The Hetzner + Neon free tier combination is interesting - you get real CoW branching for $0 extra, but you're adding a US/AWS dependency for the database. The question is whether the branching comfort is worth the dependency this early.
 
 4. **Railway as the "skip the VPS" option.** At ~$25/mo, Railway is the strongest managed-platform option for a solo dev. The monorepo DX is excellent and PR preview environments work out of the box. The question is whether paying 5x more than a Hetzner VPS is worth eliminating infrastructure management entirely.
 
@@ -321,10 +321,10 @@ If `pg_dump`/`cp` starts feeling painful — likely when the database grows past
 
 ### Deployment Tools
 
-- [Kamal](https://kamal-deploy.org/) — CLI Docker deploys via SSH (37signals)
+- [Kamal](https://kamal-deploy.org/) - CLI Docker deploys via SSH (37signals)
 - [Kamal 2: multiple apps on single server](https://www.honeybadger.io/blog/new-in-kamal-2/)
 - [Kamal review apps with destinations](https://dennmart.com/articles/review-apps-with-kamal-part-2-configuring-destinations/)
-- [Coolify](https://coolify.io/) — self-hosted PaaS
+- [Coolify](https://coolify.io/) - self-hosted PaaS
 - [Coolify GitHub preview deploy docs](https://coolify.io/docs/applications/ci-cd/github/preview-deploy)
 - [Dokploy vs Coolify comparison](https://blog.logrocket.com/dokploy-vs-coolify-production/)
 
@@ -342,19 +342,19 @@ If `pg_dump`/`cp` starts feeling painful — likely when the database grows past
 
 ### IaC Tools
 
-- [SST v3 — Hono on AWS](https://sst.dev/docs/start/aws/hono/)
+- [SST v3 - Hono on AWS](https://sst.dev/docs/start/aws/hono/)
 - [Pulumi Hetzner provider](https://www.pulumi.com/registry/packages/hcloud/)
 - [Terraform vs Pulumi vs SST analysis](https://www.gautierblandin.com/articles/terraform-pulumi-sst-tradeoff-analysis)
 
 ### EU Providers
 
-- [Hetzner Cloud](https://www.hetzner.com/cloud/) — German compute provider
-- [UpCloud managed PostgreSQL](https://upcloud.com/postgresql-managed-databases/) — Finnish cloud
-- [Scaleway managed databases](https://www.scaleway.com/en/managed-postgresql-mysql/) — French cloud
-- [OVH Public Cloud](https://www.ovhcloud.com/en/public-cloud/) — French cloud
-- [Exoscale managed PostgreSQL](https://www.exoscale.com/dbaas/postgresql/) — Swiss cloud (Aiven-powered)
-- [Elastx](https://elastx.se/) — Swedish managed cloud
-- [Ubicloud](https://www.ubicloud.com/) — open-source cloud on Hetzner
+- [Hetzner Cloud](https://www.hetzner.com/cloud/) - German compute provider
+- [UpCloud managed PostgreSQL](https://upcloud.com/postgresql-managed-databases/) - Finnish cloud
+- [Scaleway managed databases](https://www.scaleway.com/en/managed-postgresql-mysql/) - French cloud
+- [OVH Public Cloud](https://www.ovhcloud.com/en/public-cloud/) - French cloud
+- [Exoscale managed PostgreSQL](https://www.exoscale.com/dbaas/postgresql/) - Swiss cloud (Aiven-powered)
+- [Elastx](https://elastx.se/) - Swedish managed cloud
+- [Ubicloud](https://www.ubicloud.com/) - open-source cloud on Hetzner
 - [Ubicloud PostgreSQL](https://www.ubicloud.com/use-cases/postgresql)
 - [Ubicloud pricing](https://www.ubicloud.com/docs/about/pricing)
 
@@ -365,5 +365,5 @@ If `pg_dump`/`cp` starts feeling painful — likely when the database grows past
 
 ### Database Branching
 
-- [Neon pricing](https://neon.com/pricing) — PostgreSQL CoW branching
-- [Turso](https://turso.tech/) — libSQL CoW branching
+- [Neon pricing](https://neon.com/pricing) - PostgreSQL CoW branching
+- [Turso](https://turso.tech/) - libSQL CoW branching

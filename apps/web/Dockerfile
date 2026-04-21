@@ -33,7 +33,7 @@ COPY tooling/tsconfig/ tooling/tsconfig/
 
 # Vite bakes these into the bundle at build time.
 # VITE_BASE_PATH sets Vite's `base` (asset URL prefix + import.meta.env.BASE_URL).
-# Default `/` matches prod — the SPA lives at the root of the app apex
+# Default `/` matches prod - the SPA lives at the root of the app apex
 # (app.familiar.systems/). Preview builds override to /pr-N/ via the deploy
 # workflow so the bundle's asset URLs resolve under the per-PR prefix.
 ARG VITE_HANKO_API_URL

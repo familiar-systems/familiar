@@ -10,10 +10,10 @@
 
 | Concern                                      | Status    | How                                                                                              |
 | -------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------ |
-| LoroDoc ↔ ProseMirror round-trip             | Validated | Prior integration — `loro-prosemirror` with TipTap, custom schema works                          |
+| LoroDoc ↔ ProseMirror round-trip             | Validated | Prior integration - `loro-prosemirror` with TipTap, custom schema works                          |
 | loro-dev/protocol server-side sync           | Validated | Prior integration                                                                                |
 | LoroDoc as conversation (streaming, history) | Validated | `@loro-extended` TypeScript project                                                              |
-| Loro + TipTap custom node types              | Validated | Prior integration — unbranded types caused editor confusion, which motivated this design session |
+| Loro + TipTap custom node types              | Validated | Prior integration - unbranded types caused editor confusion, which motivated this design session |
 | Room multiplexing                            | Validated | loro-dev/protocol supports this natively                                                         |
 
 **What remains unvalidated:** The suggestion model. Specifically: can we layer suggestion metadata onto block ranges in a LoroDoc, render them as inline diffs in TipTap with accept/reject controls, enforce read-only blocking on target blocks, and handle overlapping suggestions from multiple agent conversations?
@@ -47,20 +47,20 @@ This breaks down into five sub-questions, each building on the last.
 
 **Two approaches to evaluate:**
 
-**Approach A — ProseMirror marks:** Suggestions are ProseMirror marks applied to the text ranges of target blocks. The mark carries a `suggestionId` attribute. The suggestion data (proposed content, provenance) lives in a sibling `LoroMap` in the same LoroDoc, keyed by suggestion ID. The mark is the visual/structural anchor. The LoroMap is the data store.
+**Approach A - ProseMirror marks:** Suggestions are ProseMirror marks applied to the text ranges of target blocks. The mark carries a `suggestionId` attribute. The suggestion data (proposed content, provenance) lives in a sibling `LoroMap` in the same LoroDoc, keyed by suggestion ID. The mark is the visual/structural anchor. The LoroMap is the data store.
 
-**Approach B — Pure LoroMap, no ProseMirror marks:** Suggestions live entirely in a sibling `LoroMap`. Each entry contains `target_blocks: Vec<BlockId>`, proposed content, and provenance. The TipTap extension reads this map and renders suggestion UI on the appropriate blocks by matching block UUIDs. No ProseMirror mark is applied to the document content at all.
+**Approach B - Pure LoroMap, no ProseMirror marks:** Suggestions live entirely in a sibling `LoroMap`. Each entry contains `target_blocks: Vec<BlockId>`, proposed content, and provenance. The TipTap extension reads this map and renders suggestion UI on the appropriate blocks by matching block UUIDs. No ProseMirror mark is applied to the document content at all.
 
-**Approach A is preferable** because ProseMirror marks are the native mechanism for "this range of content has an annotation." The editor's rendering pipeline already handles marks — highlighting, decorations, click handlers. The `loro-prosemirror` binding should sync marks like any other schema element.
+**Approach A is preferable** because ProseMirror marks are the native mechanism for "this range of content has an annotation." The editor's rendering pipeline already handles marks - highlighting, decorations, click handlers. The `loro-prosemirror` binding should sync marks like any other schema element.
 
-**Approach B is the fallback** if marks don't work well for block-level suggestions (marks are traditionally inline — spanning text within a block, not spanning entire blocks). Block-level annotations might need ProseMirror node decorations or a plugin that reads from the LoroMap and produces decorations at render time.
+**Approach B is the fallback** if marks don't work well for block-level suggestions (marks are traditionally inline - spanning text within a block, not spanning entire blocks). Block-level annotations might need ProseMirror node decorations or a plugin that reads from the LoroMap and produces decorations at render time.
 
 **What to build:**
 
 1. Add a `suggestion` mark to the TipTap schema with a `suggestionId` attribute
 2. Add a `suggestions` LoroMap to the LoroDoc (sibling to the document content container)
 3. Apply the mark to a paragraph's text range. Write suggestion data to the LoroMap
-4. Verify the mark survives sync via `loro-prosemirror` — does `LoroSyncPlugin` handle custom marks with custom attributes?
+4. Verify the mark survives sync via `loro-prosemirror` - does `LoroSyncPlugin` handle custom marks with custom attributes?
 5. If marks don't work for block-spanning suggestions, try Approach B: read from LoroMap in a ProseMirror plugin, produce node decorations
 
 **Validation criteria:**
@@ -81,13 +81,13 @@ Using whichever approach from SQ1 works:
 1. Create suggestion A targeting block P2 (by its BlockId)
 2. Create suggestion B targeting blocks P2+P3 (overlapping with A on P2)
 3. Verify both suggestions exist in the LoroDoc
-4. Verify the document tree is unchanged — P2 and P3 are still normal paragraphs
+4. Verify the document tree is unchanged - P2 and P3 are still normal paragraphs
 5. Verify both suggestions render in the editor (both blocks show suggestion UI)
 6. Sync to a second editor. Verify both suggestions appear there too
 
 If using Approach A (marks): ProseMirror marks explicitly support overlapping. Two `suggestion` marks with different `suggestionId` values on the same text range should coexist. Verify this.
 
-If using Approach B (LoroMap + decorations): Overlapping is trivial — two LoroMap entries can reference the same block UUIDs without conflict.
+If using Approach B (LoroMap + decorations): Overlapping is trivial - two LoroMap entries can reference the same block UUIDs without conflict.
 
 **Validation criteria:**
 
@@ -98,7 +98,7 @@ If using Approach B (LoroMap + decorations): Overlapping is trivial — two Loro
 
 ---
 
-### Sub-question 3: Blocking — can target blocks be made read-only?
+### Sub-question 3: Blocking - can target blocks be made read-only?
 
 **What to build:**
 
@@ -133,10 +133,10 @@ filterTransaction(transaction, state) {
 
 **Test cases:**
 
-1. Create a suggestion on P2. Try to type in P2 — should be blocked
-2. Try to type in P1 or P3 — should work normally
-3. Try to delete P2 — should be blocked
-4. Try to merge P1 and P2 (backspace at start of P2) — should be blocked
+1. Create a suggestion on P2. Try to type in P2 - should be blocked
+2. Try to type in P1 or P3 - should work normally
+3. Try to delete P2 - should be blocked
+4. Try to merge P1 and P2 (backspace at start of P2) - should be blocked
 5. Create overlapping suggestions on P2 (from two conversations). Reject one. P2 should remain blocked (the other suggestion is still pending). Reject the second. P2 should become editable
 
 **Validation criteria:**
@@ -166,7 +166,7 @@ TipTap commands for suggestion resolution:
 
 1. Remove the suggestion from the LoroMap (and the mark, if using Approach A)
 2. The document content is unchanged
-3. The `LoroSyncPlugin` propagates the mark removal — the block is no longer highlighted
+3. The `LoroSyncPlugin` propagates the mark removal - the block is no longer highlighted
 
 **Supersession (same conversation, same target blocks):**
 
@@ -182,7 +182,7 @@ TipTap commands for suggestion resolution:
 4. Create suggestion from conversation X on P4. Create a second suggestion from conversation X on the same P4. Verify only the second suggestion exists
 5. Sync all of the above to a second editor. Verify consistency
 
-**Key concern for accept:** When accepting replaces target blocks with proposed content, the new blocks get fresh BlockIds. Any _other_ suggestion that referenced the old BlockIds now has stale references. The editor needs to handle this — either by detecting that the referenced blocks no longer exist (and rendering the suggestion as invalid) or by not allowing accept when overlapping suggestions exist (forcing the GM to reject the others first).
+**Key concern for accept:** When accepting replaces target blocks with proposed content, the new blocks get fresh BlockIds. Any _other_ suggestion that referenced the old BlockIds now has stale references. The editor needs to handle this - either by detecting that the referenced blocks no longer exist (and rendering the suggestion as invalid) or by not allowing accept when overlapping suggestions exist (forcing the GM to reject the others first).
 
 The design docs say "the editor flags them accordingly" but this spike needs to determine what "accordingly" means concretely. The simplest approach: if a suggestion's target BlockIds don't all exist in the document, the suggestion is invalid and should be auto-cleaned (removed from the LoroMap, recorded as `invalidated` in outcomes).
 
@@ -202,7 +202,7 @@ The design docs say "the editor flags them accordingly" but this spike needs to 
 
 A TipTap extension (custom node view or decoration-based) that renders suggestions as inline diffs.
 
-**Critical: the renderer must diff at the block level, not show raw before/after.** Because `suggest_replace` follows the Claude Code `str_replace` model (which is open source and a standard ML eval harness), insertions include anchor context — the `old_content` contains surrounding blocks that appear unchanged in `new_content`. A naive "show old, show new" rendering would display unchanged anchor blocks as if they're being modified. The renderer must compare target blocks against proposed blocks block-by-block and classify each as:
+**Critical: the renderer must diff at the block level, not show raw before/after.** Because `suggest_replace` follows the Claude Code `str_replace` model (which is open source and a standard ML eval harness), insertions include anchor context - the `old_content` contains surrounding blocks that appear unchanged in `new_content`. A naive "show old, show new" rendering would display unchanged anchor blocks as if they're being modified. The renderer must compare target blocks against proposed blocks block-by-block and classify each as:
 
 - **Unchanged:** Block appears identically in both target and proposed. Render normally, no diff styling. Still read-only (it's in `target_blocks`), but visually indistinguishable from regular content.
 - **Modified:** Block exists in both but content differs. Render as strikethrough original + highlighted replacement.
@@ -223,7 +223,7 @@ A TipTap extension (custom node view or decoration-based) that renders suggestio
 - Each proposal shows its provenance (which conversation, which user, when)
 - Accept/reject controls per proposal
 
-**Implementation approach:** This is likely a ProseMirror node decoration or custom `nodeView` — not a mark decoration — because it needs to modify how the entire block renders, not just add styling to text. The decoration reads suggestion data from the LoroMap, finds the block's position in the editor, and renders the diff UI around it. A `nodeView` gives full control over rendering without modifying the document structure.
+**Implementation approach:** This is likely a ProseMirror node decoration or custom `nodeView` - not a mark decoration - because it needs to modify how the entire block renders, not just add styling to text. The decoration reads suggestion data from the LoroMap, finds the block's position in the editor, and renders the diff UI around it. A `nodeView` gives full control over rendering without modifying the document structure.
 
 **Validation criteria:**
 
@@ -241,12 +241,12 @@ A TipTap extension (custom node view or decoration-based) that renders suggestio
 
 Everything else is validated or is straightforward implementation work:
 
-- LoroDoc ↔ ProseMirror sync (validated — `loro-prosemirror` works with custom TipTap schema)
+- LoroDoc ↔ ProseMirror sync (validated - `loro-prosemirror` works with custom TipTap schema)
 - loro-dev/protocol server-side integration (validated)
-- Conversation as LoroDoc with streaming (validated — `@loro-extended`)
+- Conversation as LoroDoc with streaming (validated - `@loro-extended`)
 - Actor topology and kameo integration (well-understood patterns, not Loro-specific)
-- Serialization compiler (`f()` / `f⁻¹()`) — depends on SQ1's answer for how to read/write suggestion marks, but the compiler logic itself is string processing against a known format
-- Persistence and reconstruction (validated implicitly — LoroDoc export/import works)
+- Serialization compiler (`f()` / `f⁻¹()`) - depends on SQ1's answer for how to read/write suggestion marks, but the compiler logic itself is string processing against a known format
+- Persistence and reconstruction (validated implicitly - LoroDoc export/import works)
 - RelationshipGraph / petgraph (straightforward)
 - Suggestion outcomes table (plain SQL, no risk)
 
@@ -254,7 +254,7 @@ Everything else is validated or is straightforward implementation work:
 
 ## Deliverables
 
-1. **Working prototype** — a TipTap editor with suggestion mark support, demonstrating create/accept/reject/supersede on single and overlapping suggestions, with blocking and inline diff rendering. Synced between two editors via `loro-prosemirror` and the loro protocol.
-2. **Approach decision** — Approach A (ProseMirror marks + LoroMap) or Approach B (LoroMap + decorations), with rationale.
-3. **Architecture notes** — anything that changes in the domain design or serialization format based on what we learn. Particularly: how the `SuggestionTarget` trait maps to the concrete LoroDoc operations, and how the compiler's `f⁻¹()` produces suggestion marks.
-4. **Edge case documentation** — what happens when accept invalidates overlapping suggestions, the exact BlockId lifecycle during accept, and any rendering limitations discovered.
+1. **Working prototype** - a TipTap editor with suggestion mark support, demonstrating create/accept/reject/supersede on single and overlapping suggestions, with blocking and inline diff rendering. Synced between two editors via `loro-prosemirror` and the loro protocol.
+2. **Approach decision** - Approach A (ProseMirror marks + LoroMap) or Approach B (LoroMap + decorations), with rationale.
+3. **Architecture notes** - anything that changes in the domain design or serialization format based on what we learn. Particularly: how the `SuggestionTarget` trait maps to the concrete LoroDoc operations, and how the compiler's `f⁻¹()` produces suggestion marks.
+4. **Edge case documentation** - what happens when accept invalidates overlapping suggestions, the exact BlockId lifecycle during accept, and any rendering limitations discovered.

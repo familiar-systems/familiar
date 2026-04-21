@@ -2,7 +2,7 @@
 
 **Status:** Active
 **Date:** 2026-03-30
-**Supersedes:** [k3s + Pulumi Infrastructure (deployment strategy)](../archive/plans/2026-03-12-deployment-strategy.md) — jointly with [Deployment Architecture](./2026-03-30-deployment-architecture.md). The superseded document covered both infrastructure primitives and deployment concerns as one plan with a Coolify-to-k3s migration path. That migration is complete. This document describes the infrastructure as it exists today.
+**Supersedes:** [k3s + Pulumi Infrastructure (deployment strategy)](../archive/plans/2026-03-12-deployment-strategy.md) - jointly with [Deployment Architecture](./2026-03-30-deployment-architecture.md). The superseded document covered both infrastructure primitives and deployment concerns as one plan with a Coolify-to-k3s migration path. That migration is complete. This document describes the infrastructure as it exists today.
 **Related decisions:** [Deployment Architecture](./2026-03-30-deployment-architecture.md), [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)
 
 ---
@@ -11,7 +11,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Hetzner CX23 (hel1) — single-node k3s cluster           │
+│  Hetzner CX23 (hel1) - single-node k3s cluster           │
 │                                                           │
 │  Floating IP ──→ Traefik Ingress (built into k3s)         │
 │                                                           │
@@ -54,7 +54,7 @@
 │  Nebius (Finnish GPU infrastructure)                      │
 │    Python ML workers: faster-whisper, pyannote            │
 │    Dispatched by campaign server via HTTP                 │
-│    Stateless — receives audio, returns transcripts        │
+│    Stateless - receives audio, returns transcripts        │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -100,8 +100,8 @@ pulumi up --stack prod   # targets Hetzner k3s cluster
 **The agent-friendly loop:**
 
 1. Agent writes/modifies Pulumi Python code
-2. `pulumi preview --stack dev` — shows diff, basedpyright catches type errors
-3. `pulumi up --stack dev` — applies to local k3d cluster
+2. `pulumi preview --stack dev` - shows diff, basedpyright catches type errors
+3. `pulumi up --stack dev` - applies to local k3d cluster
 4. If it fails: deterministic error message from Kubernetes API, fix and retry
 5. If it works: `pulumi up --stack prod`
 
@@ -113,7 +113,7 @@ provider = k8s.Provider("dry-run",
 )
 ```
 
-Note: k3d is for testing **infrastructure changes** (Pulumi manifests, ingress rules, cert config). Application development uses Docker Compose — see [Deployment Architecture](./2026-03-30-deployment-architecture.md).
+Note: k3d is for testing **infrastructure changes** (Pulumi manifests, ingress rules, cert config). Application development uses Docker Compose - see [Deployment Architecture](./2026-03-30-deployment-architecture.md).
 
 ---
 
@@ -154,7 +154,7 @@ runcmd:
     - curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--data-dir /data/k3s --tls-san <floating-ip> --node-external-ip <floating-ip>" sh -
 ```
 
-> **Open question (--tls-san / --node-external-ip):** `--tls-san` is needed so the API server cert includes the Floating IP as a SAN — otherwise the kubeconfig breaks on server replacement because the primary IP changes. `--node-external-ip` may be needed so Traefik binds to the Floating IP. Verify both flags against the k3s docs before implementing.
+> **Open question (--tls-san / --node-external-ip):** `--tls-san` is needed so the API server cert includes the Floating IP as a SAN - otherwise the kubeconfig breaks on server replacement because the primary IP changes. `--node-external-ip` may be needed so Traefik binds to the Floating IP. Verify both flags against the k3s docs before implementing.
 
 k3s supports custom data directories via `--data-dir` ([k3s Advanced Options](https://docs.k3s.io/advanced)). This puts all k3s state (embedded SQLite/etcd, certificates, manifests) on the Hetzner Volume.
 
@@ -206,7 +206,7 @@ cluster_issuer = k8s.apiextensions.CustomResource("letsencrypt-dns",
                 "solvers": [{
                     "dns01": {
                         "webhook": {
-                            # bunny.net solver config — cert-manager-webhook-bunny
+                            # bunny.net solver config - cert-manager-webhook-bunny
                             # https://github.com/nicholasgasior/cert-manager-webhook-bunny
                         },
                     },
@@ -245,7 +245,7 @@ wildcard_cert = k8s.apiextensions.CustomResource("preview-wildcard",
 
 The secret name remains `preview-wildcard-tls` for continuity with existing Ingress references, despite the cert being neither a wildcard nor preview-only. See `infra/pulumi-cloud/k8s.py` for the authoritative resource declaration.
 
-Certificates survive server replacement — stored as Kubernetes Secrets in k3s's datastore on the Volume at `/data/k3s`.
+Certificates survive server replacement - stored as Kubernetes Secrets in k3s's datastore on the Volume at `/data/k3s`.
 
 ---
 
@@ -318,9 +318,9 @@ Because k3s state lives on the Hetzner Volume at `/data/k3s`:
 3. k3s starts, reads existing state from Volume
 4. All Deployments, Services, Ingresses, certificates resume automatically
 5. Traefik (built into k3s) picks up cached certs from k3s state
-6. DNS already points at Floating IP — zero DNS changes
+6. DNS already points at Floating IP - zero DNS changes
 
-**No runbook steps.** The Volume IS the cluster. For the campaign server specifically, server replacement triggers the same reconnection flow as a graceful restart — see [Deployment Architecture: Graceful Restart Protocol](./2026-03-30-deployment-architecture.md#graceful-restart-protocol).
+**No runbook steps.** The Volume IS the cluster. For the campaign server specifically, server replacement triggers the same reconnection flow as a graceful restart - see [Deployment Architecture: Graceful Restart Protocol](./2026-03-30-deployment-architecture.md#graceful-restart-protocol).
 
 ---
 

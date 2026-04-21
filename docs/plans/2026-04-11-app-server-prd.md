@@ -1,4 +1,4 @@
-# App Server — Technical Product Requirements
+# App Server - Technical Product Requirements
 
 **Status:** Draft
 **Date:** 2026-04-11
@@ -17,46 +17,46 @@ Clients interact with two servers independently. The SPA calls the app server fo
 
 Campaign servers are the only processes that touch campaign data. The app server never reads from or writes to campaign libSQL files or object storage. This is structural: "nothing happens to a campaign without checkout" applies to the app server too.
 
-Both binaries verify Hanko JWTs independently. Shared auth code lives in `crates/shared/`. The SPA, app server, and campaign server share the **app apex** (`app.familiar.systems` in prod) — see "URL architecture" below — so browser calls between them are same-origin and do not trigger CORS preflight. The marketing site lives on a separate apex (`familiar.systems`) and does not make authenticated calls into the app. The CORS layer remains as defense-in-depth for any non-browser caller that sends an Origin header. Auth tokens are bearer JWTs and are origin-agnostic.
+Both binaries verify Hanko JWTs independently. Shared auth code lives in `crates/shared/`. The SPA, app server, and campaign server share the **app apex** (`app.familiar.systems` in prod) - see "URL architecture" below - so browser calls between them are same-origin and do not trigger CORS preflight. The marketing site lives on a separate apex (`familiar.systems`) and does not make authenticated calls into the app. The CORS layer remains as defense-in-depth for any non-browser caller that sends an Origin header. Auth tokens are bearer JWTs and are origin-agnostic.
 
 ### URL architecture
 
-User-facing traffic is split across two apexes per environment: a **marketing apex** for the Astro static site and an **app apex** for the SPA, platform API, and campaign shards. Path-based routing applies within each apex. Per-service subdomains (`api.*`, `c1.*`, per-PR subdomains) are not used. Each Hanko tenant registers exactly one origin — the app apex — and that origin never changes. This is the structural answer to Hanko Cloud's refusal of wildcard origins and its lack of an admin API for per-PR origin registration.
+User-facing traffic is split across two apexes per environment: a **marketing apex** for the Astro static site and an **app apex** for the SPA, platform API, and campaign shards. Path-based routing applies within each apex. Per-service subdomains (`api.*`, `c1.*`, per-PR subdomains) are not used. Each Hanko tenant registers exactly one origin - the app apex - and that origin never changes. This is the structural answer to Hanko Cloud's refusal of wildcard origins and its lack of an admin API for per-PR origin registration.
 
 **Apex per environment:**
 
-| Environment | Marketing apex | App apex |
-|---|---|---|
-| Prod | `familiar.systems` | `app.familiar.systems` |
-| Preview | `preview.familiar.systems` | `app.preview.familiar.systems` |
-| Local dev | `localhost:8080` | `app.localhost:8080` |
+| Environment | Marketing apex             | App apex                       |
+| ----------- | -------------------------- | ------------------------------ |
+| Prod        | `familiar.systems`         | `app.familiar.systems`         |
+| Preview     | `preview.familiar.systems` | `app.preview.familiar.systems` |
+| Local dev   | `localhost:8080`           | `app.localhost:8080`           |
 
 **Prod path scheme:**
 
-- `familiar.systems/` — Astro static site
-- `app.familiar.systems/` — Vite SPA (at root)
-- `app.familiar.systems/api/` — platform server
-- `app.familiar.systems/campaign/{campaign_id}/` — campaign shard hosting that campaign
+- `familiar.systems/` - Astro static site
+- `app.familiar.systems/` - Vite SPA (at root)
+- `app.familiar.systems/api/` - platform server
+- `app.familiar.systems/campaign/{campaign_id}/` - campaign shard hosting that campaign
 
 **Preview path scheme (per PR):** identical, with `/pr-{PR_NUMBER}/` prefix applied to each apex:
 
-- `preview.familiar.systems/pr-42/` — Astro site for PR 42
-- `app.preview.familiar.systems/pr-42/` — SPA for PR 42
-- `app.preview.familiar.systems/pr-42/api/` — platform for PR 42
-- `app.preview.familiar.systems/pr-42/campaign/{campaign_id}/` — campaign shard for PR 42
+- `preview.familiar.systems/pr-42/` - Astro site for PR 42
+- `app.preview.familiar.systems/pr-42/` - SPA for PR 42
+- `app.preview.familiar.systems/pr-42/api/` - platform for PR 42
+- `app.preview.familiar.systems/pr-42/campaign/{campaign_id}/` - campaign shard for PR 42
 
-**Scope.** This two-apex contract governs the application. Subdomains that host separate systems — `auth.familiar.systems` / `auth.preview.familiar.systems` (Hanko tenants) — are outside this scope and manage their own routing and TLS. Future out-of-band surfaces (docs, status page, blog, community forums) live on their own subdomains.
+**Scope.** This two-apex contract governs the application. Subdomains that host separate systems - `auth.familiar.systems` / `auth.preview.familiar.systems` (Hanko tenants) - are outside this scope and manage their own routing and TLS. Future out-of-band surfaces (docs, status page, blog, community forums) live on their own subdomains.
 
 **Origin isolation.** The marketing apex and the app apex are distinct browser origins. Cookies, localStorage, and sessionStorage at one are invisible to the other. Authenticated session state lives on the app apex and is unreachable from marketing code. Cross-apex calls (if any) go through CORS; the public campaign showcase endpoint on the app server is the one known candidate and is expected to be consumed at Astro build time, so no runtime cross-origin fetch is required.
 
-**Shard-agnostic URLs.** The platform's checkout API returns URLs that contain `campaign_id` but never a `shard_id`. The SPA treats them opaquely. When a campaign's shard assignment changes (lease expiry, reclaim), the URL is unchanged — ingress-layer re-resolution handles routing to the new shard. At N=1 shard the routing is a direct Ingress rule pointing `/campaign/*` at the only shard; at N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the platform's routing table. The app server is never in the CRDT hot path under either topology.
+**Shard-agnostic URLs.** The platform's checkout API returns URLs that contain `campaign_id` but never a `shard_id`. The SPA treats them opaquely. When a campaign's shard assignment changes (lease expiry, reclaim), the URL is unchanged - ingress-layer re-resolution handles routing to the new shard. At N=1 shard the routing is a direct Ingress rule pointing `/campaign/*` at the only shard; at N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the platform's routing table. The app server is never in the CRDT hot path under either topology.
 
 **Hanko origin mapping.** Each tenant registers exactly one apex as its origin for the life of the project:
 
 - Prod tenant: `https://app.familiar.systems`
 - Preview tenant: `https://app.preview.familiar.systems` (plus `http://app.localhost:8080` for local dev against the preview tenant)
 
-The marketing apex is not a Hanko origin — marketing has no authenticated flows. Per-PR origin registration is not needed because every PR reuses the app apex with a different `/pr-{N}/` path prefix.
+The marketing apex is not a Hanko origin - marketing has no authenticated flows. Per-PR origin registration is not needed because every PR reuses the app apex with a different `/pr-{N}/` path prefix.
 
 ---
 
@@ -88,12 +88,12 @@ The fake auth provider is **not implemented today**. Today the only path is the 
 
 ### Campaign membership and access control
 
-- Three roles per campaign: owner, GM, player. Owner is the billing target — their subscription and credits are charged. Owner can be any member, including a player. Exactly one owner per campaign.
-- GM and player are functional roles controlling tool availability and edit permissions on the campaign server. Owner is a billing role and is orthogonal — an owner who is a player has player-level permissions.
+- Three roles per campaign: owner, GM, player. Owner is the billing target - their subscription and credits are charged. Owner can be any member, including a player. Exactly one owner per campaign.
+- GM and player are functional roles controlling tool availability and edit permissions on the campaign server. Owner is a billing role and is orthogonal - an owner who is a player has player-level permissions.
 - Invite flow (generate invite, accept invite)
 - Campaign join/leave
 - Ownership transfer
-- Membership data is the authority for "who is allowed to connect" — campaign servers verify membership on WebSocket connection
+- Membership data is the authority for "who is allowed to connect" - campaign servers verify membership on WebSocket connection
 
 ### Campaign list
 
@@ -139,7 +139,7 @@ The fake auth provider is **not implemented today**. Today the only path is the 
 
 - Endpoint serving campaign metadata for the Astro static site build
 - Limited to what the app server actually has: name, description, game system, GM-written blurb
-- No campaign-internal data (entity counts, NPC lists, auto-generated summaries) — that lives in campaign libSQL files and the app server does not access it
+- No campaign-internal data (entity counts, NPC lists, auto-generated summaries) - that lives in campaign libSQL files and the app server does not access it
 - Richer showcase content (if ever needed) would be served directly by the campaign server for checked-out campaigns, not aggregated by the app server
 
 ---
@@ -154,11 +154,11 @@ Pricing is independent of token usage. Flat monthly subscription tiers (Notebook
 
 Usage-based billing for LLM tokens and audio processing minutes. The design is established but implementation is deferred.
 
-**Architecture:** Periodic usage reporting from shards to the app server. The shard reports raw usage accumulated since campaign checkout start: token counts per model and diarization seconds. This is a reduce — the shard accumulates, the app server applies pricing.
+**Architecture:** Periodic usage reporting from shards to the app server. The shard reports raw usage accumulated since campaign checkout start: token counts per model and diarization seconds. This is a reduce - the shard accumulates, the app server applies pricing.
 
 **Usage report response:** The app server responds with quota status. At minimum: "keep going" or "cut off," remaining audio time before end of billing period, and whether overages apply. This is critical for UX: if a GM uploads a 3-hour session recording and has 1.5 hours remaining, they need to know before processing begins that this will cost them 2 additional hours at the overage rate.
 
-**Post-rate-limiting evolution:** The response expands to include percentage of quota consumed before campaign checkout, percentage consumed since checkout, percentage remaining, and quota reset timestamp. The shard can derive time remaining from the math. The shard never needs to know the billing cycle boundaries — the app server tells it what it needs.
+**Post-rate-limiting evolution:** The response expands to include percentage of quota consumed before campaign checkout, percentage consumed since checkout, percentage remaining, and quota reset timestamp. The shard can derive time remaining from the math. The shard never needs to know the billing cycle boundaries - the app server tells it what it needs.
 
 **Usage attribution:** Usage is billed to the campaign owner, not the user who triggered the LLM call. The shard does not need to track per-user usage at launch. Per-user usage breakdown ("this user consumed X% of your cap") is a potential future feature but is not required.
 
@@ -187,7 +187,7 @@ Usage-based billing for LLM tokens and audio processing minutes. The design is e
 
 - **Runtime:** Axum + Tokio
 - **Auth:** Hanko JWT verification (shared with campaign server via `crates/shared/`)
-- **Database:** Platform database (technology TBD — libSQL, Postgres, or otherwise). Single instance, does not need to scale beyond one for the foreseeable future.
+- **Database:** Platform database (technology TBD - libSQL, Postgres, or otherwise). Single instance, does not need to scale beyond one for the foreseeable future.
 - **Deployment:** k3s on Hetzner (hel1), alongside but independent of campaign server deployments
 
 ---
@@ -199,7 +199,7 @@ Three environments, same application shape. What changes between them is the fab
 ### Local dev
 
 - **Entry point:** `mise run dev` starts five parallel processes: Astro site (:4321), Vite SPA (:5173, `base=/`), platform (cargo run, :3000), campaign (cargo run, :3001), and a Caddy reverse proxy (:8080) configured by `Caddyfile.dev`.
-- **URLs the browser sees:** `http://localhost:8080` (marketing) and `http://app.localhost:8080` (app). Caddy binds both host matchers on port 8080; `*.localhost` is loopback by browser convention, so no `/etc/hosts` entries are required. The marketing host routes `/` → Astro; the app host routes `/api/*` → platform, `/campaign/*` → campaign, `/*` → SPA. Dev topology mirrors prod exactly — two apexes, same path rules within each.
+- **URLs the browser sees:** `http://localhost:8080` (marketing) and `http://app.localhost:8080` (app). Caddy binds both host matchers on port 8080; `*.localhost` is loopback by browser convention, so no `/etc/hosts` entries are required. The marketing host routes `/` → Astro; the app host routes `/api/*` → platform, `/campaign/*` → campaign, `/*` → SPA. Dev topology mirrors prod exactly - two apexes, same path rules within each.
 - **Auth:** preview Hanko tenant via `HANKO_API_URL_DEV` in `mise.toml`. Registered origin on the preview tenant is `http://app.localhost:8080`. Email/passcode works; passkeys don't (rpID mismatch, intentional).
 - **Data:** local libSQL files under `data/`. `:memory:` for tests.
 
@@ -237,8 +237,8 @@ Three environments, same application shape. What changes between them is the fab
 
 The SPA calls two services over same-origin paths under the environment apex (see "URL architecture" above):
 
-1. **App server** at `familiar.systems/api/` (or `.../pr-N/api/` in preview) — platform CRUD via REST/JSON
-2. **Campaign server** at `familiar.systems/campaign/{campaign_id}/` — collaboration via WebSocket, path-prefix-routed to the owning shard
+1. **App server** at `familiar.systems/api/` (or `.../pr-N/api/` in preview) - platform CRUD via REST/JSON
+2. **Campaign server** at `familiar.systems/campaign/{campaign_id}/` - collaboration via WebSocket, path-prefix-routed to the owning shard
 
 The "enter campaign" flow from the SPA's perspective:
 
@@ -248,7 +248,7 @@ The "enter campaign" flow from the SPA's perspective:
 4. SPA opens the returned WebSocket URL; ingress routes to the owning shard
 5. Collaboration begins
 
-Because everything is same-origin, the SPA has no CORS preflight to handle, no cross-subdomain cookie handling, and no per-PR URL construction logic. The checkout response is treated opaquely — the SPA does not parse `shard_id` from the URL because it isn't there.
+Because everything is same-origin, the SPA has no CORS preflight to handle, no cross-subdomain cookie handling, and no per-PR URL construction logic. The checkout response is treated opaquely - the SPA does not parse `shard_id` from the URL because it isn't there.
 
 ---
 
