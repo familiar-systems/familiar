@@ -55,7 +55,7 @@ apps/platform         Rust binary: Axum (auth, CRUD, routing table, discover)
 apps/campaign         Rust binary: Axum + kameo (actors, collab, AI, compiler)
 workers/              Job processors, language-agnostic (Python ML today)
 
-crates/app-shared       Rust library: IDs, auth, libSQL helpers (platform + campaign)
+crates/app-shared       Rust library: IDs, auth (platform + campaign)
 crates/campaign-shared  Rust library: ToC/Thing Loro wrappers, PM conventions, CrdtDoc trait (campaign only)
 packages/types-app      @familiar-systems/types-app, generated from app-shared via ts-rs (CampaignId, UserId)
 packages/types-campaign @familiar-systems/types-campaign, generated from campaign-shared via ts-rs (ThingId, BlockId, ThingHandle, TocEntry, ...)
@@ -105,7 +105,7 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 | Routing        | TanStack Router or React Router (not yet decided)           |
 | Server         | Rust: Axum + kameo actors                                   |
 | API contract   | ts-rs (type generation) + utoipa (OpenAPI)                  |
-| Database       | libSQL (database-per-campaign), Turso Database upgrade path |
+| Database       | SQLite for platform (via `sea-orm` + `sqlx-sqlite`); libSQL planned for campaign server (database-per-campaign, Turso Database upgrade path) |
 | Collaboration  | Loro CRDTs + loro-dev/protocol                              |
 | Object Storage | Hetzner Object Storage (campaign DB source of truth)        |
 | ML workers     | Python: faster-whisper, pyannote (GPU, k8s Jobs)            |
@@ -180,5 +180,5 @@ Three deployment environments, one URL contract. **Every environment terminates 
 
 - The `@familiar-systems/editor` package is the most architecturally important. It defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and the campaign server (for LoroDoc reconstruction and serialization compiler).
 - LLM provider is pluggable: hosted instance uses managed keys, self-hosters bring their own.
-- No Docker database container needed for local development. libSQL files on disk. `:memory:` databases for tests.
+- No Docker database container needed for local development. SQLite files on disk (and eventually libSQL files for campaign DBs once the campaign server lands). `:memory:` databases for tests.
 - **Cookie scope is per apex.** Any cookie set on the app apex (`app.familiar.systems`, or its preview/dev equivalents) is visible to the SPA, platform API, and campaign shards - but not to the marketing site on `familiar.systems`, which is a separate browser origin. Hanko's session cookie (if set) lives on `auth.*`, not on either of ours, and auth tokens travel as `Authorization: Bearer` headers. When adding a cookie (analytics, preferences, feature flags, anything), pick the apex deliberately and scope it narrowly with `Path=`.

@@ -399,6 +399,29 @@ def create_k8s_resources(
                     image_pull_secrets=[
                         k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
                     ],
+                    # The platform container runs as the distroless `nonroot`
+                    # user (UID 65532). The HostPath PV is auto-created by the
+                    # kubelet as root:root, so SQLite's `mode=rwc` open of
+                    # platform.db fails with SQLITE_CANTOPEN. fsGroup is
+                    # unreliable for the in-tree HostPath driver; an init
+                    # container running as root that chowns the mount is the
+                    # robust fix and survives node turnover.
+                    init_containers=[
+                        k8s.core.v1.ContainerArgs(
+                            name="chown-data",
+                            image="busybox:1.36",
+                            command=["sh", "-c", "chown -R 65532:65532 /data/platform"],
+                            security_context=k8s.core.v1.SecurityContextArgs(
+                                run_as_user=0,
+                            ),
+                            volume_mounts=[
+                                k8s.core.v1.VolumeMountArgs(
+                                    name="platform-data",
+                                    mount_path="/data/platform",
+                                ),
+                            ],
+                        ),
+                    ],
                     containers=[
                         k8s.core.v1.ContainerArgs(
                             name=PLATFORM_NAME,
