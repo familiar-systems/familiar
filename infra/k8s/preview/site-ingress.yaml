@@ -1,0 +1,40 @@
+# Per-PR preview Astro site served at preview.familiar.systems/pr-${PR_NUMBER}.
+# This ingress binds to the marketing apex; the SPA, platform, and campaign
+# ingresses bind to the app apex (app.preview.familiar.systems) so every apex
+# has exactly the surfaces it should. StripPrefix removes the PR path so the
+# nginx backend serves from its usual root.
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: site-strip-prefix
+  namespace: ${NAMESPACE}
+spec:
+  stripPrefix:
+    prefixes:
+      - /pr-${PR_NUMBER}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: site
+  namespace: ${NAMESPACE}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.middlewares: ${NAMESPACE}-site-strip-prefix@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - preview.familiar.systems
+      secretName: preview-wildcard-tls
+  rules:
+    - host: preview.familiar.systems
+      http:
+        paths:
+          - path: /pr-${PR_NUMBER}
+            pathType: Prefix
+            backend:
+              service:
+                name: site
+                port:
+                  number: 80

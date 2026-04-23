@@ -1,4 +1,4 @@
-# familiar.systems — Project Structure Design (SPA)
+# familiar.systems - Project Structure Design (SPA)
 
 > **Superseded** by the [Project Structure Design](../plans/2026-03-26-project-structure-design.md). This document described a TypeScript full-stack architecture with Hocuspocus, tRPC, and 5 deployment targets. The architecture has shifted to Rust (Axum + kameo + Loro) for the server, eliminating the separate API, collaboration, and TypeScript worker processes.
 
@@ -6,17 +6,17 @@
 
 familiar.systems is a web application with five workloads that have **different deployment lifecycles**:
 
-1. **Public site** (Astro) — static HTML for the landing page, blog, and public campaign showcase. No server process. Deploy = upload new files. Content changes deploy independently of the app.
-2. **Frontend** (Vite + React SPA) — the authenticated application. Static files served from a CDN or file server. No server process. Deploy = upload new files. Served under `/app/`.
-3. **API layer** (Hono + tRPC) — handles CRUD, interactive AI streaming, and job submission. Stateless, request-response (plus streaming for AI). Needs fast restarts and blue/green deploys.
+1. **Public site** (Astro) - static HTML for the landing page, blog, and public campaign showcase. No server process. Deploy = upload new files. Content changes deploy independently of the app.
+2. **Frontend** (Vite + React SPA) - the authenticated application. Static files served from a CDN or file server. No server process. Deploy = upload new files. Served under `/app/`.
+3. **API layer** (Hono + tRPC) - handles CRUD, interactive AI streaming, and job submission. Stateless, request-response (plus streaming for AI). Needs fast restarts and blue/green deploys.
 4. **Collaboration layer** -- holds persistent WebSocket connections for real-time document editing via Loro CRDTs. Note: the [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md) (now superseded by the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md)) originally co-located Hono and Hocuspocus in Node.js; the new design uses a Rust binary with Axum + kameo actors, campaign-pinned.
-5. **Worker layer** (AI pipeline) — dequeues long-running jobs (audio transcription, entity extraction, journal drafting). A single job may run 10+ minutes. Must survive deploys of the other four layers.
+5. **Worker layer** (AI pipeline) - dequeues long-running jobs (audio transcription, entity extraction, journal drafting). A single job may run 10+ minutes. Must survive deploys of the other four layers.
 
 The API layer **enqueues** work; the worker **dequeues and processes** independently. Deploying the API server does not interrupt in-flight AI jobs. Deploying new static files does not affect any server process.
 
 ### Why SPA over SSR?
 
-familiar.systems's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. Server-side rendering would produce HTML that React immediately takes over — compute spent on an HTML shell the user never sees without JavaScript. The SPA approach eliminates the server/client component boundary (no `'use client'` directives, no hydration bugs) and produces a cleaner dependency graph where the frontend structurally cannot import server-side code. See [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
+familiar.systems's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. Server-side rendering would produce HTML that React immediately takes over - compute spent on an HTML shell the user never sees without JavaScript. The SPA approach eliminates the server/client component boundary (no `'use client'` directives, no hydration bugs) and produces a cleaner dependency graph where the frontend structurally cannot import server-side code. See [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
 
 ### Decisions made
 
@@ -41,11 +41,11 @@ familiar.systems's content is entirely behind authentication (no SEO), and the c
 ```
 familiar/
 ├── apps/
-│   ├── site/             # Astro — landing page, blog, public campaign pages
+│   ├── site/             # Astro - landing page, blog, public campaign pages
 │   ├── web/              # Vite + React SPA (static files, behind auth, served under /app/)
-│   ├── api/              # Hono + tRPC — CRUD, interactive AI, job submission
-│   ├── collab/           # Hocuspocus — WebSocket collaboration server
-│   └── worker/           # Job consumer — dequeues and runs AI pipeline
+│   ├── api/              # Hono + tRPC - CRUD, interactive AI, job submission
+│   ├── collab/           # Hocuspocus - WebSocket collaboration server
+│   └── worker/           # Job consumer - dequeues and runs AI pipeline
 ├── packages/
 │   ├── domain/           # Pure types: Node, Block, Edge, Status, Campaign, User
 │   ├── db/               # Drizzle schema, migrations, query helpers
@@ -62,7 +62,7 @@ familiar/
 │       └── base.json
 ├── pnpm-workspace.yaml   # Declares apps/*, packages/*, tooling/*
 ├── turbo.json            # Build orchestration (dependency graph, caching)
-├── package.json          # Root — workspace scripts, shared devDependencies
+├── package.json          # Root - workspace scripts, shared devDependencies
 ├── .gitignore
 ├── .nvmrc                # Pins Node.js version
 └── README.md
@@ -70,15 +70,15 @@ familiar/
 
 ### Workspace tooling
 
-- **pnpm** — strict dependency resolution, native workspace support. Prevents phantom dependencies: a package cannot import a dependency it hasn't declared.
-- **Turborepo** — orchestrates builds across the dependency graph. Caches unchanged builds. `turbo build` rebuilds only what changed.
-- **`.nvmrc`** — pins Node.js version for consistency across environments.
+- **pnpm** - strict dependency resolution, native workspace support. Prevents phantom dependencies: a package cannot import a dependency it hasn't declared.
+- **Turborepo** - orchestrates builds across the dependency graph. Caches unchanged builds. `turbo build` rebuilds only what changed.
+- **`.nvmrc`** - pins Node.js version for consistency across environments.
 
 ---
 
 ## Packages
 
-The package layer is shared across both the SPA and [SSR design](../archive/plans/2026-02-14-project-structure-design.md) — the SPA/SSR decision affects apps, not packages. This document reflects updates to `domain`, `db`, and `ai` packages to incorporate the [AI workflow primitives](./2026-02-14-ai-workflow-unification-design.md) (suggestions, conversations, CampaignContext, tool definitions).
+The package layer is shared across both the SPA and [SSR design](../archive/plans/2026-02-14-project-structure-design.md) - the SPA/SSR decision affects apps, not packages. This document reflects updates to `domain`, `db`, and `ai` packages to incorporate the [AI workflow primitives](./2026-02-14-ai-workflow-unification-design.md) (suggestions, conversations, CampaignContext, tool definitions).
 
 ### Dependency graph
 
@@ -132,15 +132,15 @@ graph BT
 
 Arrows point from consumer to dependency ("depends on"). Green = `domain` (foundation, zero deps). Blue = packages (shared logic). Red = apps (deployment targets).
 
-**Key structural difference from the SSR design:** `apps/web` depends on only 2 packages (`domain` and `editor`). It has no compile-time access to `db`, `auth`, `ai`, or `queue`. The client/server boundary is enforced by the dependency graph, not by convention. `apps/site` is even more minimal — it depends on `domain` only, for shared types used in public campaign pages.
+**Key structural difference from the SSR design:** `apps/web` depends on only 2 packages (`domain` and `editor`). It has no compile-time access to `db`, `auth`, `ai`, or `queue`. The client/server boundary is enforced by the dependency graph, not by convention. `apps/site` is even more minimal - it depends on `domain` only, for shared types used in public campaign pages.
 
-**AI layer split:** `apps/api` and `apps/worker` both depend on `@familiar-systems/ai`, but for different purposes. `apps/api` uses it for interactive AI — streaming P&R and Q&A conversations through the agent window. `apps/worker` uses it for batch AI — the SessionIngest pipeline that processes audio and notes into journal drafts and entity proposals. Both use the shared `CampaignContext` interface for context retrieval with status filtering. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md) for the full design.
+**AI layer split:** `apps/api` and `apps/worker` both depend on `@familiar-systems/ai`, but for different purposes. `apps/api` uses it for interactive AI - streaming P&R and Q&A conversations through the agent window. `apps/worker` uses it for batch AI - the SessionIngest pipeline that processes audio and notes into journal drafts and entity proposals. Both use the shared `CampaignContext` interface for context retrieval with status filtering. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md) for the full design.
 
-### `@familiar-systems/domain` — Pure types, zero dependencies
+### `@familiar-systems/domain` - Pure types, zero dependencies
 
 ```
 packages/domain/src/
-├── index.ts              # Public API — re-exports everything
+├── index.ts              # Public API - re-exports everything
 ├── campaign.ts           # Campaign, Arc, Session types
 ├── node.ts               # Node (Thing) types, prototype flag, prototypeId
 ├── block.ts              # Block types, content variants
@@ -157,7 +157,7 @@ The `suggestion.ts` module defines the `Suggestion` type as a discriminated unio
 
 **Depends on:** nothing
 
-### `@familiar-systems/db` — Schema, migrations, queries
+### `@familiar-systems/db` - Schema, migrations, queries
 
 ```
 packages/db/src/
@@ -186,7 +186,7 @@ Drizzle ORM schema definitions and typed query helpers. Migration files (generat
 
 The database layer uses a two-tier architecture: one platform database (`platform.db`) for users, campaigns, memberships, and the job queue, plus a separate database per campaign (`campaigns/*.db`) for all graph content. The application routes to the correct campaign database based on the request context. See [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md) for the full architecture.
 
-### `@familiar-systems/auth` — Authentication + authorization
+### `@familiar-systems/auth` - Authentication + authorization
 
 ```
 packages/auth/src/
@@ -200,12 +200,12 @@ Shared across `apps/api` (HTTP request auth) and `apps/collab` (WebSocket connec
 
 **Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`
 
-### `@familiar-systems/editor` — The shared contract
+### `@familiar-systems/editor` - The shared contract
 
 ```
 packages/editor/src/
 ├── index.ts
-├── schema.ts             # TipTap extensions list — THE contract
+├── schema.ts             # TipTap extensions list - THE contract
 ├── extensions/
 │   ├── mention.ts        # Entity mention (configured Mention extension)
 │   ├── status-block.ts   # Block with status attribute
@@ -220,11 +220,11 @@ packages/editor/src/
 
 The most architecturally important package. Defines the TipTap/ProseMirror schema that both the SPA (rendering the editor in the browser) and the worker (reading/writing Y.Doc binaries on the server) must agree on.
 
-The `helpers/` directory enables server-side document manipulation: parsing documents for mention extraction, and writing suggestion marks back into documents from the AI pipeline — all without a browser.
+The `helpers/` directory enables server-side document manipulation: parsing documents for mention extraction, and writing suggestion marks back into documents from the AI pipeline - all without a browser.
 
 **Depends on:** `@familiar-systems/domain`, `@tiptap/core`, `yjs`
 
-### `@familiar-systems/ai` — LLM orchestration
+### `@familiar-systems/ai` - LLM orchestration
 
 ```
 packages/ai/src/
@@ -248,22 +248,22 @@ packages/ai/src/
 
 The `provider.ts` abstraction handles the hosted vs. self-hosted requirement: the hosted instance configures managed API keys; self-hosters configure their own provider.
 
-The `context.ts` module defines the `CampaignContext` interface — the shared contract for how the AI retrieves campaign graph content with status filtering. Both `apps/api` (interactive AI) and `apps/worker` (batch AI) instantiate a `CampaignContext` appropriate to their execution environment.
+The `context.ts` module defines the `CampaignContext` interface - the shared contract for how the AI retrieves campaign graph content with status filtering. Both `apps/api` (interactive AI) and `apps/worker` (batch AI) instantiate a `CampaignContext` appropriate to their execution environment.
 
-The `tools/` directory defines the agent's capabilities as tool functions. Read tools (available to all users) enable search, entity retrieval, and session summaries. Write tools (GM only) enable proposing things, relationships, block updates, and contradiction flags. The AI's behavior emerges from its tool set — Q&A uses read tools only; Planning & Refinement uses both. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md) for the full design.
+The `tools/` directory defines the agent's capabilities as tool functions. Read tools (available to all users) enable search, entity retrieval, and session summaries. Write tools (GM only) enable proposing things, relationships, block updates, and contradiction flags. The AI's behavior emerges from its tool set - Q&A uses read tools only; Planning & Refinement uses both. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md) for the full design.
 
-The `pipelines/` directory contains batch processing stages for SessionIngest — long-running jobs that run on `apps/worker`.
+The `pipelines/` directory contains batch processing stages for SessionIngest - long-running jobs that run on `apps/worker`.
 
 **Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`
 
-### `@familiar-systems/queue` — Job definitions + runner
+### `@familiar-systems/queue` - Job definitions + runner
 
 ```
 packages/queue/src/
 ├── index.ts
 ├── jobs.ts               # Job type definitions (typed payloads)
-├── producer.ts           # enqueue() — called by apps/api
-└── consumer.ts           # Job handler registry — used by apps/worker
+├── producer.ts           # enqueue() - called by apps/api
+└── consumer.ts           # Job handler registry - used by apps/worker
 ```
 
 Defines typed job payloads and provides enqueue/dequeue functions backed by a polling job table in platform.db. The API server imports `producer` to enqueue; the worker imports `consumer` to dequeue and dispatch.
@@ -274,9 +274,9 @@ Defines typed job payloads and provides enqueue/dequeue functions backed by a po
 
 ## Apps
 
-Apps are thin deployment targets that wire packages together. Domain logic, database queries, AI prompts, and editor schema belong in packages — not in apps.
+Apps are thin deployment targets that wire packages together. Domain logic, database queries, AI prompts, and editor schema belong in packages - not in apps.
 
-### `apps/site` — Astro (public site)
+### `apps/site` - Astro (public site)
 
 ```
 apps/site/
@@ -301,15 +301,15 @@ apps/site/
 └── tsconfig.json                # Extends tooling/tsconfig/base.json
 ```
 
-The public-facing site: landing page, blog, and optional campaign showcase. Generates static HTML at build time — no server process, no JavaScript by default. Blog content lives as Markdown files in `src/content/blog/` using Astro's typed content collections (frontmatter validated by Zod).
+The public-facing site: landing page, blog, and optional campaign showcase. Generates static HTML at build time - no server process, no JavaScript by default. Blog content lives as Markdown files in `src/content/blog/` using Astro's typed content collections (frontmatter validated by Zod).
 
 Public campaign pages are static snapshots: campaign data is fetched from `apps/api` at build time and rendered as HTML. This keeps pages fast and SEO-friendly without requiring a server runtime.
 
-Astro supports React "islands" — interactive components that hydrate on demand — enabling shared components with `apps/web` if needed, without shipping a full React bundle to every visitor.
+Astro supports React "islands" - interactive components that hydrate on demand - enabling shared components with `apps/web` if needed, without shipping a full React bundle to every visitor.
 
 **Depends on:** `@familiar-systems/domain`, `astro`
 
-### `apps/web` — Vite + React SPA
+### `apps/web` - Vite + React SPA
 
 ```
 apps/web/
@@ -317,7 +317,7 @@ apps/web/
 ├── public/                          # Static assets (favicon, fonts)
 ├── vite.config.ts                   # Vite configuration (proxy, build settings)
 ├── src/
-│   ├── main.tsx                     # Entrypoint — React root, providers, router
+│   ├── main.tsx                     # Entrypoint - React root, providers, router
 │   ├── routes/
 │   │   ├── index.tsx                # Route tree definition
 │   │   ├── auth/
@@ -342,15 +342,15 @@ apps/web/
 └── tsconfig.json                    # Extends tooling/tsconfig/react.json
 ```
 
-The SPA is static files. In development, `vite dev` serves files with HMR and proxies `/api/*` to `apps/api` (no CORS needed). In production, `vite build` outputs content-hashed chunks to `dist/` — upload these to a CDN or serve with nginx.
+The SPA is static files. In development, `vite dev` serves files with HMR and proxies `/api/*` to `apps/api` (no CORS needed). In production, `vite build` outputs content-hashed chunks to `dist/` - upload these to a CDN or serve with nginx.
 
-Routing is explicit via React Router or TanStack Router. The `routes/` directory is organizational, not magical — routes are registered in `routes/index.tsx`, not inferred from the filesystem.
+Routing is explicit via React Router or TanStack Router. The `routes/` directory is organizational, not magical - routes are registered in `routes/index.tsx`, not inferred from the filesystem.
 
 **No `'use client'` directives.** Every component is client-side. No server/client boundary to manage.
 
 **Depends on:** `@familiar-systems/domain`, `@familiar-systems/editor`, `react`, `@hocuspocus/provider`, `vite`
 
-### `apps/api` — Hono + tRPC Server
+### `apps/api` - Hono + tRPC Server
 
 ```
 apps/api/src/
@@ -374,24 +374,24 @@ apps/api/src/
 
 The API server handles three categories of work:
 
-1. **Standard CRUD** — request/response tRPC procedures for campaigns, sessions, things, graph queries, and job submission
-2. **Interactive AI** — streaming tRPC procedures for the agent window: Planning & Refinement (GM produces suggestions interactively) and Q&A (GM or player asks questions about the campaign). The AI's behavior emerges from tool availability — GMs have read+write tools, players have read-only tools. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md).
-3. **Suggestion & conversation management** — CRUD for suggestions (accept, reject, dismiss, list pending, auto-rejection) and agent conversations (create, list history, get messages). These are the persistence layer for the AI workflow's durable primitives.
+1. **Standard CRUD** - request/response tRPC procedures for campaigns, sessions, things, graph queries, and job submission
+2. **Interactive AI** - streaming tRPC procedures for the agent window: Planning & Refinement (GM produces suggestions interactively) and Q&A (GM or player asks questions about the campaign). The AI's behavior emerges from tool availability - GMs have read+write tools, players have read-only tools. See [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md).
+3. **Suggestion & conversation management** - CRUD for suggestions (accept, reject, dismiss, list pending, auto-rejection) and agent conversations (create, list history, get messages). These are the persistence layer for the AI workflow's durable primitives.
 
-Hono is a lightweight HTTP framework that runs on Node.js, Deno, Bun, and Cloudflare Workers. The tRPC adapter plugs into Hono as middleware. The entire server is thin wiring — all logic lives in the packages.
+Hono is a lightweight HTTP framework that runs on Node.js, Deno, Bun, and Cloudflare Workers. The tRPC adapter plugs into Hono as middleware. The entire server is thin wiring - all logic lives in the packages.
 
 **Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`, `@familiar-systems/auth`, `@familiar-systems/ai`, `@familiar-systems/queue`, `hono`, `@trpc/server`
 
-### `apps/collab` — Hocuspocus (WebSocket collaboration)
+### `apps/collab` - Hocuspocus (WebSocket collaboration)
 
 ```
 apps/collab/src/
 ├── index.ts              # Server entrypoint
 ├── hooks/
-│   ├── auth.ts           # onAuthenticate — verify token via @familiar-systems/auth
-│   ├── load.ts           # onLoadDocument — load Y.Doc from DB
-│   ├── store.ts          # onStoreDocument — persist Y.Doc to DB
-│   └── change.ts         # onChange — validation, mention extraction trigger
+│   ├── auth.ts           # onAuthenticate - verify token via @familiar-systems/auth
+│   ├── load.ts           # onLoadDocument - load Y.Doc from DB
+│   ├── store.ts          # onStoreDocument - persist Y.Doc to DB
+│   └── change.ts         # onChange - validation, mention extraction trigger
 └── config.ts             # Server configuration (port)
 ```
 
@@ -399,11 +399,11 @@ Originally a Hocuspocus server with lifecycle hooks (see archived [Hocuspocus Ar
 
 **Depends on:** `@familiar-systems/domain`, `@familiar-systems/db`, `@familiar-systems/auth`, `@familiar-systems/editor`, `@hocuspocus/server`, `yjs`
 
-### `apps/worker` — AI pipeline runner
+### `apps/worker` - AI pipeline runner
 
 ```
 apps/worker/src/
-├── index.ts                      # Entrypoint — starts the job consumer
+├── index.ts                      # Entrypoint - starts the job consumer
 ├── handlers/
 │   ├── transcribe.ts             # Handles transcribe-session jobs
 │   ├── draft-journal.ts          # Handles draft-journal jobs
@@ -449,7 +449,7 @@ A polling-based job consumer process. Each handler maps to a job type from `@fam
                               └────────────┘
 ```
 
-Traefik (via k3s Ingress) sits in front and routes (order matters — specific paths match first):
+Traefik (via k3s Ingress) sits in front and routes (order matters - specific paths match first):
 
 - `/app/api/*` → `apps/api` (port 3001)
 - `/app/collab/*` → `apps/collab` (port 3002, WebSocket upgrade)
@@ -484,8 +484,8 @@ export default defineConfig({
 
 All servers run simultaneously (orchestrated by Turborepo: `turbo dev`):
 
-- `apps/site` (Astro): `http://localhost:4321` — landing page, blog
-- `apps/web` (Vite): `http://localhost:5173/app/` — the SPA
+- `apps/site` (Astro): `http://localhost:4321` - landing page, blog
+- `apps/web` (Vite): `http://localhost:5173/app/` - the SPA
 - `apps/api` (Hono): `http://localhost:3001`
 - `apps/collab` (Hocuspocus): `ws://localhost:3002`
 
@@ -503,25 +503,25 @@ All servers run simultaneously (orchestrated by Turborepo: `turbo dev`):
 | Testing                | **Vitest**                 | Native TypeScript support, fast, Jest-compatible API. Shares Vite's transform pipeline.                                                           |
 | Dev runner             | **tsx**                    | Runs `.ts` files directly via esbuild. No compile step during development. Used by `apps/api`, `apps/collab`, `apps/worker`.                      |
 | Linting                | **oxlint 1.0**             | Rust-based, 520+ built-in rules, 50-100x faster than ESLint. Strictest config from day one.                                                       |
-| Type-aware linting     | **tsgolint** (when stable) | Uses tsgo (Microsoft's official Go port of TypeScript). Real TS type system, not a reimplementation. Currently alpha — enable when it stabilizes. |
+| Type-aware linting     | **tsgolint** (when stable) | Uses tsgo (Microsoft's official Go port of TypeScript). Real TS type system, not a reimplementation. Currently alpha - enable when it stabilizes. |
 | Formatting             | **oxfmt** (alpha)          | Rust-based, Prettier-compatible, 30x faster than Prettier. Fallback to Prettier if needed (compatible output).                                    |
 
 ### Type checking strategy
 
 TypeScript's `strict: true` enables a bundle of ~10 strict flags. Combined with additional flags, this is the equivalent of basedpyright's strict mode:
 
-- `strict: true` — all standard strict checks
-- `noUncheckedIndexedAccess` — `array[0]` is `T | undefined`, not `T`
-- `exactOptionalPropertyTypes` — distinguishes `undefined` from "property missing"
-- `noUnusedLocals` + `noUnusedParameters` — dead code detection
+- `strict: true` - all standard strict checks
+- `noUncheckedIndexedAccess` - `array[0]` is `T | undefined`, not `T`
+- `exactOptionalPropertyTypes` - distinguishes `undefined` from "property missing"
+- `noUnusedLocals` + `noUnusedParameters` - dead code detection
 
-TypeScript types are erased at runtime (the compiled JavaScript has no type information). Zod fills this gap at system boundaries — API inputs, database rows, environment variables — the same role Pydantic plays in Python.
+TypeScript types are erased at runtime (the compiled JavaScript has no type information). Zod fills this gap at system boundaries - API inputs, database rows, environment variables - the same role Pydantic plays in Python.
 
 ### Linting strategy
 
-**oxlint** (stable, 1.0) for all lint rules from day one. Strictest configuration — ban `any`, enforce exhaustive switches, require explicit return types at module boundaries.
+**oxlint** (stable, 1.0) for all lint rules from day one. Strictest configuration - ban `any`, enforce exhaustive switches, require explicit return types at module boundaries.
 
-**tsgolint** for type-aware rules (e.g., `no-floating-promises`, `no-misused-promises`, `await-thenable`) when it reaches stable. tsgolint wraps tsgo — Microsoft's official Go port of the TypeScript compiler — so type-aware rules use the real TypeScript type system, not a reimplementation. This guarantees full alignment with `tsc`'s behavior.
+**tsgolint** for type-aware rules (e.g., `no-floating-promises`, `no-misused-promises`, `await-thenable`) when it reaches stable. tsgolint wraps tsgo - Microsoft's official Go port of the TypeScript compiler - so type-aware rules use the real TypeScript type system, not a reimplementation. This guarantees full alignment with `tsc`'s behavior.
 
 **oxfmt** (alpha) for formatting. Prettier-compatible output, so falling back to Prettier is a one-line config change if needed. Default `printWidth: 100` (oxfmt's default, sensible for TypeScript).
 
@@ -541,6 +541,6 @@ In development, `tsx` runs server-side TypeScript files directly (no compile ste
 
 **Each package's `src/index.ts` is its public API.** Other packages import from `@familiar-systems/db`, not from `@familiar-systems/db/src/schema/nodes`. Anything not re-exported from `index.ts` is a private implementation detail.
 
-**The dependency graph enforces the client/server boundary.** `apps/web` depends on `domain` and `editor` — nothing else. It cannot import database schemas, auth internals, or queue logic. This is not a convention; it is a structural guarantee. Server-side concerns are unreachable from the frontend at compile time.
+**The dependency graph enforces the client/server boundary.** `apps/web` depends on `domain` and `editor` - nothing else. It cannot import database schemas, auth internals, or queue logic. This is not a convention; it is a structural guarantee. Server-side concerns are unreachable from the frontend at compile time.
 
-**Maximum strictness, no exceptions.** TypeScript `strict: true`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, lint ban on `any`, Zod at every system boundary. pnpm's strict dependency resolution prevents phantom imports. The compiler is the first line of defense — if it compiles, the type-level guarantees are real. We do not weaken these settings.
+**Maximum strictness, no exceptions.** TypeScript `strict: true`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, lint ban on `any`, Zod at every system boundary. pnpm's strict dependency resolution prevents phantom imports. The compiler is the first line of defense - if it compiles, the type-level guarantees are real. We do not weaken these settings.

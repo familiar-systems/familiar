@@ -17,11 +17,13 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      # Sparse checkout: only .github/actions is needed so the local composite
-      # actions below (setup-scw, fetch-scw-secret) can be resolved.
+      # Sparse checkout: the local composite actions (setup-scw,
+      # fetch-scw-secret) and the cleanup Job manifest applied below.
       - uses: actions/checkout@v6
         with:
-          sparse-checkout: .github/actions
+          sparse-checkout: |
+            .github/actions
+            infra/k8s/preview
           sparse-checkout-cone-mode: false
 
       - uses: ./.github/actions/setup-scw
@@ -36,12 +38,29 @@ jobs:
         with:
           secret-name: k3s-kubeconfig
 
-      - name: Delete PR namespace
+      - name: Delete PR namespace, platform PV, and hostPath data
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
-          kubectl delete namespace "preview-pr-${{ github.event.pull_request.number }}" \
-            --kubeconfig /tmp/kubeconfig.yaml \
-            --ignore-not-found
+          export KUBECONFIG=/tmp/kubeconfig.yaml
+
+          kubectl delete namespace "preview-pr-${PR_NUMBER}" --ignore-not-found
+          # HostPath PVs with Retain reclaim policy are cluster-scoped and are
+          # not garbage-collected when the namespace is deleted. Delete explicitly.
+          kubectl delete pv "platform-pv-preview-pr-${PR_NUMBER}" --ignore-not-found=true
+
+          # Wipe the node-side hostPath directory. Retain preserves the bytes
+          # after the PV is gone, so a reopened PR would otherwise bind a new
+          # PV on stale data. See platform-hostpath-cleanup-job.yaml for the
+          # Job manifest + reasoning.
+          export PR_NUMBER
+          JOB_NAME="$(envsubst < infra/k8s/preview/platform-hostpath-cleanup-job.yaml \
+            | kubectl create -f - -o jsonpath='{.metadata.name}')"
+          echo "Created hostpath-cleanup Job ${JOB_NAME}; waiting for completion..."
+          kubectl wait --for=condition=complete --timeout=120s \
+            -n default "job/${JOB_NAME}"
+
           rm /tmp/kubeconfig.yaml
 
       - name: Clean up PR images from registry
@@ -49,17 +68,19 @@ jobs:
           PR_NUMBER="${{ github.event.pull_request.number }}"
           PREFIX="pr-${PR_NUMBER}-"
 
-          # Get the image ID for the site image
-          IMAGE_ID="$(scw registry image list name=site -o json | jq -r '.[0].id')"
-          if [ -z "$IMAGE_ID" ] || [ "$IMAGE_ID" = "null" ]; then
-            echo "No site image found in registry, skipping cleanup"
-            exit 0
-          fi
+          for target in site web platform; do
+            # Get the image ID for this target
+            IMAGE_ID="$(scw registry image list name="${target}" -o json | jq -r '.[0].id')"
+            if [ -z "$IMAGE_ID" ] || [ "$IMAGE_ID" = "null" ]; then
+              echo "No ${target} image found in registry, skipping"
+              continue
+            fi
 
-          # List all tags, filter locally for pr-N- prefix, delete each
-          scw registry tag list image-id="$IMAGE_ID" -o json \
-          | jq -r --arg prefix "$PREFIX" '.[] | select(.name | startswith($prefix)) | .id' \
-          | while read -r TAG_ID; do
-              echo "Deleting tag $TAG_ID"
-              scw registry tag delete "$TAG_ID"
-            done
+            # List all tags, filter locally for pr-N- prefix, delete each
+            scw registry tag list image-id="$IMAGE_ID" -o json \
+            | jq -r --arg prefix "$PREFIX" '.[] | select(.name | startswith($prefix)) | .id' \
+            | while read -r TAG_ID; do
+                echo "Deleting tag $TAG_ID (${target})"
+                scw registry tag delete "$TAG_ID"
+              done
+          done

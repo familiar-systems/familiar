@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 
-// Helper to find noindex URLs — excludes them from the sitemap
+// Helper to find noindex URLs - excludes them from the sitemap
 function getNoIndexUrls() {
   const urls = new Set();
   const contentDir = path.resolve("./src/content");
@@ -77,7 +77,11 @@ const DEFAULT_LOCALE = "en";
 
 // https://astro.build/config
 export default defineConfig({
-  site: process.env.SITE_URL || "https://loreweaver.no",
+  site: process.env.SITE_URL || "https://familiar.systems",
+  // SITE_BASE_PATH mirrors the marketing apex's path prefix.
+  // Prod + dev: "/". Preview: "/pr-${PR_NUMBER}/".
+  // See docs/plans/2026-03-30-deployment-architecture.md §URL routing.
+  base: process.env.SITE_BASE_PATH || "/",
   output: "static",
   image: {
     domains: [],

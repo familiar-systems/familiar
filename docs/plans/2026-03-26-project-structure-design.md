@@ -228,7 +228,7 @@ Handles everything before a campaign opens:
 - **Authentication** -- Hanko JWT verification. User identity, profiles, session management.
 - **Campaign CRUD** -- create, list, delete, transfer ownership. Metadata lives in platform.db.
 - **Routing table** -- maps campaign ID to campaign server address. Lease-based: each checkout is a lease with a heartbeat.
-- **Discover endpoint** -- `GET /api/campaigns/:id/connect` returns `{ websocket: "wss://c1.familiar.systems/ws", api: "https://c1.familiar.systems/api" }`. The SPA calls this to find its campaign server.
+- **Checkout endpoint** -- `POST /api/campaigns/:id/checkout` returns `{ ws_url: "wss://{apex}/campaign/:id/ws", api_base: "https://{apex}/campaign/:id" }`. The SPA calls this to acquire access to a campaign. URLs are **shard-agnostic**: they carry `campaign_id` but never a `shard_id` - ingress-layer routing resolves the owning shard. See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture).
 - **Campaign server health monitoring** -- receives heartbeats, tracks load, detects failed leases.
 
 Talks to **platform.db**: users, campaigns, subscriptions, the routing table. Stateless HTTP; traffic is bursty, short-lived requests.
@@ -422,44 +422,34 @@ This sets the base to `packages/`. Each Rust type's `#[ts(export_to = "...")]` a
                                   └─────────────┘
 ```
 
-Traefik (via k3s Ingress) routes by subdomain:
+Traefik (via k3s Ingress) routes by path prefix within each of two apexes per environment - a marketing apex for the Astro site and an app apex for the SPA + platform + campaign:
 
-- `familiar.systems` -> apps/site static files
-- `app.familiar.systems` -> apps/web static files (SPA, all paths serve `index.html`)
-- `api.familiar.systems` -> platform pod (port 3000, HTTP)
-- `c1.familiar.systems` -> campaign server pod (port 3001, HTTP + WebSocket)
+- `familiar.systems/` -> apps/site static files (marketing apex)
+- `app.familiar.systems/` -> apps/web static files (SPA at root; all unmatched paths serve `index.html`)
+- `app.familiar.systems/api/` -> platform pod (port 3000, HTTP) via `StripPrefix` middleware
+- `app.familiar.systems/campaign/{campaign_id}/` -> campaign server pod (port 3001, HTTP + WebSocket) via `StripPrefix` middleware
 
-The SPA talks to the platform for login, campaign listing, and discover. The discover endpoint returns a campaign server URL. After discover, the SPA talks directly to the campaign server for all campaign-scoped work (WebSocket sync, REST queries, AI conversations). The platform is no longer in the request path.
+See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture) for the authoritative URL contract. The SPA talks to the platform for login, campaign listing, and checkout. The checkout endpoint returns a shard-agnostic URL. The SPA opens that URL directly; ingress routes `/campaign/{id}/*` to the owning shard. The platform is never in the CRDT hot path.
 
 Workers run on separate GPU infrastructure (Nebius) as k8s Jobs, not as persistent services. They are not exposed to the internet. See [Deployment Architecture](./2026-03-30-deployment-architecture.md) for the job dispatch model and service topology, and [Infrastructure](./2026-03-30-infrastructure.md) for cluster configuration.
 
 ### Development
 
 ```
-docker compose up
+mise run dev
 ```
 
-Runs the platform and campaign server as separate containers, matching the production topology. The SPA and site run with their native dev servers for HMR:
+Launches five processes in parallel, unified behind a Caddy reverse proxy on :8080 that mirrors the prod two-apex contract. Caddy binds both host matchers; `*.localhost` is loopback by browser convention, so no `/etc/hosts` entries are needed:
 
-- `apps/site` (Astro): `http://localhost:4321`
-- `apps/web` (Vite): `http://localhost:5173`
-- `apps/platform` (Docker): `http://localhost:3000`
-- `apps/campaign` (Docker): `http://localhost:3001`
+- `apps/site` (Astro): `http://localhost:4321` (proxied at `http://localhost:8080/`)
+- `apps/web` (Vite, `base=/`): `http://localhost:5173` (proxied at `http://app.localhost:8080/`)
+- `apps/platform` (`cargo run`): `http://localhost:3000` (proxied at `http://app.localhost:8080/api/`)
+- `apps/campaign` (`cargo run`): `http://localhost:3001` (proxied at `http://app.localhost:8080/campaign/`)
+- Caddy reverse proxy: listens on `:8080`, two host blocks (defined in `Caddyfile.dev`)
 
-The SPA proxies platform API requests through Vite. Campaign server requests go direct (the discover endpoint returns `localhost:3001` in dev):
+Contributors open the marketing apex at `http://localhost:8080/` and the app apex at `http://app.localhost:8080/`. Caddy handles path-based routing and `StripPrefix` behavior within each apex so backends continue to own their own routes. SPA→API and SPA→campaign calls are same-origin on the app apex; cargo's incremental compiler + Vite HMR keep iteration sub-second because the binaries run natively (not in containers).
 
-```typescript
-// apps/web/vite.config.ts
-export default defineConfig({
-    server: {
-        proxy: {
-            "/api": {
-                target: "http://localhost:3000",
-            },
-        },
-    },
-});
-```
+See [Deployment Architecture §One topology everywhere](./2026-03-30-deployment-architecture.md#one-topology-everywhere) and [app-server PRD §Deployment targets](./2026-04-11-app-server-prd.md#deployment-targets) for the full per-environment detail.
 
 No Docker database container needed. libSQL files on disk. `:memory:` databases for tests.
 

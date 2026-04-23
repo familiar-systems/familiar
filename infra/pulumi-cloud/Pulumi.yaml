@@ -3,4 +3,4 @@ runtime:
   name: python
   options:
     toolchain: uv
-description: Loreweaver cloud infrastructure
+description: familiar.systems cloud infrastructure

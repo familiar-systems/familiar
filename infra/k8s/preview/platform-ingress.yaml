@@ -1,0 +1,40 @@
+# Per-PR preview platform API served at
+# app.preview.familiar.systems/pr-${PR_NUMBER}/api. StripPrefix removes the
+# PR+api prefix so the platform server sees its usual route table (/health,
+# /me, /campaigns/...). Same-origin with the SPA (both on the app apex), so
+# browser calls don't trigger CORS preflight.
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: platform-strip-prefix
+  namespace: ${NAMESPACE}
+spec:
+  stripPrefix:
+    prefixes:
+      - /pr-${PR_NUMBER}/api
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: platform
+  namespace: ${NAMESPACE}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.middlewares: ${NAMESPACE}-platform-strip-prefix@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - app.preview.familiar.systems
+      secretName: preview-wildcard-tls
+  rules:
+    - host: app.preview.familiar.systems
+      http:
+        paths:
+          - path: /pr-${PR_NUMBER}/api
+            pathType: Prefix
+            backend:
+              service:
+                name: platform
+                port:
+                  number: 3000

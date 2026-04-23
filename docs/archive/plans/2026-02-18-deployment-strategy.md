@@ -1,12 +1,12 @@
 > **Superseded** by [2026-03-09-deployment-strategy.md](./2026-03-09-deployment-strategy.md). This document assumed PostgreSQL and deferred provider/tool decisions that are now made (Coolify on Hetzner, libSQL database-per-campaign). See also [libSQL over PostgreSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md).
 
-# familiar.systems — Deployment Strategy
+# familiar.systems - Deployment Strategy
 
 ## Decision
 
 **PostgreSQL, local-first development, one remote environment that grows into production.**
 
-Provider and tooling choices (Hetzner vs UpCloud, Coolify vs Kamal, etc.) are deliberately deferred. This document captures the deployment _strategy_ — the shape of the environments and workflow — not the specific infrastructure. See [solo dev deployment landscape](../discovery/deployment/solo_dev_deployment_landscape.md) for the full provider/tool exploration.
+Provider and tooling choices (Hetzner vs UpCloud, Coolify vs Kamal, etc.) are deliberately deferred. This document captures the deployment _strategy_ - the shape of the environments and workflow - not the specific infrastructure. See [solo dev deployment landscape](../discovery/deployment/solo_dev_deployment_landscape.md) for the full provider/tool exploration.
 
 ---
 
@@ -32,7 +32,7 @@ Everything runs on the developer's machine:
 
 - **5 apps** via Docker Compose or `turbo dev`: `site` (Astro dev server), `web` (Vite dev server), `api` (Hono), `collab` (Hocuspocus), `worker` (job consumer)
 - **PostgreSQL** in a Docker container (or native install)
-- **No remote dependencies** — development works fully offline
+- **No remote dependencies** - development works fully offline
 
 This is the primary working environment. All feature development, debugging, and testing happens here.
 
@@ -46,7 +46,7 @@ A single server running the same 5 apps + PostgreSQL, accessible via a public do
 
 ### No staging environment
 
-The developer is the only user. "Deploy and check" is the staging process. If this changes (team grows, real users depend on uptime), a staging environment can be added without architectural changes — it's just another instance of the same Docker Compose setup.
+The developer is the only user. "Deploy and check" is the staging process. If this changes (team grows, real users depend on uptime), a staging environment can be added without architectural changes - it's just another instance of the same Docker Compose setup.
 
 ---
 
@@ -63,7 +63,7 @@ The same PostgreSQL schema, Drizzle ORM configuration, and migration system runs
 
 ### "Branching" without a branching provider
 
-For a solo developer, the safety of database branching — experiment freely, roll back to known-good state — is achieved with snapshots:
+For a solo developer, the safety of database branching - experiment freely, roll back to known-good state - is achieved with snapshots:
 
 ```bash
 # Before risky migration or experiment
@@ -73,11 +73,11 @@ pg_dump mydb > snapshots/before-experiment.sql
 dropdb mydb && createdb mydb && psql mydb < snapshots/before-experiment.sql
 ```
 
-For a dev database with realistic data (50-200MB), this takes 2-5 seconds. If this becomes too slow (database grows past ~1GB, branching multiple times per day), Neon can be layered in as a drop-in replacement — it's PostgreSQL, so the swap is a connection string change, not an architecture change.
+For a dev database with realistic data (50-200MB), this takes 2-5 seconds. If this becomes too slow (database grows past ~1GB, branching multiple times per day), Neon can be layered in as a drop-in replacement - it's PostgreSQL, so the swap is a connection string change, not an architecture change.
 
 ### pg-boss for job queue
 
-With PostgreSQL as the foundation, pg-boss (a PostgreSQL-native job queue) is the natural choice for the worker. No additional infrastructure required — the job queue lives in the same database.
+With PostgreSQL as the foundation, pg-boss (a PostgreSQL-native job queue) is the natural choice for the worker. No additional infrastructure required - the job queue lives in the same database.
 
 ---
 
@@ -89,8 +89,8 @@ The same codebase runs on customer infrastructure. The deployment strategy must 
 
 ```
 docker-compose.yml
-├── site      → nginx serving Astro build (landing page, blog — port 80/443, /*)
-├── web       → nginx serving Vite build (SPA — /app/*)
+├── site      → nginx serving Astro build (landing page, blog - port 80/443, /*)
+├── web       → nginx serving Vite build (SPA - /app/*)
 ├── api       → Hono container (port 3001)
 ├── collab    → Hocuspocus container (port 3002)
 ├── worker    → job consumer container
@@ -99,7 +99,7 @@ docker-compose.yml
 
 **What this strategy preserves:**
 
-- No managed-service dependencies in the application code. The app connects to PostgreSQL via a standard connection string — it doesn't care whether that's a Docker container, a managed instance, or Neon.
+- No managed-service dependencies in the application code. The app connects to PostgreSQL via a standard connection string - it doesn't care whether that's a Docker container, a managed instance, or Neon.
 - No platform-specific deploy tooling in the application. Coolify/Kamal/Railway are deployment mechanisms, not application dependencies. The self-hoster uses `docker compose up`.
 - LLM provider remains pluggable. Hosted instance uses managed keys; self-hosters bring their own.
 
@@ -125,7 +125,7 @@ Each of these can be adopted independently without changing the application arch
 
 ## References
 
-- [Solo dev deployment landscape](../discovery/deployment/solo_dev_deployment_landscape.md) — full provider and tooling exploration
-- [EU deployment landscape](../discovery/deployment/eu_deployment_landscape.md) — team-scale deployment options and database branching providers
-- [PostgreSQL vs Turso decision](../discovery/2026-02-18-postgres-vs-turso.md) — why PostgreSQL over Turso/libSQL
-- [SPA project structure](./2026-02-14-project-structure-spa-design.md) — the 4-app architecture this strategy deploys
+- [Solo dev deployment landscape](../discovery/deployment/solo_dev_deployment_landscape.md) - full provider and tooling exploration
+- [EU deployment landscape](../discovery/deployment/eu_deployment_landscape.md) - team-scale deployment options and database branching providers
+- [PostgreSQL vs Turso decision](../discovery/2026-02-18-postgres-vs-turso.md) - why PostgreSQL over Turso/libSQL
+- [SPA project structure](./2026-02-14-project-structure-spa-design.md) - the 4-app architecture this strategy deploys

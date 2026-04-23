@@ -1,0 +1,19 @@
+# Dockerfile-specific ignore for apps/web/Dockerfile.
+# BuildKit picks this up when building with -f apps/web/Dockerfile.
+# Include only what the web (Vite SPA) build needs.
+
+# Universal junk
+.git
+**/.DS_Store
+**/node_modules
+**/target
+**/dist
+
+# Exclude unrelated workspace members
+apps/site
+apps/platform
+apps/campaign
+crates
+workers
+infra
+docs

@@ -1,4 +1,4 @@
-# familiar.systems — Interactive vs Background AI Workflows
+# familiar.systems - Interactive vs Background AI Workflows
 
 > **Resolved.** The questions raised in this document are addressed in the [AI workflow unification design](../../plans/2026-02-14-ai-workflow-unification-design.md), which unifies interactive and background workflows through a shared suggestion primitive and a single agent interface.
 
@@ -6,8 +6,8 @@
 
 The [project structure design](../../archive/plans/2026-02-14-project-structure-design.md) defines two places where AI work happens:
 
-1. **`apps/worker`** — background job consumer for long-running AI tasks (audio transcription, entity extraction, journal drafting). Jobs are enqueued by the API server and processed independently. Duration: minutes to tens of minutes.
-2. **`apps/api`** — tRPC server that also handles interactive AI requests (content generation, suggestions, "what do we know about X?"). Streams tokens directly to the browser. Duration: seconds.
+1. **`apps/worker`** - background job consumer for long-running AI tasks (audio transcription, entity extraction, journal drafting). Jobs are enqueued by the API server and processed independently. Duration: minutes to tens of minutes.
+2. **`apps/api`** - tRPC server that also handles interactive AI requests (content generation, suggestions, "what do we know about X?"). Streams tokens directly to the browser. Duration: seconds.
 
 This document captures the current thinking and flags an open question: **should these two workflows be unified?**
 
@@ -17,7 +17,7 @@ This document captures the current thinking and flags an open question: **should
 
 ### Background (Worker)
 
-Triggered by events like audio upload or journal finalization. The user doesn't watch the result appear — they come back later.
+Triggered by events like audio upload or journal finalization. The user doesn't watch the result appear - they come back later.
 
 ```
 GM uploads audio for session 13
@@ -38,7 +38,7 @@ GM uploads audio for session 13
 - Fire-and-forget from the user's perspective
 - Multi-stage pipeline (output of one stage feeds the next)
 - Total duration: 10+ minutes for a 3-hour recording
-- Result is persisted — appears in review queue, not streamed to browser
+- Result is persisted - appears in review queue, not streamed to browser
 - Must survive deploys (the web server can restart without killing the job)
 
 ### Interactive (API Server)
@@ -65,7 +65,7 @@ GM is prepping session 14, clicks "Help me flesh out @Holeinthegroundmurder"
 - Single LLM call with assembled context
 - Duration: 5-15 seconds
 - Result is ephemeral until the GM explicitly accepts/saves it
-- Latency-sensitive — any queuing delay is felt directly
+- Latency-sensitive - any queuing delay is felt directly
 
 ---
 
@@ -88,10 +88,10 @@ GM is prepping session 14, clicks "Help me flesh out @Holeinthegroundmurder"
 
 Both workflows share the same core operation at their heart:
 
-1. **Assemble context from the campaign graph** — gather the relevant nodes, blocks, relationships, and mentions
-2. **Build a prompt** — combine context with a task-specific instruction
-3. **Call an LLM** — send the prompt, get a response
-4. **Do something with the result** — stream it to the user, or persist it and extract structure
+1. **Assemble context from the campaign graph** - gather the relevant nodes, blocks, relationships, and mentions
+2. **Build a prompt** - combine context with a task-specific instruction
+3. **Call an LLM** - send the prompt, get a response
+4. **Do something with the result** - stream it to the user, or persist it and extract structure
 
 The context assembly (step 1) and prompt building (step 2) are identical. The LLM call (step 3) differs only in whether the response is streamed to a browser or consumed server-side. The result handling (step 4) is where the real divergence lives.
 
@@ -120,7 +120,7 @@ Both workflows decompose into the same steps: gather context → build prompt �
 
 ### B. Worker as the single AI executor
 
-All AI work — interactive and background — routes through the worker. Interactive requests get priority queuing and the worker streams results back via WebSocket or SSE. The API server never calls LLMs directly.
+All AI work - interactive and background - routes through the worker. Interactive requests get priority queuing and the worker streams results back via WebSocket or SSE. The API server never calls LLMs directly.
 
 Trade-off: adds latency to interactive requests (queuing overhead) but centralizes all AI logic.
 
@@ -128,7 +128,7 @@ Trade-off: adds latency to interactive requests (queuing overhead) but centraliz
 
 The background pipeline could stream intermediate results to the browser if the GM happens to be watching. "Your audio is processing... transcription complete... generating journal draft..." with tokens appearing in real-time. The GM can walk away at any point and the job continues.
 
-This blurs the line between "background" and "interactive" — it's the same job, the difference is just whether someone is watching.
+This blurs the line between "background" and "interactive" - it's the same job, the difference is just whether someone is watching.
 
 ### D. The pipeline is always the same, the delivery channel varies
 
@@ -144,6 +144,6 @@ Define every AI operation as a pipeline of steps. The pipeline doesn't know or c
 
 1. Is there a real benefit to unifying, or is the bifurcation actually correct because the constraints (latency vs throughput) are genuinely different?
 2. If we unify, does the worker become the single place where LLMs are called? Or does the API server call LLMs directly for interactive use?
-3. Should background jobs be "watchable" — can the GM open a live view of a transcription-in-progress?
+3. Should background jobs be "watchable" - can the GM open a live view of a transcription-in-progress?
 4. How does this interact with rate limiting and cost management? If all LLM calls go through one path, rate limiting is easier. If they're split, you need to coordinate.
-5. Does the `@familiar-systems/ai` package already solve this? It defines pipelines and prompts — both the worker and the API server import it. Is the "unification" just ensuring that package is the single source of truth for all AI operations, with the caller deciding delivery?
+5. Does the `@familiar-systems/ai` package already solve this? It defines pipelines and prompts - both the worker and the API server import it. Is the "unification" just ensuring that package is the single source of truth for all AI operations, with the caller deciding delivery?

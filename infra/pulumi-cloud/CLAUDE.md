@@ -2,9 +2,9 @@
 
 ## What This Is
 
-Pulumi Python project for Loreweaver's cloud infrastructure on Hetzner Cloud + Scaleway Container Registry + Scaleway Secrets Manager. State is stored in Scaleway Object Storage, secrets are encrypted with a passphrase from Scaleway Secrets Manager.
+Pulumi Python project for familiar.systems cloud infrastructure on Hetzner Cloud + Scaleway Container Registry + Scaleway Secrets Manager. State is stored in Scaleway Object Storage, secrets are encrypted with a passphrase from Scaleway Secrets Manager.
 
-Single deployment target: **k3s cluster** serving `loreweaver.no` (production) and `preview.loreweaver.no` (PR previews).
+Single deployment target: **k3s cluster** serving `familiar.systems` + `app.familiar.systems` (production) and `preview.familiar.systems` + `app.preview.familiar.systems` (PR previews), plus the legacy `loreweaver.no` apex set until it retires. The two-apex layout (marketing vs app) is documented in [Deployment Architecture §URL routing](../../docs/plans/2026-03-30-deployment-architecture.md#url-routing).
 
 ## Key Files
 
@@ -26,7 +26,7 @@ Single deployment target: **k3s cluster** serving `loreweaver.no` (production) a
 
 ### k3s (k3s_cluster.py + k8s.py)
 
-The **Floating IP** (`cloud.py`) is the public entry point: DNS A record for `loreweaver.no` points here. It is a top-level resource, not owned by any cluster. The IP is passed into `K3sCluster` as an input.
+The **Floating IP** (`cloud.py`) is the public entry point: DNS A records for every apex served by the cluster (the four familiar.systems apexes plus the legacy loreweaver.no apexes) point here. It is a top-level resource, not owned by any cluster. The IP is passed into `K3sCluster` as an input.
 
 `K3sCluster` ComponentResource encapsulates:
 
@@ -38,17 +38,17 @@ The **Floating IP** (`cloud.py`) is the public entry point: DNS A record for `lo
 
 - cert-manager (Jetstack Helm chart, v1.17.2)
 - cert-manager-webhook-bunny (DNS-01 for bunny.net)
-- ClusterIssuer (prod + staging), wildcard Certificate covering all `PRODUCTION_DOMAINS` + `PREVIEW_DOMAINS` + `*.preview.<domain>` SANs
-- Site Deployment + Service + Ingress (serves both production and preview domains; Ingress rules are generated from the domain lists in `config.py`)
+- ClusterIssuer (prod + staging), Certificate covering the aggregated `PRODUCTION_DOMAINS` + `PREVIEW_DOMAINS` from `config.py` (marketing + app apexes for each environment; the cert is not a wildcard - SAN list is the exact apex set)
+- Site Deployment + Service + Ingress bound to marketing apexes only (`MARKETING_*_DOMAINS` in `config.py`); the SPA + platform + campaign bind to the app apexes separately
 
 ### Provider cascade hazard
 
-Pulumi manages both the Hetzner server and the k8s workloads running on it. The k8s Provider's `kubeconfig` field is `replaceOnChanges`, so any change to it cascades through every k8s resource parented to the provider (delete-and-recreate, which momentarily breaks cert-manager, the wildcard cert, and the site ingress).
+Pulumi manages both the Hetzner server and the k8s workloads running on it. The k8s Provider's `kubeconfig` field is `replaceOnChanges`, so any change to it cascades through every k8s resource parented to the provider (delete-and-recreate, which momentarily breaks cert-manager, the TLS cert, and the site ingress).
 
 **Two fronts of mitigation:**
 
 - **`ignoreChanges: ["user_data"]` on the server resource** (`k3s_cluster.py`) prevents cloud-init edits from replacing the server. Cloud-init only runs at first boot anyway, so changes to it are meaningless on an existing server. **Note:** if you DO need to apply cloud-init changes (e.g., updating the auto-applied SA manifest), you'll have to replace the server, which is a planned-downtime event with cascade implications.
-- **The k8s Provider's `kubeconfig` is built from byte-stable SM inputs**, not from an SSH-extracted Output that can change. See "Auth model" below. This means routine `pulumi up` calls (image bumps, helm upgrades, new manifests) cannot trigger the cascade as a side effect — only deliberate SA token rotation or cluster CA rotation can, and both are planned events.
+- **The k8s Provider's `kubeconfig` is built from byte-stable SM inputs**, not from an SSH-extracted Output that can change. See "Auth model" below. This means routine `pulumi up` calls (image bumps, helm upgrades, new manifests) cannot trigger the cascade as a side effect - only deliberate SA token rotation or cluster CA rotation can, and both are planned events.
 - **`scripts/nuke-k8s.sh` for recovery** when the cascade happens anyway (e.g. intentional server resize). It removes k8s resources from Pulumi state so `pulumi up` can recreate them from scratch.
 
 **If you need to intentionally replace the server** (resize, OS upgrade, etc.):
@@ -109,13 +109,13 @@ Pulumi reads secrets from Scaleway SM at deploy time via `config.read_secret(nam
 
 ### Required Scaleway SM Secrets
 
-| Secret Name                 | Purpose                                                                       |
-| --------------------------- | ----------------------------------------------------------------------------- |
-| `loreweaver-deploy-ssh-key` | Break-glass SSH private key for direct server access (rare, manual ops)       |
-| `bunny-api-key`             | bunny.net API key for DNS-01 ACME (deployed as k8s Secret)                    |
-| `k3s-kubeconfig`            | Token-based kubeconfig for GHA deploys + local kubectl (operator-managed)     |
-| `k3s-pulumi-admin-token`    | `pulumi-admin` ServiceAccount bearer token (cluster-admin, operator-managed)  |
-| `k3s-cluster-ca`            | k3s cluster CA cert, base64 PEM (operator-managed, rarely rotates)            |
+| Secret Name                 | Purpose                                                                      |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| `loreweaver-deploy-ssh-key` | Break-glass SSH private key for direct server access (rare, manual ops)      |
+| `bunny-api-key`             | bunny.net API key for DNS-01 ACME (deployed as k8s Secret)                   |
+| `k3s-kubeconfig`            | Token-based kubeconfig for GHA deploys + local kubectl (operator-managed)    |
+| `k3s-pulumi-admin-token`    | `pulumi-admin` ServiceAccount bearer token (cluster-admin, operator-managed) |
+| `k3s-cluster-ca`            | k3s cluster CA cert, base64 PEM (operator-managed, rarely rotates)           |
 
 The `k3s-*` secrets are populated by `scripts/bootstrap-pulumi-admin.sh`, not by Pulumi. Pulumi reads them at deploy time via `config.read_secret(name)`. Re-running the bootstrap script is safe (idempotent) and writes new SM versions for all three.
 
@@ -138,7 +138,7 @@ The Pulumi `kubernetes.Provider` authenticates with a **static long-lived Servic
 - **Fresh cluster:** Cloud-init drops a manifest into `/var/lib/rancher/k3s/server/manifests/pulumi-admin.yaml` (k3s's auto-apply directory), creating the ServiceAccount + ClusterRoleBinding + token-Secret at first boot. The operator then runs `scripts/bootstrap-pulumi-admin.sh` once to capture the populated token + CA from the cluster and write them to SM. After that, `pulumi up` works normally.
 - **Existing cluster:** Run `scripts/bootstrap-pulumi-admin.sh` directly. It applies the manifest via the current kubeconfig, captures the token + CA, and writes them to SM. Same end state as the fresh-cluster path.
 
-**Rotation:** The SA token has no expiry and is valid as long as the SA exists. To rotate, re-run the bootstrap script — it pushes a new SM version, and the next `pulumi up` picks it up. **This DOES trigger the cascade** (kubeconfig string changes), so plan accordingly with `letsencrypt-staging-dns` as the active issuer (see `k8s.py` constants). Cluster CA rotation is a separate planned-downtime event; the CA is valid for ~10 years by default.
+**Rotation:** The SA token has no expiry and is valid as long as the SA exists. To rotate, re-run the bootstrap script - it pushes a new SM version, and the next `pulumi up` picks it up. **This DOES trigger the cascade** (kubeconfig string changes), so plan accordingly with `letsencrypt-staging-dns` as the active issuer (see `k8s.py` constants). Cluster CA rotation is a separate planned-downtime event; the CA is valid for ~10 years by default.
 
 `make rotate-certs` was deleted because it was the kind of "convenience" routine that triggered the very cascade this auth model exists to prevent. If you ever genuinely need to rotate the CA, do it as a planned event with explicit operator action.
 
@@ -149,7 +149,7 @@ Production and preview domains are listed in `config.py` as `PRODUCTION_DOMAINS`
 1. Append the apex (e.g., `example.com`) to `PRODUCTION_DOMAINS`.
 2. Append the preview prefix (e.g., `preview.example.com`) to `PREVIEW_DOMAINS`.
 3. Confirm the bunny.net account managing `bunny-api-key` controls the DNS zone for the new domain (DNS-01 ACME requires this).
-4. `pulumi up` — the cert re-issues with the new SANs.
+4. `pulumi up` - the cert re-issues with the new SANs.
 
 The wildcard Certificate covers, for each preview domain `D`: `D` itself and `*.D`. So `pr-42.preview.example.com` is covered automatically.
 
@@ -157,23 +157,23 @@ When migrating away from a domain, remove it from both lists and `pulumi up`. Th
 
 ## Preview environments (PR previews)
 
-Per-PR preview deployments live in namespaces named `preview-pr-${PR_NUMBER}`, one per open PR. They are **not** Pulumi-managed — they're created and destroyed by two GitHub Actions workflows:
+Per-PR preview deployments live in namespaces named `preview-pr-${PR_NUMBER}`, one per open PR. They are **not** Pulumi-managed - they're created and destroyed by two GitHub Actions workflows:
 
-- `.github/workflows/deploy-preview.yml` — builds the PR's image, fetches the `k3s-kubeconfig` SM secret, and applies manifests from `infra/k8s/preview/*.yaml` via `envsubst` for templating. Runs on PR `opened`/`synchronize`.
-- `.github/workflows/cleanup-preview.yml` — deletes the namespace (which cascade-removes all resources inside) and cleans up the registry image tag. Runs on PR `closed`.
+- `.github/workflows/deploy-preview.yml` - builds the PR's image, fetches the `k3s-kubeconfig` SM secret, and applies manifests from `infra/k8s/preview/*.yaml` via `envsubst` for templating. Runs on PR `opened`/`synchronize`.
+- `.github/workflows/cleanup-preview.yml` - deletes the namespace (which cascade-removes all resources inside) and cleans up the registry image tag. Runs on PR `closed`.
 
 The preview manifests live in `infra/k8s/preview/` as plain Kubernetes YAML with `${VAR}` placeholders. The templating variables are:
 
-| Variable | Source | Example |
-|---|---|---|
-| `NAMESPACE` | workflow: `preview-pr-${PR_NUMBER}` | `preview-pr-42` |
-| `IMAGE` | workflow: built image tag | `rg.fr-par.scw.cloud/loreweaver/site:pr-42-abc1234` |
-| `PR_HOST` | workflow: `pr-${PR_NUMBER}.preview.loreweaver.no` | `pr-42.preview.loreweaver.no` |
-| `DOCKERCONFIG_B64` | workflow: base64-encoded dockerconfigjson for the SCW registry | (computed) |
+| Variable                                      | Source                                                                                                                           | Example                                                                                                  |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `NAMESPACE`                                   | workflow: `preview-pr-${PR_NUMBER}`                                                                                              | `preview-pr-42`                                                                                          |
+| `PR_NUMBER`                                   | workflow: the PR number; consumed by Ingress manifests to build `/pr-${N}` path prefixes and by the web build's `VITE_BASE_PATH` | `42`                                                                                                     |
+| `SITE_IMAGE` / `WEB_IMAGE` / `PLATFORM_IMAGE` | workflow: built image tags                                                                                                       | `rg.fr-par.scw.cloud/loreweaver/site:pr-42-abc1234` (registry namespace retains the legacy project name) |
+| `DOCKERCONFIG_B64`                            | workflow: base64-encoded dockerconfigjson for the SCW registry                                                                   | (computed)                                                                                               |
 
-**To edit preview behavior**, edit the YAML files directly — the workflow only handles substitution and apply. **To validate changes**, run `mise run lint:k8s` (kubeconform).
+**To edit preview behavior**, edit the YAML files directly - the workflow only handles substitution and apply. **To validate changes**, run `mise run lint:k8s` (kubeconform).
 
-**Why this split, rather than Pulumi-managing the preview resources:** PR previews are ephemeral (seconds of creation, minutes of lifetime) and per-PR (one namespace per open PR, potentially dozens at once). Pulumi's state model is designed for long-lived, named resources; spinning up a Pulumi stack per PR would be wildly over-engineered. GitHub Actions can apply raw YAML in ~2s per resource, which is the right tool. The separation is: **Pulumi for permanent cluster state** (cert-manager, the wildcard cert, the prod site deployment, RBAC, the provider itself), **YAML-applied-by-CI for ephemeral per-PR resources**.
+**Why this split, rather than Pulumi-managing the preview resources:** PR previews are ephemeral (seconds of creation, minutes of lifetime) and per-PR (one namespace per open PR, potentially dozens at once). Pulumi's state model is designed for long-lived, named resources; spinning up a Pulumi stack per PR would be wildly over-engineered. GitHub Actions can apply raw YAML in ~2s per resource, which is the right tool. The separation is: **Pulumi for permanent cluster state** (cert-manager, the TLS cert, the prod site + platform deployments, RBAC, the provider itself), **YAML-applied-by-CI for ephemeral per-PR resources**.
 
 ## Commands
 

@@ -1,4 +1,4 @@
-# familiar.systems — Public Site Design
+# familiar.systems - Public Site Design
 
 ## Decision
 
@@ -8,7 +8,7 @@
 
 ## Context
 
-The existing SPA (`apps/web`) is entirely behind authentication. The [project structure design](./2026-03-26-project-structure-design.md) explicitly rejected SSR because familiar.systems's content has no SEO requirements — it's a TipTap editor that is inherently client-rendered.
+The existing SPA (`apps/web`) is entirely behind authentication. The [project structure design](./2026-03-26-project-structure-design.md) explicitly rejected SSR because familiar.systems's content has no SEO requirements - it's a TipTap editor that is inherently client-rendered.
 
 A landing page and blog are the **opposite workload**: public, SEO-critical, content-heavy, and largely static. Serving them from the SPA would mean:
 
@@ -16,7 +16,7 @@ A landing page and blog are the **opposite workload**: public, SEO-critical, con
 2. **Unnecessary bundle weight.** First-time visitors would download the TipTap editor, graph visualization, and agent window code just to see a marketing page.
 3. **Conflated lifecycles.** A blog post typo fix would trigger a rebuild of the entire app.
 
-These problems are solved by treating the public site as its own deployment target — consistent with the project's existing pattern of separating apps by lifecycle.
+These problems are solved by treating the public site as its own deployment target - consistent with the project's existing pattern of separating apps by lifecycle.
 
 ---
 
@@ -28,9 +28,9 @@ These problems are solved by treating the public site as its own deployment targ
 | React components    | Yes (islands architecture)                      | Yes (full React)                            | No (template languages only)     |
 | Content collections | First-class (typed Markdown/MDX)                | Manual or plugin-based                      | First-class (data cascade)       |
 | Interactive embeds  | React islands hydrate on demand                 | Full hydration by default                   | Requires separate JS pipeline    |
-| Complexity          | Low — static by default, opt into interactivity | High — server runtime, hydration boundaries | Low — but no component framework |
+| Complexity          | Low - static by default, opt into interactivity | High - server runtime, hydration boundaries | Low - but no component framework |
 
-**Astro is the sweet spot.** It generates static HTML by default (same deployment model as `apps/web` — just files), but supports React islands for interactive embeds like a live campaign preview widget. Next.js brings a server runtime we don't need. 11ty is simpler but can't embed React components from a shared component library.
+**Astro is the sweet spot.** It generates static HTML by default (same deployment model as `apps/web` - just files), but supports React islands for interactive embeds like a live campaign preview widget. Next.js brings a server runtime we don't need. 11ty is simpler but can't embed React components from a shared component library.
 
 ---
 
@@ -51,7 +51,7 @@ apps/site/src/content/blog/
 └── ...
 ```
 
-Each Markdown file has typed frontmatter (title, date, summary, tags) validated by Zod via Astro's schema system. This is git-based and developer-friendly. A headless CMS can be layered in later without changing the architecture — Astro supports many CMS integrations.
+Each Markdown file has typed frontmatter (title, date, summary, tags) validated by Zod via Astro's schema system. This is git-based and developer-friendly. A headless CMS can be layered in later without changing the architecture - Astro supports many CMS integrations.
 
 ### Public campaign showcase
 
@@ -67,29 +67,26 @@ This defers real-time public campaign pages until there's demand. Static snapsho
 
 ## Routing
 
-Subdomain-based split. Each service gets its own subdomain:
+Path-based split within each of two apexes per environment - a marketing apex for the Astro site and an app apex for the SPA + platform + campaign. Each apex is its own browser origin:
 
 ```
-familiar.systems                → apps/site     (landing page, blog, public campaign showcase)
-app.familiar.systems            → apps/web      (SPA, behind auth)
-api.familiar.systems            → apps/platform (auth, CRUD, routing table, discover)
-c1.familiar.systems             → apps/campaign (actors, collab, AI, campaign-scoped REST + WebSocket)
+familiar.systems/                                 → apps/site     (landing page, blog, public campaign showcase)
+app.familiar.systems/                             → apps/web      (SPA at root, behind auth)
+app.familiar.systems/api/                         → apps/platform (auth, CRUD, routing table, checkout)
+app.familiar.systems/campaign/{campaign_id}/      → apps/campaign (actors, collab, AI, campaign-scoped REST + WebSocket)
 ```
 
 ### Reverse proxy rules (Traefik via k3s Ingress)
 
-```
-familiar.systems        → apps/site static files
-app.familiar.systems    → apps/web static files (SPA fallback: all paths serve index.html)
-api.familiar.systems    → platform pod (port 3000, HTTP)
-c1.familiar.systems     → campaign server pod (port 3001, HTTP + WebSocket)
-```
+One IngressRoute per host. The marketing host has a single `/` rule → Astro. The app host has priority-ordered path rules (longest prefix wins): `/api` and `/campaign` each strip their prefix via `StripPrefix` middleware before reaching the backend; `/` catches everything else and serves the SPA.
 
-Each subdomain routes to its own pod. No path-prefix ambiguity between services. A wildcard TLS certificate (`*.familiar.systems`) covers all subdomains.
+### Why path-based routing within the app apex
 
-### Why subdomain-based routing
+Short answer: Hanko Cloud does not accept wildcard origins, and a per-PR subdomain scheme multiplies app origins across preview deployments. The app's services (SPA + platform + campaign) share one app apex per environment (`app.familiar.systems` in prod, `app.preview.familiar.systems` in preview); path-based routing within that apex keeps each Hanko tenant's registered-origin list to exactly one stable entry that never changes across PRs.
 
-The platform/campaign server split requires independently addressable services. The campaign server handles campaign-scoped REST alongside WebSocket, so the SPA needs to call it directly (not through path-based routing on a shared domain). Subdomains make each service routable and scale naturally to multiple campaign servers (`c1`, `c2`, `c3`). See [Deployment Architecture](./2026-03-30-deployment-architecture.md) for the full routing model.
+Same-origin between the SPA and the services it calls also eliminates CORS preflight and cross-subdomain cookie handling within the app. The marketing apex is a separate origin so its cookies, storage, and caching rules stay isolated from the app. Shard identity stays an internal concern - the platform's checkout API returns shard-agnostic URLs (`app.familiar.systems/campaign/{id}/...`) and ingress-layer routing resolves the owning shard.
+
+See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture) for the full reasoning and [Deployment Architecture §URL routing](./2026-03-30-deployment-architecture.md#url-routing) for the cluster-side details.
 
 ---
 
@@ -131,7 +128,7 @@ graph BT
     site["apps/site"] --> domain
 ```
 
-`apps/site` depends on `@familiar-systems/domain` only — for shared types used in public campaign pages (campaign title, description, entity count). No dependency on `db`, `auth`, `ai`, `queue`, or `editor`.
+`apps/site` depends on `@familiar-systems/domain` only - for shared types used in public campaign pages (campaign title, description, entity count). No dependency on `db`, `auth`, `ai`, `queue`, or `editor`.
 
 ---
 
@@ -157,6 +154,6 @@ graph BT
 
 ## References
 
-- [Project structure](./2026-03-26-project-structure-design.md) — the 4-target architecture this design extends
+- [Project structure](./2026-03-26-project-structure-design.md) - the 4-target architecture this design extends
 - [Infrastructure](./2026-03-30-infrastructure.md) -- k3s cluster and Traefik Ingress routing
-- [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) — why the core app is an SPA (the reasoning that creates the need for a separate public site)
+- [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) - why the core app is an SPA (the reasoning that creates the need for a separate public site)

@@ -1,4 +1,4 @@
-# familiar.systems — Lexical Editor Evaluation
+# familiar.systems - Lexical Editor Evaluation
 
 ## Context
 
@@ -49,7 +49,7 @@ TipTap achieves the same via [node views](https://tiptap.dev/docs/editor/guides/
 
 ### Plugin model is React-native
 
-Lexical plugins are React components rendered as children of `LexicalComposer`. They hook into the editor via `useLexicalComposerContext()`. For a React-based frontend, this feels natural — plugins follow the same patterns as any other React component.
+Lexical plugins are React components rendered as children of `LexicalComposer`. They hook into the editor via `useLexicalComposerContext()`. For a React-based frontend, this feels natural - plugins follow the same patterns as any other React component.
 
 ---
 
@@ -57,7 +57,7 @@ Lexical plugins are React components rendered as children of `LexicalComposer`. 
 
 ### 1. No pure decorations (the dealbreaker for familiar.systems)
 
-ProseMirror has **decorations** — visual overlays that style content without mutating the document state. Dim a block, highlight a mention on hover, show a source-link indicator — all as a rendering layer, invisible to the document model.
+ProseMirror has **decorations** - visual overlays that style content without mutating the document state. Dim a block, highlight a mention on hover, show a source-link indicator - all as a rendering layer, invisible to the document model.
 
 Lexical doesn't have this concept. Its "decorator nodes" are actual nodes in the tree that mutate the document. The distinction matters for familiar.systems's specific requirements:
 
@@ -69,21 +69,21 @@ Lexical doesn't have this concept. Its "decorator nodes" are actual nodes in the
 | Source-link indicators          | Decoration with timestamp metadata   | Manual DOM overlay                                                                 |
 | Collaborative cursors           | Decoration (standard pattern)        | Calculate cursor positions, draw HTML divs on top of text, listen to scroll/resize |
 
-This is not a missing feature that will be added. It's an architectural choice — Lexical models the document as the single source of truth for both content and presentation. [The Liveblocks team](https://liveblocks.io/blog/which-rich-text-editor-framework-should-you-choose-in-2025) (who build collaborative editing infrastructure and spent months deep in both codebases) flagged this as a fundamental concern:
+This is not a missing feature that will be added. It's an architectural choice - Lexical models the document as the single source of truth for both content and presentation. [The Liveblocks team](https://liveblocks.io/blog/which-rich-text-editor-framework-should-you-choose-in-2025) (who build collaborative editing infrastructure and spent months deep in both codebases) flagged this as a fundamental concern:
 
-> One of the main issues in extending Lexical is its lack of pure decorations — the ability to style content without affecting the document itself. While Lexical does have "decorator nodes," they mutate the content of the document.
+> One of the main issues in extending Lexical is its lack of pure decorations - the ability to style content without affecting the document itself. While Lexical does have "decorator nodes," they mutate the content of the document.
 
 For an editor where every block has a status, every mention is interactive, and source-linking is pervasive, the lack of pure decorations means every visual annotation requires a workaround. The cumulative cost is high.
 
 ### 2. Collaboration has structural limitations
 
-Lexical's Yjs binding hardcodes the root node name, making it impossible to have more than one Lexical editor per Yjs document. The playground examples work around this with separate WebSocket connections per editor — acknowledged as unscalable for production.
+Lexical's Yjs binding hardcodes the root node name, making it impossible to have more than one Lexical editor per Yjs document. The playground examples work around this with separate WebSocket connections per editor - acknowledged as unscalable for production.
 
 This matters if familiar.systems has multiple editor instances on the same page (editing a node's description while previewing related blocks, or a split-pane session prep view).
 
 ### 3. No 1.0 release
 
-Lexical has not shipped a stable 1.0. The API surface is still moving. Meta maintains it as long as internal products depend on it — and Meta has a track record of both sustained maintenance (React, 10+ years) and quiet deprecation when priorities shift.
+Lexical has not shipped a stable 1.0. The API surface is still moving. Meta maintains it as long as internal products depend on it - and Meta has a track record of both sustained maintenance (React, 10+ years) and quiet deprecation when priorities shift.
 
 ProseMirror, by contrast, has been maintained by Marijn Haverbeke for ~10 years as his primary livelihood. The API has been stable since 1.0 with very few breaking changes.
 
@@ -120,7 +120,7 @@ doc
 
 The structural mapping to blocks exists in both editors. The difference is how the model is defined (ProseMirror: declarative schema; Lexical: class hierarchy) and manipulated (ProseMirror: immutable transactions; Lexical: mutable update callbacks).
 
-ProseMirror's schema additionally provides **compile-time-like validation**: you declare what nesting is legal (a heading contains inline content, a blockquote contains block content) and the schema rejects invalid states at the model level. Lexical validates through runtime checks in node methods — more flexible, less rigorous.
+ProseMirror's schema additionally provides **compile-time-like validation**: you declare what nesting is legal (a heading contains inline content, a blockquote contains block content) and the schema rejects invalid states at the model level. Lexical validates through runtime checks in node methods - more flexible, less rigorous.
 
 ---
 
@@ -128,7 +128,7 @@ ProseMirror's schema additionally provides **compile-time-like validation**: you
 
 Lexical is a defensible choice for teams that want maximum control and are comfortable building infrastructure. The tree model is genuinely elegant, and the React-native plugin model is clean.
 
-For familiar.systems specifically, **the lack of pure decorations is the critical issue**. The editor needs pervasive visual annotation — status indicators on every block, interactive mentions, source-link markers — that should not pollute the document model. ProseMirror's decoration system was designed for exactly this; Lexical's architecture doesn't support it.
+For familiar.systems specifically, **the lack of pure decorations is the critical issue**. The editor needs pervasive visual annotation - status indicators on every block, interactive mentions, source-link markers - that should not pollute the document model. ProseMirror's decoration system was designed for exactly this; Lexical's architecture doesn't support it.
 
 Secondary concerns (collaboration limitations, ecosystem gap, pre-1.0 stability, documentation gaps) reinforce the conclusion but aren't individually decisive.
 
@@ -138,10 +138,10 @@ Secondary concerns (collaboration limitations, ecosystem gap, pre-1.0 stability,
 
 ## Sources
 
-- [Lexical](https://lexical.dev/) — Meta's extensible text editor framework
-- [Lexical DecoratorNode docs](https://github.com/facebook/lexical/blob/main/packages/lexical-website/docs/concepts/nodes.mdx) — custom node types
-- [Lexical Collaboration docs](https://github.com/facebook/lexical/blob/main/packages/lexical-website/docs/collaboration/react.md) — Yjs integration
-- [Which rich text editor framework should you choose in 2025? | Liveblocks](https://liveblocks.io/blog/which-rich-text-editor-framework-should-you-choose-in-2025) — detailed comparison including decoration limitations
-- [Tiptap vs Lexical | Medium](https://medium.com/@faisalmujtaba/tiptap-vs-lexical-which-rich-text-editor-should-you-pick-for-your-next-project-17a1817efcd9) — feature comparison
-- [TipTap Mention extension](https://tiptap.dev/docs/editor/extensions/nodes/mention) — production-ready entity mention support
-- [TipTap Node Views (React)](https://tiptap.dev/docs/editor/guides/node-views/react) — embedding React components in the editor
+- [Lexical](https://lexical.dev/) - Meta's extensible text editor framework
+- [Lexical DecoratorNode docs](https://github.com/facebook/lexical/blob/main/packages/lexical-website/docs/concepts/nodes.mdx) - custom node types
+- [Lexical Collaboration docs](https://github.com/facebook/lexical/blob/main/packages/lexical-website/docs/collaboration/react.md) - Yjs integration
+- [Which rich text editor framework should you choose in 2025? | Liveblocks](https://liveblocks.io/blog/which-rich-text-editor-framework-should-you-choose-in-2025) - detailed comparison including decoration limitations
+- [Tiptap vs Lexical | Medium](https://medium.com/@faisalmujtaba/tiptap-vs-lexical-which-rich-text-editor-should-you-pick-for-your-next-project-17a1817efcd9) - feature comparison
+- [TipTap Mention extension](https://tiptap.dev/docs/editor/extensions/nodes/mention) - production-ready entity mention support
+- [TipTap Node Views (React)](https://tiptap.dev/docs/editor/guides/node-views/react) - embedding React components in the editor

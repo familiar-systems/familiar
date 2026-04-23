@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: platform
+  template:
+    metadata:
+      labels:
+        app: platform
+    spec:
+      imagePullSecrets:
+        - name: scaleway-registry
+      # The platform container runs as the distroless `nonroot` user
+      # (UID 65532). The HostPath PV is auto-created by the kubelet as
+      # root:root, so SQLite's `mode=rwc` open of platform.db fails with
+      # SQLITE_CANTOPEN. fsGroup is unreliable for the in-tree HostPath
+      # driver; an init container running as root that chowns the mount
+      # is the robust fix and survives node turnover. Mirrors the prod
+      # pattern in infra/pulumi-cloud/k8s.py.
+      initContainers:
+        - name: chown-data
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R 65532:65532 /data/platform"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: platform-data
+              mountPath: /data/platform
+      containers:
+        - name: platform
+          image: ${PLATFORM_IMAGE}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: HANKO_API_URL
+              value: ${HANKO_API_URL_DEV}
+            - name: CORS_ORIGINS
+              # All preview SPAs share the app apex origin regardless of PR
+              # number. Browser calls from /pr-N/ (SPA) to /pr-N/api
+              # (platform) are same-origin on app.preview.familiar.systems
+              # and don't trigger CORS preflight; this entry exists for
+              # non-browser callers that send an Origin header.
+              value: https://app.preview.familiar.systems
+            - name: DATABASE_URL
+              value: sqlite:///data/platform/platform.db?mode=rwc
+            - name: PORT
+              value: "3000"
+            - name: RUST_LOG
+              value: info
+          volumeMounts:
+            - name: platform-data
+              mountPath: /data/platform
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+      volumes:
+        - name: platform-data
+          persistentVolumeClaim:
+            claimName: platform-pvc

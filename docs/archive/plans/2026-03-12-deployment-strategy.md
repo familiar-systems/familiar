@@ -1,4 +1,4 @@
-# Plan: familiar.systems Infrastructure — k3s + Pulumi Python
+# Plan: familiar.systems Infrastructure - k3s + Pulumi Python
 
 ## Why This Plan Exists
 
@@ -6,11 +6,11 @@ The Coolify-based plan surfaced structural problems: Coolify's state lives in a 
 
 k3s replaces all of this with declarative manifests in git. Everything is code, everything is testable locally, and server replacement is "point k3s at the same state."
 
-## Architecture (Target State — after Phase 3)
+## Architecture (Target State - after Phase 3)
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Hetzner CX23 (hel1) — single-node k3s cluster      │
+│  Hetzner CX23 (hel1) - single-node k3s cluster      │
 │                                                      │
 │  Floating IP ──→ Traefik Ingress (built into k3s)    │
 │                                                      │
@@ -82,8 +82,8 @@ pulumi up --stack prod   # targets Hetzner k3s cluster
 **The agent-friendly loop:**
 
 1. Agent writes/modifies Pulumi Python code
-2. `pulumi preview --stack dev` — shows diff, basedpyright catches type errors
-3. `pulumi up --stack dev` — applies to local k3d cluster
+2. `pulumi preview --stack dev` - shows diff, basedpyright catches type errors
+3. `pulumi up --stack dev` - applies to local k3d cluster
 4. If it fails: deterministic error message from Kubernetes API, fix and retry
 5. If it works: `pulumi up --stack prod`
 
@@ -131,7 +131,7 @@ runcmd:
     - curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--data-dir /data/k3s --tls-san <floating-ip> --node-external-ip <floating-ip>" sh -
 ```
 
-> **Open question (--tls-san / --node-external-ip):** We think `--tls-san` is needed so the API server cert includes the Floating IP as a SAN — otherwise the kubeconfig breaks on server replacement because the primary IP changes. `--node-external-ip` may be needed so Traefik binds to the Floating IP. Verify both flags against the k3s docs before implementing.
+> **Open question (--tls-san / --node-external-ip):** We think `--tls-san` is needed so the API server cert includes the Floating IP as a SAN - otherwise the kubeconfig breaks on server replacement because the primary IP changes. `--node-external-ip` may be needed so Traefik binds to the Floating IP. Verify both flags against the k3s docs before implementing.
 
 k3s supports custom data directories via `--data-dir` ([k3s Advanced Options](https://docs.k3s.io/advanced)). This puts all k3s state (embedded SQLite/etcd, certificates, manifests) on the Hetzner Volume. Server replacement: new server, attach Volume, run the same k3s install command, cluster comes back with all state intact.
 
@@ -183,7 +183,7 @@ cluster_issuer = k8s.apiextensions.CustomResource("letsencrypt-dns",
                 "solvers": [{
                     "dns01": {
                         "webhook": {
-                            # bunny.net solver config — cert-manager-webhook-bunny
+                            # bunny.net solver config - cert-manager-webhook-bunny
                             # https://github.com/nicholasgasior/cert-manager-webhook-bunny
                         },
                     },
@@ -224,10 +224,10 @@ wildcard_cert = k8s.apiextensions.CustomResource("preview-wildcard",
 
 ## Production Site Deployment
 
-Secrets (registry credentials, bunny API key, etc.) are Kubernetes Secrets created via Pulumi — they live in the cluster's datastore on the Volume. No external secret manager dance, no manual filling. Pulumi encrypts them in state, creates them as k8s resources, and they survive server replacement because the k3s datastore is on `/data/k3s`. This is one of the biggest operational wins over Coolify.
+Secrets (registry credentials, bunny API key, etc.) are Kubernetes Secrets created via Pulumi - they live in the cluster's datastore on the Volume. No external secret manager dance, no manual filling. Pulumi encrypts them in state, creates them as k8s resources, and they survive server replacement because the k3s datastore is on `/data/k3s`. This is one of the biggest operational wins over Coolify.
 
 ```python
-# Registry auth — lets k8s pull images from Scaleway CR
+# Registry auth - lets k8s pull images from Scaleway CR
 scaleway_cr_secret = k8s.core.v1.Secret("scaleway-cr",
     type="kubernetes.io/dockerconfigjson",
     metadata=k8s.meta.v1.ObjectMetaArgs(name="scaleway-cr"),
@@ -298,7 +298,7 @@ site_ingress = k8s.networking.v1.Ingress("site",
 )
 ```
 
-**GHA deploy workflow:** After CI builds and pushes the image, run `pulumi up --stack prod` in the `infra/pulumi-k8s` directory. Pulumi detects the image tag change, rolls the Deployment. Same artifact CI tested is what deploys — identical to the original plan's intent.
+**GHA deploy workflow:** After CI builds and pushes the image, run `pulumi up --stack prod` in the `infra/pulumi-k8s` directory. Pulumi detects the image tag change, rolls the Deployment. Same artifact CI tested is what deploys - identical to the original plan's intent.
 
 > **Open question (GHA → k3s auth):** Both `pulumi up --stack prod` and `kubectl apply` for previews need a kubeconfig that authenticates to the k3s API server. How does GHA get it? Options: (a) store the kubeconfig in Scaleway SM, (b) create a Kubernetes ServiceAccount with a long-lived token and store that in SM, (c) use Pulumi stack output from pulumi-cloud to pass the kubeconfig. This is on the critical path for the CD workflow and needs to be resolved before Phase 2 deploys to production.
 
@@ -421,7 +421,7 @@ Because k3s state lives on the Hetzner Volume at `/data/k3s`:
 3. k3s starts, reads existing state from Volume
 4. All Deployments, Services, Ingresses, certificates resume automatically
 5. Traefik (built into k3s) picks up cached certs from k3s state
-6. DNS already points at Floating IP — zero DNS changes
+6. DNS already points at Floating IP - zero DNS changes
 
 **No runbook steps.** No credentials to re-enter, no proxy config to paste, no applications to re-create. The Volume IS the cluster.
 
@@ -443,11 +443,11 @@ Because k3s state lives on the Hetzner Volume at `/data/k3s`:
 
 ---
 
-## Migration Path — Three Phases
+## Migration Path - Three Phases
 
 The migration is designed so that each phase is independently valuable and independently revertible. At no point are you committed to completing the next phase.
 
-### Phase 1: Coolify Static Site — Get Something Live (days)
+### Phase 1: Coolify Static Site - Get Something Live (days)
 
 **Goal:** `familiar.systems` is live and serving the Astro site. No containers you manage, no registry, no webhook. Just Coolify doing the simplest thing it can do.
 
@@ -460,11 +460,11 @@ The migration is designed so that each phase is independently valuable and indep
 5. DNS: `familiar.systems` → Floating IP (manual, bunny.net)
 6. SSL: Coolify/Traefik handles via HTTP-01 automatically
 
-**Verification:** `curl -I https://familiar.systems` — 200 OK, valid SSL.
+**Verification:** `curl -I https://familiar.systems` - 200 OK, valid SSL.
 
 **What this buys you:** A live marketing site while you learn k3s. No urgency on the k3s timeline. If k3s takes a month, the site is up the whole time.
 
-### Phase 2: k3s on Preview Subdomain — Learn and Build (weeks)
+### Phase 2: k3s on Preview Subdomain - Learn and Build (weeks)
 
 **Goal:** k3s cluster running on a separate server (or alongside Coolify if resources allow), serving at `preview.familiar.systems` and `*.preview.familiar.systems`. Full PR preview pipeline working.
 
@@ -486,13 +486,13 @@ The migration is designed so that each phase is independently valuable and indep
 
 **Verification:**
 
-- `curl -I https://preview.familiar.systems` — 200 OK, valid wildcard SSL
+- `curl -I https://preview.familiar.systems` - 200 OK, valid wildcard SSL
 - Open a PR → preview appears at `pr-{N}.preview.familiar.systems`
 - Close the PR → preview is torn down
 
 **What this buys you:** Full k3s operational experience on a subdomain where failures are invisible to the public. The live site is still on Coolify, untouched.
 
-### Phase 3: Cutover — Decommission Coolify (hours)
+### Phase 3: Cutover - Decommission Coolify (hours)
 
 **Goal:** k3s serves `familiar.systems`. Coolify server decommissioned.
 
@@ -500,13 +500,13 @@ The migration is designed so that each phase is independently valuable and indep
 
 1. Update the Ingress in `infra/pulumi-k8s/` to serve `familiar.systems` in addition to (or instead of) `preview.familiar.systems`. `pulumi up --stack prod`.
 2. Update DNS: `familiar.systems` → k3s server's Floating IP.
-3. Verify: `curl -I https://familiar.systems` — 200 OK, cert-manager-issued cert.
+3. Verify: `curl -I https://familiar.systems` - 200 OK, cert-manager-issued cert.
 4. If anything is wrong: revert DNS to Coolify's Floating IP. Instant rollback.
 5. Once confirmed working: decommission Coolify server via Pulumi (`pulumi destroy` on the Coolify stack, or just delete the server in Hetzner console). Release its Floating IP.
 
 **Verification:** Site serves from k3s. PR previews still work. One server, one Volume, one set of manifests in git.
 
-**If Phase 1 Coolify and Phase 2 k3s are on separate servers:** you end up with one server after cutover. The Coolify server was always disposable — it had no persistent state you need to keep.
+**If Phase 1 Coolify and Phase 2 k3s are on separate servers:** you end up with one server after cutover. The Coolify server was always disposable - it had no persistent state you need to keep.
 
 **If they shared a server:** the cutover is "stop Coolify containers, k3s is already running, update DNS." Even simpler.
 

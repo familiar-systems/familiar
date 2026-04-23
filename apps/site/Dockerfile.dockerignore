@@ -1,0 +1,27 @@
+# Per-Dockerfile ignore (BuildKit feature). Overrides any root .dockerignore.
+# Keeps the build context lean: the site only needs the workspace config
+# files plus apps/site/.
+
+**/node_modules
+**/dist
+**/.astro
+**/.turbo
+**/.venv
+.git
+*.md
+
+# Other workspace members
+apps/web
+apps/platform
+apps/campaign
+crates
+packages
+workers
+infra
+docs
+tooling
+
+# Rust build artefacts
+target
+Cargo.toml
+Cargo.lock

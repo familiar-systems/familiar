@@ -1,4 +1,4 @@
-# familiar.systems — BlockNote Editor Evaluation
+# familiar.systems - BlockNote Editor Evaluation
 
 ## Context
 
@@ -12,7 +12,7 @@ This document evaluates BlockNote against familiar.systems's specific editor req
 
 BlockNote has a split licensing model. This matters because familiar.systems uses [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html), which is GPL-3.0 compatible (AGPL is a superset of GPL-3.0).
 
-### Core packages — MPL-2.0
+### Core packages - MPL-2.0
 
 The core editor (`@blocknote/core`, `@blocknote/react`, `@blocknote/mantine`, `@blocknote/shadcn`) is licensed under MPL-2.0. This is file-level copyleft: you can use BlockNote in a larger AGPL-licensed project, but modifications to BlockNote's own source files must be shared. Unmodified use is fine. Using BlockNote as a dependency without forking it has zero licensing friction.
 
@@ -30,7 +30,7 @@ The core editor (`@blocknote/core`, `@blocknote/react`, `@blocknote/mantine`, `@
 
 This is a substantial editor. For many apps, the core is the whole product.
 
-### XL packages — GPL-3.0 or $390/month
+### XL packages - GPL-3.0 or $390/month
 
 The XL packages (`@blocknote/xl-*`) are dual-licensed: GPL-3.0 (free for GPL-3.0 projects) or commercial license ($390/month Business tier) for everything else.
 
@@ -40,15 +40,15 @@ The XL packages (`@blocknote/xl-*`) are dual-licensed: GPL-3.0 (free for GPL-3.0
 - Multi-column layouts
 - PDF, DOCX, ODT export
 
-**AGPL-3.0 is GPL-3.0 compatible**, so familiar.systems could technically use the XL packages under the GPL-3.0 grant. However, the $390/month commercial license remains the alternative. For a solo part-time developer, neither the cost nor the features justify adopting XL — especially because the AI features aren't the right AI for familiar.systems anyway (see below).
+**AGPL-3.0 is GPL-3.0 compatible**, so familiar.systems could technically use the XL packages under the GPL-3.0 grant. However, the $390/month commercial license remains the alternative. For a solo part-time developer, neither the cost nor the features justify adopting XL - especially because the AI features aren't the right AI for familiar.systems anyway (see below).
 
 ### The AI licensing question specifically
 
-BlockNote's AI features are generic text completion and editing — "make this shorter," "continue writing," "fix grammar." They're powered by an LLM the developer configures.
+BlockNote's AI features are generic text completion and editing - "make this shorter," "continue writing," "fix grammar." They're powered by an LLM the developer configures.
 
 familiar.systems's AI is campaign-aware: entity extraction against the campaign graph, journal drafting with narrative context, relationship proposal, contradiction detection. BlockNote's AI package cannot do any of this. familiar.systems needs its own AI pipeline regardless (already designed in the [audio pipeline doc](../../audio_ingest/audio_overview.md)).
 
-**Building our own AI-in-editor components** means: custom TipTap/BlockNote blocks that trigger familiar.systems's AI pipeline and render results inline. This is the same custom block work you'd do in TipTap (a React node view that calls your API and displays the result). BlockNote's XL AI package doesn't help — it's solving a different problem.
+**Building our own AI-in-editor components** means: custom TipTap/BlockNote blocks that trigger familiar.systems's AI pipeline and render results inline. This is the same custom block work you'd do in TipTap (a React node view that calls your API and displays the result). BlockNote's XL AI package doesn't help - it's solving a different problem.
 
 **Bottom line:** Ignore XL entirely. The core is what matters. Evaluate it on its own merits.
 
@@ -122,17 +122,17 @@ Same pattern as TipTap: custom block with `content: "none"` that renders a React
 
 **Assessment:** Equivalent to TipTap. Custom work either way.
 
-### 4. Status visualization — the critical question
+### 4. Status visualization - the critical question
 
 This is where the abstraction layers bite.
 
-familiar.systems needs ProseMirror **decorations** to overlay status indicators on blocks without mutating the document. This is a ProseMirror-level concern — it lives in the plugin/decoration API, two layers below BlockNote.
+familiar.systems needs ProseMirror **decorations** to overlay status indicators on blocks without mutating the document. This is a ProseMirror-level concern - it lives in the plugin/decoration API, two layers below BlockNote.
 
 **Can you access ProseMirror decorations from BlockNote?**
 
 Technically yes. BlockNote's custom block API accepts extensions that can include ProseMirror plugins. And BlockNote exposes the underlying TipTap editor instance. So you can register ProseMirror plugins that add decorations.
 
-But this is an escape hatch, not a supported path. You're writing ProseMirror plugin code (the same code you'd write in raw TipTap) while also working within BlockNote's block abstraction. The two models don't always compose cleanly — BlockNote wraps blocks in its own DOM structure (for drag handles, side menus, etc.), and decorations need to target the right DOM nodes within that structure.
+But this is an escape hatch, not a supported path. You're writing ProseMirror plugin code (the same code you'd write in raw TipTap) while also working within BlockNote's block abstraction. The two models don't always compose cleanly - BlockNote wraps blocks in its own DOM structure (for drag handles, side menus, etc.), and decorations need to target the right DOM nodes within that structure.
 
 **Assessment:** Possible but awkward. You'd use BlockNote for the nice UI, then immediately break through it for the ProseMirror features that make familiar.systems's editor special. With raw TipTap, decorations are a first-class concept, not an escape hatch.
 
@@ -187,7 +187,7 @@ TipTap is also not immune to this (v2 → v3 transition), but TipTap's core API 
 
 BlockNote's UI components are React-specific. If you ever wanted to support a different frontend framework, the editor component library doesn't port. (TipTap has React, Vue, and Svelte bindings; ProseMirror is framework-agnostic.)
 
-Not a current concern — the stack recommendation is React — but a harder lock-in than TipTap.
+Not a current concern - the stack recommendation is React - but a harder lock-in than TipTap.
 
 ### 5. Smaller community
 
@@ -203,7 +203,7 @@ This is not "BlockNote vs TipTap" in the abstract. It's a specific question:
 
 Arguments for BlockNote:
 
-- Dramatically faster to a working prototype. Slash menu, drag handles, block reordering — all free.
+- Dramatically faster to a working prototype. Slash menu, drag handles, block reordering - all free.
 - The Notion-style UX is exactly what a campaign notebook should feel like.
 - You've never done frontend. Pre-built components reduce the surface area you need to learn.
 - The core is MPL-2.0 and free. No licensing issues.
@@ -213,7 +213,7 @@ Arguments for raw TipTap:
 - Status decorations are a first-class concept, not an escape hatch.
 - When you need custom ProseMirror behavior (and you will, regularly), there's one layer of abstraction, not two.
 - Larger community, more stable API, more documented solutions to edge cases.
-- The UI components BlockNote gives you (slash menu, toolbar) are buildable in TipTap — it's upfront work, not impossible work.
+- The UI components BlockNote gives you (slash menu, toolbar) are buildable in TipTap - it's upfront work, not impossible work.
 - You're not locked into BlockNote's opinionated block DOM structure for your custom rendering.
 
 ---
@@ -224,25 +224,25 @@ Arguments for raw TipTap:
 
 **The XL packages are irrelevant.** Although AGPL-3.0 is GPL-compatible (making the XL GPL grant usable), the AI features solve a different problem than familiar.systems's campaign-aware AI pipeline. Ignore them.
 
-**The risk is the abstraction tax.** familiar.systems's editor is not a standard notes app. Status visualization via decorations, custom mention behavior wired to the campaign graph, source-linking to audio timestamps — these are ProseMirror-level features. With BlockNote, you'd use the nice UI for the standard parts and break through the abstraction for the custom parts. Whether that's sustainable depends on how much of the editor ends up being custom.
+**The risk is the abstraction tax.** familiar.systems's editor is not a standard notes app. Status visualization via decorations, custom mention behavior wired to the campaign graph, source-linking to audio timestamps - these are ProseMirror-level features. With BlockNote, you'd use the nice UI for the standard parts and break through the abstraction for the custom parts. Whether that's sustainable depends on how much of the editor ends up being custom.
 
 **Two reasonable paths:**
 
-1. **Start with BlockNote** for rapid prototyping, accept that you may outgrow it and migrate to raw TipTap when the custom requirements dominate. The migration is possible (same ProseMirror foundation) but not free — the block model and extension APIs differ.
+1. **Start with BlockNote** for rapid prototyping, accept that you may outgrow it and migrate to raw TipTap when the custom requirements dominate. The migration is possible (same ProseMirror foundation) but not free - the block model and extension APIs differ.
 
 2. **Start with TipTap** and build the UI components (slash menu, drag handles) yourself or from community packages. More upfront work, but no abstraction layer to fight through for the custom features.
 
-If pressed, I'd lean toward **TipTap** for this project — the custom editor features are not nice-to-haves, they're core to the product. But BlockNote is not a wrong choice for getting something on screen fast, as long as you go in knowing the abstraction will need to be pierced.
+If pressed, I'd lean toward **TipTap** for this project - the custom editor features are not nice-to-haves, they're core to the product. But BlockNote is not a wrong choice for getting something on screen fast, as long as you go in knowing the abstraction will need to be pierced.
 
 ---
 
 ## Sources
 
-- [BlockNote](https://www.blocknotejs.org/) — block-based editor for React
-- [BlockNote GitHub](https://github.com/TypeCellOS/BlockNote) — source code (MPL-2.0 core, GPL-3.0 XL)
-- [BlockNote Custom Blocks](https://www.blocknotejs.org/docs/features/custom-schemas/custom-blocks) — custom block API
-- [BlockNote Pricing](https://www.blocknotejs.org/pricing) — licensing tiers
-- [BlockNote vs TipTap | TipTap](https://tiptap.dev/alternatives/blocknote-vs-tiptap) — comparison (written by TipTap, read with that bias)
-- [BlockNote on ProseMirror Forum](https://discuss.prosemirror.net/t/blocknote-open-source-block-based-notion-style-editor-on-top-of-prosemirror/4898) — community discussion
-- [BlockNote Review | Velt](https://velt.dev/blog/blocknote-collaborative-editor-guide) — production evaluation
-- [Which rich text editor framework should you choose in 2025? | Liveblocks](https://liveblocks.io/blog/which-rich-text-editor-framework-should-you-choose-in-2025) — framework comparison
+- [BlockNote](https://www.blocknotejs.org/) - block-based editor for React
+- [BlockNote GitHub](https://github.com/TypeCellOS/BlockNote) - source code (MPL-2.0 core, GPL-3.0 XL)
+- [BlockNote Custom Blocks](https://www.blocknotejs.org/docs/features/custom-schemas/custom-blocks) - custom block API
+- [BlockNote Pricing](https://www.blocknotejs.org/pricing) - licensing tiers
+- [BlockNote vs TipTap | TipTap](https://tiptap.dev/alternatives/blocknote-vs-tiptap) - comparison (written by TipTap, read with that bias)
+- [BlockNote on ProseMirror Forum](https://discuss.prosemirror.net/t/blocknote-open-source-block-based-notion-style-editor-on-top-of-prosemirror/4898) - community discussion
+- [BlockNote Review | Velt](https://velt.dev/blog/blocknote-collaborative-editor-guide) - production evaluation
+- [Which rich text editor framework should you choose in 2025? | Liveblocks](https://liveblocks.io/blog/which-rich-text-editor-framework-should-you-choose-in-2025) - framework comparison

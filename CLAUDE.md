@@ -55,7 +55,7 @@ apps/platform         Rust binary: Axum (auth, CRUD, routing table, discover)
 apps/campaign         Rust binary: Axum + kameo (actors, collab, AI, compiler)
 workers/              Job processors, language-agnostic (Python ML today)
 
-crates/app-shared       Rust library: IDs, auth, libSQL helpers (platform + campaign)
+crates/app-shared       Rust library: IDs, auth (platform + campaign)
 crates/campaign-shared  Rust library: ToC/Thing Loro wrappers, PM conventions, CrdtDoc trait (campaign only)
 packages/types-app      @familiar-systems/types-app, generated from app-shared via ts-rs (CampaignId, UserId)
 packages/types-campaign @familiar-systems/types-campaign, generated from campaign-shared via ts-rs (ThingId, BlockId, ThingHandle, TocEntry, ...)
@@ -105,7 +105,7 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 | Routing        | TanStack Router or React Router (not yet decided)           |
 | Server         | Rust: Axum + kameo actors                                   |
 | API contract   | ts-rs (type generation) + utoipa (OpenAPI)                  |
-| Database       | libSQL (database-per-campaign), Turso Database upgrade path |
+| Database       | SQLite for platform (via `sea-orm` + `sqlx-sqlite`); libSQL planned for campaign server (database-per-campaign, Turso Database upgrade path) |
 | Collaboration  | Loro CRDTs + loro-dev/protocol                              |
 | Object Storage | Hetzner Object Storage (campaign DB source of truth)        |
 | ML workers     | Python: faster-whisper, pyannote (GPU, k8s Jobs)            |
@@ -160,11 +160,25 @@ Maximum strictness, no exceptions:
 - **Relationships** (node→node): Authored/curated, carry semantic labels. Freeform vocabulary.
 - **Prototypes (templates)**: A template is a Thing with `isTemplate: true`. No separate `Template` entity. Creating a thing from a template clones the prototype's block structure. `prototypeId?: ThingId` tracks lineage. Tags are Things connected via `tagged` relationships, not a `tags: string[]` field.
 
+## Deployment Targets
+
+Three deployment environments, one URL contract. **Every environment terminates traffic on two apexes - a marketing apex for the Astro site and an app apex for the SPA, platform API, and campaign shards - with path-based routing applied within each.** Per-PR previews are a `/pr-{N}` path prefix applied to both apexes. Each Hanko tenant registers exactly one origin: the environment's app apex.
+
+| Target         | Marketing host                     | App host                               | SPA base path       | Auth tenant                                        | Fabric                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------- | ---------------------------------- | -------------------------------------- | ------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Local dev**  | `http://localhost:8080`            | `http://app.localhost:8080`            | `/`                 | preview Hanko (`HANKO_API_URL_DEV` in `mise.toml`) | `mise run dev` launches the Astro site (4321), Vite SPA (5173, `base=/`), platform (cargo, 3000), campaign (cargo, 3001), and a **Caddy reverse proxy on 8080** (`Caddyfile.dev`) that binds both host matchers. Marketing host: `/` → Astro. App host: `/api/*` → platform, `/campaign/*` → campaign, `/*` → SPA. `*.localhost` is loopback by browser convention, so no `/etc/hosts` entries are required. Data in `data/dev-platform.db`. |
+| **PR preview** | `https://preview.familiar.systems` | `https://app.preview.familiar.systems` | `/pr-${PR_NUMBER}/` | preview Hanko (same tenant as local dev)           | k3s namespace `preview-pr-${PR_NUMBER}`. Traefik IngressRoutes + `StripPrefix` middlewares on both hosts per PR. PRs share the app apex origin, so browser state and auth session carry across PRs by design.                                                                                                                                                                                                                                |
+| **Prod**       | `https://familiar.systems`         | `https://app.familiar.systems`         | `/`                 | prod Hanko (`HANKO_API_URL_PROD` in Pulumi)        | k3s default namespace. Marketing apex: one rule (`/` → Astro). App apex: priority-ordered Traefik path rules (`/api`, `/campaign`, catch-all `/` → SPA). Data on Hetzner Volume + object storage.                                                                                                                                                                                                                                            |
+
+**Scope of this contract:** the application's services live on the two apexes above. Subdomains that host separate systems (Hanko's `auth.*`, and any future surfaces like `docs.`, `status.`, `blog.`) live on their own DNS and manage their own routing, TLS, and auth.
+
+**URL-structure authority:** [`docs/plans/2026-04-11-app-server-prd.md` §URL architecture](docs/plans/2026-04-11-app-server-prd.md).
+**Service topology + lifecycle:** [`docs/plans/2026-03-30-deployment-architecture.md`](docs/plans/2026-03-30-deployment-architecture.md).
+**Helper paths in SPA code:** `apps/web/src/lib/paths.ts` (`apiPath`, `campaignPath`, `spaRoute`) - always use these instead of hardcoded `/api/...` or `/login`.
+
 ## Development Notes
 
-- Subdomain routing: `familiar.systems` (site), `app.familiar.systems` (SPA), `api.familiar.systems` (platform), `c1.familiar.systems` (campaign server). Traefik Ingress routes by subdomain.
-- In dev, Docker Compose runs platform (localhost:3000) and campaign server (localhost:3001). Vite proxies `/api/*` to the platform. Campaign server requests go direct (discover returns localhost:3001).
-- The SPA calls the platform for auth, campaign listing, and discover. After discover, the SPA talks directly to the campaign server for all campaign-scoped work (WebSocket, REST, AI).
 - The `@familiar-systems/editor` package is the most architecturally important. It defines the TipTap schema shared between browser (apps/web via loro-prosemirror) and the campaign server (for LoroDoc reconstruction and serialization compiler).
-- LLM provider is pluggable: hosted instance uses managed keys, self-hosters bring their own
-- No Docker database container needed for local development. libSQL files on disk. `:memory:` databases for tests.
+- LLM provider is pluggable: hosted instance uses managed keys, self-hosters bring their own.
+- No Docker database container needed for local development. SQLite files on disk (and eventually libSQL files for campaign DBs once the campaign server lands). `:memory:` databases for tests.
+- **Cookie scope is per apex.** Any cookie set on the app apex (`app.familiar.systems`, or its preview/dev equivalents) is visible to the SPA, platform API, and campaign shards - but not to the marketing site on `familiar.systems`, which is a separate browser origin. Hanko's session cookie (if set) lives on `auth.*`, not on either of ours, and auth tokens travel as `Authorization: Bearer` headers. When adding a cookie (analytics, preferences, feature flags, anything), pick the apex deliberately and scope it narrowly with `Path=`.

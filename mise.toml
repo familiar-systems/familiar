@@ -1,15 +1,26 @@
 [tools]
+"github:bnjbvr/cargo-machete" = "latest"
 node = "24"
 "npm:pnpm" = "10.32"
-rust = "stable"
+rust = { version = "latest", profile = 'default', components = "rust-analyzer,rust-src" }
 python = "3.14"
 uv = "latest"
 actionlint = "latest"
 kubeconform = "latest"
+caddy = "latest"
 
 [settings]
 python.uv_venv_auto = "create|source"
 lockfile = true
+
+# --- env ---
+# Public, non-secret config available to all tasks. Canonical home for
+# HANKO_API_URL_DEV (see docs/plans/2026-04-11-app-server-prd.md
+# "Authentication and signup": auth-mode-agnostic platform). The dev URL
+# also appears in .github/workflows/deploy-preview.yml as a documented
+# derived copy because GHA cannot read TOML natively.
+[env]
+HANKO_API_URL_DEV = "https://auth.preview.familiar.systems"
 
 # --- check ---
 
@@ -20,7 +31,7 @@ depends = ["format:check", "lint", "typecheck", "test"]
 # --- dev ---
 
 [tasks.dev]
-description = "Start all dev servers"
+description = "Start all dev servers (site, SPA, platform, campaign, proxy). Open http://localhost:8080."
 depends = ["dev:*"]
 
 [tasks."dev:site"]
@@ -28,16 +39,34 @@ description = "Astro dev server (port 4321)"
 run = "pnpm --filter @familiar-systems/site dev"
 
 [tasks."dev:web"]
-description = "Vite dev server (port 5173)"
+description = "Vite dev server (port 5173, SPA served at root of the app apex; reach it through Caddy at http://app.localhost:8080)"
 run = "pnpm --filter @familiar-systems/web dev"
+# Dev mirrors the prod two-apex layout: marketing at http://localhost:8080/ →
+# Astro, app at http://app.localhost:8080/ → SPA, /api → platform, /campaign →
+# campaign. Caddy (dev:proxy) binds both host matchers on :8080 so the
+# browser sees two distinct origins - identical to what Traefik enforces in
+# k3s. VITE_BASE_PATH is intentionally unset: vite.config.ts defaults to "/"
+# for dev/prod; CI overrides it per-PR (/pr-${N}/) for preview builds.
+env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}" }
 
 [tasks."dev:platform"]
 description = "Platform server (port 3000)"
 run = "cargo run -p familiar-systems-platform"
+# CORS origin is the app-apex front door, not the marketing apex. The SPA
+# lives on app.localhost:8080 and any browser fetch from it to /api/* is
+# same-origin, so no preflight fires; this entry is defense-in-depth for
+# non-browser callers that send an Origin header against :3000 directly.
+env = { HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", DATABASE_URL = "sqlite://data/dev-platform.db?mode=rwc", PORT = "3000", CORS_ORIGINS = "http://app.localhost:8080", RUST_LOG = "info,familiar_systems_platform=debug" }
 
 [tasks."dev:campaign"]
 description = "Campaign server (port 3001)"
 run = "cargo run -p familiar-systems-campaign"
+
+[tasks."dev:proxy"]
+description = "Caddy reverse proxy on :8080 unifying site + SPA + platform + campaign under one origin"
+# Caddy retries upstreams with 502s until they come up, so ordering within
+# the parallel `dev:*` graph doesn't matter - start this alongside the rest.
+run = "caddy run --config Caddyfile.dev --adapter caddyfile"
 
 # --- build ---
 
@@ -91,6 +120,10 @@ sources = [
   "apps/campaign/Cargo.toml",
   "crates/**/Cargo.toml",
 ]
+outputs = [
+  "packages/types-app/src/generated/**/*.ts",
+  "packages/types-campaign/src/generated/**/*.ts",
+]
 
 [tasks."test:python"]
 dir = "workers/whisperx"
@@ -124,7 +157,11 @@ sources = [
 ]
 
 [tasks."lint:rust"]
-run = "cargo clippy --workspace -- -D warnings"
+description = "Clippy + cargo-machete (fails on warnings or unused Cargo dependencies)"
+# Chained with && so machete doesn't bury clippy errors with dep-hygiene noise.
+# cargo-machete reads every workspace Cargo.toml and greps every .rs file, so
+# its trigger set is identical to clippy's - the same `sources` covers both.
+run = "cargo clippy --workspace -- -D warnings && cargo machete"
 sources = [
   "apps/platform/**/*.rs",
   "apps/campaign/**/*.rs",
@@ -166,7 +203,16 @@ sources = [
 
 [tasks."lint:k8s"]
 description = "Validate Kubernetes YAML manifests against schemas with kubeconform"
-run = "kubeconform -strict -summary -schema-location default infra/k8s/"
+# Core K8s schemas come from the default location. CRD schemas (e.g. Traefik's
+# Middleware) come from the datreeio/CRDs-catalog, the community-maintained
+# JSON-schema mirror. The `{% raw %}` block keeps mise's tera templater away
+# from kubeconform's own `{{.Group}}`-style placeholders in the URL.
+run = """
+{% raw %}kubeconform -strict -summary \
+  -schema-location default \
+  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+  infra/k8s/{% endraw %}
+"""
 
 # --- format ---
 

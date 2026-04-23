@@ -21,7 +21,14 @@ import pulumi_kubernetes as k8s
 # are untyped dicts; always read upstream docs before modifying.
 from pulumi_kubernetes.apiextensions import CustomResource
 
-from config import PREVIEW_DOMAINS, PRODUCTION_DOMAINS
+from config import (
+    APP_PROD_DOMAINS,
+    HANKO_API_URL_PROD,
+    MARKETING_PREVIEW_DOMAINS,
+    MARKETING_PROD_DOMAINS,
+    PREVIEW_DOMAINS,
+    PRODUCTION_DOMAINS,
+)
 
 if TYPE_CHECKING:
     import pulumiverse_scaleway as scaleway
@@ -39,6 +46,13 @@ WILDCARD_CERT_SECRET = "preview-wildcard-tls"  # noqa: S105
 REGISTRY_PULL_SECRET = "scaleway-registry"  # noqa: S105
 SITE_NAME = "site"
 SITE_PORT = 80
+PLATFORM_NAME = "platform"
+PLATFORM_PORT = 3000
+PLATFORM_IMAGE_TAG = "latest"
+
+# Traefik Middleware reference for the platform Ingress. The `@kubernetescrd`
+# suffix tells Traefik to resolve the name against the Kubernetes CRD store.
+PLATFORM_STRIP_API_MIDDLEWARE = "default-strip-api-prefix@kubernetescrd"
 
 # ACME issuers. Both ClusterIssuers are created; the wildcard cert references
 # whichever name is in ACTIVE_CLUSTER_ISSUER_NAME. Switch to staging during
@@ -176,10 +190,15 @@ def create_k8s_resources(
         ),
     )
 
-    # -- Wildcard Certificate -------------------------------------------------
-    # SANs cover both production and preview domains plus the preview wildcard
-    # subdomains. Adding a domain to PRODUCTION_DOMAINS or PREVIEW_DOMAINS in
-    # config.py extends the cert automatically on next pulumi up.
+    # -- TLS Certificate ------------------------------------------------------
+    # SANs cover all four apex domains: marketing + app, prod + preview.
+    # Path-based routing within each apex removes the need for per-PR or
+    # per-service subdomains, so the SAN list is exactly the apex set.
+    # See docs/plans/2026-04-11-app-server-prd.md "URL architecture".
+    #
+    # The secret name remains `preview-wildcard-tls` for continuity with
+    # existing Ingress references, despite the cert being neither a wildcard
+    # nor preview-only.
     _wildcard_cert = CustomResource(
         "preview-wildcard-cert",
         api_version="cert-manager.io/v1",
@@ -194,7 +213,6 @@ def create_k8s_resources(
             "dnsNames": [
                 *PRODUCTION_DOMAINS,
                 *PREVIEW_DOMAINS,
-                *[f"*.{d}" for d in PREVIEW_DOMAINS],
             ],
         },
         opts=pulumi.ResourceOptions(
@@ -294,7 +312,10 @@ def create_k8s_resources(
         opts=k8s_opts,
     )
 
-    all_site_hosts = [*PRODUCTION_DOMAINS, *PREVIEW_DOMAINS]
+    # Site (Astro) serves the marketing apexes only. The app apexes
+    # (app.familiar.systems, app.preview.familiar.systems) belong to the
+    # SPA + platform + campaign ingresses on the other side of the split.
+    all_site_hosts = [*MARKETING_PROD_DOMAINS, *MARKETING_PREVIEW_DOMAINS]
     _site_ingress = k8s.networking.v1.Ingress(
         "site-ingress",
         metadata=k8s.meta.v1.ObjectMetaArgs(
@@ -315,6 +336,226 @@ def create_k8s_resources(
             rules=[_site_ingress_rule(host) for host in all_site_hosts],
         ),
         opts=k8s_opts,
+    )
+
+    # -- Platform PersistentVolume + PersistentVolumeClaim + Deployment + Service + Ingress --
+    _platform_pv = k8s.core.v1.PersistentVolume(
+        "platform-pv",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name="platform-pv",
+            labels={"app": PLATFORM_NAME},
+        ),
+        spec=k8s.core.v1.PersistentVolumeSpecArgs(
+            capacity={"storage": "1Gi"},
+            access_modes=["ReadWriteOnce"],
+            persistent_volume_reclaim_policy="Retain",
+            storage_class_name="",
+            host_path=k8s.core.v1.HostPathVolumeSourceArgs(
+                path="/data/platform",
+                type="DirectoryOrCreate",
+            ),
+            claim_ref=k8s.core.v1.ObjectReferenceArgs(
+                namespace="default",
+                name="platform-pvc",
+            ),
+        ),
+        opts=pulumi.ResourceOptions(provider=provider, depends_on=[_wildcard_cert]),
+    )
+
+    _platform_pvc = k8s.core.v1.PersistentVolumeClaim(
+        "platform-pvc",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name="platform-pvc",
+            namespace="default",
+        ),
+        spec=k8s.core.v1.PersistentVolumeClaimSpecArgs(
+            access_modes=["ReadWriteOnce"],
+            storage_class_name="",
+            volume_name="platform-pv",
+            resources=k8s.core.v1.VolumeResourceRequirementsArgs(
+                requests={"storage": "1Gi"},
+            ),
+        ),
+        opts=pulumi.ResourceOptions(provider=provider, depends_on=[_platform_pv]),
+    )
+
+    platform_labels = {"app": PLATFORM_NAME}
+    platform_image = registry.endpoint.apply(
+        lambda ep: f"{ep}/{PLATFORM_NAME}:{PLATFORM_IMAGE_TAG}"
+    )
+
+    _platform_deployment = k8s.apps.v1.Deployment(
+        "platform-deployment",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name=PLATFORM_NAME,
+            namespace="default",
+        ),
+        spec=k8s.apps.v1.DeploymentSpecArgs(
+            replicas=1,
+            selector=k8s.meta.v1.LabelSelectorArgs(match_labels=platform_labels),
+            template=k8s.core.v1.PodTemplateSpecArgs(
+                metadata=k8s.meta.v1.ObjectMetaArgs(labels=platform_labels),
+                spec=k8s.core.v1.PodSpecArgs(
+                    image_pull_secrets=[
+                        k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
+                    ],
+                    # The platform container runs as the distroless `nonroot`
+                    # user (UID 65532). The HostPath PV is auto-created by the
+                    # kubelet as root:root, so SQLite's `mode=rwc` open of
+                    # platform.db fails with SQLITE_CANTOPEN. fsGroup is
+                    # unreliable for the in-tree HostPath driver; an init
+                    # container running as root that chowns the mount is the
+                    # robust fix and survives node turnover.
+                    init_containers=[
+                        k8s.core.v1.ContainerArgs(
+                            name="chown-data",
+                            image="busybox:1.36",
+                            command=["sh", "-c", "chown -R 65532:65532 /data/platform"],
+                            security_context=k8s.core.v1.SecurityContextArgs(
+                                run_as_user=0,
+                            ),
+                            volume_mounts=[
+                                k8s.core.v1.VolumeMountArgs(
+                                    name="platform-data",
+                                    mount_path="/data/platform",
+                                ),
+                            ],
+                        ),
+                    ],
+                    containers=[
+                        k8s.core.v1.ContainerArgs(
+                            name=PLATFORM_NAME,
+                            image=platform_image,
+                            image_pull_policy="IfNotPresent",
+                            ports=[k8s.core.v1.ContainerPortArgs(container_port=PLATFORM_PORT)],
+                            env=[
+                                k8s.core.v1.EnvVarArgs(
+                                    name="HANKO_API_URL",
+                                    value=HANKO_API_URL_PROD,
+                                ),
+                                k8s.core.v1.EnvVarArgs(
+                                    name="DATABASE_URL",
+                                    value="sqlite:///data/platform/platform.db?mode=rwc",
+                                ),
+                                k8s.core.v1.EnvVarArgs(
+                                    name="CORS_ORIGINS",
+                                    # Browser traffic is same-origin within
+                                    # the app apex, so CORS preflights do
+                                    # not fire; this entry is for non-
+                                    # browser consumers that send an Origin
+                                    # header.
+                                    value="https://app.familiar.systems",
+                                ),
+                                k8s.core.v1.EnvVarArgs(name="PORT", value=str(PLATFORM_PORT)),
+                                k8s.core.v1.EnvVarArgs(name="RUST_LOG", value="info"),
+                            ],
+                            volume_mounts=[
+                                k8s.core.v1.VolumeMountArgs(
+                                    name="platform-data",
+                                    mount_path="/data/platform",
+                                ),
+                            ],
+                            resources=k8s.core.v1.ResourceRequirementsArgs(
+                                requests={"cpu": "10m", "memory": "32Mi"},
+                                limits={"memory": "64Mi"},
+                            ),
+                        ),
+                    ],
+                    volumes=[
+                        k8s.core.v1.VolumeArgs(
+                            name="platform-data",
+                            persistent_volume_claim=k8s.core.v1.PersistentVolumeClaimVolumeSourceArgs(
+                                claim_name="platform-pvc",
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        opts=pulumi.ResourceOptions(
+            provider=provider,
+            depends_on=[image_pull_secret, _platform_pvc],
+        ),
+    )
+
+    _platform_service = k8s.core.v1.Service(
+        "platform-service",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name="platform-service",
+            namespace="default",
+        ),
+        spec=k8s.core.v1.ServiceSpecArgs(
+            selector=platform_labels,
+            ports=[
+                k8s.core.v1.ServicePortArgs(
+                    port=PLATFORM_PORT,
+                    target_port=PLATFORM_PORT,
+                ),
+            ],
+        ),
+        opts=k8s_opts,
+    )
+
+    # Strip `/api` from request paths before they hit the platform backend.
+    # Traefik Middleware is a CRD; it lives alongside the Ingress that
+    # references it via the router.middlewares annotation. The annotation
+    # value is "<namespace>-<name>@kubernetescrd".
+    _platform_strip_prefix = CustomResource(
+        "platform-strip-api-prefix",
+        api_version="traefik.io/v1alpha1",
+        kind="Middleware",
+        metadata={"name": "strip-api-prefix", "namespace": "default"},
+        spec={"stripPrefix": {"prefixes": ["/api"]}},
+        opts=k8s_opts,
+    )
+
+    # Platform reachable at <app-apex>/api/* (path-based within the app
+    # apex, not a per-service subdomain). The SPA, platform, and campaign
+    # shards all share the app apex so browser calls are same-origin.
+    # Longer PathPrefix wins in Traefik's default router-priority-by-rule-
+    # length model, so /api/* lands here while /campaign/* and the SPA
+    # catch-all bind separately.
+    _platform_ingress = k8s.networking.v1.Ingress(
+        "platform-ingress",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name=PLATFORM_NAME,
+            namespace="default",
+            annotations={
+                "traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
+                "traefik.ingress.kubernetes.io/router.middlewares": PLATFORM_STRIP_API_MIDDLEWARE,
+            },
+        ),
+        spec=k8s.networking.v1.IngressSpecArgs(
+            tls=[
+                k8s.networking.v1.IngressTLSArgs(
+                    hosts=list(APP_PROD_DOMAINS),
+                    secret_name=WILDCARD_CERT_SECRET,
+                ),
+            ],
+            rules=[
+                k8s.networking.v1.IngressRuleArgs(
+                    host=host,
+                    http=k8s.networking.v1.HTTPIngressRuleValueArgs(
+                        paths=[
+                            k8s.networking.v1.HTTPIngressPathArgs(
+                                path="/api",
+                                path_type="Prefix",
+                                backend=k8s.networking.v1.IngressBackendArgs(
+                                    service=k8s.networking.v1.IngressServiceBackendArgs(
+                                        name="platform-service",
+                                        port=k8s.networking.v1.ServiceBackendPortArgs(
+                                            number=PLATFORM_PORT,
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ],
+                    ),
+                )
+                for host in APP_PROD_DOMAINS
+            ],
+        ),
+        opts=pulumi.ResourceOptions(provider=provider, depends_on=[_platform_strip_prefix]),
     )
 
 

@@ -9,16 +9,33 @@ permissions:
 
 env:
   REGISTRY: rg.fr-par.scw.cloud/loreweaver
-  IMAGE_NAME: site
   DO_NOT_TRACK: 1
-
-concurrency:
-  group: deploy-site
-  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: site
+            dockerfile: apps/site/Dockerfile
+            paths: |
+              apps/site/**
+              .github/workflows/cd.yml
+              .github/actions/**
+          - target: platform
+            dockerfile: apps/platform/Dockerfile
+            paths: |
+              apps/platform/**
+              crates/app-shared/**
+              Cargo.toml
+              Cargo.lock
+              .github/workflows/cd.yml
+              .github/actions/**
+    concurrency:
+      group: deploy-${{ matrix.target }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v6
 
@@ -32,13 +49,11 @@ jobs:
         shell: bash
         run: echo "pnpm=$(mise current 'npm:pnpm')" >> "$GITHUB_OUTPUT"
 
-      - name: Check if site files or CI changed
+      - name: Check if files for this target or CI changed
         id: changes
         uses: tj-actions/changed-files@v47
         with:
-          files: |
-            apps/site/**
-            .github/**
+          files: ${{ matrix.paths }}
 
       - name: Wait for Infrastructure workflow
         if: steps.changes.outputs.any_changed == 'true'
@@ -69,19 +84,32 @@ jobs:
         if: steps.changes.outputs.any_changed == 'true'
         uses: docker/setup-buildx-action@v4
 
-      - name: Build and push
-        if: steps.changes.outputs.any_changed == 'true'
+      - name: Build and push site
+        if: steps.changes.outputs.any_changed == 'true' && matrix.target == 'site'
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: apps/site/Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: true
           build-args: |
-            SITE_URL=https://loreweaver.no
+            SITE_URL=https://familiar.systems
             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ matrix.target }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push platform
+        if: steps.changes.outputs.any_changed == 'true' && matrix.target == 'platform'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -91,15 +119,15 @@ jobs:
         with:
           secret-name: k3s-kubeconfig
 
-      - name: Deploy to preview cluster
+      - name: Deploy to cluster
         if: steps.changes.outputs.any_changed == 'true'
         run: |
           echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
-          kubectl set image deployment/site \
-            site=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          kubectl set image deployment/${{ matrix.target }} \
+            ${{ matrix.target }}=${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }} \
             --kubeconfig /tmp/kubeconfig.yaml \
             --namespace default
-          kubectl rollout status deployment/site \
+          kubectl rollout status deployment/${{ matrix.target }} \
             --kubeconfig /tmp/kubeconfig.yaml \
             --namespace default \
             --timeout=120s
@@ -108,9 +136,9 @@ jobs:
       - name: Clean up old images
         if: steps.changes.outputs.any_changed == 'true'
         run: |
-          IMAGE_ID="$(scw registry image list name=site -o json | jq -r '.[0].id')"
+          IMAGE_ID="$(scw registry image list name=${{ matrix.target }} -o json | jq -r '.[0].id')"
           if [ -z "$IMAGE_ID" ] || [ "$IMAGE_ID" = "null" ]; then
-            echo "No site image found, skipping cleanup"
+            echo "No ${{ matrix.target }} image found, skipping cleanup"
             exit 0
           fi
 

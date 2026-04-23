@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Date:** 2026-03-25
-**Supersedes:** [Document-Centric Campaign Architecture (Hocuspocus ADR)](../archive/plans/2026-03-14-hocuspocus-architecture.md) — validated its hypotheses, then replaced the implementation technology (Yjs/Hocuspocus/Node.js → Loro/kameo/Rust). The campaign model, scaling model, and operational invariants carry forward. The collaboration layer, persistence hooks, and AI interaction model change.
+**Supersedes:** [Document-Centric Campaign Architecture (Hocuspocus ADR)](../archive/plans/2026-03-14-hocuspocus-architecture.md) - validated its hypotheses, then replaced the implementation technology (Yjs/Hocuspocus/Node.js → Loro/kameo/Rust). The campaign model, scaling model, and operational invariants carry forward. The collaboration layer, persistence hooks, and AI interaction model change.
 **Related decisions:** [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md), [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Suggestion Marks Spike](./2026-03-25-loro-tiptap-spike.md), [Project structure](./2026-03-26-project-structure-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](./2026-02-20-templates-as-prototype-pages.md)
 
 ---
@@ -17,7 +17,7 @@ Three actor types interact with page content:
 2. **The interactive AI agent** during Planning & Refinement and Q&A conversations
 3. **The batch AI pipeline** (SessionIngest) processing audio recordings into journal drafts and entity proposals
 
-The superseded Hocuspocus ADR validated eight hypotheses about how page state flows between these actors, how it's persisted, and how conflicts are resolved. All hypotheses held. What changed is the implementation technology: the Hocuspocus experiment revealed that Node.js event loop constraints — single-threaded execution, shared memory pressure across all documents, Y.Doc lifecycle coupled to Hocuspocus hooks — forced architectural workarounds (two read paths, two write paths, memory pressure management) that don't exist in a Rust actor model. Moving to Rust/kameo/Loro eliminates these constraints and simplifies the design while preserving every principle the Hocuspocus ADR established.
+The superseded Hocuspocus ADR validated eight hypotheses about how page state flows between these actors, how it's persisted, and how conflicts are resolved. All hypotheses held. What changed is the implementation technology: the Hocuspocus experiment revealed that Node.js event loop constraints - single-threaded execution, shared memory pressure across all documents, Y.Doc lifecycle coupled to Hocuspocus hooks - forced architectural workarounds (two read paths, two write paths, memory pressure management) that don't exist in a Rust actor model. Moving to Rust/kameo/Loro eliminates these constraints and simplifies the design while preserving every principle the Hocuspocus ADR established.
 
 ### What carries forward unchanged
 
@@ -64,7 +64,7 @@ The superseded Hocuspocus ADR validated eight hypotheses about how page state fl
 
 Every campaign is a self-contained libSQL database file. There are no cross-campaign queries, no shared tables, no joins between campaigns. A campaign's database contains block records, entity data, relationships and graph edges, search text and embeddings, suggestion outcomes, agent conversation history, and campaign-specific metadata. During active editing sessions, LoroDoc state is held in actor memory as transient CRDT plumbing.
 
-This isolation was chosen for branch deployment — preview environments are `cp` or `cp -r`, depending on the database layout. GDPR deletion is a happy side effect (delete a campaign = delete a file). The isolation also turns out to be the foundation of the scaling model. Each campaign is an independent shard. No distributed transactions, no consensus protocols.
+This isolation was chosen for branch deployment - preview environments are `cp` or `cp -r`, depending on the database layout. GDPR deletion is a happy side effect (delete a campaign = delete a file). The isolation also turns out to be the foundation of the scaling model. Each campaign is an independent shard. No distributed transactions, no consensus protocols.
 
 ### Object storage as source of truth, local disk as cache
 
@@ -72,31 +72,31 @@ Object storage (Hetzner Object Storage) is the authoritative location for all ca
 
 **Campaign checkout:** When a user connects to a campaign, the routing table (a lightweight map of campaign ID → server address in the central database instance) is consulted. If the campaign is already checked out on a server, route there. If not, assign it to the least-loaded server. That server downloads the libSQL file from object storage to local disk, opens it, and spawns a CampaignSupervisor actor that owns the database connection and all child actors for that campaign.
 
-**Active session:** All reads and writes run against the local libSQL file at NVMe speed. No network hop in the hot path. ThingActors are spawned on demand as users open pages or the AI agent needs context — each actor reconstructs a full LoroDoc from relational data on startup.
+**Active session:** All reads and writes run against the local libSQL file at NVMe speed. No network hop in the hot path. ThingActors are spawned on demand as users open pages or the AI agent needs context - each actor reconstructs a full LoroDoc from relational data on startup.
 
 **Periodic writeback:** Each actor manages its own debounce timer. When the timer fires, the actor snapshots its LoroDoc to relational data and writes to the campaign database. A campaign-level writeback flushes the local libSQL file to object storage periodically (~30 seconds) for durability. This bounds the worst-case data loss window.
 
-**Campaign release:** When the last user disconnects and an idle timeout elapses, the CampaignSupervisor evicts all child actors. Each actor snapshots and writes back before terminating. The final campaign database file — containing only relational data, no CRDT blobs — is written to object storage. The campaign is deregistered from the routing table.
+**Campaign release:** When the last user disconnects and an idle timeout elapses, the CampaignSupervisor evicts all child actors. Each actor snapshots and writes back before terminating. The final campaign database file - containing only relational data, no CRDT blobs - is written to object storage. The campaign is deregistered from the routing table.
 
 **Lease-based ownership:** Each campaign checkout is a lease with a heartbeat. The router will not reassign a campaign until the lease expires. This prevents two servers from having the same campaign open simultaneously.
 
 ### The actor topology replaces Hocuspocus
 
-The superseded ADR used Hocuspocus as the collaboration layer — a Node.js WebSocket server with lifecycle hooks (`onLoadDocument`, `onStoreDocument`, `onChange`, `onAuthenticate`). These hooks were the integration points for persistence, validation, and AI interaction.
+The superseded ADR used Hocuspocus as the collaboration layer - a Node.js WebSocket server with lifecycle hooks (`onLoadDocument`, `onStoreDocument`, `onChange`, `onAuthenticate`). These hooks were the integration points for persistence, validation, and AI interaction.
 
 The new architecture replaces Hocuspocus with kameo actors, each owning a LoroDoc and handling CRDT sync via the loro-dev/protocol:
 
 ```
 CampaignSupervisor (one per checked-out campaign)
-├── ThingActor (per active Thing — wiki pages)
-├── TocActor (one per campaign — organizational structure)
-├── RelationshipGraph (one per campaign — full entity graph in memory)
+├── ThingActor (per active Thing - wiki pages)
+├── TocActor (one per campaign - organizational structure)
+├── RelationshipGraph (one per campaign - full entity graph in memory)
 ├── UserSession (per connected user)
-│   ├── AgentConversation (per conversation — P&R, Q&A)
+│   ├── AgentConversation (per conversation - P&R, Q&A)
 │   └── ...
 ```
 
-Each ThingActor is the equivalent of "one document in Hocuspocus" — it holds a LoroDoc, syncs with connected clients via the loro-dev/protocol, and persists to the campaign database on a debounce timer. The critical difference: **there is no shared event loop.** Each actor is an independent async task. Loading a document in one actor has zero impact on any other. This eliminates the memory pressure and event loop contention that drove the Hocuspocus ADR's "two read paths" and "two write paths" design.
+Each ThingActor is the equivalent of "one document in Hocuspocus" - it holds a LoroDoc, syncs with connected clients via the loro-dev/protocol, and persists to the campaign database on a debounce timer. The critical difference: **there is no shared event loop.** Each actor is an independent async task. Loading a document in one actor has zero impact on any other. This eliminates the memory pressure and event loop contention that drove the Hocuspocus ADR's "two read paths" and "two write paths" design.
 
 The full actor topology, trait system, and interaction patterns are defined in the [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md).
 
@@ -116,7 +116,7 @@ The full actor topology, trait system, and interaction patterns are defined in t
 
 **What's simpler:** No distinction between "active page" and "inactive page." No `DirectConnection` for HTTP writes. No "don't load Y.Docs for read-only access" optimization. Every actor always holds a full LoroDoc. One read path, one write path, one lifecycle.
 
-**What's preserved:** The fundamental pattern — transient CRDT state in memory during editing, relational data as the sole representation at rest, lossless reconstruction on cold checkout — is identical. The hooks are replaced by actor trait methods. The eviction model is the same. Blob-free files at rest is the same.
+**What's preserved:** The fundamental pattern - transient CRDT state in memory during editing, relational data as the sole representation at rest, lossless reconstruction on cold checkout - is identical. The hooks are replaced by actor trait methods. The eviction model is the same. Blob-free files at rest is the same.
 
 ### One read path replaces two
 
@@ -126,7 +126,7 @@ For the AI agent, reading through Hocuspocus loaded Y.Docs into memory on the si
 
 **The actor design has one read path:**
 
-Every read goes through an actor. If the actor exists (Thing is active), the read hits the live LoroDoc. If the actor doesn't exist, the CampaignSupervisor spawns it — one libSQL read, a few milliseconds of reconstruction, and the actor is live with a full LoroDoc. At campaign scale (~500 entities, of which maybe 30 are active and another 20 are transiently spawned for AI context), this is ~5MB of memory across all actors. They evict themselves on idle timeout.
+Every read goes through an actor. If the actor exists (Thing is active), the read hits the live LoroDoc. If the actor doesn't exist, the CampaignSupervisor spawns it - one libSQL read, a few milliseconds of reconstruction, and the actor is live with a full LoroDoc. At campaign scale (~500 entities, of which maybe 30 are active and another 20 are transiently spawned for AI context), this is ~5MB of memory across all actors. They evict themselves on idle timeout.
 
 There is no shared event loop to starve. Each actor is an independent async task. The "memory pressure for read-only access" concern from the Hocuspocus ADR does not exist.
 
@@ -141,7 +141,7 @@ There is no shared event loop to starve. Each actor is an independent async task
 
 The AI agent never speaks the CRDT protocol. It calls tools (`suggest_replace`, `create_page`, `propose_relationship`). The serialization compiler (`f⁻¹()`) translates tool calls into compiled suggestions. The AgentConversation actor routes compiled suggestions to the appropriate ThingActor. The ThingActor applies suggestion marks to its LoroDoc. CRDT sync broadcasts the change to connected editors.
 
-This is functionally equivalent to the Hocuspocus WebSocket path — suggestions appear in real-time — but the agent doesn't need to be a protocol participant. The compiler is the bridge. Whether the page is "active" (has human editors) or "inactive" (nobody editing) doesn't matter. The ThingActor always exists when someone needs to write to it, and the write path is the same.
+This is functionally equivalent to the Hocuspocus WebSocket path - suggestions appear in real-time - but the agent doesn't need to be a protocol participant. The compiler is the bridge. Whether the page is "active" (has human editors) or "inactive" (nobody editing) doesn't matter. The ThingActor always exists when someone needs to write to it, and the write path is the same.
 
 ### Suggestion model replaces tagged CRDT blocks
 
@@ -151,11 +151,11 @@ The agent's writes inserted `<prior>/<suggestion>` block pairs into the Y.Doc, t
 
 **The new design uses suggestion marks on block UUID ranges:**
 
-Every block in a LoroDoc has a UUID (`BlockId`). Suggestions target a contiguous list of block IDs and store proposed replacement content as metadata. The original blocks stay in the document tree, unchanged. Suggestions are annotations layered on top — marks, not structural modifications.
+Every block in a LoroDoc has a UUID (`BlockId`). Suggestions target a contiguous list of block IDs and store proposed replacement content as metadata. The original blocks stay in the document tree, unchanged. Suggestions are annotations layered on top - marks, not structural modifications.
 
 This solves a structural problem the tagged-block approach had: creating a suggestion modified the document tree (pulling original content into a SuggestionBlock node). A second suggestion targeting overlapping content couldn't find its target because the first suggestion had restructured the tree. With marks, the tree is stable. Multiple suggestions coexist on stable blocks.
 
-The full suggestion model — marks, blocking semantics, conversation-scoped visibility, supersession rules, outcomes table — is defined in the [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md).
+The full suggestion model - marks, blocking semantics, conversation-scoped visibility, supersession rules, outcomes table - is defined in the [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md).
 
 ### AI agent interaction model
 
@@ -170,12 +170,12 @@ The full suggestion model — marks, blocking semantics, conversation-scoped vis
 5. The AgentConversation routes compiled suggestions to ThingActors
 6. ThingActors apply suggestion marks and broadcast via CRDT sync
 
-The agent's experience is the same — it reads content, proposes changes, and those changes appear in real-time in the editor. But the implementation replaces "agent joins a WebSocket room and writes Yjs operations" with "agent calls tools, compiler produces Loro operations, actors apply them." This is both simpler (the agent doesn't need CRDT protocol support) and more powerful (the compiler can validate, scope, and mediate suggestions).
+The agent's experience is the same - it reads content, proposes changes, and those changes appear in real-time in the editor. But the implementation replaces "agent joins a WebSocket room and writes Yjs operations" with "agent calls tools, compiler produces Loro operations, actors apply them." This is both simpler (the agent doesn't need CRDT protocol support) and more powerful (the compiler can validate, scope, and mediate suggestions).
 
 The staleness concern from the Hocuspocus ADR ("what if the agent reads stale content?") is handled differently:
 
 - **In the Hocuspocus design:** The WebSocket path gave the agent live sync. The HTTP path used state vector CAS checks. Two mechanisms.
-- **In the actor design:** The agent reads from actors, which always hold the latest state. The string-match mechanism in `suggest_replace` detects stale reads — if the content the agent based its reasoning on has changed, the string match fails, and the agent re-reads. One mechanism.
+- **In the actor design:** The agent reads from actors, which always hold the latest state. The string-match mechanism in `suggest_replace` detects stale reads - if the content the agent based its reasoning on has changed, the string match fails, and the agent re-reads. One mechanism.
 
 ### WebSocket architecture
 
@@ -214,7 +214,7 @@ The campaign-pinning routing model eliminates cross-instance sync. All users of 
 
 ### Nothing happens to a campaign without checkout
 
-A campaign must be checked out on a server before any actor — human, AI agent, or batch pipeline — can read from or write to it. This is not a convention; it's structural. The libSQL file must be on local disk before it can be opened.
+A campaign must be checked out on a server before any actor - human, AI agent, or batch pipeline - can read from or write to it. This is not a convention; it's structural. The libSQL file must be on local disk before it can be opened.
 
 This eliminates race conditions by design. If a user connects to a campaign while SessionIngest is writing journal drafts and entity proposals, both are on the same server, operating against the same local libSQL file, with actor isolation preventing concurrent write hazards. There is no window where the user sees stale data because both go through actors that hold live LoroDocs. There is no concurrent write hazard because each actor manages its own document. There is no split-brain because the routing table enforces single-server ownership.
 
@@ -244,7 +244,7 @@ This eliminates race conditions by design. If a user connects to a campaign whil
 - **Materialization lag.** The libSQL read model lags behind the LoroDoc by the debounce interval. Unchanged from the superseded ADR.
 - **Lossless reconstruction requirement.** The cold-checkout path must produce rendered output identical to the original. Unchanged. Must be tested for every schema change.
 - **New technology stack.** Loro is younger than Yjs. The loro-prosemirror binding is younger than y-prosemirror. The loro-dev/protocol is younger than Hocuspocus. Less community knowledge, fewer battle-tested deployments. This is a real risk traded against the architectural simplicity gains.
-- **Actor-per-Thing memory.** At ~100KB per LoroDoc and ~30 active actors, this is ~3MB — negligible. But eviction must work correctly. A bug in idle detection could keep hundreds of actors alive.
+- **Actor-per-Thing memory.** At ~100KB per LoroDoc and ~30 active actors, this is ~3MB - negligible. But eviction must work correctly. A bug in idle detection could keep hundreds of actors alive.
 - **Reconstruction on every actor startup.** No fast "just load relational data" path. Every ThingActor rebuilds a LoroDoc. A few milliseconds per actor now, but would need revisiting if reconstruction ever becomes expensive.
 - **Compiler fan-out for context building.** AI context passes may spin up 20+ actors. Fast individually, but the fan-out pattern needs careful implementation to avoid waterfall latency.
 - **Blocking may frustrate GMs.** Read-only blocks under pending suggestions mean the GM must accept or reject before editing. If SessionIngest produces many suggestions, the GM encounters many blocked regions. The escape hatch is one action (reject), but volume could create friction.
@@ -269,7 +269,7 @@ These carry forward from the superseded ADR, updated for the new implementation:
 
 ## Why SPA, Not SSR
 
-Unchanged from the superseded ADR. The long pole in rendering a campaign view is the campaign checkout — downloading the libSQL file from object storage on a cold start. A SPA loads instantly from Bunny CDN, shows a loading skeleton, and handles the async checkout gracefully. SSR would block the entire page render waiting for the same operation. The SPA architecture decouples static asset serving (CDN) from data serving (campaign-pinned servers).
+Unchanged from the superseded ADR. The long pole in rendering a campaign view is the campaign checkout - downloading the libSQL file from object storage on a cold start. A SPA loads instantly from Bunny CDN, shows a loading skeleton, and handles the async checkout gracefully. SSR would block the entire page render waiting for the same operation. The SPA architecture decouples static asset serving (CDN) from data serving (campaign-pinned servers).
 
 ---
 

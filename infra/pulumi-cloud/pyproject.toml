@@ -1,7 +1,7 @@
 [project]
 name = "loreweaver-cloud"
 version = "0.1.0"
-description = "Loreweaver cloud infrastructure"
+description = "familiar.systems cloud infrastructure"
 requires-python = ">=3.12"
 dependencies = [
   "pulumi>=3",

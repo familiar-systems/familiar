@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: platform-pvc
+  namespace: ${NAMESPACE}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ""
+  volumeName: platform-pv-${NAMESPACE}
+  resources:
+    requests:
+      storage: 1Gi
