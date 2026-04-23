@@ -66,6 +66,14 @@ jobs:
         with:
           secret-name: pulumi-config-passphrase
 
+      - name: Cache Pulumi plugins
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: ~/.pulumi/plugins
+          key: pulumi-plugins-${{ runner.os }}-${{ hashFiles('infra/pulumi-cloud/uv.lock') }}
+          restore-keys: |
+            pulumi-plugins-${{ runner.os }}-
+
       - uses: pulumi/actions@v6
         with:
           command: preview
@@ -77,6 +85,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}
           PULUMI_CONFIG_PASSPHRASE: ${{ steps.passphrase.outputs.value }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   deploy:
     if: github.event_name == 'push'
@@ -99,6 +108,14 @@ jobs:
         with:
           secret-name: pulumi-config-passphrase
 
+      - name: Cache Pulumi plugins
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: ~/.pulumi/plugins
+          key: pulumi-plugins-${{ runner.os }}-${{ hashFiles('infra/pulumi-cloud/uv.lock') }}
+          restore-keys: |
+            pulumi-plugins-${{ runner.os }}-
+
       - uses: pulumi/actions@v6
         with:
           command: up
@@ -109,3 +126,4 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}
           PULUMI_CONFIG_PASSPHRASE: ${{ steps.passphrase.outputs.value }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
