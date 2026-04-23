@@ -10,6 +10,14 @@ permissions:
 env:
   REGISTRY: rg.fr-par.scw.cloud/loreweaver
   DO_NOT_TRACK: 1
+  # Public Hanko tenant URL for the production environment.
+  # Canonical source: infra/pulumi-cloud/config.py::HANKO_API_URL_PROD.
+  # Pulumi injects it into the platform deployment's runtime env; here we
+  # bake it into the web image at build time via VITE_HANKO_API_URL.
+  # GHA cannot import Python natively; this is a documented derived copy.
+  # Drift is visible in code review and breaks prod sign-in loudly. The
+  # value is non-secret (it appears in TLS SNI on every browser request).
+  HANKO_API_URL_PROD: "https://auth.familiar.systems"
 
 jobs:
   build-and-deploy:
@@ -19,13 +27,23 @@ jobs:
       matrix:
         include:
           - target: site
-            dockerfile: apps/site/Dockerfile
             paths: |
               apps/site/**
               .github/workflows/cd.yml
               .github/actions/**
+          - target: web
+            paths: |
+              apps/web/**
+              packages/editor/**
+              packages/types-app/**
+              packages/types-campaign/**
+              tooling/tsconfig/**
+              package.json
+              pnpm-lock.yaml
+              pnpm-workspace.yaml
+              .github/workflows/cd.yml
+              .github/actions/**
           - target: platform
-            dockerfile: apps/platform/Dockerfile
             paths: |
               apps/platform/**
               crates/app-shared/**
@@ -86,32 +104,30 @@ jobs:
 
       - name: Build and push site
         if: steps.changes.outputs.any_changed == 'true' && matrix.target == 'site'
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-site
         with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: true
-          build-args: |
-            SITE_URL=https://familiar.systems
-            PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
           tags: |
             ${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }}
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          site-url: https://familiar.systems
+          pnpm-version: ${{ steps.versions.outputs.pnpm }}
+
+      - name: Build and push web
+        if: steps.changes.outputs.any_changed == 'true' && matrix.target == 'web'
+        uses: ./.github/actions/build-web
+        with:
+          tags: |
+            ${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ matrix.target }}:latest
+          vite-hanko-api-url: ${{ env.HANKO_API_URL_PROD }}
 
       - name: Build and push platform
         if: steps.changes.outputs.any_changed == 'true' && matrix.target == 'platform'
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-platform
         with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: true
           tags: |
             ${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }}
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - uses: ./.github/actions/fetch-scw-secret
         if: steps.changes.outputs.any_changed == 'true'

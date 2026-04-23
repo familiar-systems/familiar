@@ -1,0 +1,54 @@
+name: Build Web Image
+description: Builds and (optionally) pushes the Vite SPA Docker image with GHA cache
+
+inputs:
+  registry:
+    description: Container registry to tag images under
+    required: false
+    default: rg.fr-par.scw.cloud/loreweaver
+  tags:
+    description: |
+      Multi-line list of image tags to produce. Prod passes `<registry>/web:<sha>`
+      and `<registry>/web:latest`; preview passes a single `<registry>/web:pr-<N>-<shortsha>`.
+    required: true
+  vite-hanko-api-url:
+    description: |
+      Hanko tenant URL baked into the SPA bundle (VITE_HANKO_API_URL ARG).
+      Value is non-secret (appears in TLS SNI on every browser request).
+    required: true
+  vite-base-path:
+    description: |
+      Asset URL prefix for Vite (VITE_BASE_PATH ARG). Default `/` matches the
+      prod layout (SPA at the root of the app apex). Preview overrides to `/pr-N/`.
+    required: false
+    default: /
+  push:
+    description: Whether to push the built image to the registry.
+    required: false
+    default: "true"
+
+outputs:
+  image-digest:
+    description: Digest of the manifest pushed to the registry.
+    value: ${{ steps.build.outputs.digest }}
+  image-id:
+    description: Local image ID (sha256) of the built image.
+    value: ${{ steps.build.outputs.imageid }}
+
+runs:
+  using: composite
+  steps:
+    - id: build
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: apps/web/Dockerfile
+        push: ${{ inputs.push }}
+        # No PNPM_VERSION here: the web Dockerfile uses `corepack enable` and
+        # resolves pnpm from packageManager in package.json, unlike site.
+        build-args: |
+          VITE_HANKO_API_URL=${{ inputs.vite-hanko-api-url }}
+          VITE_BASE_PATH=${{ inputs.vite-base-path }}
+        tags: ${{ inputs.tags }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max

@@ -46,6 +46,9 @@ WILDCARD_CERT_SECRET = "preview-wildcard-tls"  # noqa: S105
 REGISTRY_PULL_SECRET = "scaleway-registry"  # noqa: S105
 SITE_NAME = "site"
 SITE_PORT = 80
+WEB_NAME = "web"
+WEB_PORT = 80
+WEB_IMAGE_TAG = "latest"
 PLATFORM_NAME = "platform"
 PLATFORM_PORT = 3000
 PLATFORM_IMAGE_TAG = "latest"
@@ -556,6 +559,107 @@ def create_k8s_resources(
             ],
         ),
         opts=pulumi.ResourceOptions(provider=provider, depends_on=[_platform_strip_prefix]),
+    )
+
+    # -- Web (SPA) Deployment + Service + Ingress ----------------------------
+    # Static nginx image serving the built Vite SPA bundle at the catch-all
+    # `/` on the app apex. Longer PathPrefix wins in Traefik's default
+    # router-priority-by-rule-length, so the platform's `/api` rule above
+    # continues to win for `/api/*`; everything else lands here.
+    web_labels = {"app": WEB_NAME}
+    web_image = registry.endpoint.apply(lambda ep: f"{ep}/{WEB_NAME}:{WEB_IMAGE_TAG}")
+
+    _web_deployment = k8s.apps.v1.Deployment(
+        "web-deployment",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name=WEB_NAME,
+            namespace="default",
+        ),
+        spec=k8s.apps.v1.DeploymentSpecArgs(
+            replicas=1,
+            selector=k8s.meta.v1.LabelSelectorArgs(match_labels=web_labels),
+            template=k8s.core.v1.PodTemplateSpecArgs(
+                metadata=k8s.meta.v1.ObjectMetaArgs(labels=web_labels),
+                spec=k8s.core.v1.PodSpecArgs(
+                    image_pull_secrets=[
+                        k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
+                    ],
+                    containers=[
+                        k8s.core.v1.ContainerArgs(
+                            name=WEB_NAME,
+                            image=web_image,
+                            image_pull_policy="IfNotPresent",
+                            ports=[k8s.core.v1.ContainerPortArgs(container_port=WEB_PORT)],
+                            resources=k8s.core.v1.ResourceRequirementsArgs(
+                                requests={"cpu": "10m", "memory": "32Mi"},
+                                limits={"memory": "64Mi"},
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        opts=pulumi.ResourceOptions(provider=provider, depends_on=[image_pull_secret]),
+    )
+
+    _web_service = k8s.core.v1.Service(
+        "web-service",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name=WEB_NAME,
+            namespace="default",
+        ),
+        spec=k8s.core.v1.ServiceSpecArgs(
+            selector=web_labels,
+            ports=[
+                k8s.core.v1.ServicePortArgs(
+                    port=WEB_PORT,
+                    target_port=WEB_PORT,
+                ),
+            ],
+        ),
+        opts=k8s_opts,
+    )
+
+    _web_ingress = k8s.networking.v1.Ingress(
+        "web-ingress",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name=WEB_NAME,
+            namespace="default",
+            annotations={
+                "traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
+            },
+        ),
+        spec=k8s.networking.v1.IngressSpecArgs(
+            tls=[
+                k8s.networking.v1.IngressTLSArgs(
+                    hosts=list(APP_PROD_DOMAINS),
+                    secret_name=WILDCARD_CERT_SECRET,
+                ),
+            ],
+            rules=[
+                k8s.networking.v1.IngressRuleArgs(
+                    host=host,
+                    http=k8s.networking.v1.HTTPIngressRuleValueArgs(
+                        paths=[
+                            k8s.networking.v1.HTTPIngressPathArgs(
+                                path="/",
+                                path_type="Prefix",
+                                backend=k8s.networking.v1.IngressBackendArgs(
+                                    service=k8s.networking.v1.IngressServiceBackendArgs(
+                                        name=WEB_NAME,
+                                        port=k8s.networking.v1.ServiceBackendPortArgs(
+                                            number=WEB_PORT,
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ],
+                    ),
+                )
+                for host in APP_PROD_DOMAINS
+            ],
+        ),
+        opts=k8s_opts,
     )
 
 
