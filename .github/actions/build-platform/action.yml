@@ -1,0 +1,40 @@
+name: Build Platform Image
+description: Builds and (optionally) pushes the Rust platform server Docker image with GHA cache
+
+inputs:
+  registry:
+    description: Container registry to tag images under
+    required: false
+    default: rg.fr-par.scw.cloud/loreweaver
+  tags:
+    description: |
+      Multi-line list of image tags to produce. Prod passes `<registry>/platform:<sha>`
+      and `<registry>/platform:latest`; preview passes a single
+      `<registry>/platform:pr-<N>-<shortsha>`.
+    required: true
+  push:
+    description: Whether to push the built image to the registry.
+    required: false
+    default: "true"
+
+outputs:
+  image-digest:
+    description: Digest of the manifest pushed to the registry.
+    value: ${{ steps.build.outputs.digest }}
+  image-id:
+    description: Local image ID (sha256) of the built image.
+    value: ${{ steps.build.outputs.imageid }}
+
+runs:
+  using: composite
+  steps:
+    - id: build
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: apps/platform/Dockerfile
+        push: ${{ inputs.push }}
+        # No build-args: the platform Dockerfile declares no ARGs.
+        tags: ${{ inputs.tags }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max

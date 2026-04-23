@@ -38,13 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - target: site
-            dockerfile: apps/site/Dockerfile
-          - target: web
-            dockerfile: apps/web/Dockerfile
-          - target: platform
-            dockerfile: apps/platform/Dockerfile
+        target: [site, web, platform]
     steps:
       - uses: actions/checkout@v6
 
@@ -77,43 +71,26 @@ jobs:
 
       - name: Build and push site
         if: matrix.target == 'site'
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-site
         with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: true
-          build-args: |
-            SITE_URL=https://preview.familiar.systems
-            SITE_BASE_PATH=/pr-${{ github.event.pull_request.number }}/
-            PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
           tags: ${{ steps.meta.outputs.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          site-url: https://preview.familiar.systems
+          site-base-path: /pr-${{ github.event.pull_request.number }}/
+          pnpm-version: ${{ steps.versions.outputs.pnpm }}
 
       - name: Build and push web
         if: matrix.target == 'web'
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-web
         with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: true
-          build-args: |
-            VITE_HANKO_API_URL=${{ env.HANKO_API_URL_DEV }}
-            VITE_BASE_PATH=/pr-${{ github.event.pull_request.number }}/
           tags: ${{ steps.meta.outputs.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          vite-hanko-api-url: ${{ env.HANKO_API_URL_DEV }}
+          vite-base-path: /pr-${{ github.event.pull_request.number }}/
 
       - name: Build and push platform
         if: matrix.target == 'platform'
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/build-platform
         with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: true
           tags: ${{ steps.meta.outputs.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   deploy-pr-preview:
     needs: build
