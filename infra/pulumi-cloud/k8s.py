@@ -294,7 +294,11 @@ def create_k8s_resources(
                 ),
             ),
         ),
-        opts=pulumi.ResourceOptions(provider=provider, depends_on=[image_pull_secret]),
+        opts=pulumi.ResourceOptions(
+            provider=provider,
+            depends_on=[image_pull_secret],
+            ignore_changes=["spec.template.spec.containers[0].image"],
+        ),
     )
 
     _site_service = k8s.core.v1.Service(
@@ -478,6 +482,7 @@ def create_k8s_resources(
         opts=pulumi.ResourceOptions(
             provider=provider,
             depends_on=[image_pull_secret, _platform_pvc],
+            ignore_changes=["spec.template.spec.containers[0].image"],
         ),
     )
 
@@ -599,7 +604,11 @@ def create_k8s_resources(
                 ),
             ),
         ),
-        opts=pulumi.ResourceOptions(provider=provider, depends_on=[image_pull_secret]),
+        opts=pulumi.ResourceOptions(
+            provider=provider,
+            depends_on=[image_pull_secret],
+            ignore_changes=["spec.template.spec.containers[0].image"],
+        ),
     )
 
     _web_service = k8s.core.v1.Service(
