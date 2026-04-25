@@ -77,43 +77,6 @@ jobs:
 
       - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
-          install_args: "rust"
-          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
-
-      - name: Resolve rust toolchain
-        id: versions
-        shell: bash
-        run: echo "rust=$(mise current rust)" >> "$GITHUB_OUTPUT"
-
-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-04-25
-        with:
-          toolchain: ${{ steps.versions.outputs.rust }}
-          components: clippy, rustfmt
-
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          shared-key: rust-build
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: format
-        run: cargo fmt --check
-
-      - name: clippy
-        run: cargo clippy --workspace -- -D warnings
-
-      - name: test
-        run: cargo test --workspace
-
-  # ── Generated types ─────────────────────────────────────
-  generated-types:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
-        with:
           install_args: "rust node npm:pnpm"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
 
@@ -130,6 +93,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-04-25
         with:
           toolchain: ${{ steps.versions.outputs.rust }}
+          components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
@@ -147,11 +111,22 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Check generated types are fresh
+      - name: format
+        run: cargo fmt --check
+
+      # --all-targets aligns clippy's compilation graph with cargo test's,
+      # so dependency fingerprints match across the two and the cache works.
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: test (also regenerates ts-rs types)
         run: |
           rm -rf packages/types-app/src/generated packages/types-campaign/src/generated
           cargo test --workspace
-          pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
+
+      - name: verify regenerated types match committed
+        run: |
+          pnpm --filter @familiar-systems/types-app --filter @familiar-systems/types-campaign run format
           git diff --exit-code -- packages/types-app/src/generated packages/types-campaign/src/generated
 
   # ── Python ──────────────────────────────────────────────
@@ -272,7 +247,7 @@ jobs:
   # ── Gate ────────────────────────────────────────────────
   ci-ok:
     if: always()
-    needs: [ts, rust, python, infra, generated-types, dep-review]
+    needs: [ts, rust, python, infra, dep-review]
     runs-on: ubuntu-latest
     steps:
       - run: |
