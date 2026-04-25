@@ -26,3 +26,92 @@ updates:
       gha-major:
         update-types:
           - major
+
+  # Cargo workspace at repo root. The workspace lockfile resolves all four
+  # member crates (apps/platform, apps/campaign, crates/app-shared,
+  # crates/campaign-shared), so a single directory entry is sufficient.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      cargo-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+      cargo-major:
+        update-types:
+          - major
+
+  # pnpm workspace at repo root. pnpm-lock.yaml lives at /, and one update
+  # block covers all eight workspace packages (apps/site, apps/web,
+  # packages/editor, packages/types-app, packages/types-campaign, plus the
+  # tooling packages). npm is the canonical ecosystem name; pnpm is detected
+  # automatically from the lockfile.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+      npm-major:
+        update-types:
+          - major
+
+  # Pulumi cloud infrastructure (uv-managed). Held in its own block rather
+  # than co-grouped with the worker because the dep universes don't overlap.
+  - package-ecosystem: uv
+    directory: /infra/pulumi-cloud
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      pulumi-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+      pulumi-major:
+        update-types:
+          - major
+
+  # WhisperX worker (stub today). Currently only dev deps move; once real
+  # ML deps land (faster-whisper, pyannote) updates will flow without
+  # touching this config.
+  - package-ecosystem: uv
+    directory: /workers/whisperx
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      whisperx-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+      whisperx-major:
+        update-types:
+          - major
+
+  # Docker base image FROM lines. SemVer features (cooldown, update-types
+  # filtering) aren't supported for the docker ecosystem, so this block is
+  # intentionally simpler. The single group bundles all three Dockerfiles
+  # into one weekly PR instead of three.
+  - package-ecosystem: docker
+    directories:
+      - /apps/platform
+      - /apps/site
+      - /apps/web
+    schedule:
+      interval: weekly
+    groups:
+      docker-base-images:
+        patterns:
+          - "*"
