@@ -14,7 +14,16 @@ permissions:
   contents: read
 
 jobs:
+  # Mirror the deploy-preview.yml guard: only PRs that could have
+  # deployed a preview need cleanup. Fork PRs and Dependabot PRs are
+  # skipped on the deploy side, so they have no namespace, no PV, and
+  # no images to remove here either. Skipping cleanly also avoids
+  # workflow-startup failures when secrets are unavailable in those
+  # contexts.
   cleanup:
+    if: >
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       # Sparse checkout: the local composite actions (setup-scw,

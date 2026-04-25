@@ -1,11 +1,18 @@
 name: CD
 
+# Push-to-main pipeline: runs CI (via the reusable _ci.yml), then deploys
+# if CI passed. The `needs: ci` dependency on `build-and-deploy` is the
+# entire CI-gating mechanism - no `workflow_run`, no inter-workflow
+# coordination, just standard job-level ordering within one workflow.
+
 on:
+  push:
+    branches: [main]
+  # Synchronous entry point preserved for any future caller. The
+  # `required: true` mapping is the contract: adding a new `secrets.*`
+  # reference in this workflow's body without also adding it here fails
+  # at YAML-parse time, which is the point.
   workflow_call:
-    # The set of secrets ci.yml's deploy-site caller is contractually
-    # required to pass through. Adding a new `secrets.*` reference in
-    # this workflow's body without also adding it here will fail at
-    # YAML-parse time, which is the point.
     secrets:
       SCW_ACCESS_KEY:
         required: true
@@ -33,8 +40,14 @@ env:
   HANKO_API_URL_PROD: "https://auth.familiar.systems"
 
 jobs:
+  ci:
+    uses: ./.github/workflows/_ci.yml
+
   build-and-deploy:
+    needs: ci
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_SHA: ${{ github.sha }}
     strategy:
       fail-fast: false
       matrix:
@@ -96,8 +109,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          SHA="${{ github.sha }}"
-          RUN_ID=$(gh run list --workflow=infra.yml --commit="$SHA" --json databaseId --jq '.[0].databaseId // empty')
+          RUN_ID=$(gh run list --workflow=infra.yml --commit="$DEPLOY_SHA" --json databaseId --jq '.[0].databaseId // empty')
 
           if [ -z "$RUN_ID" ]; then
             echo "No Infrastructure run for this SHA, proceeding"
@@ -125,7 +137,7 @@ jobs:
         uses: ./.github/actions/build-site
         with:
           tags: |
-            ${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ matrix.target }}:${{ env.DEPLOY_SHA }}
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           site-url: https://familiar.systems
           pnpm-version: ${{ steps.versions.outputs.pnpm }}
@@ -136,7 +148,7 @@ jobs:
         uses: ./.github/actions/build-web
         with:
           tags: |
-            ${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ matrix.target }}:${{ env.DEPLOY_SHA }}
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           vite-hanko-api-url: ${{ env.HANKO_API_URL_PROD }}
           gha-cache: "false"
@@ -146,7 +158,7 @@ jobs:
         uses: ./.github/actions/build-platform
         with:
           tags: |
-            ${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ matrix.target }}:${{ env.DEPLOY_SHA }}
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           gha-cache: "false"
 
@@ -161,7 +173,7 @@ jobs:
         run: |
           echo "${STEPS_KUBECONFIG_OUTPUTS_VALUE}" > /tmp/kubeconfig.yaml
           kubectl set image deployment/${{ matrix.target }} \
-            ${{ matrix.target }}=${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }} \
+            "${{ matrix.target }}=${{ env.REGISTRY }}/${{ matrix.target }}:$DEPLOY_SHA" \
             --kubeconfig /tmp/kubeconfig.yaml \
             --namespace default
           kubectl rollout status deployment/${{ matrix.target }} \

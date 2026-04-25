@@ -33,14 +33,20 @@ env:
   HANKO_API_URL_DEV: "https://auth.preview.familiar.systems"
 
 jobs:
-  # Fork-PR guard. Preview deploys consume registry pushes and cluster
-  # credentials, so they only run for PRs from this repository (which
-  # only people with write access can create). Fork PRs evaluate this
-  # condition to false and skip without executing any step. Combined
+  # Fork-PR + Dependabot guard. Preview deploys consume registry pushes
+  # and cluster credentials, so they only run for PRs from this repository
+  # (which only people with write access can create). Fork PRs evaluate
+  # this condition to false and skip without executing any step. Combined
   # with the repo-level "Require approval for all outside collaborators"
   # setting, even an approved fork PR's CI cannot trigger a deploy.
+  # Dependabot is excluded too: its workflow context can't read the SCW_*
+  # Actions secrets (they live in a separate Dependabot secret namespace,
+  # which is intentionally empty), so any attempt to start a deploy fails
+  # at workflow-startup validation. Skipping cleanly avoids the noise.
   build:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -101,7 +107,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tag }}
 
   deploy-pr-preview:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
     needs: build
     runs-on: ubuntu-latest
     permissions:
