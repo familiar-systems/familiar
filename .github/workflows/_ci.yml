@@ -75,9 +75,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # Note: 'rust' is intentionally NOT in install_args. dtolnay/rust-toolchain
+      # below is the sole Rust installer. Two installers race in $PATH and ship
+      # different rustc commit hashes, which invalidates every dep crate's cargo
+      # fingerprint on cache restore. `mise current rust` still works here because
+      # it reads mise.toml regardless of whether rust is installed.
       - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
-          install_args: "rust node npm:pnpm"
+          install_args: "node npm:pnpm"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
 
       - name: Resolve tool versions
@@ -99,6 +104,9 @@ jobs:
         with:
           shared-key: rust-build
           save-if: ${{ github.ref == 'refs/heads/main' }}
+          # Cache transitive dep artifacts too, not just direct workspace deps.
+          # Cheap insurance for the proc-macro-heavy graph (sea-orm, ts-rs, utoipa).
+          cache-all-crates: true
 
       - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
         with:
@@ -111,18 +119,33 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Captures rustc identity at the moment cargo would invoke it. If this
+      # disagrees with the run that populated the cache (compare commit hash
+      # and sysroot), every dep crate's fingerprint will be rejected even on
+      # a primary-key cache hit. Cheap to keep; pulls 0s on success.
+      - name: toolchain identity
+        run: |
+          rustc -vV
+          which rustc
+          rustc --print sysroot
+          cargo -V
+          env | grep -E '^(CARGO|RUST|PATH)=' | sort
+
       - name: format
         run: cargo fmt --check
 
-      # --all-targets aligns clippy's compilation graph with cargo test's,
-      # so dependency fingerprints match across the two and the cache works.
+      # Explicit build gate. --all-targets matches clippy's graph so artifacts
+      # are reused; --locked rejects accidental Cargo.lock drift.
+      - name: build
+        run: cargo build --workspace --all-targets --locked
+
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: test (also regenerates ts-rs types)
         run: |
           rm -rf packages/types-app/src/generated packages/types-campaign/src/generated
-          cargo test --workspace
+          cargo test --workspace --locked
 
       - name: verify regenerated types match committed
         run: |
