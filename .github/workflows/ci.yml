@@ -248,12 +248,11 @@ jobs:
         run: zizmor .github/workflows/ .github/actions/
 
   # ── Dependency review (PR only) ─────────────────────────
-  # Catches PRs that introduce known-vulnerable npm/cargo/pip deps. Free
-  # for public repos; on private repos this step requires GHAS, which we
-  # don't have, so the job no-ops via the `if:` guard until we go public.
-  # Once public, the guard becomes redundant but keeps the job readable.
+  # Catches PRs that introduce known-vulnerable npm/cargo/pip deps. The
+  # underlying API is free on public repos and gated behind GHAS on private
+  # repos, so we skip while private. Flips on automatically at public cutover.
   dep-review:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && !github.event.repository.private
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
