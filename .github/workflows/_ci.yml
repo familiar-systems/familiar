@@ -1,6 +1,9 @@
 name: CI (reusable)
 
-# Reusable CI body. Called by ci.yml on PRs and by cd.yml on push to main.
+# Reusable CI body. Called by:
+#   - ci_cd_preview.yml on pull_request (alongside preview-deploy)
+#   - ci_cd_main.yml    on push to main (before prod-deploy)
+#
 # This file MUST stay free of `secrets.*` references so it can be invoked
 # from any context, including Dependabot PRs whose secret namespace is
 # intentionally empty.

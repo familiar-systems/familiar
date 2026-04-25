@@ -1,9 +1,13 @@
-name: CD
+name: CI + Deploy
 
 # Push-to-main pipeline: runs CI (via the reusable _ci.yml), then deploys
 # if CI passed. The `needs: ci` dependency on `build-and-deploy` is the
 # entire CI-gating mechanism - no `workflow_run`, no inter-workflow
 # coordination, just standard job-level ordering within one workflow.
+#
+# Counterpart: ci_cd_preview.yml runs the same CI on PRs and deploys to
+# the preview environment. Each PR commit and each main commit is the
+# entry point to one consolidated lifecycle, not two parallel workflows.
 
 on:
   push:
@@ -55,7 +59,7 @@ jobs:
           - target: site
             paths: |
               apps/site/**
-              .github/workflows/cd.yml
+              .github/workflows/ci_cd_main.yml
               .github/actions/**
           - target: web
             paths: |
@@ -67,7 +71,7 @@ jobs:
               package.json
               pnpm-lock.yaml
               pnpm-workspace.yaml
-              .github/workflows/cd.yml
+              .github/workflows/ci_cd_main.yml
               .github/actions/**
           - target: platform
             paths: |
@@ -75,7 +79,7 @@ jobs:
               crates/app-shared/**
               Cargo.toml
               Cargo.lock
-              .github/workflows/cd.yml
+              .github/workflows/ci_cd_main.yml
               .github/actions/**
     concurrency:
       group: deploy-${{ matrix.target }}

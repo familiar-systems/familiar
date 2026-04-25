@@ -1,23 +1,34 @@
-name: Deploy Preview
+name: CI + Preview
+
+# PR-side pipeline: runs CI (via the reusable _ci.yml) and, in parallel,
+# builds + deploys a preview environment under preview-pr-${PR_NUMBER}.
+# CI and preview-deploy run independently. The deploy is not gated on CI
+# passing because the failure modes CI catches (lint, types, tests) are
+# not the same failure modes that break a running preview - those are
+# caught by the preview's own docker build step. See the discussion in
+# /home/mg/.claude/plans/can-you-explain-why-enchanted-goose.md and the
+# branch's commit history for the rationale. Add `needs: ci` to `build`
+# below if that calculus ever changes.
+#
+# Counterpart: ci_cd_main.yml runs the same CI on push-to-main and
+# deploys to production. Each commit goes through CI exactly once -
+# either via this workflow on the PR, or via ci_cd_main.yml on push.
 
 on:
   pull_request:
     types: [opened, synchronize]
-    paths:
-      - apps/site/**
-      - apps/web/**
-      - apps/platform/**
-      - crates/app-shared/**
-      - Cargo.toml
-      - Cargo.lock
-      - infra/k8s/preview/**
-      - .github/workflows/deploy-preview.yml
+    branches: [main]
 
 permissions:
+  actions: read
   contents: read
 
+# One concurrency lock per ref serializes CI + preview-deploy together.
+# A new push to a PR cancels in-flight CI and preview from the previous
+# push, so reviewers always see the latest commit's preview, not a
+# half-finished one from two pushes ago.
 concurrency:
-  group: deploy-preview-${{ github.event.pull_request.number }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -33,6 +44,45 @@ env:
   HANKO_API_URL_DEV: "https://auth.preview.familiar.systems"
 
 jobs:
+  ci:
+    uses: ./.github/workflows/_ci.yml
+
+  # Path-change detection. Replaces the old workflow-level `paths:` filter
+  # on deploy-preview.yml. We can't use that filter here because CI must
+  # run on every PR regardless of which files changed - so the gating
+  # moves into a small dedicated job whose output drives the build/deploy
+  # `if:` conditions.
+  paths:
+    runs-on: ubuntu-latest
+    outputs:
+      any_changed: ${{ steps.changes.outputs.any_changed }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Detect preview-relevant changes
+        id: changes
+        uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47.0.0
+        with:
+          files: |
+            apps/site/**
+            apps/web/**
+            apps/platform/**
+            packages/editor/**
+            packages/types-app/**
+            packages/types-campaign/**
+            tooling/tsconfig/**
+            crates/app-shared/**
+            Cargo.toml
+            Cargo.lock
+            package.json
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            infra/k8s/preview/**
+            .github/actions/**
+            .github/workflows/ci_cd_preview.yml
+
   # Fork-PR + Dependabot guard. Preview deploys consume registry pushes
   # and cluster credentials, so they only run for PRs from this repository
   # (which only people with write access can create). Fork PRs evaluate
@@ -44,7 +94,9 @@ jobs:
   # which is intentionally empty), so any attempt to start a deploy fails
   # at workflow-startup validation. Skipping cleanly avoids the noise.
   build:
+    needs: paths
     if: >
+      needs.paths.outputs.any_changed == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
@@ -107,10 +159,11 @@ jobs:
           tags: ${{ steps.meta.outputs.tag }}
 
   deploy-pr-preview:
+    needs: [paths, build]
     if: >
+      needs.paths.outputs.any_changed == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]'
-    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
