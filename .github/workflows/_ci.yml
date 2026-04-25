@@ -1,18 +1,19 @@
-name: CI
+name: CI (reusable)
+
+# Reusable CI body. Called by:
+#   - ci_cd_preview.yml on pull_request (alongside preview-deploy)
+#   - ci_cd_main.yml    on push to main (before prod-deploy)
+#
+# This file MUST stay free of `secrets.*` references so it can be invoked
+# from any context, including Dependabot PRs whose secret namespace is
+# intentionally empty.
 
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+  workflow_call:
 
 permissions:
   actions: read
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -251,6 +252,11 @@ jobs:
   # Catches PRs that introduce known-vulnerable npm/cargo/pip deps. The
   # underlying API is free on public repos and gated behind GHAS on private
   # repos, so we skip while private. Flips on automatically at public cutover.
+  #
+  # `github.event_name` inside a reusable workflow reflects the *caller's*
+  # trigger event, not 'workflow_call' - so this correctly fires only when
+  # _ci.yml is called from a pull_request-triggered caller (ci.yml), and
+  # is skipped under push-triggered callers (cd.yml on main).
   dep-review:
     if: github.event_name == 'pull_request' && !github.event.repository.private
     runs-on: ubuntu-latest
@@ -279,17 +285,3 @@ jobs:
             exit 1
           fi
           echo "All CI checks passed"
-
-  deploy-site:
-    needs: [ci-ok]
-    if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/cd.yml
-    # Explicit secrets mapping (not `secrets: inherit`). The `inherit`
-    # form broadcasts every repo secret to the called workflow; the
-    # explicit form is a contract enforced at YAML-parse time. Keep this
-    # list in sync with cd.yml's `on.workflow_call.secrets:` block.
-    secrets:
-      SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
-      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
-      SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
-      SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
