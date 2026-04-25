@@ -59,6 +59,15 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          # Fetch full history so tj-actions/changed-files can compute the
+          # PR diff locally without an extra remote fetch. With the default
+          # shallow clone (fetch-depth: 1), the action would try to deepen
+          # the clone to reach the PR base on origin/main - and fail,
+          # because we deliberately set persist-credentials: false (the
+          # token isn't in .git/config to authenticate the fetch). Trading
+          # a slightly larger checkout for keeping the credential
+          # hardening intact.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Detect preview-relevant changes
