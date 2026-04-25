@@ -124,11 +124,10 @@ jobs:
           rm -rf packages/types-app/src/generated packages/types-campaign/src/generated
           cargo test --workspace
 
-      - name: format regenerated types
-        run: pnpm --filter @familiar-systems/types-app --filter @familiar-systems/types-campaign run format
-
       - name: verify regenerated types match committed
-        run: git diff --exit-code -- packages/types-app/src/generated packages/types-campaign/src/generated
+        run: |
+          pnpm --filter @familiar-systems/types-app --filter @familiar-systems/types-campaign run format
+          git diff --exit-code -- packages/types-app/src/generated packages/types-campaign/src/generated
 
   # ── Python ──────────────────────────────────────────────
   python:
