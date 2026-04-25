@@ -1,0 +1,28 @@
+version: 2
+
+updates:
+  # GitHub Actions (the SHA pins from PR-Sec-2 are stale unless something
+  # keeps them moving). Cooldown holds new releases for a few days so a
+  # tj-actions-style supply-chain compromise has time to surface before
+  # we auto-accept the bump. Grouped so Dependabot doesn't open one PR
+  # per pinned action every week.
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/build-platform
+      - /.github/actions/build-site
+      - /.github/actions/build-web
+      - /.github/actions/fetch-scw-secret
+      - /.github/actions/setup-scw
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      gha-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+      gha-major:
+        update-types:
+          - major

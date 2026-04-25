@@ -2,6 +2,19 @@ name: CD
 
 on:
   workflow_call:
+    # The set of secrets ci.yml's deploy-site caller is contractually
+    # required to pass through. Adding a new `secrets.*` reference in
+    # this workflow's body without also adding it here will fail at
+    # YAML-parse time, which is the point.
+    secrets:
+      SCW_ACCESS_KEY:
+        required: true
+      SCW_SECRET_KEY:
+        required: true
+      SCW_DEFAULT_PROJECT_ID:
+        required: true
+      SCW_DEFAULT_ORGANIZATION_ID:
+        required: true
 
 permissions:
   actions: read
@@ -55,12 +68,17 @@ jobs:
       group: deploy-${{ matrix.target }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           install_args: "npm:pnpm"
-          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+          # Production release path opts out of GHA cache because the cache
+          # is cross-branch readable and a poisoned PR cache could seed a
+          # main build. Preview builds keep caching for speed.
+          cache: false
 
       - name: Resolve pnpm version
         id: versions
@@ -69,7 +87,7 @@ jobs:
 
       - name: Check if files for this target or CI changed
         id: changes
-        uses: tj-actions/changed-files@v47
+        uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47.0.0
         with:
           files: ${{ matrix.paths }}
 
@@ -100,7 +118,7 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.changes.outputs.any_changed == 'true'
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Build and push site
         if: steps.changes.outputs.any_changed == 'true' && matrix.target == 'site'
@@ -111,6 +129,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           site-url: https://familiar.systems
           pnpm-version: ${{ steps.versions.outputs.pnpm }}
+          gha-cache: "false"
 
       - name: Build and push web
         if: steps.changes.outputs.any_changed == 'true' && matrix.target == 'web'
@@ -120,6 +139,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }}
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           vite-hanko-api-url: ${{ env.HANKO_API_URL_PROD }}
+          gha-cache: "false"
 
       - name: Build and push platform
         if: steps.changes.outputs.any_changed == 'true' && matrix.target == 'platform'
@@ -128,6 +148,7 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }}
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
+          gha-cache: "false"
 
       - uses: ./.github/actions/fetch-scw-secret
         if: steps.changes.outputs.any_changed == 'true'
@@ -138,7 +159,7 @@ jobs:
       - name: Deploy to cluster
         if: steps.changes.outputs.any_changed == 'true'
         run: |
-          echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
+          echo "${STEPS_KUBECONFIG_OUTPUTS_VALUE}" > /tmp/kubeconfig.yaml
           kubectl set image deployment/${{ matrix.target }} \
             ${{ matrix.target }}=${{ env.REGISTRY }}/${{ matrix.target }}:${{ github.sha }} \
             --kubeconfig /tmp/kubeconfig.yaml \
@@ -148,6 +169,8 @@ jobs:
             --namespace default \
             --timeout=120s
           rm /tmp/kubeconfig.yaml
+        env:
+          STEPS_KUBECONFIG_OUTPUTS_VALUE: ${{ steps.kubeconfig.outputs.value }}
 
       - name: Clean up old images
         if: steps.changes.outputs.any_changed == 'true'
