@@ -19,12 +19,13 @@ jobs:
     steps:
       # Sparse checkout: the local composite actions (setup-scw,
       # fetch-scw-secret) and the cleanup Job manifest applied below.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           sparse-checkout: |
             .github/actions
             infra/k8s/preview
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-scw
         with:
@@ -41,8 +42,9 @@ jobs:
       - name: Delete PR namespace, platform PV, and hostPath data
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          STEPS_KUBECONFIG_OUTPUTS_VALUE: ${{ steps.kubeconfig.outputs.value }}
         run: |
-          echo "${{ steps.kubeconfig.outputs.value }}" > /tmp/kubeconfig.yaml
+          echo "${STEPS_KUBECONFIG_OUTPUTS_VALUE}" > /tmp/kubeconfig.yaml
           export KUBECONFIG=/tmp/kubeconfig.yaml
 
           kubectl delete namespace "preview-pr-${PR_NUMBER}" --ignore-not-found

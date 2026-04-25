@@ -1,5 +1,5 @@
 name: Build Platform Image
-description: Builds and (optionally) pushes the Rust platform server Docker image with GHA cache
+description: Builds and (optionally) pushes the Rust platform server Docker image with optional GHA cache
 
 inputs:
   registry:
@@ -16,6 +16,15 @@ inputs:
     description: Whether to push the built image to the registry.
     required: false
     default: "true"
+  gha-cache:
+    description: |
+      Whether to use GHA cache as BuildKit's cache backend. GHA cache is
+      cross-branch readable, so the production release path passes "false"
+      to prevent a poisoned PR cache from seeding a main build. Preview
+      builds keep the default "true" because cache poisoning of an
+      ephemeral preview namespace is not load-bearing.
+    required: false
+    default: "true"
 
 outputs:
   image-digest:
@@ -29,12 +38,12 @@ runs:
   using: composite
   steps:
     - id: build
-      uses: docker/build-push-action@v7
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
       with:
         context: .
         file: apps/platform/Dockerfile
         push: ${{ inputs.push }}
         # No build-args: the platform Dockerfile declares no ARGs.
         tags: ${{ inputs.tags }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: ${{ inputs.gha-cache == 'true' && 'type=gha' || '' }}
+        cache-to: ${{ inputs.gha-cache == 'true' && 'type=gha,mode=max' || '' }}

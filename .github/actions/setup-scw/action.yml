@@ -27,12 +27,12 @@ runs:
   using: composite
   steps:
     - name: Cache Scaleway CLI
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ runner.tool_cache }}/scw
         key: scw-${{ runner.os }}-${{ inputs.version }}
 
-    - uses: scaleway/action-scw@v0
+    - uses: scaleway/action-scw@be2696f261325a78354eda14988c80405f33e082 # v0.0.2
       with:
         version: ${{ inputs.version }}
         save-config: true

@@ -12,6 +12,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -19,9 +22,11 @@ jobs:
       run:
         working-directory: infra/pulumi-cloud
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
 
       - name: ruff check
         run: uv run ruff check --output-format=github .
@@ -35,24 +40,30 @@ jobs:
       run:
         working-directory: infra/pulumi-cloud
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
 
       - name: basedpyright
         run: uv run basedpyright
 
   preview:
-    if: github.event_name == 'pull_request'
+    # Fork-PR guard: only PRs from this repository run pulumi preview.
+    # Fork PRs skip without executing any step.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     needs: [lint, typecheck]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
 
       - uses: ./.github/actions/setup-scw
         with:
@@ -74,7 +85,7 @@ jobs:
           restore-keys: |
             pulumi-plugins-${{ runner.os }}-
 
-      - uses: pulumi/actions@v6
+      - uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6.6.1
         with:
           command: preview
           stack-name: prod
@@ -91,10 +102,14 @@ jobs:
     if: github.event_name == 'push'
     needs: [lint, typecheck]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
 
       - uses: ./.github/actions/setup-scw
         with:
@@ -116,7 +131,7 @@ jobs:
           restore-keys: |
             pulumi-plugins-${{ runner.os }}-
 
-      - uses: pulumi/actions@v6
+      - uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6.6.1
         with:
           command: up
           stack-name: prod

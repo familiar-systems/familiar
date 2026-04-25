@@ -21,12 +21,12 @@ runs:
     - id: fetch
       shell: bash
       run: |
-        SECRET_ID=$(scw secret secret list name=${{ inputs.secret-name }} region=${{ inputs.region }} -o json | jq -r '.[0].id')
+        SECRET_ID=$(scw secret secret list name=${INPUTS_SECRET_NAME} region=${INPUTS_REGION} -o json | jq -r '.[0].id')
         if [ "$SECRET_ID" = "null" ] || [ -z "$SECRET_ID" ]; then
-          echo "::error::Secret '${{ inputs.secret-name }}' not found in region ${{ inputs.region }}"
+          echo "::error::Secret '${INPUTS_SECRET_NAME}' not found in region ${INPUTS_REGION}"
           exit 1
         fi
-        VALUE=$(scw secret version access "$SECRET_ID" revision=latest region=${{ inputs.region }} -o json | jq -r '.data' | base64 -d)
+        VALUE=$(scw secret version access "$SECRET_ID" revision=latest region=${INPUTS_REGION} -o json | jq -r '.data' | base64 -d)
 
         # ::add-mask:: only works per-line, so mask each line individually
         # See: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#masking-a-value-in-a-log
@@ -41,3 +41,6 @@ runs:
           echo "$VALUE"
           echo 'SCWEOF'
         } >> "$GITHUB_OUTPUT"
+      env:
+        INPUTS_SECRET_NAME: ${{ inputs.secret-name }}
+        INPUTS_REGION: ${{ inputs.region }}

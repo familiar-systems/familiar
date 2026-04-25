@@ -22,9 +22,11 @@ jobs:
   ts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           install_args: "node npm:pnpm"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -38,11 +40,11 @@ jobs:
             echo "pnpm=$(mise current 'npm:pnpm')"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: ${{ steps.versions.outputs.pnpm }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: ${{ steps.versions.outputs.node }}
           cache: pnpm
@@ -68,9 +70,11 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           install_args: "rust"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -80,12 +84,12 @@ jobs:
         shell: bash
         run: echo "rust=$(mise current rust)" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-04-25
         with:
           toolchain: ${{ steps.versions.outputs.rust }}
           components: clippy, rustfmt
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           shared-key: rust-build
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -103,9 +107,11 @@ jobs:
   generated-types:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           install_args: "rust node npm:pnpm"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -120,20 +126,20 @@ jobs:
             echo "rust=$(mise current rust)"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-04-25
         with:
           toolchain: ${{ steps.versions.outputs.rust }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           shared-key: rust-build
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: ${{ steps.versions.outputs.pnpm }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: ${{ steps.versions.outputs.node }}
           cache: pnpm
@@ -158,9 +164,11 @@ jobs:
       run:
         working-directory: workers/${{ matrix.worker }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           install_args: "uv"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -170,7 +178,7 @@ jobs:
         shell: bash
         run: echo "uv=$(mise current uv)" >> "$GITHUB_OUTPUT"
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           version: ${{ steps.versions.outputs.uv }}
           enable-cache: true
@@ -198,11 +206,13 @@ jobs:
       run:
         working-directory: infra/pulumi-cloud
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: jdx/mise-action@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          install_args: "uv actionlint"
+          persist-credentials: false
+
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install_args: "uv actionlint zizmor"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
 
       - name: Resolve uv version
@@ -210,7 +220,7 @@ jobs:
         shell: bash
         run: echo "uv=$(mise current uv)" >> "$GITHUB_OUTPUT"
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           version: ${{ steps.versions.outputs.uv }}
           enable-cache: true
@@ -232,10 +242,32 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: actionlint
 
+      - name: zizmor
+        working-directory: ${{ github.workspace }}
+        # Default persona; auditor persona is louder and can come later.
+        run: zizmor .github/workflows/ .github/actions/
+
+  # ── Dependency review (PR only) ─────────────────────────
+  # Catches PRs that introduce known-vulnerable npm/cargo/pip deps. Free
+  # for public repos; on private repos this step requires GHAS, which we
+  # don't have, so the job no-ops via the `if:` guard until we go public.
+  # Once public, the guard becomes redundant but keeps the job readable.
+  dep-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          fail-on-severity: moderate
+
   # ── Gate ────────────────────────────────────────────────
   ci-ok:
     if: always()
-    needs: [ts, rust, python, infra, generated-types]
+    needs: [ts, rust, python, infra, generated-types, dep-review]
     runs-on: ubuntu-latest
     steps:
       - run: |
@@ -253,4 +285,12 @@ jobs:
     needs: [ci-ok]
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/cd.yml
-    secrets: inherit
+    # Explicit secrets mapping (not `secrets: inherit`). The `inherit`
+    # form broadcasts every repo secret to the called workflow; the
+    # explicit form is a contract enforced at YAML-parse time. Keep this
+    # list in sync with cd.yml's `on.workflow_call.secrets:` block.
+    secrets:
+      SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+      SCW_DEFAULT_PROJECT_ID: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+      SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}

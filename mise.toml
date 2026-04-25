@@ -8,6 +8,10 @@ uv = "latest"
 actionlint = "latest"
 kubeconform = "latest"
 caddy = "latest"
+zizmor = "latest"
+pinact = "latest"
+trufflehog = "latest"
+gitleaks = "latest"
 
 [settings]
 python.uv_venv_auto = "create|source"

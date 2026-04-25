@@ -15,7 +15,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: deploy-preview-${{ github.event.pull_request.number }}
@@ -34,15 +33,24 @@ env:
   HANKO_API_URL_DEV: "https://auth.preview.familiar.systems"
 
 jobs:
+  # Fork-PR guard. Preview deploys consume registry pushes and cluster
+  # credentials, so they only run for PRs from this repository (which
+  # only people with write access can create). Fork PRs evaluate this
+  # condition to false and skip without executing any step. Combined
+  # with the repo-level "Require approval for all outside collaborators"
+  # setting, even an approved fork PR's CI cannot trigger a deploy.
   build:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     strategy:
       matrix:
         target: [site, web, platform]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
           install_args: "npm:pnpm"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -67,7 +75,7 @@ jobs:
           registry-login: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Build and push site
         if: matrix.target == 'site'
@@ -93,10 +101,16 @@ jobs:
           tags: ${{ steps.meta.outputs.tag }}
 
   deploy-pr-preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-scw
         with:
@@ -136,10 +150,19 @@ jobs:
           export WEB_IMAGE="${REGISTRY}/web:pr-${PR_NUMBER}-${SHA}"
           export PLATFORM_IMAGE="${REGISTRY}/platform:pr-${PR_NUMBER}-${SHA}"
 
-          # Docker registry auth for imagePullSecret (scaleway-registry)
+          # Docker registry auth for imagePullSecret (scaleway-registry).
+          # Each derived value is masked because it embeds SCW_SECRET_KEY
+          # (DOCKER_AUTH = base64(nologin:KEY)). GitHub auto-masks raw
+          # secrets.* values; anything we compute from a secret in shell
+          # must be marked explicitly or it surfaces in logs on script
+          # failure. Removed entirely once PR-Sec-6 lands and the
+          # cluster-wide pull secret replaces this path.
           DOCKER_AUTH=$(printf 'nologin:%s' "$SCW_SECRET_KEY" | base64 -w0)
+          echo "::add-mask::$DOCKER_AUTH"
           DOCKERCONFIG_JSON=$(printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$DOCKER_AUTH")
+          echo "::add-mask::$DOCKERCONFIG_JSON"
           DOCKERCONFIG_B64=$(printf '%s' "$DOCKERCONFIG_JSON" | base64 -w0)
+          echo "::add-mask::$DOCKERCONFIG_B64"
           export DOCKERCONFIG_B64
 
           # Apply manifests in dependency order (namespace must exist before children)
@@ -158,7 +181,7 @@ jobs:
           rm /tmp/kubeconfig.yaml
 
       - name: Comment PR URLs
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         with:
