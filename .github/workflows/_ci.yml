@@ -134,11 +134,12 @@ jobs:
       - name: format
         run: cargo fmt --check
 
-      # Explicit build gate. --all-targets matches clippy's graph so artifacts
-      # are reused; --locked rejects accidental Cargo.lock drift.
-      - name: build
-        run: cargo build --workspace --all-targets --locked
-
+      # --all-targets builds test/example units in Mode::Build (since tests must
+      # link), which the test step below then reuses. Workspace crates use
+      # Mode::Check via clippy-driver and don't share fingerprints with test,
+      # but there are only 4 of them, so it's cheap.
+      # Don't add a `cargo build` step before this: Build-mode artifacts have
+      # different fingerprints from Check-mode, so it would not warm clippy.
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
