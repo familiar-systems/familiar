@@ -25,12 +25,15 @@ RUN pnpm install --frozen-lockfile --filter @familiar-systems/site...
 # Copy site source
 COPY apps/site/ apps/site/
 
-# Build static site + pagefind index
-ARG SITE_URL=https://preview.familiar.systems
+# Build static site + pagefind index.
+# All three values are required and have no defaults — astro.config.mjs throws
+# at build time if any is unset. Different values per environment (dev/preview/
+# prod), so a default would silently bake the wrong apex or path prefix into
+# deployed artifacts.
+ARG SITE_URL
 ENV SITE_URL=$SITE_URL
-# Required: site.config.ts throws at build time if PUBLIC_APP_URL is unset.
-# No default — the value differs across dev/preview/prod and a fallback
-# would silently bake the wrong apex into deployed artifacts.
+ARG SITE_BASE_PATH
+ENV SITE_BASE_PATH=$SITE_BASE_PATH
 ARG PUBLIC_APP_URL
 ENV PUBLIC_APP_URL=$PUBLIC_APP_URL
 RUN pnpm --filter @familiar-systems/site build

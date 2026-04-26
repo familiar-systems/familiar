@@ -144,6 +144,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ matrix.target }}:${{ env.DEPLOY_SHA }}
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           site-url: https://familiar.systems
+          site-base-path: /
           public-app-url: https://app.familiar.systems
           pnpm-version: ${{ steps.versions.outputs.pnpm }}
           gha-cache: "false"

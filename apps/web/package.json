@@ -18,16 +18,16 @@
     "@familiar-systems/types-campaign": "workspace:*",
     "@teamhanko/hanko-elements": "^2.6.0",
     "openapi-fetch": "^0.17",
-    "react": "^19",
-    "react-dom": "^19",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^4",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "^5",
     "typescript": "catalog:",
-    "vite": "^6"
+    "vite": "^7"
   }
 }
