@@ -25,8 +25,8 @@
     "@familiar-systems/tsconfig": "workspace:*",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^4",
+    "@vitejs/plugin-react": "^6",
     "typescript": "catalog:",
-    "vite": "^6"
+    "vite": "^8"
   }
 }
