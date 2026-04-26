@@ -1,19 +1,24 @@
-import type { MeResponse } from "@familiar-systems/types-app";
+import type { MethodResponse } from "openapi-fetch";
 import { useEffect, useState } from "react";
 import { client } from "./lib/api";
 import { hanko } from "./lib/hanko";
 import { spaRoute } from "./lib/paths";
 
+// Use openapi-fetch's `MethodResponse` rather than importing `MeResponse`
+// from `@familiar-systems/types-app` directly. They describe the same
+// wire value, but openapi-fetch's mapped-type machinery expands ts-rs
+// branded aliases (`string & { __brand }`) into a structurally-equal
+// but not-unifiable shape on the response side. Anchoring the state
+// type through the same machinery sidesteps that mismatch entirely
+// (no cast, no `as unknown`). The `__brand` intersection survives
+// either way, so a `Me["id"]` still won't pass for a `CampaignId`.
+type Me = MethodResponse<typeof client, "get", "/me">;
+
 export function Home() {
-  const [me, setMe] = useState<MeResponse | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Why validateSession before reading the cookie/storage: a bare
-    // `getSessionToken()` only tells us "the SDK has a cached token"; it
-    // doesn't tell us the token is still accepted by Hanko. validateSession
-    // asks the Hanko backend, so a revoked or expired session produces a
-    // clean redirect to login instead of a failed /me call.
     const run = async () => {
       try {
         const { is_valid } = await hanko.validateSession();
@@ -27,14 +32,7 @@ export function Home() {
           return;
         }
         if (!response.ok || !data) throw new Error(`HTTP ${response.status}`);
-        // The cast is sound: openapi-fetch infers the response shape
-        // through several mapped types, which expands ts-rs branded
-        // aliases (`string & { __brand }`) into a structurally-equal but
-        // not-quite-identical form. Both descriptions came from the same
-        // Rust struct via `Serialize`, so they describe the same wire
-        // value — TypeScript just can't see the equivalence through the
-        // indirection.
-        setMe(data as MeResponse);
+        setMe(data);
       } catch (e: unknown) {
         setError(String(e));
       }
