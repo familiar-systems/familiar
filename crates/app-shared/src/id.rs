@@ -9,15 +9,20 @@ use utoipa::ToSchema;
 
 macro_rules! define_id {
     ($(#[$meta:meta])* $name:ident, uuid, $brand:expr) => {
-        define_id!(@inner $(#[$meta])* $name, uuid::Uuid, uuid::Uuid::now_v7(), $brand);
+        define_id!(@inner $(#[$meta])* $name, uuid::Uuid, uuid::Uuid::now_v7(), $brand, "uuid");
     };
     ($(#[$meta:meta])* $name:ident, nanoid, $brand:expr) => {
-        define_id!(@inner $(#[$meta])* $name, String, nanoid::nanoid!(), $brand);
+        define_id!(@inner $(#[$meta])* $name, String, nanoid::nanoid!(), $brand, "nanoid");
     };
-    (@inner $(#[$meta:meta])* $name:ident, $inner:ty, $ctor:expr, $brand:expr) => {
+    (@inner $(#[$meta:meta])* $name:ident, $inner:ty, $ctor:expr, $brand:expr, $format:expr) => {
         $(#[$meta])*
         #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS, ToSchema)]
         #[ts(export, export_to = "types-app/src/generated/id/", type = $brand)]
+        // Force utoipa to emit a named component (string + format) rather
+        // than inlining the inner type. Codegen on the TS side replaces the
+        // $ref with an import of the ts-rs branded type, so the SPA sees
+        // the brand even though OpenAPI itself can't model it.
+        #[schema(value_type = String, format = $format)]
         pub struct $name(pub $inner);
 
         #[allow(clippy::new_without_default)]

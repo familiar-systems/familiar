@@ -1,8 +1,8 @@
 import type { MeResponse } from "@familiar-systems/types-app";
 import { useEffect, useState } from "react";
+import { client } from "./lib/api";
 import { hanko } from "./lib/hanko";
-import { apiPath, spaRoute } from "./lib/paths";
-import { MeResponseSchema } from "./lib/schemas";
+import { spaRoute } from "./lib/paths";
 
 export function Home() {
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -21,21 +21,20 @@ export function Home() {
           window.location.assign(spaRoute("login"));
           return;
         }
-        const token = hanko.getSessionToken();
-        if (!token) {
+        const { data, response } = await client.GET("/me");
+        if (response.status === 401) {
           window.location.assign(spaRoute("login"));
           return;
         }
-        const r = await fetch(apiPath("me"), {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (r.status === 401) {
-          window.location.assign(spaRoute("login"));
-          return;
-        }
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const parsed = MeResponseSchema.parse(await r.json());
-        setMe(parsed as MeResponse);
+        if (!response.ok || !data) throw new Error(`HTTP ${response.status}`);
+        // The cast is sound: openapi-fetch infers the response shape
+        // through several mapped types, which expands ts-rs branded
+        // aliases (`string & { __brand }`) into a structurally-equal but
+        // not-quite-identical form. Both descriptions came from the same
+        // Rust struct via `Serialize`, so they describe the same wire
+        // value — TypeScript just can't see the equivalence through the
+        // indirection.
+        setMe(data as MeResponse);
       } catch (e: unknown) {
         setError(String(e));
       }

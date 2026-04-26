@@ -61,8 +61,8 @@ run = "pnpm --filter @familiar-systems/web dev"
 env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}" }
 
 [tasks."dev:platform"]
-description = "Platform server (port 3000)"
-run = "cargo run -p familiar-systems-platform"
+description = "Platform server (port 3000). dev-ui mounts Scalar at /api/docs."
+run = "cargo run -p familiar-systems-platform --features dev-ui"
 # CORS origin is the app-apex front door, not the marketing apex. The SPA
 # lives on app.localhost:8080 and any browser fetch from it to /api/* is
 # same-origin, so no preflight fires; this entry is defense-in-depth for
@@ -117,10 +117,18 @@ sources = [
 ]
 
 [tasks."test:rust"]
-description = "Run Rust tests and format ts-rs generated TS output"
+description = "Run Rust tests and regenerate ts-rs + OpenAPI outputs"
+# Two codegen pipelines run together: ts-rs (via cargo test side-effects)
+# emits component types into packages/*/src/generated/, and emit-openapi
+# emits the platform spec which openapi-codegen turns into a typed `paths`
+# interface that points back at those ts-rs types. Both regen on every
+# Rust change so a CI `git diff --exit-code` catches drift either side.
 run = """
 cargo test --workspace
-pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
+mkdir -p packages/types-app/openapi
+cargo run -p familiar-systems-platform --bin emit-openapi > packages/types-app/openapi/platform.json
+pnpm --filter @familiar-systems/openapi-codegen run generate:platform
+pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated packages/types-app/openapi packages/types-app/src/openapi
 """
 sources = [
   "apps/platform/**/*.rs",
@@ -131,10 +139,13 @@ sources = [
   "apps/platform/Cargo.toml",
   "apps/campaign/Cargo.toml",
   "crates/**/Cargo.toml",
+  "tooling/openapi-codegen/generate.ts",
 ]
 outputs = [
   "packages/types-app/src/generated/**/*.ts",
   "packages/types-campaign/src/generated/**/*.ts",
+  "packages/types-app/openapi/platform.json",
+  "packages/types-app/src/openapi/platform.ts",
 ]
 
 [tasks."test:python"]
@@ -336,10 +347,22 @@ sources = [
 # --- generate ---
 
 [tasks.generate-types]
-description = "Clean, regenerate, and format TS types from Rust via ts-rs"
+description = "Clean, regenerate, and format TS types from Rust via ts-rs (also regenerates OpenAPI)"
 run = """
-rm -rf packages/types-app/src/generated packages/types-campaign/src/generated
+rm -rf packages/types-app/src/generated packages/types-campaign/src/generated packages/types-app/openapi packages/types-app/src/openapi
 mise run test:rust
+"""
+
+[tasks.generate-openapi]
+description = "Regenerate just the platform OpenAPI spec and typed paths interface (skips ts-rs)"
+# Useful when iterating on routes / utoipa attributes without forcing a
+# full cargo test cycle. Most workflows should prefer `generate-types`,
+# which does both pipelines and is the source of truth for CI.
+run = """
+mkdir -p packages/types-app/openapi
+cargo run -p familiar-systems-platform --bin emit-openapi > packages/types-app/openapi/platform.json
+pnpm --filter @familiar-systems/openapi-codegen run generate:platform
+pnpm exec oxfmt packages/types-app/openapi packages/types-app/src/openapi
 """
 
 # --- clean ---

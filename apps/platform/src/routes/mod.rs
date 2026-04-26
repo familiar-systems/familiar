@@ -1,10 +1,12 @@
-mod health;
-mod me;
+pub(crate) mod health;
+pub(crate) mod me;
 
+use crate::openapi::api_router;
 use crate::state::AppState;
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, Method};
-use axum::{Router, routing::get};
+use axum::{Json, Router, routing::get};
+use std::sync::Arc;
 use tower_http::{
     cors::{AllowOrigin, CorsLayer},
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
@@ -64,14 +66,40 @@ pub fn router(origins: Vec<String>) -> Router<AppState> {
     // at /api/me. A route whose path begins with /api will never arrive
     // here; do not add one.
     //
+    // Routes are registered through api_router() so the axum dispatcher and
+    // the OpenAPI spec stay in lockstep: the same routes! macro that wires
+    // a handler into axum also reads its #[utoipa::path] attribute. Drift
+    // between "what the server actually serves" and "what the spec says
+    // the server serves" becomes a compile error rather than a runtime one.
+    let (axum_router, openapi) = api_router().split_for_parts();
+    let openapi = Arc::new(openapi);
+
+    let router = axum_router.route(
+        "/openapi.json",
+        get({
+            let openapi = openapi.clone();
+            move || {
+                let openapi = openapi.clone();
+                async move { Json((*openapi).clone()) }
+            }
+        }),
+    );
+
+    // Scalar UI is mounted only when the dev-ui cargo feature is on. It
+    // reads the same OpenApi struct served at /openapi.json, so the docs
+    // can never disagree with the spec.
+    #[cfg(feature = "dev-ui")]
+    let router = {
+        use utoipa_scalar::{Scalar, Servable};
+        router.merge(Scalar::with_url("/docs", (*openapi).clone()))
+    };
+
     // Layer ordering: Axum applies the *last* .layer() outermost. A request
     // travels outermost→innermost, so:
     //   cors -> set_request_id -> trace -> propagate_request_id -> handler
     // set_request_id must precede trace (trace reads the id into the span);
     // propagate must be inside trace so the outgoing response carries the id.
-    Router::new()
-        .route("/health", get(health::health))
-        .route("/me", get(me::me))
+    router
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(trace)
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))

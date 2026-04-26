@@ -1,0 +1,84 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "familiar.systems platform API",
+    "description": "Auth, campaign CRUD, routing table, and shard coordination.",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["system"],
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Service is healthy"
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "tags": ["auth"],
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "description": "Authenticated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CampaignId": {
+        "type": "string",
+        "format": "nanoid",
+        "description": "Identifies a campaign. Kept as a nanoid for short URLs."
+      },
+      "MeResponse": {
+        "type": "object",
+        "description": "Response body for `GET /me`.\n\n**Wire format we own (API contract with the SPA).** Exported to TypeScript\nas `MeResponse` via ts-rs. Changes are breaking changes to the frontend.\n\n`id` is the Hanko subject (= `users.id`); see\n`apps/platform/src/entities/users.rs`.",
+        "required": ["id", "email"],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/UserId"
+          }
+        }
+      },
+      "UserId": {
+        "type": "string",
+        "format": "uuid",
+        "description": "Uniquely identifies a user."
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Hanko session token"
+      }
+    }
+  }
+}
