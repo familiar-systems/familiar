@@ -81,8 +81,10 @@ export const NAV_LINKS = [
   },
 ];
 
+const APP_URL = import.meta.env.PUBLIC_APP_URL ?? "http://app.localhost:8080";
+
 export const ACTION_LINKS = {
-  primary: { label: "Read the Vision", href: "/blog/2026-02-20-the-vision" },
+  primary: { label: "Sign In", href: `${APP_URL}/login` },
   social: {
     github: "https://github.com/familiar-systems",
   },

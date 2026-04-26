@@ -25,6 +25,10 @@ lockfile = true
 # derived copy because GHA cannot read TOML natively.
 [env]
 HANKO_API_URL_DEV = "https://auth.preview.familiar.systems"
+# Marketing-site link target for Sign In. The site is built statically, so the
+# value is baked in at build time. Local dev uses the Caddy app-apex front
+# door; preview/prod set PUBLIC_APP_URL in their CI build steps.
+APP_URL_DEV = "http://app.localhost:8080"
 
 # --- check ---
 
@@ -41,6 +45,9 @@ depends = ["dev:*"]
 [tasks."dev:site"]
 description = "Astro dev server (port 4321)"
 run = "pnpm --filter @familiar-systems/site dev"
+# Astro auto-exposes PUBLIC_*-prefixed env vars to client modules via
+# import.meta.env. The site reads PUBLIC_APP_URL to build the Sign In link.
+env = { PUBLIC_APP_URL = "{{ env.APP_URL_DEV }}" }
 
 [tasks."dev:web"]
 description = "Vite dev server (port 5173, SPA served at root of the app apex; reach it through Caddy at http://app.localhost:8080)"

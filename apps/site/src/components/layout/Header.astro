@@ -45,12 +45,14 @@ const translateNavLinks = (links: any[], lang: string, t: any): any[] => {
 
 const links = translateNavLinks(NAV_LINKS, lang, t);
 
-const primaryHref = ACTION_LINKS.primary.href.startsWith('/docs')
-  ? ACTION_LINKS.primary.href
-  : `/${lang}${ACTION_LINKS.primary.href.startsWith('/') ? '' : '/'}${ACTION_LINKS.primary.href}`.replace(
-      /\/$/,
-      '',
-    );
+const isAbsolutePrimary = /^https?:\/\//i.test(ACTION_LINKS.primary.href);
+const primaryHref =
+  isAbsolutePrimary || ACTION_LINKS.primary.href.startsWith('/docs')
+    ? ACTION_LINKS.primary.href
+    : `/${lang}${ACTION_LINKS.primary.href.startsWith('/') ? '' : '/'}${ACTION_LINKS.primary.href}`.replace(
+        /\/$/,
+        '',
+      );
 ---
 
 <header
@@ -114,7 +116,7 @@ const primaryHref = ACTION_LINKS.primary.href.startsWith('/docs')
         href={primaryHref}
         class="hidden md:block px-4 py-2 text-sm font-medium bg-gold text-white rounded-full hover:bg-gold/90 transition-all"
       >
-        {t['hero.getStarted'] || ACTION_LINKS.primary.label}
+        {t['nav.signIn'] || ACTION_LINKS.primary.label}
       </a>
 
       <div class="md:hidden">
@@ -124,7 +126,7 @@ const primaryHref = ACTION_LINKS.primary.href.startsWith('/docs')
           currentPath={Astro.url.pathname}
           labels={{
             menu: t['nav.menu'],
-            getStarted: t['hero.getStarted'] || ACTION_LINKS.primary.label,
+            getStarted: t['nav.signIn'] || ACTION_LINKS.primary.label,
           }}
         />
       </div>
