@@ -119,18 +119,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Captures rustc identity at the moment cargo would invoke it. If this
-      # disagrees with the run that populated the cache (compare commit hash
-      # and sysroot), every dep crate's fingerprint will be rejected even on
-      # a primary-key cache hit. Cheap to keep; pulls 0s on success.
-      - name: toolchain identity
-        run: |
-          rustc -vV
-          which rustc
-          rustc --print sysroot
-          cargo -V
-          env | grep -E '^(CARGO|RUST|PATH)=' | sort
-
       - name: format
         run: cargo fmt --check
 
