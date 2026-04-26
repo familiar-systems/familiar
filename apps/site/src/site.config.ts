@@ -81,7 +81,15 @@ export const NAV_LINKS = [
   },
 ];
 
-const APP_URL = import.meta.env.PUBLIC_APP_URL ?? "http://app.localhost:8080";
+// Required at build time. No fallback: a default would silently bake the
+// dev URL into preview/prod artifacts. Local dev/build sets this in
+// mise.toml; CI passes it as a Docker build-arg via build-site action.
+const APP_URL = import.meta.env.PUBLIC_APP_URL;
+if (!APP_URL) {
+  throw new Error(
+    "PUBLIC_APP_URL is required at site build time (target apex for the Sign In CTA).",
+  );
+}
 
 export const ACTION_LINKS = {
   primary: { label: "Sign In", href: `${APP_URL}/login` },

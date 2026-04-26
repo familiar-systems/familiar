@@ -22,6 +22,12 @@ inputs:
       have to change this composite's interface. Leave empty for root-served builds.
     required: false
     default: ""
+  public-app-url:
+    description: |
+      App-apex base URL (no trailing slash) baked into the Sign In CTA at build time.
+      site.config.ts throws if PUBLIC_APP_URL is unset, so this input is required.
+      Preview: https://app.preview.familiar.systems/pr-<N>. Prod: https://app.familiar.systems.
+    required: true
   pnpm-version:
     description: pnpm version to install in the builder stage (PNPM_VERSION ARG).
     required: true
@@ -63,6 +69,7 @@ runs:
         build-args: |
           PNPM_VERSION=${{ inputs.pnpm-version }}
           SITE_URL=${{ inputs.site-url }}
+          PUBLIC_APP_URL=${{ inputs.public-app-url }}
           ${{ inputs.site-base-path && format('SITE_BASE_PATH={0}', inputs.site-base-path) || '' }}
         tags: ${{ inputs.tags }}
         cache-from: ${{ inputs.gha-cache == 'true' && 'type=gha' || '' }}

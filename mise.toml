@@ -86,6 +86,7 @@ description = "Build all targets"
 depends = ["build:*"]
 
 [tasks."build:site"]
+env = { PUBLIC_APP_URL = "{{ env.APP_URL_DEV }}" }
 run = "pnpm --filter @familiar-systems/site build"
 
 [tasks."build:web"]
