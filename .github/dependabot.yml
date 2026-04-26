@@ -15,7 +15,7 @@ updates:
       - /.github/actions/fetch-scw-secret
       - /.github/actions/setup-scw
     schedule:
-      interval: weekly
+      interval: monthly
     cooldown:
       default-days: 3
     groups:
@@ -33,7 +33,7 @@ updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     cooldown:
       default-days: 3
     groups:
@@ -53,7 +53,7 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     cooldown:
       default-days: 3
     groups:
@@ -70,7 +70,7 @@ updates:
   - package-ecosystem: uv
     directory: /infra/pulumi-cloud
     schedule:
-      interval: weekly
+      interval: monthly
     cooldown:
       default-days: 3
     groups:
@@ -88,7 +88,7 @@ updates:
   - package-ecosystem: uv
     directory: /workers/whisperx
     schedule:
-      interval: weekly
+      interval: monthly
     cooldown:
       default-days: 3
     groups:
@@ -110,7 +110,7 @@ updates:
       - /apps/site
       - /apps/web
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       docker-base-images:
         patterns:
