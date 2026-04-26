@@ -92,10 +92,10 @@ fn parse_blocks(src: &str) -> Vec<TypeBlock> {
             || trimmed.starts_with("pub(crate) struct ")
             || trimmed.starts_with("pub(crate) enum ");
 
-        if is_type_def && started_at.is_some() {
+        if is_type_def && let Some(line) = started_at {
             blocks.push(TypeBlock {
                 attributes: attrs.clone(),
-                line: started_at.unwrap(),
+                line,
             });
         }
 
