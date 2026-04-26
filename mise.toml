@@ -117,18 +117,15 @@ sources = [
 ]
 
 [tasks."test:rust"]
-description = "Run Rust tests and regenerate ts-rs + OpenAPI outputs"
-# Two codegen pipelines run together: ts-rs (via cargo test side-effects)
-# emits component types into packages/*/src/generated/, and emit-openapi
-# emits the platform spec which openapi-codegen turns into a typed `paths`
-# interface that points back at those ts-rs types. Both regen on every
-# Rust change so a CI `git diff --exit-code` catches drift either side.
+description = "Run Rust tests (cargo test triggers ts-rs codegen as a side effect)"
+# ts-rs's `#[ts(export)]` derive expands into a `#[cfg(test)]
+# export_bindings_<TypeName>()` test that writes the .ts file when the
+# suite runs - so `cargo test` is what produces the ts-rs side of
+# packages/*/src/generated/. The OpenAPI half is owned by `generate-types`
+# and runs on top of this task via `depends`.
 run = """
 cargo test --workspace
-mkdir -p packages/types-app/openapi
-cargo run -p familiar-systems-platform --bin emit-openapi > packages/types-app/openapi/platform.json
-pnpm --filter @familiar-systems/openapi-codegen run generate:platform
-pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated packages/types-app/openapi packages/types-app/src/openapi
+pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
 """
 sources = [
   "apps/platform/**/*.rs",
@@ -139,13 +136,10 @@ sources = [
   "apps/platform/Cargo.toml",
   "apps/campaign/Cargo.toml",
   "crates/**/Cargo.toml",
-  "tooling/openapi-codegen/generate.ts",
 ]
 outputs = [
   "packages/types-app/src/generated/**/*.ts",
   "packages/types-campaign/src/generated/**/*.ts",
-  "packages/types-app/openapi/platform.json",
-  "packages/types-app/src/openapi/platform.ts",
 ]
 
 [tasks."test:python"]
@@ -347,23 +341,34 @@ sources = [
 # --- generate ---
 
 [tasks.generate-types]
-description = "Clean, regenerate, and format TS types from Rust via ts-rs (also regenerates OpenAPI)"
-run = """
-rm -rf packages/types-app/src/generated packages/types-campaign/src/generated packages/types-app/openapi packages/types-app/src/openapi
-mise run test:rust
-"""
-
-[tasks.generate-openapi]
-description = "Regenerate just the platform OpenAPI spec and typed paths interface (skips ts-rs)"
-# Useful when iterating on routes / utoipa attributes without forcing a
-# full cargo test cycle. Most workflows should prefer `generate-types`,
-# which does both pipelines and is the source of truth for CI.
+description = "Regenerate all TS bindings from Rust: ts-rs (via test:rust) + OpenAPI spec + typed paths interface"
+# `depends = ["test:rust"]` runs cargo test first, which emits ts-rs
+# bindings as a side effect of its export_bindings_* tests. After that
+# completes, this task layers the OpenAPI pipeline on top: emit the spec
+# from utoipa, run openapi-codegen to produce a typed `paths` interface
+# that imports its component schemas from the ts-rs output, then format.
+depends = ["test:rust"]
 run = """
 mkdir -p packages/types-app/openapi
 cargo run -p familiar-systems-platform --bin emit-openapi > packages/types-app/openapi/platform.json
 pnpm --filter @familiar-systems/openapi-codegen run generate:platform
 pnpm exec oxfmt packages/types-app/openapi packages/types-app/src/openapi
 """
+sources = [
+  "apps/platform/**/*.rs",
+  "apps/campaign/**/*.rs",
+  "crates/**/*.rs",
+  "Cargo.toml",
+  "Cargo.lock",
+  "apps/platform/Cargo.toml",
+  "apps/campaign/Cargo.toml",
+  "crates/**/Cargo.toml",
+  "tooling/openapi-codegen/generate.ts",
+]
+outputs = [
+  "packages/types-app/openapi/platform.json",
+  "packages/types-app/src/openapi/platform.ts",
+]
 
 # --- clean ---
 

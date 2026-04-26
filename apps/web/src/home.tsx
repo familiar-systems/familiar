@@ -1,21 +1,11 @@
-import type { MethodResponse } from "openapi-fetch";
+import type { MeResponse } from "@familiar-systems/types-app";
 import { useEffect, useState } from "react";
 import { client } from "./lib/api";
 import { hanko } from "./lib/hanko";
 import { spaRoute } from "./lib/paths";
 
-// Use openapi-fetch's `MethodResponse` rather than importing `MeResponse`
-// from `@familiar-systems/types-app` directly. They describe the same
-// wire value, but openapi-fetch's mapped-type machinery expands ts-rs
-// branded aliases (`string & { __brand }`) into a structurally-equal
-// but not-unifiable shape on the response side. Anchoring the state
-// type through the same machinery sidesteps that mismatch entirely
-// (no cast, no `as unknown`). The `__brand` intersection survives
-// either way, so a `Me["id"]` still won't pass for a `CampaignId`.
-type Me = MethodResponse<typeof client, "get", "/me">;
-
 export function Home() {
-  const [me, setMe] = useState<Me | null>(null);
+  const [me, setMe] = useState<MeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,7 +22,16 @@ export function Home() {
           return;
         }
         if (!response.ok || !data) throw new Error(`HTTP ${response.status}`);
-        setMe(data);
+        // Cast across the openapi-fetch boundary back to the ts-rs alias
+        // form. openapi-fetch expands `string & { __brand }` into an
+        // object-typed lookalike that has the right `__brand` property
+        // but isn't assignable to a `string`-rooted intersection — the
+        // primitive vs. object distinction blocks the unification.
+        // Casting once here keeps every downstream consumer (`me.id`
+        // passed to a function expecting `UserId`, etc.) free of casts.
+        // The runtime value is the same on both sides; api.ts holds a
+        // type-level guard asserting the brand property survives.
+        setMe(data as MeResponse);
       } catch (e: unknown) {
         setError(String(e));
       }
