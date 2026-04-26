@@ -75,13 +75,25 @@ const noIndexUrls = getNoIndexUrls();
 
 const DEFAULT_LOCALE = "en";
 
+// SITE_URL is the canonical URL baked into sitemap, RSS, and absolute links.
+// SITE_BASE_PATH mirrors the marketing apex's path prefix.
+// Prod: "https://familiar.systems" + "/". Preview: "https://preview.familiar.systems" + "/pr-${PR_NUMBER}/". Dev: Caddy front door + "/".
+// See docs/plans/2026-03-30-deployment-architecture.md §URL routing.
+// Both are required — no silent fallbacks. mise.toml provides them for local
+// dev tasks; CI passes them as Docker build-args.
+const SITE_URL = process.env.SITE_URL;
+if (!SITE_URL) {
+  throw new Error("SITE_URL must be set at build time.");
+}
+const SITE_BASE_PATH = process.env.SITE_BASE_PATH;
+if (!SITE_BASE_PATH) {
+  throw new Error("SITE_BASE_PATH must be set at build time.");
+}
+
 // https://astro.build/config
 export default defineConfig({
-  site: process.env.SITE_URL || "https://familiar.systems",
-  // SITE_BASE_PATH mirrors the marketing apex's path prefix.
-  // Prod + dev: "/". Preview: "/pr-${PR_NUMBER}/".
-  // See docs/plans/2026-03-30-deployment-architecture.md §URL routing.
-  base: process.env.SITE_BASE_PATH || "/",
+  site: SITE_URL,
+  base: SITE_BASE_PATH,
   output: "static",
   image: {
     domains: [],
