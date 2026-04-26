@@ -151,6 +151,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tag }}
           site-url: https://preview.familiar.systems
           site-base-path: /pr-${{ github.event.pull_request.number }}/
+          # SPA's app apex includes the per-PR path prefix; appending /login
+          # at build time yields https://app.preview.familiar.systems/pr-N/login.
+          public-app-url: https://app.preview.familiar.systems/pr-${{ github.event.pull_request.number }}
           pnpm-version: ${{ steps.versions.outputs.pnpm }}
 
       - name: Build and push web
