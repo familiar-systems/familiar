@@ -11,8 +11,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "devDependencies": {
-    "oxfmt": "^0.33",
-    "oxlint": "^1.48",
+    "oxfmt": "^0.46",
+    "oxlint": "^1.61",
     "typescript": "^5.8",
     "vitest": "^3"
   }
