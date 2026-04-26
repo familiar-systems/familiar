@@ -17,11 +17,9 @@ inputs:
   site-base-path:
     description: |
       Subpath prefix for Astro `base:`. Passed through as the SITE_BASE_PATH build-arg.
-      The site Dockerfile does not currently declare `ARG SITE_BASE_PATH`, so this is
-      a no-op today; the input exists so the follow-up PR that wires the ARG does not
-      have to change this composite's interface. Leave empty for root-served builds.
-    required: false
-    default: ""
+      Prod: "/". Preview: "/pr-<N>/". astro.config.mjs throws if unset, so this
+      input is required and has no default.
+    required: true
   public-app-url:
     description: |
       App-apex base URL (no trailing slash) baked into the Sign In CTA at build time.
@@ -62,15 +60,11 @@ runs:
         context: .
         file: apps/site/Dockerfile
         push: ${{ inputs.push }}
-        # Empty `site-base-path` collapses to a blank line, which
-        # docker/build-push-action's multi-line `build-args:` parser filters out.
-        # Preserves byte-identical behavior with pre-refactor prod builds that
-        # did not pass SITE_BASE_PATH at all.
         build-args: |
           PNPM_VERSION=${{ inputs.pnpm-version }}
           SITE_URL=${{ inputs.site-url }}
+          SITE_BASE_PATH=${{ inputs.site-base-path }}
           PUBLIC_APP_URL=${{ inputs.public-app-url }}
-          ${{ inputs.site-base-path && format('SITE_BASE_PATH={0}', inputs.site-base-path) || '' }}
         tags: ${{ inputs.tags }}
         cache-from: ${{ inputs.gha-cache == 'true' && 'type=gha' || '' }}
         cache-to: ${{ inputs.gha-cache == 'true' && 'type=gha,mode=max' || '' }}

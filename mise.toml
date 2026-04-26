@@ -1,7 +1,7 @@
 [tools]
 "github:bnjbvr/cargo-machete" = "latest"
 node = "24"
-"npm:pnpm" = "10.32"
+"npm:pnpm" = "10.33"
 rust = { version = "latest", profile = 'default', components = "rust-analyzer,rust-src" }
 python = "3.14"
 uv = "latest"
@@ -29,6 +29,13 @@ HANKO_API_URL_DEV = "https://auth.preview.familiar.systems"
 # value is baked in at build time. Local dev uses the Caddy app-apex front
 # door; preview/prod set PUBLIC_APP_URL in their CI build steps.
 APP_URL_DEV = "http://app.localhost:8080"
+# Astro `site` (canonical URL for sitemap/RSS/absolute links) and `base`
+# (URL prefix). astro.config.mjs throws if either is unset; preview + prod
+# pass them as Docker build-args, local dev gets them from this block.
+# Set at top-level (not per-task) because astro check, astro build, and
+# astro dev all load the config and so all need them.
+SITE_URL = "http://localhost:8080"
+SITE_BASE_PATH = "/"
 
 # --- check ---
 
