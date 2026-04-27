@@ -69,8 +69,9 @@ export function Login() {
         style={{ backgroundImage: "url('/grid-pattern.svg')" }}
       />
 
-      {/* Centered content column. */}
-      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-6 py-16">
+      {/* Centered content column. Bottom padding clears the glass cookie
+        banner pinned to the viewport bottom. */}
+      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-6 pt-16 pb-32">
         <a
           href={siteLink("/")}
           aria-label="familiar.systems home"
@@ -102,7 +103,12 @@ export function Login() {
         <div className="w-full max-w-md rounded-2xl border border-foreground/10 bg-background/70 p-8 shadow-2xl shadow-primary/10 backdrop-blur-md">
           <hanko-auth />
         </div>
+      </div>
 
+      {/* Glass cookie banner, fixed to the viewport bottom. Lighter
+        background than the card so the harbor (densest detail at the
+        bottom) reads through the glass. */}
+      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-foreground/10 bg-background/50 backdrop-blur-md">
         <CookieNotice />
       </div>
 
