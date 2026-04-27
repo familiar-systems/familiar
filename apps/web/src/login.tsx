@@ -3,7 +3,12 @@ import { useEffect } from "react";
 import { CookieNotice } from "./components/CookieNotice";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { hanko, hankoApiUrl } from "./lib/hanko";
-import { siteLink, spaRoute } from "./lib/paths";
+import { assetPath, siteLink, spaRoute } from "./lib/paths";
+
+const HARBOR_LIGHT_URL = `url('${assetPath("/harbor-for-light.svg")}')`;
+const HARBOR_DARK_URL = `url('${assetPath("/harbor-for-dark.svg")}')`;
+const RAVEN_URL = `url('${assetPath("/raven-icon.svg")}')`;
+const GRID_PATTERN_URL = `url('${assetPath("/grid-pattern.svg")}')`;
 import "./styles/hanko.css";
 
 export function Login() {
@@ -28,11 +33,11 @@ export function Login() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-bronze opacity-[0.16] dark:hidden"
         style={{
-          maskImage: "url('/harbor-for-light.svg')",
+          maskImage: HARBOR_LIGHT_URL,
           maskRepeat: "no-repeat",
           maskPosition: "center",
           maskSize: "cover",
-          WebkitMaskImage: "url('/harbor-for-light.svg')",
+          WebkitMaskImage: HARBOR_LIGHT_URL,
           WebkitMaskRepeat: "no-repeat",
           WebkitMaskPosition: "center",
           WebkitMaskSize: "cover",
@@ -42,11 +47,11 @@ export function Login() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 hidden bg-bronze opacity-[0.22] dark:block"
         style={{
-          maskImage: "url('/harbor-for-dark.svg')",
+          maskImage: HARBOR_DARK_URL,
           maskRepeat: "no-repeat",
           maskPosition: "center",
           maskSize: "cover",
-          WebkitMaskImage: "url('/harbor-for-dark.svg')",
+          WebkitMaskImage: HARBOR_DARK_URL,
           WebkitMaskRepeat: "no-repeat",
           WebkitMaskPosition: "center",
           WebkitMaskSize: "cover",
@@ -66,7 +71,7 @@ export function Login() {
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 opacity-[0.04] dark:opacity-[0.06]"
-        style={{ backgroundImage: "url('/grid-pattern.svg')" }}
+        style={{ backgroundImage: GRID_PATTERN_URL }}
       />
 
       {/* Centered content column. Bottom padding clears the glass cookie
@@ -85,11 +90,11 @@ export function Login() {
             aria-hidden="true"
             className="block h-10 w-10 bg-foreground transition-[filter] duration-300 dark:drop-shadow-[0_0_10px_var(--color-primary)]"
             style={{
-              maskImage: "url('/raven-icon.svg')",
+              maskImage: RAVEN_URL,
               maskRepeat: "no-repeat",
               maskPosition: "center",
               maskSize: "contain",
-              WebkitMaskImage: "url('/raven-icon.svg')",
+              WebkitMaskImage: RAVEN_URL,
               WebkitMaskRepeat: "no-repeat",
               WebkitMaskPosition: "center",
               WebkitMaskSize: "contain",

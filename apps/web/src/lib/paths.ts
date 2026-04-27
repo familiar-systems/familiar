@@ -45,6 +45,16 @@ export function spaRoute(path: string): string {
   return cleaned === "" ? base : base + cleaned;
 }
 
+// Static asset under apps/web/public, served from the SPA's base path.
+// Use this for `<img src>`, mask-image url(), background-image url(), etc.
+// A bare "/foo.svg" bypasses Vite's `base` config and 404s in preview where
+// the SPA lives at /pr-${PR_NUMBER}/. Vite does NOT auto-rewrite absolute
+// paths in JSX or inline styles.
+export function assetPath(path: string): string {
+  const cleaned = path.replace(/^\//, "");
+  return base + cleaned;
+}
+
 // Marketing-site (cross-apex) link builder. The marketing site uses
 // `[lang]/` path-based i18n; only `en` ships today, so it's the default.
 const siteBase: string = import.meta.env.VITE_SITE_URL;
