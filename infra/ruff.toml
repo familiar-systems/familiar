@@ -8,4 +8,20 @@ ignore = [
   "ISC001", # implicit string concat (conflicts with formatter)
   "PLR0913", # too many arguments -- unavoidable in infra constructors
   "ERA001", # commented-out code -- phased deploys use comment/uncomment
+  "EM", # flake8-errmsg: forcing `msg = ...; raise X(msg)` makes traceback
+        # frames include the variable name. Useful for library errors that
+        # get caught and re-raised; pure noise for ClickException / runtime
+        # errors whose only consumer is the user reading stderr. Inline
+        # f-strings stay readable; the rule fights the natural shape.
+  "TRY003", # tryceratops: "long messages outside exception class". Same
+            # underlying complaint as EM -- it would have us subclass each
+            # exception with a baked-in message. Inline strings on
+            # ClickException/BadParameter/etc are fine for CLI tooling.
 ]
+
+[lint.per-file-ignores]
+# scripts/ holds standalone entry points invoked via `uv run python scripts/foo.py`,
+# never imported. Adding __init__.py would be semantically wrong (these are not
+# package contents) and would suggest they are reusable modules, which they
+# aren't.
+"**/scripts/*.py" = ["INP001"]

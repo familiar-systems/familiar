@@ -12,6 +12,10 @@ name: CI + Deploy
 on:
   push:
     branches: [main]
+  # Manual trigger: used by infra/pulumi-cloud/scripts/rotate_scw_key.py
+  # to verify a freshly-rotated SCW_* secret pair end-to-end without
+  # requiring a no-op commit. No inputs; runs against the configured ref.
+  workflow_dispatch:
   # Synchronous entry point preserved for any future caller. The
   # `required: true` mapping is the contract: adding a new `secrets.*`
   # reference in this workflow's body without also adding it here fails
