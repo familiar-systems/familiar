@@ -1,0 +1,410 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import Section from '~/components/layout/Section.astro';
+import Container from '~/components/ui/Container.astro';
+import NewsletterSignup from '~/components/common/NewsletterSignup.astro';
+import PricingCalculator from '~/components/islands/PricingCalculator';
+import { Check } from 'lucide-react';
+import { languages } from '~/i18n/ui';
+
+export async function getStaticPaths() {
+  return Object.keys(languages).map((lang) => ({ params: { lang } }));
+}
+
+const { lang } = Astro.params;
+
+const linkClass =
+  'text-bronze dark:text-gold underline underline-offset-4 decoration-bronze/30 dark:decoration-gold/40 hover:decoration-bronze dark:hover:decoration-gold transition-colors';
+
+const notebookFeatures = [
+  'Unlimited campaigns and worlds',
+  'AI entity extraction from your notes',
+  'AI-assisted wiki: relationships, contradictions, suggestions',
+  'Chat with your campaign graph',
+  'Your data remains yours, always',
+];
+
+const audioFeatures = [
+  'Everything in Notebook',
+  '8 session-hours of audio transcription per month',
+  'Speaker diarization (who said what)',
+  'AI-generated session journals from recordings',
+  'Additional hours at 1 EUR/hour',
+  'Works with tabletop recordings and online sessions',
+];
+
+const faqs = [
+  {
+    numeral: 'I',
+    question: 'What counts as a session-hour?',
+    answer:
+      'A session-hour is one hour of uploaded audio. A 4-hour recording uses 4 of your 8 included hours. If you go over 8 hours in a month, each additional hour is 1 EUR. If a recording pushes you past your included hours mid-session, we finish processing it and bill the overage. We will never cut off a transcription partway through. Unused session-hours roll over for one month.',
+  },
+  {
+    numeral: 'II',
+    question: 'Why these prices?',
+    answer:
+      'Our costs are real, and our prices reflect them. Audio transcription and AI processing on privacy-respecting EU infrastructure cost real money to run, and we need to charge enough to cover that. At these rates we expect a margin of around 20%. That margin sustainably funds ongoing development: the features on our roadmap, model and infrastructure upgrades, and keeping the service running over time. We will publish our costs in full, and if they change enough that we have to change the price, we will change it openly.',
+  },
+  {
+    numeral: 'III',
+    question: 'Upgrading and downgrading',
+    answer:
+      'Switching from Notebook to Notebook + Audio takes effect immediately. You can start recording your next session right away, and we pro-rate the difference for the current billing cycle. Downgrading from Audio to Notebook also takes effect immediately, with the balance refunded. Your campaigns, wiki, journals, and all previously transcribed content stay exactly as they are.',
+  },
+  {
+    numeral: 'IV',
+    question: 'Can I run this myself?',
+    answer: null,
+  },
+];
+---
+
+<Layout
+  title="Pricing - familiar.systems"
+  description="Preliminary pricing for the AI-assisted campaign wiki. Pay for what you use. Tell us what you think."
+>
+  <!-- ── Hero ─────────────────────────── -->
+  <section
+    class="relative overflow-hidden pt-32 pb-20 md:pt-40 md:pb-24 text-center bg-background"
+  >
+    <!-- Ambient glow -->
+    <div class="absolute inset-0 z-0 opacity-30 pointer-events-none">
+      <div
+        class="absolute top-[10%] left-[20%] w-[420px] h-[420px] bg-primary/30 rounded-full blur-[140px] animate-pulse"
+      >
+      </div>
+      <div
+        class="absolute bottom-[10%] right-[15%] w-[360px] h-[360px] bg-gold/20 rounded-full blur-[120px] animate-pulse"
+        style="animation-delay: 3s;"
+      >
+      </div>
+    </div>
+
+    <!-- Subtle texture overlay -->
+    <div
+      class="absolute inset-0 z-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none"
+      style='background-image: url(&apos;data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%23000000" fill-opacity="0.4"%3E%3Cpath d="M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E&apos;);'
+    >
+    </div>
+
+    <div class="hero-content relative z-10 max-w-4xl mx-auto px-6">
+      <p
+        class="inline-block text-xs font-medium tracking-[0.25em] uppercase text-gold mb-8 border border-gold/20 rounded-full px-4 py-1.5 bg-background/60 backdrop-blur-sm"
+      >
+        Preliminary pricing
+      </p>
+      <h1
+        class="font-display text-5xl md:text-7xl font-bold tracking-tight mb-6 text-foreground leading-[1.05]"
+      >
+        Pricing
+      </h1>
+      <p
+        class="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto leading-relaxed"
+      >
+        Pay for what you use.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── Preliminary callout ─────────────────────────── -->
+  <Section class="pt-4 pb-12">
+    <Container class="max-w-3xl">
+      <div class="border-l-[3px] border-gold/40 pl-6 py-2">
+        <div
+          class="h-px w-10 bg-linear-to-r from-gold/0 via-gold/60 to-gold/0 mb-3"
+          aria-hidden="true"
+        >
+        </div>
+        <p class="text-foreground/85 leading-relaxed text-[1.05rem]">
+          These prices are not locked in yet. We are publishing them now to
+          gauge whether they work for the GMs we are building this for. If
+          they look right, <a href="#newsletter" class={linkClass}
+            >join the list below</a
+          > so we know. If you have feedback,{' '}
+          <a href={`/${lang}/about`} class={linkClass}>please email us</a>.
+        </p>
+      </div>
+    </Container>
+  </Section>
+
+  <!-- ── Plans grid ─────────────────────────── -->
+  <Section class="pt-12 md:pt-16 pb-4 md:pb-6">
+    <Container class="max-w-5xl">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+        <!-- Notebook -->
+        <article
+          class="plan-card relative rounded-2xl border border-foreground/10 bg-bronze-muted/30 dark:bg-bronze-muted/40 p-8 md:p-10 overflow-hidden"
+        >
+          <div
+            class="absolute top-0 left-0 right-0 h-px bg-linear-to-r from-transparent via-gold/40 to-transparent"
+            aria-hidden="true"
+          >
+          </div>
+
+          <header class="mb-6">
+            <p
+              class="text-xs font-medium tracking-[0.25em] uppercase text-muted-foreground mb-3"
+            >
+              Plan
+            </p>
+            <h2
+              class="font-display text-3xl md:text-4xl font-bold text-foreground mb-2"
+            >
+              Notebook
+            </h2>
+            <p class="text-muted-foreground italic">
+              For GMs who write their own session notes.
+            </p>
+          </header>
+
+          <div class="mb-8">
+            <div class="flex items-baseline gap-2">
+              <span
+                class="font-display text-5xl md:text-6xl font-bold text-foreground tracking-tight tabular-nums"
+                >€6</span
+              >
+            </div>
+            <p
+              class="mt-2 text-[0.7rem] tracking-[0.25em] uppercase text-muted-foreground"
+            >
+              / month incl VAT
+            </p>
+          </div>
+
+          <ul class="space-y-3">
+            {
+              notebookFeatures.map((feature) => (
+                <li class="flex gap-3 text-foreground/85 text-[0.975rem] leading-relaxed">
+                  <Check className="w-4 h-4 text-bronze dark:text-gold mt-1 shrink-0" />
+                  <span>{feature}</span>
+                </li>
+              ))
+            }
+          </ul>
+        </article>
+
+        <!-- Notebook + Audio (featured) -->
+        <article
+          class="plan-card relative rounded-2xl border border-foreground/10 bg-bronze-muted/30 dark:bg-bronze-muted/40 p-8 md:p-10 overflow-hidden"
+        >
+          <div
+            class="absolute top-0 left-0 right-0 h-px bg-linear-to-r from-transparent via-gold to-transparent"
+            aria-hidden="true"
+          >
+          </div>
+
+          <!-- Gold halo -->
+          <div
+            class="pointer-events-none absolute -top-20 -right-20 w-64 h-64 rounded-full bg-gold/10 blur-3xl"
+            aria-hidden="true"
+          >
+          </div>
+
+          <span
+            class="absolute top-4 right-4 inline-flex items-center px-3 py-1 rounded-full text-[0.65rem] tracking-[0.2em] uppercase font-medium bg-gold/15 text-bronze dark:text-gold border border-gold/30 backdrop-blur-sm"
+          >
+            Recommended
+          </span>
+
+          <header class="mb-6 relative pr-28 md:pr-0">
+            <p
+              class="text-xs font-medium tracking-[0.25em] uppercase text-muted-foreground mb-3"
+            >
+              Plan
+            </p>
+            <h2
+              class="font-display text-3xl md:text-4xl font-bold text-foreground mb-2"
+            >
+              Notebook + Audio
+            </h2>
+            <p class="text-muted-foreground italic">
+              For GMs who record their sessions.
+            </p>
+          </header>
+
+          <div class="mb-8 relative">
+            <div class="flex items-baseline gap-2">
+              <span
+                class="font-display text-5xl md:text-6xl font-bold text-foreground tracking-tight tabular-nums"
+                >€12</span
+              >
+            </div>
+            <p
+              class="mt-2 text-[0.7rem] tracking-[0.25em] uppercase text-muted-foreground"
+            >
+              / month incl VAT
+            </p>
+          </div>
+
+          <ul class="space-y-3 relative">
+            {
+              audioFeatures.map((feature) => (
+                <li class="flex gap-3 text-foreground/85 text-[0.975rem] leading-relaxed">
+                  <Check className="w-4 h-4 text-bronze dark:text-gold mt-1 shrink-0" />
+                  <span>{feature}</span>
+                </li>
+              ))
+            }
+          </ul>
+
+          <div class="mt-6 pt-5 border-t border-gold/20 relative">
+            <p
+              class="text-[0.65rem] tracking-[0.25em] uppercase text-bronze dark:text-gold mb-1"
+            >
+              Intro offer
+            </p>
+            <p class="text-foreground/85 text-[0.975rem]">
+              First month is 2 EUR.
+            </p>
+          </div>
+        </article>
+      </div>
+    </Container>
+  </Section>
+
+  <!-- ── Calculator ─────────────────────────── -->
+  <Section class="pt-8 md:pt-10 pb-16 md:pb-20">
+    <Container class="max-w-2xl">
+      <div class="text-center mb-8">
+        <h2
+          class="font-display text-3xl md:text-4xl font-bold text-foreground mb-3"
+        >
+          How much would you actually pay?
+        </h2>
+        <p class="text-muted-foreground">
+          Tell us how you play. We will tell you what it would cost.
+        </p>
+      </div>
+      <PricingCalculator client:load />
+    </Container>
+  </Section>
+
+  <!-- ── Inline newsletter signup ─────────────────────────── -->
+  <Section id="newsletter" class="py-20 md:py-28">
+    <Container class="max-w-3xl">
+      <div class="text-center mb-10">
+        <div
+          class="flex items-center justify-center gap-3 mb-6"
+          aria-hidden="true"
+        >
+          <span class="h-px w-12 bg-linear-to-r from-transparent to-gold/40"
+          ></span>
+          <span class="w-1 h-1 rounded-full bg-gold/50"></span>
+          <span class="h-px w-12 bg-linear-to-r from-gold/40 to-transparent"
+          ></span>
+        </div>
+        <h2
+          class="font-display text-3xl md:text-4xl font-bold text-foreground mb-3"
+        >
+          Like what you see?
+        </h2>
+        <p class="text-muted-foreground text-lg">
+          Join the mailing list. We will write when we launch, and sooner if you
+          want to weigh in on what we ship.
+        </p>
+      </div>
+      <NewsletterSignup lang={lang} variant="hero" />
+    </Container>
+  </Section>
+
+  <!-- ── FAQ ─────────────────────────── -->
+  <Section class="py-16 md:py-24">
+    <Container class="max-w-3xl">
+      <h2
+        class="font-display text-3xl md:text-4xl font-bold text-foreground mb-12 text-center"
+      >
+        Questions
+      </h2>
+      <div class="space-y-4">
+        {
+          faqs.map((faq) => (
+            <article class="group rounded-2xl border border-foreground/5 dark:border-foreground/10 bg-bronze-muted/20 dark:bg-bronze-muted/30 p-7 md:p-8 transition-colors duration-300 hover:border-bronze/20">
+              <p
+                class="font-display text-sm tracking-[0.3em] text-bronze/60 dark:text-gold/60 mb-2"
+                aria-hidden="true"
+              >
+                {faq.numeral}
+              </p>
+              <h3 class="font-display text-2xl font-semibold text-foreground mb-3">
+                {faq.question}
+              </h3>
+              {faq.answer ? (
+                <p class="text-foreground/85 leading-relaxed">{faq.answer}</p>
+              ) : (
+                <p class="text-foreground/85 leading-relaxed">
+                  Yes. The entire stack is{' '}
+                  <a
+                    href="https://github.com/familiar-systems/familiar"
+                    class={linkClass}
+                  >
+                    open source under AGPL-3.0
+                  </a>
+                  . If you have the hardware and the expertise, you can run all
+                  of it on your own infrastructure. The hosted version exists
+                  for people who would rather pay us to handle the operations.
+                </p>
+              )}
+            </article>
+          ))
+        }
+      </div>
+    </Container>
+  </Section>
+
+  <!-- ── Closing ─────────────────────────── -->
+  <Section class="pt-4 pb-20">
+    <Container class="max-w-3xl">
+      <div class="text-center">
+        <div
+          class="h-px w-24 bg-linear-to-r from-transparent via-gold/40 to-transparent mx-auto mb-6"
+          aria-hidden="true"
+        >
+        </div>
+        <p class="text-muted-foreground italic">
+          Prices not final.{' '}
+          <a href="#newsletter" class={`${linkClass} not-italic`}
+            >Join the mailing list</a
+          > to follow along. If you have feedback,{' '}
+          <a href={`/${lang}/about`} class={`${linkClass} not-italic`}
+            >please email us</a
+          >.
+        </p>
+        <div
+          class="h-px w-24 bg-linear-to-r from-transparent via-gold/40 to-transparent mx-auto mt-6"
+          aria-hidden="true"
+        >
+        </div>
+      </div>
+    </Container>
+  </Section>
+</Layout>
+
+<style>
+  .hero-content {
+    animation: fadeUp 0.8s ease-out forwards;
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  .plan-card {
+    animation: fadeUp 0.7s ease-out forwards;
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  .plan-card:nth-of-type(2) {
+    animation-delay: 0.12s;
+  }
+
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+</style>

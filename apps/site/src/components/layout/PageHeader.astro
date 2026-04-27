@@ -9,9 +9,17 @@ const { title, description } = Astro.props;
 
 <div class="pt-24 pb-12 text-center relative overflow-hidden">
   <div
-    class="absolute inset-0 z-0 flex items-center justify-center opacity-20 pointer-events-none"
+    class="absolute inset-0 z-0 opacity-30 pointer-events-none"
+    aria-hidden="true"
   >
-    <div class="w-[800px] h-[800px] bg-indigo-500/20 rounded-full blur-[120px]">
+    <div
+      class="absolute top-[10%] left-[20%] w-[420px] h-[420px] bg-primary/30 rounded-full blur-[140px] animate-pulse"
+    >
+    </div>
+    <div
+      class="absolute bottom-[10%] right-[15%] w-[360px] h-[360px] bg-gold/20 rounded-full blur-[120px] animate-pulse"
+      style="animation-delay: 3s;"
+    >
     </div>
   </div>
 
