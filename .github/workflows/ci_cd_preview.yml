@@ -163,6 +163,10 @@ jobs:
           tags: ${{ steps.meta.outputs.tag }}
           vite-hanko-api-url: ${{ env.HANKO_API_URL_DEV }}
           vite-base-path: /pr-${{ github.event.pull_request.number }}/
+          # Marketing site is path-prefixed in preview (see build-site
+          # site-base-path above), so the privacy-policy link must include
+          # the per-PR prefix to land on the right rendered page.
+          vite-site-url: https://preview.familiar.systems/pr-${{ github.event.pull_request.number }}
 
       - name: Build and push platform
         if: matrix.target == 'platform'

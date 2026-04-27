@@ -36,10 +36,15 @@ COPY tooling/tsconfig/ tooling/tsconfig/
 # Default `/` matches prod - the SPA lives at the root of the app apex
 # (app.familiar.systems/). Preview builds override to /pr-N/ via the deploy
 # workflow so the bundle's asset URLs resolve under the per-PR prefix.
+# VITE_SITE_URL is the marketing-apex origin the SPA links out to (privacy
+# policy etc.). Includes the per-PR prefix in preview because the marketing
+# site itself is path-prefixed in preview (see ci_cd_preview.yml).
 ARG VITE_HANKO_API_URL
 ARG VITE_BASE_PATH=/
+ARG VITE_SITE_URL
 ENV VITE_HANKO_API_URL=${VITE_HANKO_API_URL}
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
+ENV VITE_SITE_URL=${VITE_SITE_URL}
 
 RUN pnpm --filter @familiar-systems/web build
 

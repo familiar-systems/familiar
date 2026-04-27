@@ -48,13 +48,7 @@ const { vendors, alwaysLoad } = siteConfig.analytics;
     console.log('Analytics loaded');
   };
 
-  // Check for force load or existing consent
-  if (alwaysLoad || localStorage.getItem('cookie_consent') === 'accepted') {
+  if (alwaysLoad) {
     loadScripts();
   }
-
-  // Listen for new consent
-  window.addEventListener('consent:granted', () => {
-    loadScripts();
-  });
 </script>

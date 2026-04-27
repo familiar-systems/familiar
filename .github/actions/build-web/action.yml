@@ -22,6 +22,13 @@ inputs:
       prod layout (SPA at the root of the app apex). Preview overrides to `/pr-N/`.
     required: false
     default: /
+  vite-site-url:
+    description: |
+      Marketing-apex origin the SPA links out to (VITE_SITE_URL ARG). The
+      privacy-policy link on the login page is built off this. Preview
+      includes the per-PR prefix because the marketing site itself is
+      path-prefixed in preview.
+    required: true
   push:
     description: Whether to push the built image to the registry.
     required: false
@@ -58,6 +65,7 @@ runs:
         build-args: |
           VITE_HANKO_API_URL=${{ inputs.vite-hanko-api-url }}
           VITE_BASE_PATH=${{ inputs.vite-base-path }}
+          VITE_SITE_URL=${{ inputs.vite-site-url }}
         tags: ${{ inputs.tags }}
         cache-from: ${{ inputs.gha-cache == 'true' && 'type=gha' || '' }}
         cache-to: ${{ inputs.gha-cache == 'true' && 'type=gha,mode=max' || '' }}
