@@ -23,6 +23,7 @@ import {
   User,
   GitFork,
 } from 'lucide-react';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 
 interface Props {
   lang: string;
@@ -91,7 +92,7 @@ const t = useTranslations(lang);
 
       <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
         <Button
-          href={`/${lang}/blog/2026-02-20-the-vision`}
+          href={getRelativeLocaleUrl(lang, '/blog/2026-02-20-the-vision')}
           class="px-8 py-4 rounded-full text-base bg-gold hover:bg-gold/90 shadow-lg shadow-gold/25"
         >
           {t['hero.getStarted']}
@@ -452,7 +453,7 @@ const t = useTranslations(lang);
             customer, not the product.
           </p>
           <a
-            href={`/${lang}/privacy`}
+            href={getRelativeLocaleUrl(lang, '/privacy')}
             class="text-primary hover:text-primary/80 font-medium transition-colors"
             >Read the privacy policy</a
           >
@@ -475,7 +476,10 @@ const t = useTranslations(lang);
           </p>
           <div class="flex gap-4">
             <a
-              href={`/${lang}/blog/2026-03-13-our-providers`}
+              href={getRelativeLocaleUrl(
+                lang,
+                '/blog/2026-03-13-our-providers',
+              )}
               class="text-primary hover:text-primary/80 font-medium transition-colors"
               >See our providers</a
             >
@@ -504,7 +508,7 @@ const t = useTranslations(lang);
             Here is his name, his face, and his email.
           </p>
           <a
-            href={`/${lang}/about`}
+            href={getRelativeLocaleUrl(lang, '/about')}
             class="text-primary hover:text-primary/80 font-medium transition-colors"
             >Meet the developer</a
           >

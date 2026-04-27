@@ -6,6 +6,7 @@ import NewsletterSignup from '~/components/common/NewsletterSignup.astro';
 import PricingCalculator from '~/components/islands/PricingCalculator';
 import { Check } from 'lucide-react';
 import { languages } from '~/i18n/ui';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 
 export async function getStaticPaths() {
   return Object.keys(languages).map((lang) => ({ params: { lang } }));
@@ -122,7 +123,9 @@ const faqs = [
           look right, <a href="#newsletter" class={linkClass}
             >join the list below</a
           > so we know. If you have feedback,{' '}
-          <a href={`/${lang}/about`} class={linkClass}>please email us</a>.
+          <a href={getRelativeLocaleUrl(lang, '/about')} class={linkClass}
+            >please email us</a
+          >.
         </p>
       </div>
     </Container>
@@ -366,8 +369,9 @@ const faqs = [
           <a href="#newsletter" class={`${linkClass} not-italic`}
             >Join the mailing list</a
           > to follow along. If you have feedback,{' '}
-          <a href={`/${lang}/about`} class={`${linkClass} not-italic`}
-            >please email us</a
+          <a
+            href={getRelativeLocaleUrl(lang, '/about')}
+            class={`${linkClass} not-italic`}>please email us</a
           >.
         </p>
         <div

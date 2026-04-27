@@ -2,6 +2,7 @@
 import Layout from '~/layouts/Layout.astro';
 import { languages } from '~/i18n/ui';
 import { useTranslations } from '~/i18n/utils';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 
 export async function getStaticPaths() {
   return Object.keys(languages).map((lang) => ({ params: { lang } }));
@@ -38,13 +39,13 @@ const t = useTranslations(lang);
 
       <div class="flex flex-col sm:flex-row gap-4 justify-center">
         <a
-          href={`/${lang}`}
+          href={getRelativeLocaleUrl(lang, '/')}
           class="px-8 py-3 bg-primary text-white font-medium rounded-full hover:bg-primary/90 transition-all hover:scale-105"
         >
           {t['404.backHome']}
         </a>
         <a
-          href={`/${lang}/contact`}
+          href={getRelativeLocaleUrl(lang, '/contact')}
           class="px-8 py-3 bg-foreground/5 text-foreground font-medium rounded-full hover:bg-foreground/10 transition-all border border-foreground/10 dark:text-white dark:border-white/10 dark:hover:bg-white/10"
         >
           {t['404.reportIssue']}
