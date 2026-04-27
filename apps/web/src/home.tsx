@@ -9,6 +9,11 @@ export function Home() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Why validateSession before calling /me: a bare getSessionToken() only
+    // tells us "the SDK has a cached token"; it doesn't tell us the token
+    // is still accepted by Hanko. validateSession asks the Hanko backend,
+    // so a revoked or expired session produces a clean redirect to login
+    // instead of a failed /me call.
     const run = async () => {
       try {
         const { is_valid } = await hanko.validateSession();

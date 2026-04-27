@@ -4,7 +4,8 @@
     "title": "familiar.systems platform API",
     "description": "Auth, campaign CRUD, routing table, and shard coordination.",
     "license": {
-      "name": ""
+      "name": "AGPL-3.0-or-later",
+      "identifier": "AGPL-3.0-or-later"
     },
     "version": "0.1.0"
   },

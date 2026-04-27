@@ -24,6 +24,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
         title = "familiar.systems platform API",
         description = "Auth, campaign CRUD, routing table, and shard coordination.",
         version = "0.1.0",
+        license(name = "AGPL-3.0-or-later", identifier = "AGPL-3.0-or-later"),
     ),
     components(schemas(MeResponse, UserId, CampaignId)),
     modifiers(&BearerAuth),
