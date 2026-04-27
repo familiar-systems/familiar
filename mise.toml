@@ -359,3 +359,15 @@ rm -rf node_modules/.cache
 find . -name 'dist' -type d -not -path '*/node_modules/*' -exec rm -rf {} +
 find . -name '*.tsbuildinfo' -delete
 """
+
+# --- ops ---
+
+# Wraps infra/pulumi-cloud/scripts/rotate_scw_key.py. `raw = true` lets
+# click (in the script) own arg parsing. For usage, run:
+#   mise run rotate-scw-key -- -h
+# The `--` is required only because mise's own `run` claims -h/--help.
+[tasks."rotate-scw-key"]
+description = "Rotate a Scaleway IAM api-key end-to-end. Args: <application-name> <gha|local> [--dry-run] [--keep-old]"
+dir = "infra/pulumi-cloud"
+raw = true
+run = "uv run python scripts/rotate_scw_key.py"

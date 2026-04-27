@@ -7,6 +7,12 @@ on:
   push:
     branches: [main]
     paths: [infra/pulumi-cloud/**]
+  # Manual trigger: used by infra/pulumi-cloud/scripts/rotate_scw_key.py
+  # to verify a freshly-rotated SCW_* secret pair against the Pulumi
+  # state backend (which uses the same credentials mapped to AWS_*).
+  # Bypasses the `paths:` filter intentionally; we want to run the
+  # workflow even when nothing under infra/pulumi-cloud/ has changed.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
