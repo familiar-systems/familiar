@@ -146,6 +146,13 @@ jobs:
             packages/types-app/src/openapi
           cargo test --workspace --locked
 
+      # Known suboptimality: `cargo run --bin emit-openapi` re-resolves and
+      # re-links the platform crate even though the test step above already
+      # compiled it, costing ~10-30s per CI run. The clean fix is to
+      # `cargo build --bin emit-openapi --locked` inside the test step
+      # (warm dep cache, just relinks) and exec ./target/debug/emit-openapi
+      # here. Deferred - not load-bearing, revisit when CI wall-time becomes
+      # an actual problem.
       - name: emit OpenAPI spec and typed paths interface
         run: |
           mkdir -p packages/types-app/openapi

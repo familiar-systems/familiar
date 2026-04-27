@@ -16,6 +16,13 @@
 //! Drop this test once `juhaku/utoipa#1456` (and its corresponding fix in
 //! the discriminator-renderer) ships and we've validated our spec round-
 //! trips through openapi-typescript without regressions.
+//!
+//! Caveat: this is a text-scan, not a real Rust parser. The check is narrow
+//! enough (only `ToSchema`-deriving types in four crates) that the false-
+//! positive surface is tiny in practice, but if a non-serde attribute ever
+//! happens to contain a `tag =` substring on such a type and trips the
+//! check, add a `// CONVENTIONS: violation` marker as an opt-out and extend
+//! `parse_blocks` to skip it. Not worth the syn dep until that happens.
 
 use std::fs;
 use std::path::{Path, PathBuf};

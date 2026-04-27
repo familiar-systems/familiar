@@ -16,6 +16,8 @@ import { client } from "./api";
 
 type AssertExtends<T extends true> = T;
 
+// TODO: extend this file with one AssertExtends block per branded response
+// type as more endpoints land.
 export type MeIdKeepsBrand = AssertExtends<
   MethodResponse<typeof client, "get", "/me">["id"] extends {
     readonly __brand: "UserId";
