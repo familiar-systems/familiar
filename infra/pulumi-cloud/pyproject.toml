@@ -6,15 +6,15 @@ requires-python = ">=3.12"
 dependencies = [
   "click>=8",
   "pydantic>=2",
-  "pulumi>=3",
-  "pulumi-hcloud>=1",
+  "pulumi>=3.232.0",
+  "pulumi-hcloud>=1.32.2",
   "pulumi-command>=1",
-  "pulumi-kubernetes>=4",
-  "pulumiverse-scaleway>=1",
+  "pulumi-kubernetes>=4.29.0",
+  "pulumiverse-scaleway>=1.47.0",
 ]
 
 [dependency-groups]
-dev = ["ruff>=0.11", "basedpyright>=1"]
+dev = ["ruff>=0.15.11", "basedpyright>=1.39.3"]
 
 [build-system]
 requires = ["hatchling"]
