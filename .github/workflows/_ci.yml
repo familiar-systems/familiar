@@ -131,15 +131,43 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: test (also regenerates ts-rs types)
+      # ts-rs emits its `.ts` bindings via `#[cfg(test)] export_bindings_<TypeName>`
+      # functions, so cargo test is what produces the ts-rs side of the
+      # generated/ tree. The pre-clean ensures any types deleted in this PR
+      # surface as a diff in the verify step below rather than lingering as
+      # stale .ts files. Decoupling regen from cargo test would mean a
+      # dedicated emit-types binary; tracked as a follow-up.
+      - name: test
         run: |
-          rm -rf packages/types-app/src/generated packages/types-campaign/src/generated
+          rm -rf \
+            packages/types-app/src/generated \
+            packages/types-campaign/src/generated \
+            packages/types-app/openapi \
+            packages/types-app/src/openapi
           cargo test --workspace --locked
 
-      - name: verify regenerated types match committed
+      # Known suboptimality: `cargo run --bin emit-openapi` re-resolves and
+      # re-links the platform crate even though the test step above already
+      # compiled it, costing ~10-30s per CI run. The clean fix is to
+      # `cargo build --bin emit-openapi --locked` inside the test step
+      # (warm dep cache, just relinks) and exec ./target/debug/emit-openapi
+      # here. Deferred - not load-bearing, revisit when CI wall-time becomes
+      # an actual problem.
+      - name: emit OpenAPI spec and typed paths interface
+        run: |
+          mkdir -p packages/types-app/openapi
+          cargo run -p familiar-systems-platform --bin emit-openapi --locked \
+            > packages/types-app/openapi/platform.json
+          pnpm --filter @familiar-systems/openapi-codegen run generate:platform
+
+      - name: verify regenerated artifacts match committed
         run: |
           pnpm --filter @familiar-systems/types-app --filter @familiar-systems/types-campaign run format
-          git diff --exit-code -- packages/types-app/src/generated packages/types-campaign/src/generated
+          git diff --exit-code -- \
+            packages/types-app/src/generated \
+            packages/types-campaign/src/generated \
+            packages/types-app/openapi \
+            packages/types-app/src/openapi
 
   # ── Python ──────────────────────────────────────────────
   python:

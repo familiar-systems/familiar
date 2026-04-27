@@ -17,6 +17,7 @@
     "@familiar-systems/types-app": "workspace:*",
     "@familiar-systems/types-campaign": "workspace:*",
     "@teamhanko/hanko-elements": "^2.6.0",
+    "openapi-fetch": "^0.17",
     "react": "catalog:",
     "react-dom": "catalog:",
     "zod": "^4.3.6"

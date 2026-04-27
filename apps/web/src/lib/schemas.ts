@@ -1,13 +1,17 @@
-import { z } from "zod";
+// Runtime validators for *external* system boundaries — anything we don't
+// own the type contract for. The platform server's API is contract-checked
+// at compile time via the OpenAPI-derived `PlatformPaths` and ts-rs types
+// (see apps/web/src/lib/api.ts), so platform responses don't need Zod.
+//
+// Reserve this file for things like Hanko callbacks, third-party webhooks,
+// SSO/OAuth state we read from the URL, or anything the SPA gets from a
+// service we don't run. As of today, no such boundary exists; the file
+// stays as a placeholder so the convention is obvious when the first one
+// lands.
+//
+// If you find yourself adding a Zod schema for an `apps/platform` or
+// `apps/campaign` response, you don't need it — pull the type from
+// `@familiar-systems/types-app` (or `types-campaign`) instead and use the
+// typed `client` from `./api`.
 
-// Runtime validators for platform API responses. The ts-rs-generated types
-// in @familiar-systems/types-app are compile-time-only; these schemas are
-// the system-boundary check at the fetch/response boundary, per CLAUDE.md
-// ("Zod at system boundaries"). A parsed value is assignable to its
-// ts-rs-generated counterpart via a cast - the `UserId` brand is nominal
-// and vanishes at runtime, so validating `id` as a uuid-shaped string is
-// equivalent to the Rust-side invariant.
-export const MeResponseSchema = z.object({
-  id: z.uuid(),
-  email: z.email(),
-});
+export {};

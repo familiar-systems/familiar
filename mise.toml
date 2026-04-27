@@ -68,8 +68,8 @@ run = "pnpm --filter @familiar-systems/web dev"
 env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}" }
 
 [tasks."dev:platform"]
-description = "Platform server (port 3000)"
-run = "cargo run -p familiar-systems-platform"
+description = "Platform server (port 3000). dev-ui mounts Scalar at /api/docs."
+run = "cargo run -p familiar-systems-platform --features dev-ui"
 # CORS origin is the app-apex front door, not the marketing apex. The SPA
 # lives on app.localhost:8080 and any browser fetch from it to /api/* is
 # same-origin, so no preflight fires; this entry is defense-in-depth for
@@ -124,7 +124,12 @@ sources = [
 ]
 
 [tasks."test:rust"]
-description = "Run Rust tests and format ts-rs generated TS output"
+description = "Run Rust tests (cargo test triggers ts-rs codegen as a side effect)"
+# ts-rs's `#[ts(export)]` derive expands into a `#[cfg(test)]
+# export_bindings_<TypeName>()` test that writes the .ts file when the
+# suite runs - so `cargo test` is what produces the ts-rs side of
+# packages/*/src/generated/. The OpenAPI half is owned by `generate-types`
+# and runs on top of this task via `depends`.
 run = """
 cargo test --workspace
 pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
@@ -343,11 +348,34 @@ sources = [
 # --- generate ---
 
 [tasks.generate-types]
-description = "Clean, regenerate, and format TS types from Rust via ts-rs"
+description = "Regenerate all TS bindings from Rust: ts-rs (via test:rust) + OpenAPI spec + typed paths interface"
+# `depends = ["test:rust"]` runs cargo test first, which emits ts-rs
+# bindings as a side effect of its export_bindings_* tests. After that
+# completes, this task layers the OpenAPI pipeline on top: emit the spec
+# from utoipa, run openapi-codegen to produce a typed `paths` interface
+# that imports its component schemas from the ts-rs output, then format.
+depends = ["test:rust"]
 run = """
-rm -rf packages/types-app/src/generated packages/types-campaign/src/generated
-mise run test:rust
+mkdir -p packages/types-app/openapi
+cargo run -p familiar-systems-platform --bin emit-openapi > packages/types-app/openapi/platform.json
+pnpm --filter @familiar-systems/openapi-codegen run generate:platform
+pnpm exec oxfmt packages/types-app/openapi packages/types-app/src/openapi
 """
+sources = [
+  "apps/platform/**/*.rs",
+  "apps/campaign/**/*.rs",
+  "crates/**/*.rs",
+  "Cargo.toml",
+  "Cargo.lock",
+  "apps/platform/Cargo.toml",
+  "apps/campaign/Cargo.toml",
+  "crates/**/Cargo.toml",
+  "tooling/openapi-codegen/generate.ts",
+]
+outputs = [
+  "packages/types-app/openapi/platform.json",
+  "packages/types-app/src/openapi/platform.ts",
+]
 
 # --- clean ---
 

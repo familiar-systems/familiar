@@ -1,0 +1,14 @@
+{
+  "name": "@familiar-systems/openapi-codegen",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate:platform": "tsx generate.ts platform"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.13",
+    "tsx": "^4.21",
+    "typescript": "catalog:"
+  }
+}
