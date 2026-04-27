@@ -1,0 +1,61 @@
+/* Theme the <hanko-auth> web component to read as native to the brand.
+   Property names extracted from @teamhanko/hanko-elements@2.6 dist/. CSS
+   custom properties cross the shadow-DOM boundary, so setting them on the
+   host element propagates inward without needing ::part. Anything Hanko
+   doesn't expose as a property (icon stroke widths, etc.) stays default —
+   acceptable; escalation path is a headless rebuild. */
+
+hanko-auth {
+  /* Text + surfaces */
+  --color: var(--foreground);
+  --color-shade-1: var(--muted-foreground);
+  --color-shade-2: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --background-color: transparent;
+  --error-color: #b91c1c;
+
+  /* Brand (primary buttons, focused states, link accents) */
+  --brand-color: var(--color-gold);
+  --brand-color-shade-1: color-mix(in oklab, var(--color-gold) 90%, black);
+  --brand-contrast-color: #ffffff;
+  --link-color: var(--color-gold);
+  --link-text-decoration: none;
+  --link-text-decoration-hover: underline;
+
+  /* Typography — body in Alegreya so inputs/buttons match the page. */
+  --font-family: "Alegreya", Georgia, serif;
+  --font-size: 1rem;
+  --font-weight: 400;
+  --line-height: 1.5;
+
+  /* Section headings ("Sign in" / "Sign up") in display serif for ceremony. */
+  --headline1-font-size: 1.5rem;
+  --headline1-font-weight: 600;
+  --headline1-margin: 0 0 1.5rem 0;
+  --headline2-font-size: 1.125rem;
+  --headline2-font-weight: 600;
+  --headline2-margin: 1.5rem 0 0.75rem 0;
+
+  /* Geometry — match our card's roundness; let inputs breathe. */
+  --border-radius: 0.5rem;
+  --border-style: solid;
+  --border-width: 1px;
+  --item-height: 2.75rem;
+  --item-margin: 0.5rem 0;
+
+  /* Layout — let the card own width + padding. */
+  --container-max-width: 100%;
+  --container-padding: 0;
+  --button-min-width: 100%;
+  --input-min-width: 100%;
+
+  /* Divider between auth methods (e.g. passkey | password). */
+  --divider-padding: 0.75rem 0;
+  --divider-visibility: visible;
+}
+
+.dark hanko-auth {
+  /* Slight gold lift in dark mode so the CTA reads at the same weight as
+     it does over parchment. */
+  --brand-color-shade-1: color-mix(in oklab, var(--color-gold) 88%, white);
+  --error-color: #f87171;
+}

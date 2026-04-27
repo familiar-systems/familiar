@@ -21,14 +21,14 @@
     "@astrojs/sitemap": "^3.7.2",
     "@astrojs/ts-plugin": "^1.10.7",
     "@tailwindcss/typography": "^0.5.19",
-    "@tailwindcss/vite": "^4.2.4",
+    "@tailwindcss/vite": "catalog:",
     "astro": "^6.1.9",
     "astro-embed": "^0.13.0",
     "astro-mermaid": "^2.0.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "gray-matter": "^4.0.3",
-    "lucide-react": "^1.11.0",
+    "lucide-react": "catalog:",
     "mermaid": "^11.14.0",
     "motion": "^12.38.0",
     "pagefind": "^1.5.2",
@@ -36,8 +36,8 @@
     "react-dom": "catalog:",
     "sharp": "^0.34.5",
     "tailwind-merge": "^3.5.0",
-    "tailwindcss": "^4.2.4",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss": "catalog:",
+    "tailwindcss-animate": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:",

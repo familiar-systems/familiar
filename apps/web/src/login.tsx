@@ -1,7 +1,10 @@
-import { useEffect } from "react";
 import { register } from "@teamhanko/hanko-elements";
+import { useEffect } from "react";
+import { CookieNotice } from "./components/CookieNotice";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { hanko, hankoApiUrl } from "./lib/hanko";
 import { siteLink, spaRoute } from "./lib/paths";
+import "./styles/hanko.css";
 
 export function Login() {
   useEffect(() => {
@@ -17,23 +20,96 @@ export function Login() {
   }, []);
 
   return (
-    <div style={{ maxWidth: 420, margin: "0 auto", padding: 24 }}>
-      <hanko-auth />
-      <p
+    <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
+      {/* Harbor woodcut backdrop. Same mask-image technique as the marketing
+        hero: SVG drives the shape, --color-bronze drives the fill, opacity
+        differs between themes to keep contrast comparable. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-bronze opacity-[0.16] dark:hidden"
         style={{
-          marginTop: 16,
-          fontSize: 13,
-          color: "#666",
-          lineHeight: 1.5,
+          maskImage: "url('/harbor-for-light.svg')",
+          maskRepeat: "no-repeat",
+          maskPosition: "center",
+          maskSize: "cover",
+          WebkitMaskImage: "url('/harbor-for-light.svg')",
+          WebkitMaskRepeat: "no-repeat",
+          WebkitMaskPosition: "center",
+          WebkitMaskSize: "cover",
         }}
-      >
-        By signing up or logging in, you consent to functional cookies. We never have and never will
-        sell your data. We just want to know if things are working well. See our{" "}
-        <a href={siteLink("/privacy")} style={{ textDecoration: "underline" }}>
-          privacy policy
-        </a>{" "}
-        for further details.
-      </p>
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 hidden bg-bronze opacity-[0.22] dark:block"
+        style={{
+          maskImage: "url('/harbor-for-dark.svg')",
+          maskRepeat: "no-repeat",
+          maskPosition: "center",
+          maskSize: "cover",
+          WebkitMaskImage: "url('/harbor-for-dark.svg')",
+          WebkitMaskRepeat: "no-repeat",
+          WebkitMaskPosition: "center",
+          WebkitMaskSize: "cover",
+        }}
+      />
+
+      {/* Ambient glow orbs. motion-safe gates the pulse for vestibular users. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-30">
+        <div className="absolute top-[12%] left-[18%] h-[480px] w-[480px] rounded-full bg-primary/30 blur-[140px] motion-safe:animate-pulse" />
+        <div
+          className="absolute bottom-[10%] right-[12%] h-[420px] w-[420px] rounded-full bg-gold/25 blur-[120px] motion-safe:animate-pulse"
+          style={{ animationDelay: "3s" }}
+        />
+      </div>
+
+      {/* Cross-hatch texture overlay, very faint. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-[0.04] dark:opacity-[0.06]"
+        style={{ backgroundImage: "url('/grid-pattern.svg')" }}
+      />
+
+      {/* Centered content column. */}
+      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-6 py-16">
+        <a
+          href={siteLink("/")}
+          aria-label="familiar.systems home"
+          className="mb-10 inline-flex items-center gap-3 transition-opacity hover:opacity-80"
+        >
+          {/* Raven as mask-image so the fill comes from CSS rather than the
+            SVG's baked #000000 (which is invisible in dark mode). The plum
+            drop-shadow only fires in dark mode and ties the brand glyph to
+            the ambient primary-color orbs in the background. */}
+          <span
+            aria-hidden="true"
+            className="block h-10 w-10 bg-foreground transition-[filter] duration-300 dark:drop-shadow-[0_0_10px_var(--color-primary)]"
+            style={{
+              maskImage: "url('/raven-icon.svg')",
+              maskRepeat: "no-repeat",
+              maskPosition: "center",
+              maskSize: "contain",
+              WebkitMaskImage: "url('/raven-icon.svg')",
+              WebkitMaskRepeat: "no-repeat",
+              WebkitMaskPosition: "center",
+              WebkitMaskSize: "contain",
+            }}
+          />
+          <span className="font-display text-3xl font-medium tracking-tight text-foreground">
+            familiar.systems
+          </span>
+        </a>
+
+        <div className="w-full max-w-md rounded-2xl border border-foreground/10 bg-background/70 p-8 shadow-2xl shadow-primary/10 backdrop-blur-md">
+          <hanko-auth />
+        </div>
+
+        <CookieNotice />
+      </div>
+
+      {/* Theme toggle, last in source order so it stacks on top of the
+        full-viewport content column at the same z-index and clicks aren't
+        absorbed by the empty area of the centered flex container. */}
+      <ThemeToggle className="absolute right-6 top-6 z-10" />
     </div>
   );
 }

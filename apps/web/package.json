@@ -16,10 +16,14 @@
     "@familiar-systems/editor": "workspace:*",
     "@familiar-systems/types-app": "workspace:*",
     "@familiar-systems/types-campaign": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
     "@teamhanko/hanko-elements": "^2.6.0",
+    "lucide-react": "catalog:",
     "openapi-fetch": "^0.17",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "tailwindcss": "catalog:",
+    "tailwindcss-animate": "catalog:",
     "zod": "^4.3.6"
   },
   "devDependencies": {

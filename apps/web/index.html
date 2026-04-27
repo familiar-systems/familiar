@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>familiar.systems</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // Apply theme before paint to avoid flash of wrong theme on hard reload.
+      (function () {
+        var stored = typeof localStorage !== "undefined" ? localStorage.getItem("theme") : null;
+        var theme =
+          stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        if (theme === "dark") document.documentElement.classList.add("dark");
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.bunny.net" />
+    <link
+      href="https://fonts.bunny.net/css?family=cormorant-garamond:400,500,600,700|alegreya:400,500,600,700,800"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="root"></div>

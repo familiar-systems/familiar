@@ -196,10 +196,7 @@ export default function PricingCalculator() {
             {breakdown}
           </p>
         )}
-        <div
-          className="mt-5 flex items-center justify-center gap-3"
-          aria-hidden="true"
-        >
+        <div className="mt-5 flex items-center justify-center gap-3" aria-hidden="true">
           <span className="h-px w-12 bg-linear-to-r from-transparent to-gold/40" />
           <span className="w-1 h-1 rounded-full bg-gold/50" />
           <span className="h-px w-12 bg-linear-to-r from-gold/40 to-transparent" />
