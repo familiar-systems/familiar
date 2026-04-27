@@ -18,7 +18,9 @@
   },
   "pnpm": {
     "overrides": {
-      "vite": "^7"
+      "vite": "^7",
+      "uuid": "^14",
+      "yaml": "^2.8.3"
     }
   }
 }
