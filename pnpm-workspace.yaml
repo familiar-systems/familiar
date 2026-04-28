@@ -3,10 +3,14 @@ packages:
   - packages/*
   - tooling/*
 catalog:
+  "@tailwindcss/vite": ^4.2.4
   "@types/react": ^19
   "@types/react-dom": ^19
+  lucide-react: ^1.11.0
   react: ^19
   react-dom: ^19
+  tailwindcss: ^4.2.4
+  tailwindcss-animate: ^1.0.7
   typescript: ^6
 onlyBuiltDependencies:
   - esbuild

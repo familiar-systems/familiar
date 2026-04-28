@@ -72,6 +72,10 @@ export const NAV_LINKS = [
     label: "Roadmap",
   },
   {
+    href: "/pricing",
+    label: "Pricing",
+  },
+  {
     href: "/blog",
     label: "Blog",
   },
@@ -103,6 +107,7 @@ export const FOOTER_LINKS = {
     title: "Project",
     links: [
       { href: "/roadmap", label: "Roadmap" },
+      { href: "/pricing", label: "Pricing" },
       { href: "/blog", label: "Blog" },
       { href: "/about", label: "About" },
     ],

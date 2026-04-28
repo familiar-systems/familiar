@@ -4,6 +4,7 @@ import { SiGithub as Github } from '~/components/icons/BrandIcons';
 import NewsletterSignup from '~/components/common/NewsletterSignup.astro';
 import { defaultLang } from '~/i18n/ui';
 import { useTranslations } from '~/i18n/utils';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 
 const today = new Date();
 const { lang = defaultLang } = Astro.params;
@@ -35,10 +36,7 @@ const t = useTranslations(lang);
                 const shouldLocalize = link.localize !== false;
                 const href = !shouldLocalize
                   ? link.href
-                  : `/${lang}${link.href.startsWith('/') ? '' : '/'}${link.href}`.replace(
-                      /\/$/,
-                      '',
-                    ) || `/${lang}`;
+                  : getRelativeLocaleUrl(lang, link.href);
 
                 return (
                   <li>

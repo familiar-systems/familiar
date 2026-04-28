@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -13,7 +14,7 @@ const basePath = process.env.VITE_BASE_PATH ?? "/";
 // localhost:5173. See `mise run dev:proxy` + Caddyfile.dev.
 export default defineConfig({
   base: basePath,
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
   },

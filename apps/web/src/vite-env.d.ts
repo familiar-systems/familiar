@@ -7,6 +7,7 @@
 // derived from BASE_URL in src/lib/paths.ts.
 interface ImportMetaEnv {
   readonly VITE_HANKO_API_URL: string;
+  readonly VITE_SITE_URL: string;
 }
 interface ImportMeta {
   readonly env: ImportMetaEnv;

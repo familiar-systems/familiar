@@ -9,6 +9,7 @@ import LanguagePicker from '~/components/common/LanguagePicker.astro';
 import { NAV_LINKS, ACTION_LINKS, siteConfig } from '~/site.config';
 import { defaultLang } from '~/i18n/ui';
 import { useTranslations } from '~/i18n/utils';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 
 interface Props {
   availableLangs?: string[];
@@ -26,10 +27,7 @@ const translateNavLinks = (links: any[], lang: string, t: any): any[] => {
     const shouldLocalize = link.localize !== false;
     const href = !shouldLocalize
       ? link.href
-      : `/${lang}${link.href.startsWith('/') ? '' : '/'}${link.href}`.replace(
-          /\/$/,
-          '',
-        ) || `/${lang}`;
+      : getRelativeLocaleUrl(lang, link.href);
 
     return {
       ...link,
@@ -49,10 +47,7 @@ const isAbsolutePrimary = /^https?:\/\//i.test(ACTION_LINKS.primary.href);
 const primaryHref =
   isAbsolutePrimary || ACTION_LINKS.primary.href.startsWith('/docs')
     ? ACTION_LINKS.primary.href
-    : `/${lang}${ACTION_LINKS.primary.href.startsWith('/') ? '' : '/'}${ACTION_LINKS.primary.href}`.replace(
-        /\/$/,
-        '',
-      );
+    : getRelativeLocaleUrl(lang, ACTION_LINKS.primary.href);
 ---
 
 <header
@@ -60,13 +55,13 @@ const primaryHref =
 >
   <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
     <a
-      href={`/${lang}`}
+      href={getRelativeLocaleUrl(lang, '/')}
       class="flex items-center gap-3 text-xl font-bold font-display tracking-tight text-foreground group"
     >
       {
         siteConfig.logo && (
           <img
-            src={siteConfig.logo.src}
+            src={`${import.meta.env.BASE_URL}${siteConfig.logo.src.replace(/^\//, '')}`}
             alt={siteConfig.logo.alt}
             width="28"
             height="28"

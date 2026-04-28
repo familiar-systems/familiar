@@ -65,7 +65,11 @@ run = "pnpm --filter @familiar-systems/web dev"
 # browser sees two distinct origins - identical to what Traefik enforces in
 # k3s. VITE_BASE_PATH is intentionally unset: vite.config.ts defaults to "/"
 # for dev/prod; CI overrides it per-PR (/pr-${N}/) for preview builds.
-env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}" }
+# VITE_SITE_URL is the marketing-apex origin the SPA links out to (e.g. for
+# the privacy-policy link on the login page). Same value as the marketing
+# site's own SITE_URL; SPA/Vite needs the VITE_-prefixed copy to expose it
+# via import.meta.env.
+env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", VITE_SITE_URL = "{{ env.SITE_URL }}" }
 
 [tasks."dev:platform"]
 description = "Platform server (port 3000). dev-ui mounts Scalar at /api/docs."
@@ -97,6 +101,11 @@ env = { PUBLIC_APP_URL = "{{ env.APP_URL_DEV }}" }
 run = "pnpm --filter @familiar-systems/site build"
 
 [tasks."build:web"]
+# VITE_SITE_URL is the marketing-apex origin the SPA links out to (e.g. for
+# the privacy-policy link on the login page). Local builds produce a
+# smoke-test bundle pointed at the dev marketing apex; CI builds for
+# preview/prod set this build-arg via the build-web composite action.
+env = { VITE_SITE_URL = "{{ env.SITE_URL }}" }
 run = "pnpm --filter @familiar-systems/web build"
 
 [tasks."build:rust"]

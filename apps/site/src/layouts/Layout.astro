@@ -4,7 +4,6 @@ import Footer from '~/components/layout/Footer.astro';
 import Analytics from '~/components/common/Analytics.astro';
 import SEO from '~/components/layout/SEO.astro';
 import Schema from '~/components/layout/Schema.astro';
-import CookieConsent from '~/components/common/CookieConsent.astro';
 import '../styles/global.css';
 import AnnouncementBanner from '~/components/sections/AnnouncementBanner.astro';
 
@@ -158,7 +157,6 @@ const dir = isRtl(lang) ? 'rtl' : 'ltr';
     <main data-pagefind-body>
       <slot />
     </main>
-    <CookieConsent />
     <Footer />
   </body>
 </html>

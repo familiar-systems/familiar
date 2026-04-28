@@ -3,6 +3,7 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 import BlogCard from '~/components/blog/BlogCard.astro';
 import { defaultLang } from '~/i18n/ui';
 import { isRtl, useTranslations } from '~/i18n/utils';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 
 interface Props {
   title?: string;
@@ -39,7 +40,7 @@ const posts = (await getCollection('blog'))
         <p class="text-muted-foreground">{subtitle}</p>
       </div>
       <a
-        href={`/${lang}/blog`}
+        href={getRelativeLocaleUrl(lang, '/blog')}
         class="text-primary hover:text-primary/80 font-medium hidden md:block"
       >
         {viewAllText}
@@ -54,11 +55,14 @@ const posts = (await getCollection('blog'))
             title={post.data.title}
             description={post.data.description}
             pubDate={post.data.pubDate}
-            slug={`/${lang}/blog/${post.id
-              .split('/')
-              .slice(1)
-              .join('/')
-              .replace(/\.[^/.]+$/, '')}`}
+            slug={getRelativeLocaleUrl(
+              lang,
+              `/blog/${post.id
+                .split('/')
+                .slice(1)
+                .join('/')
+                .replace(/\.[^/.]+$/, '')}`,
+            )}
             heroImage={post.data.heroImage}
             isVideo={post.data.isVideo}
           />
@@ -67,8 +71,9 @@ const posts = (await getCollection('blog'))
     </div>
 
     <div class="mt-8 text-center md:hidden">
-      <a href={`/${lang}/blog`} class="text-primary font-medium"
-        >{viewAllText} {arrow}</a
+      <a
+        href={getRelativeLocaleUrl(lang, '/blog')}
+        class="text-primary font-medium">{viewAllText} {arrow}</a
       >
     </div>
   </div>

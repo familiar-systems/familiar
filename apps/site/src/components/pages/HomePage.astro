@@ -23,6 +23,7 @@ import {
   User,
   GitFork,
 } from 'lucide-react';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 
 interface Props {
   lang: string;
@@ -30,6 +31,13 @@ interface Props {
 
 const { lang } = Astro.props;
 const t = useTranslations(lang);
+
+// Base-aware asset URLs so deploys at /pr-${N}/ resolve correctly.
+const baseUrl: string = import.meta.env.BASE_URL;
+const wizardLightUrl = `${baseUrl}wizard-for-light.svg`;
+const wizardDarkUrl = `${baseUrl}wizard-for-dark.svg`;
+const ravenLightUrl = `${baseUrl}raven-for-light.svg`;
+const ravenDarkUrl = `${baseUrl}raven-for-dark.svg`;
 ---
 
 <!-- ═══════════════════════════════════════════ --><!-- HERO                                        --><!-- ═══════════════════════════════════════════ -->
@@ -40,12 +48,12 @@ const t = useTranslations(lang);
   <div class="absolute inset-0 z-0 overflow-hidden">
     <div
       class="absolute inset-0 bg-bronze opacity-[0.14] dark:hidden"
-      style="mask: url('/wizard-for-light.svg') center/cover no-repeat; -webkit-mask: url('/wizard-for-light.svg') center/cover no-repeat;"
+      style={`mask: url('${wizardLightUrl}') center/cover no-repeat; -webkit-mask: url('${wizardLightUrl}') center/cover no-repeat;`}
     >
     </div>
     <div
       class="absolute inset-0 bg-bronze opacity-[0.22] hidden dark:block"
-      style="mask: url('/wizard-for-dark.svg') center/cover no-repeat; -webkit-mask: url('/wizard-for-dark.svg') center/cover no-repeat;"
+      style={`mask: url('${wizardDarkUrl}') center/cover no-repeat; -webkit-mask: url('${wizardDarkUrl}') center/cover no-repeat;`}
     >
     </div>
   </div>
@@ -91,7 +99,7 @@ const t = useTranslations(lang);
 
       <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
         <Button
-          href={`/${lang}/blog/2026-02-20-the-vision`}
+          href={getRelativeLocaleUrl(lang, '/blog/2026-02-20-the-vision')}
           class="px-8 py-4 rounded-full text-base bg-gold hover:bg-gold/90 shadow-lg shadow-gold/25"
         >
           {t['hero.getStarted']}
@@ -452,7 +460,7 @@ const t = useTranslations(lang);
             customer, not the product.
           </p>
           <a
-            href={`/${lang}/privacy`}
+            href={getRelativeLocaleUrl(lang, '/privacy')}
             class="text-primary hover:text-primary/80 font-medium transition-colors"
             >Read the privacy policy</a
           >
@@ -475,7 +483,10 @@ const t = useTranslations(lang);
           </p>
           <div class="flex gap-4">
             <a
-              href={`/${lang}/blog/2026-03-13-our-providers`}
+              href={getRelativeLocaleUrl(
+                lang,
+                '/blog/2026-03-13-our-providers',
+              )}
               class="text-primary hover:text-primary/80 font-medium transition-colors"
               >See our providers</a
             >
@@ -504,7 +515,7 @@ const t = useTranslations(lang);
             Here is his name, his face, and his email.
           </p>
           <a
-            href={`/${lang}/about`}
+            href={getRelativeLocaleUrl(lang, '/about')}
             class="text-primary hover:text-primary/80 font-medium transition-colors"
             >Meet the developer</a
           >
@@ -551,12 +562,12 @@ const t = useTranslations(lang);
   <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
     <div
       class="absolute inset-0 bg-primary opacity-[0.10] dark:hidden"
-      style="mask: url('/raven-for-light.svg') center/cover no-repeat; -webkit-mask: url('/raven-for-light.svg') center/cover no-repeat;"
+      style={`mask: url('${ravenLightUrl}') center/cover no-repeat; -webkit-mask: url('${ravenLightUrl}') center/cover no-repeat;`}
     >
     </div>
     <div
       class="absolute inset-0 bg-primary opacity-[0.16] hidden dark:block"
-      style="mask: url('/raven-for-dark.svg') center/cover no-repeat; -webkit-mask: url('/raven-for-dark.svg') center/cover no-repeat;"
+      style={`mask: url('${ravenDarkUrl}') center/cover no-repeat; -webkit-mask: url('${ravenDarkUrl}') center/cover no-repeat;`}
     >
     </div>
   </div>

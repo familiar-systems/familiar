@@ -119,7 +119,7 @@ Tool availability determines AI behavior (no mode toggles): GMs get read+write t
 
 ## Commands
 
-**Always use mise tasks for cross-cutting operations.** Do not run raw `pnpm typecheck && cargo clippy && ...` chains. The mise tasks are the canonical interface.
+**Use mise tasks for all verification, even single-package.** No `pnpm --filter` or raw `cargo` fallbacks.
 
 ```bash
 # Use these (mise orchestrates the right tools):

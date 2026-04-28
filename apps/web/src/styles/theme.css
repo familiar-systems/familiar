@@ -1,0 +1,35 @@
+/* Light theme — warm parchment */
+:root {
+  --background: #f8f4ec;
+  --foreground: #1c1917;
+  --muted: #ede8dd;
+  --muted-foreground: #57534e;
+  --primary-foreground: #ffffff;
+  --color-gold: #b89530;
+  --color-bronze: #5c3a1f;
+  --color-bronze-muted: #ead8b8;
+  --color-line: #c9c1c5;
+}
+
+/* Dark theme — deep warm charcoal */
+.dark {
+  --background: #0f0d0a;
+  --foreground: #e7e5e4;
+  --color-primary: #9a86aa;
+  --muted: #1c1917;
+  --muted-foreground: #a8a29e;
+  --primary-foreground: #ffffff;
+  --color-gold: #d4a944;
+  --color-bronze: #c4956b;
+  --color-bronze-muted: #2a1f14;
+  --color-line: #39313a;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: "Alegreya", Georgia, serif;
+  transition:
+    background-color 0.3s,
+    color 0.3s;
+}

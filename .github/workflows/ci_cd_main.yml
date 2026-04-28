@@ -161,6 +161,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ matrix.target }}:${{ env.DEPLOY_SHA }}
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           vite-hanko-api-url: ${{ env.HANKO_API_URL_PROD }}
+          vite-site-url: https://familiar.systems
           gha-cache: "false"
 
       - name: Build and push platform

@@ -1,6 +1,7 @@
 ---
 import { languages } from '../../i18n/ui';
 import { Globe } from 'lucide-react';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 
 interface Props {
   availableLangs?: string[];
@@ -16,6 +17,21 @@ const displayLanguages = availableLangs
 
 // If we only have 1 (or 0) languages to show, don't render the picker
 const showPicker = displayLanguages.length > 1;
+
+// Strip the deploy base prefix and the current locale segment from the
+// pathname so we can re-prefix with `getRelativeLocaleUrl`. Doing the
+// regex on the raw `Astro.url.pathname` breaks under PR previews where
+// the path starts with `/pr-${N}/...` and the locale isn't at index 0.
+const langKeys = Object.keys(languages);
+const baseUrl = import.meta.env.BASE_URL;
+const pathnameWithoutBase = Astro.url.pathname.startsWith(baseUrl)
+  ? '/' + Astro.url.pathname.slice(baseUrl.length)
+  : Astro.url.pathname;
+const subpath =
+  pathnameWithoutBase.replace(
+    new RegExp(`^/(?:${langKeys.join('|')})(?=/|$)`),
+    '',
+  ) || '/';
 ---
 
 {
@@ -38,7 +54,7 @@ const showPicker = displayLanguages.length > 1;
           {displayLanguages.map(([label, name]) => (
             <li>
               <a
-                href={`/${label}${Astro.url.pathname.replace(new RegExp(`^/(${Object.keys(languages).join('|')})`), '')}`}
+                href={getRelativeLocaleUrl(label, subpath)}
                 class={`block px-4 py-2 text-sm hover:bg-muted transition-colors ${lang === label ? 'text-primary font-bold' : 'text-foreground'}`}
               >
                 {name}

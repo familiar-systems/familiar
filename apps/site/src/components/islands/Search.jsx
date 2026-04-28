@@ -1,31 +1,27 @@
 import React, { useState, useEffect } from "react";
-import { Search as SearchIcon, X, Book, Zap, LayoutGrid, FileText } from "lucide-react";
+import { Search as SearchIcon, X, Sparkles, BadgeEuro, Map, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import DevSearchModal from "./DevSearchModal";
 
 const POPULAR_LINKS = [
-  { label: "Getting Started", href: "/docs/getting-started/", icon: Book, localize: false },
-  { label: "Features", href: "/features/", icon: Zap },
-  { label: "Design System", href: "/design/", icon: LayoutGrid },
+  { label: "The Vision", href: "/blog/2026-02-20-the-vision/", icon: Sparkles },
+  { label: "Pricing", href: "/pricing/", icon: BadgeEuro },
+  { label: "Roadmap", href: "/roadmap/", icon: Map },
   { label: "Blog", href: "/blog/", icon: FileText },
 ];
 
 export default function Search({ placeholder = "Search...", devModalLabels, lang = "en" }) {
   const [open, setOpen] = useState(false);
 
-  // Localize links
-  const localizedLinks = POPULAR_LINKS.map((link) => {
-    // Return explicit non-localized or external links as is
-    if (link.localize === false || link.href.startsWith("http")) {
-      return link;
-    }
+  // Vite injects this as a literal at build time. In PR previews it's
+  // "/pr-${N}/" instead of "/", so every public-asset URL we construct
+  // here has to be prefixed with it.
+  const baseUrl = import.meta.env.BASE_URL;
 
-    // Otherwise localize
-    return {
-      ...link,
-      href: `/${lang}${link.href}`.replace(/\/+/g, "/"),
-    };
-  });
+  const localizedLinks = POPULAR_LINKS.map((link) => ({
+    ...link,
+    href: `${baseUrl}${lang}${link.href}`.replace(/\/+/g, "/"),
+  }));
 
   // Helper to dynamically load Pagefind assets
   const loadPagefind = async () => {
@@ -35,12 +31,12 @@ export default function Search({ placeholder = "Search...", devModalLabels, lang
       // 1. Load CSS
       const link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = "/pagefind/pagefind-ui.css";
+      link.href = `${baseUrl}pagefind/pagefind-ui.css`;
       document.head.appendChild(link);
 
       // 2. Load JS
       const script = document.createElement("script");
-      script.src = "/pagefind/pagefind-ui.js";
+      script.src = `${baseUrl}pagefind/pagefind-ui.js`;
       script.async = true;
       script.onload = () => {
         if (window.PagefindUI) resolve(true);
@@ -80,8 +76,8 @@ export default function Search({ placeholder = "Search...", devModalLabels, lang
                   element: "#search-container",
                   showSubResults: true,
                   autofocus: true,
-                  baseUrl: "/",
-                  bundlePath: "/pagefind/",
+                  baseUrl: baseUrl,
+                  bundlePath: `${baseUrl}pagefind/`,
                   showImages: true,
                   translations: {
                     placeholder: placeholder,
