@@ -4,7 +4,7 @@
 #   docker build -f apps/web/Dockerfile -t familiar-systems-web .
 
 # -- Stage 1: Build ----------------------------------------------------------
-FROM node:24-bookworm-slim AS builder
+FROM node:25-bookworm-slim AS builder
 
 RUN corepack enable
 
@@ -49,7 +49,7 @@ ENV VITE_SITE_URL=${VITE_SITE_URL}
 RUN pnpm --filter @familiar-systems/web build
 
 # -- Stage 2: Serve -----------------------------------------------------------
-FROM nginx:1.27-alpine
+FROM nginx:1.29-alpine
 
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /build/apps/web/dist /usr/share/nginx/html
