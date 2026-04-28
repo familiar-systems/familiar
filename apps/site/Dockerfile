@@ -3,7 +3,7 @@
 #   docker build -f apps/site/Dockerfile -t familiar-systems-site .
 
 # -- Stage 1: Build ----------------------------------------------------------
-FROM node:24-slim AS build
+FROM node:25-slim AS build
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
