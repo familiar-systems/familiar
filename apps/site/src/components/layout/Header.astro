@@ -61,7 +61,7 @@ const primaryHref =
       {
         siteConfig.logo && (
           <img
-            src={siteConfig.logo.src}
+            src={`${import.meta.env.BASE_URL}${siteConfig.logo.src.replace(/^\//, '')}`}
             alt={siteConfig.logo.alt}
             width="28"
             height="28"
