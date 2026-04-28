@@ -8,11 +8,11 @@ Covers `apps/site/` only: the public Astro static site (landing page, blog, pric
 
 The site ships to three distinct URL roots:
 
-| Environment | Base URL                |
-| ----------- | ----------------------- |
-| Local dev   | `/`                     |
-| PR preview  | `/pr-${PR_NUMBER}/`     |
-| Prod        | `/`                     |
+| Environment | Base URL            |
+| ----------- | ------------------- |
+| Local dev   | `/`                 |
+| PR preview  | `/pr-${PR_NUMBER}/` |
+| Prod        | `/`                 |
 
 Vite injects the active base into every build. Anything we hardcode to `/` will 404 on previews.
 
