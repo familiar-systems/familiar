@@ -5,7 +5,20 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-familiar-systems-app-shared = { path = "../../crates/app-shared" }
+familiar-systems-app-shared      = { path = "../../crates/app-shared" }
+familiar-systems-campaign-shared = { path = "../../crates/campaign-shared" }
+
+chrono             = { workspace = true }
+libsqlite3-sys     = "0.30"
+sea-orm            = { workspace = true }
+sea-orm-migration  = { workspace = true }
+sqlite-vec         = "0.1"
+sqlx               = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite"] }
+tokio              = { workspace = true }
+ulid               = { workspace = true }
 
 [package.metadata.cargo-machete]
 ignored = ['familiar-systems-app-shared']
+
+[dev-dependencies]
+tokio = { workspace = true }
