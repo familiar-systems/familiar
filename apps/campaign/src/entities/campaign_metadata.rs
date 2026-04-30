@@ -29,3 +29,8 @@ pub struct Model {
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
 }
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
