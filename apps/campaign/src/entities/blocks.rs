@@ -11,6 +11,7 @@ pub struct Model {
     pub thing_id: ThingIdCol,
     pub status: StatusCol,
     pub ordering: i64,
+    #[sea_orm(column_type = "Text")]
     pub body: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -21,7 +22,8 @@ pub enum Relation {
     #[sea_orm(
         belongs_to = "super::things::Entity",
         from = "Column::ThingId",
-        to = "super::things::Column::Id"
+        to = "super::things::Column::Id",
+        on_delete = "Cascade"
     )]
     Thing,
 }

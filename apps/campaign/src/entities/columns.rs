@@ -19,6 +19,7 @@ use sea_orm::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, DeriveValueType)]
+#[sea_orm(column_type = "Text")]
 pub struct ThingIdCol(pub String);
 
 impl From<ThingId> for ThingIdCol {
@@ -104,7 +105,7 @@ macro_rules! ulid_id_column {
                 <String as ValueType>::array_type()
             }
             fn column_type() -> ColumnType {
-                <String as ValueType>::column_type()
+                ColumnType::Text
             }
         }
 
