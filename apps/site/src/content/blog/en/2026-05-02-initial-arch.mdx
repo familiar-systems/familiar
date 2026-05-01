@@ -6,23 +6,26 @@ pubDate: 2026-05-02
 heroImage: "~/assets/blog/2026-05-02-familiar-systems.png"
 tags: ["about", "infrastructure"]
 ---
+import { Image } from "astro:assets";
+import gmPlanning from "~/assets/blog/2026-05-02-planning.png";
+import SuggestionMarkDemo from '~/components/blog/SuggestionMarkDemo.astro';
+import CampaignOpenSequence from '~/components/blog/CampaignOpenSequence.astro';
+import RoutingTableDemo from '~/components/blog/RoutingTableDemo.astro';
 
 Picture a Tuesday night. You haven't touched your campaign in two weeks: real life, a holiday, overtime at work. Your Blades crew is arriving in twenty minutes for the next phase of the Crow's Foot job. You open the browser tab, click into the campaign, and start scribbling last-minute notes for the warehouse the crew is going to hit. One of your players is on the train, opens her character on her phone, and updates her playbook because she remembered she swapped out a stress for an item last session. The page she's editing isn't a page you've opened in months.
 
 This post is about what happens between "I want to play tonight" and the cursor blinking inside a paragraph that someone else is also editing. It's about the systems that power familiar.systems.
 
-{/* IMAGE TODO: opening-scene illustration. A GM at a desk with notes, screen, dice, half-finished session prep; suggestion of another participant on a phone in the corner. Mood-setter, not technical. */}
+<Image src={gmPlanning} alt="A GM plans her game, raven familiar at her side."/>
 
-## A campaign is a database
+## Your campaign/world is a database
 
-Whether you're running a module like Curse of Strahd or a living world like the 7th job a crew has run in Duskvol in Blades of the Dark, your campaign/living world is a single, self-contained, mostly-cold dataset.
-
-Some shape:
+Whether you're running a one-off module like Curse of Strahd or a living world like the 7th job a crew has run in Duskvol in Blades of the Dark, your world is a single, self-contained, mostly-cold dataset.
 
 - A campaign is a few thousand pages at most: NPCs, locations, factions, items, journal entries. Plus the embeddings to search across them, and the relationship edges that tie them together. None of these are large; the whole campaign tends to fit comfortably in tens of megabytes.
 - Campaigns don't query each other. A goblin in your friend's Daggerheart campaign has nothing to say about a goblin in my Mines of Phandelver short.
 - Most campaigns are dormant most of the time. They wake up for a few hours one evening a week, and even during a session only a handful of pages are touched.
-- The "users" of a campaign are at about six people who already trust each other, West Marches excluded.
+- The users of a campaign are people who already trust each other. Usually about 5 to 6, unless it's West Marches.
 
 Given all of that, we treat each campaign as one [SQLite](https://www.sqlite.org/) file. Vector search lives in the same file via [`sqlite-vec`](https://github.com/asg017/sqlite-vec). Migrations are handled by [`sea-orm`](https://www.sea-ql.org/SeaORM/), which beat [libSQL](https://github.com/tursodatabase/libsql) on ergonomics in the end (we evaluated libSQL first but we wanted an ORM). The full reasoning for one file per campaign sits in [the SQLite-over-Postgres decision doc](https://github.com/familiar-systems/familiar/blob/106dd6f48f06e0946a5428439b903f849cd20e2e/docs/discovery/2026-03-09-sqlite-over-postgres-decision.md).
 
@@ -44,30 +47,13 @@ Here's what happens when you open a campaign:
 4. **Hot start.** If a server already has it, the platform returns that assignment immediately.
 5. Either way, the SPA receives a shard-agnostic URL and opens a WebSocket against it.
 
-```mermaid
-sequenceDiagram
-    actor SPA
-    participant Platform
-    participant Storage as Object Storage
-    participant Server as Campaign Server
-
-    SPA->>Platform: POST /api/campaigns/:id/checkout
-    Platform->>Platform: routing table miss
-    Platform->>Server: acquire lease for campaign
-    Server->>Storage: download campaign.db
-    Storage-->>Server: bytes
-    Server-->>Platform: ready
-    Platform-->>SPA: { ws_url, token }
-    SPA->>Server: open WebSocket
-```
+<CampaignOpenSequence />
 
 The lease keeps two servers from owning the same campaign at the same time. A server holds the lease as long as the campaign is open and active; it releases it only after writing back to object storage. The full shutdown protocol is in [the deployment ADR](https://github.com/familiar-systems/familiar/blob/106dd6f48f06e0946a5428439b903f849cd20e2e/docs/plans/2026-03-30-deployment-architecture.md).
 
 Object storage is cold storage; local NVMe is the hot path. Once the file is on the campaign server's volume, every read and write hits a local disk. The same single-binary topology runs in dev, in PR previews, and in production.
 
-{/* IMAGE TODO: hot-start variant of the cold-start sequence. Same boxes, but the platform answers from its routing table directly and the campaign server roundtrip is skipped. Shows the speed difference visually. */}
-
-{/* IMAGE TODO: a small illustration of the routing table itself: a tiny two-column table mapping campaign ids to campaign-server addresses, with one row highlighted as "checked out." Helps the reader picture the platform's job. */}
+<RoutingTableDemo />
 
 ## Editing a campaign
 
@@ -79,7 +65,7 @@ We use [Loro](https://loro.dev), a Rust CRDT library, with the `loro-prosemirror
 
 {/* IMAGE TODO: CRDT merge cartoon. Two browser cursors on the same paragraph, concurrent edits from each, and a converged third panel showing both edits applied without conflict. Pairs with the primer. */}
 
-Now the load-bearing part: each open page is one [kameo](https://github.com/tqwewe/kameo) actor on the campaign server. The actor owns the page's `LoroDoc` and has its own inbox. Two people on Page A and two people on Page B never contend; they're four people across two independent threads. Each thread does its own work at its own pace, and a slow page never blocks a fast one because they aren't sharing a runtime resource.
+Each open page is one [kameo](https://github.com/tqwewe/kameo) [actor](https://berb.github.io/diploma-thesis/original/054_actors.html) on the campaign server. The actor owns the page's `LoroDoc` and has its own inbox. Two people on Page A and two people on Page B never contend; they're four people across two independent threads. Each thread does its own work at its own pace, and a slow page never blocks a fast one because they aren't sharing a runtime resource.
 
 ```mermaid
 graph LR
@@ -107,13 +93,13 @@ stateDiagram-v2
     Snapshotting --> [*]: writeback + evict
 ```
 
-Why this fits TTRPGs. The per-page actor model is exactly the right grain. Most pages are quiet, a few are bursty during sessions, and most campaigns can share a single small server because nothing is paying for state it isn't using.
+TTRPGs cleanly fit into the per-page actor model. Most pages are quiet, a few are bursty during sessions, and most campaigns can share a single small server because nothing is paying for state it isn't using.
 
 The hot path is small. A browser opens its WebSocket and the connection's read task keeps a tiny `HashMap<RoomId, RoomHandle>`. The first message for a room (a `JoinRequest`) goes through the supervisor, which spawns or hands back the page actor. Every subsequent `DocUpdate` goes straight to the actor without touching the supervisor. The supervisor is for lifecycle, not for traffic.
 
 ## The AI is a guest, not a co-author
 
-All of the editing infrastructure above is also where AI suggestions land, but with one important rule: the AI is a guest, not a co-author.
+Your familiar is an AI agent. All of the editing infrastructure above is also where suggestions land, but with one important rule: the AI is a guest, not a co-author.
 
 The AI doesn't speak the CRDT protocol. It calls tools. A serialization compiler turns those tool calls (`suggest_replace`, `create_page`, `propose_relationship`) into "suggestion marks" on the relevant block UUIDs in a page's `LoroDoc`. The original content stays put; the suggestion sits next to it, scoped to the conversation that produced it.
 
@@ -133,7 +119,7 @@ sequenceDiagram
 
 A block under a pending suggestion is **read-only** in the editor until the GM accepts or rejects. This is the design's answer to the AI-overwrites-your-typing problem: the AI literally cannot win a race against you, because the moment it has a suggestion, your block is locked until you decide.
 
-{/* IMAGE TODO: an editor screenshot or mockup with a suggestion mark visible. A highlighted read-only block, a floating "Accept / Reject" panel, the proposed content beneath. Concretizes this whole section. */}
+<SuggestionMarkDemo />
 
 Multiple agents can suggest simultaneously, even on the same blocks. The GM picks. When one is accepted, the server's classifier walks any overlapping suggestions and marks them invalidated; the editor cleans up automatically.
 
@@ -150,6 +136,8 @@ stateDiagram-v2
 
 The slogan from [the vision doc](https://github.com/familiar-systems/familiar/blob/106dd6f48f06e0946a5428439b903f849cd20e2e/docs/vision.md) is "AI proposes, the GM disposes." This is what it means in the editor. The full mechanism (compiler, suggestion lifecycle, conversation scoping) lives in the [actor domain design](https://github.com/familiar-systems/familiar/blob/106dd6f48f06e0946a5428439b903f849cd20e2e/docs/plans/2026-03-25-campaign-actor-domain-design.md).
 
+Big tasks fan out. A single conversation can spawn subagents. Each is its own actor with its own context window working its own slice of the problem in parallel. The GM only ever chats with the primary familiar but every subagent's tool calls and findings show up in the conversation. That way, the GM can correct bad results from a subagent that's wandered off-track.
+
 ## What this gives us
 
 A few things drop out of this design:
@@ -165,7 +153,7 @@ A few things drop out of this design:
 
 This isn't a design we're trying out. We've built it twice already.
 
-The first time was in TypeScript on [Hocuspocus](https://tiptap.dev/docs/hocuspocus/getting-started/overview), [Yjs](https://yjs.dev/), Hono, and Node. It validated the principles (campaign-as-file, object storage as cold backing, per-page room, "AI proposes, the GM disposes") but the Node.js event loop forced architectural workarounds the design didn't ask for: two read paths, two write paths, manual memory pressure management. The runtime kept showing up in the design.
+The first time was in TypeScript on [Hocuspocus](https://tiptap.dev/docs/hocuspocus/getting-started/overview), [Yjs](https://yjs.dev/), Hono, and Node. It validated the principles (campaign-as-file, object storage as cold backing, per-page room, "AI proposes, the GM disposes") but the Node.js event loop forced architectural workarounds the design didn't ask for: two read paths, two write paths, manual memory pressure management. The runtime kept showing up in the design. [The remanants of that experiment are available on github.](https://github.com/familiar-systems/experiment-hocuspocus-agent-collab)
 
 The second time was a Rust spike on kameo, Loro, and TipTap. Same picture, none of the workarounds. Two browsers editing the same page, suggestion marks blocking edits, accept and reject with cascade invalidation when overlapping suggestions collide, all of it end to end with passing Rust unit, TipTap unit, and Playwright e2e tests.
 

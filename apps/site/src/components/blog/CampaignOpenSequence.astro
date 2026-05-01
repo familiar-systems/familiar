@@ -1,0 +1,445 @@
+---
+// Two stacked engineering plates showing the campaign-open lifecycle.
+// FIG. 01 is the cold start (8 steps); FIG. 02 is the hot start (4 steps,
+// most common). Sharp hairline frame, graph-paper background, monospace
+// labels — these are technical artefacts, not parchment ornaments.
+---
+
+<figure class="open-seq not-prose">
+  <div class="plate plate-cold">
+    <div class="plate-head">
+      <span class="fig">FIG. 01</span>
+      <span class="sep" aria-hidden="true">/</span>
+      <span class="title">COLD START</span>
+      <span class="sep" aria-hidden="true">/</span>
+      <span class="steps">8 steps</span>
+      <span class="sub">first open of the evening</span>
+    </div>
+
+    <svg class="diagram" viewBox="0 0 540 420" role="img" aria-labelledby="cold-title cold-desc" preserveAspectRatio="xMidYMid meet">
+      <title id="cold-title">Cold start sequence</title>
+      <desc id="cold-desc">SPA POSTs to Platform; Platform misses its routing table; tells a Campaign Server to acquire a lease; Server downloads the campaign database from Object Storage; Server reports ready to Platform; Platform returns the WebSocket URL and token to the SPA; SPA opens a WebSocket against the Campaign Server.</desc>
+
+      <defs>
+        <marker id="arrow-cold-fwd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0 0 L7 3 L0 6 Z" fill="var(--color-gold)"></path>
+        </marker>
+        <marker id="arrow-cold-back" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0 0 L7 3 L0 6 Z" fill="var(--color-bronze)"></path>
+        </marker>
+      </defs>
+
+      {/* Lifelines */}
+      <line class="lifeline" x1="80"  y1="48" x2="80"  y2="392"></line>
+      <line class="lifeline" x1="220" y1="48" x2="220" y2="392"></line>
+      <line class="lifeline" x1="360" y1="48" x2="360" y2="392"></line>
+      <line class="lifeline" x1="510" y1="48" x2="510" y2="392"></line>
+
+      {/* Lane labels (mono, uppercase, bronze) */}
+      <text class="lane-label" x="80"  y="32" text-anchor="middle">SPA</text>
+      <text class="lane-label" x="220" y="32" text-anchor="middle">PLATFORM</text>
+      <text class="lane-label" x="360" y="32" text-anchor="middle">STORAGE</text>
+      <text class="lane-label" x="510" y="32" text-anchor="middle">SERVER</text>
+
+      {/* Step 1: SPA -> Platform */}
+      <text class="step-num" x="34" y="98" text-anchor="end">01</text>
+      <text class="msg-label" x="150" y="84" text-anchor="middle">POST /checkout</text>
+      <line class="arrow fwd cold-arrow" style="--delay: 0ms; --len: 144"
+            x1="84" y1="94" x2="216" y2="94"
+            marker-end="url(#arrow-cold-fwd)"></line>
+
+      {/* Step 2: Platform self-loop */}
+      <text class="step-num" x="34" y="136" text-anchor="end">02</text>
+      <path class="arrow fwd cold-arrow" style="--delay: 230ms; --len: 60"
+            d="M 220 124 C 250 124, 250 144, 222 144"
+            fill="none"
+            marker-end="url(#arrow-cold-fwd)"></path>
+      <text class="msg-label" x="258" y="138" text-anchor="start">routing table miss</text>
+
+      {/* Step 3: Platform -> Server */}
+      <text class="step-num" x="34" y="174" text-anchor="end">03</text>
+      <text class="msg-label" x="365" y="160" text-anchor="middle">acquire lease</text>
+      <line class="arrow fwd cold-arrow" style="--delay: 460ms; --len: 290"
+            x1="224" y1="170" x2="506" y2="170"
+            marker-end="url(#arrow-cold-fwd)"></line>
+
+      {/* Step 4: Server -> Storage */}
+      <text class="step-num" x="34" y="212" text-anchor="end">04</text>
+      <text class="msg-label" x="435" y="198" text-anchor="middle">download campaign.db</text>
+      <line class="arrow fwd cold-arrow" style="--delay: 690ms; --len: 144"
+            x1="506" y1="208" x2="364" y2="208"
+            marker-end="url(#arrow-cold-fwd)"></line>
+
+      {/* Step 5: Storage -> Server (return) */}
+      <text class="step-num" x="34" y="250" text-anchor="end">05</text>
+      <text class="msg-label return-label" x="435" y="236" text-anchor="middle">bytes</text>
+      <line class="arrow back cold-arrow" style="--delay: 920ms; --len: 144"
+            x1="364" y1="246" x2="506" y2="246"
+            marker-end="url(#arrow-cold-back)"></line>
+
+      {/* Step 6: Server -> Platform (return) */}
+      <text class="step-num" x="34" y="288" text-anchor="end">06</text>
+      <text class="msg-label return-label" x="365" y="274" text-anchor="middle">ready</text>
+      <line class="arrow back cold-arrow" style="--delay: 1150ms; --len: 290"
+            x1="506" y1="284" x2="224" y2="284"
+            marker-end="url(#arrow-cold-back)"></line>
+
+      {/* Step 7: Platform -> SPA (return) */}
+      <text class="step-num" x="34" y="326" text-anchor="end">07</text>
+      <text class="msg-label return-label" x="150" y="312" text-anchor="middle">{`{ ws_url, token }`}</text>
+      <line class="arrow back cold-arrow" style="--delay: 1380ms; --len: 144"
+            x1="216" y1="322" x2="84" y2="322"
+            marker-end="url(#arrow-cold-back)"></line>
+
+      {/* Step 8: SPA -> Server (final, heavier) */}
+      <text class="step-num" x="34" y="364" text-anchor="end">08</text>
+      <text class="msg-label final-label" x="295" y="350" text-anchor="middle">open WebSocket</text>
+      <line class="arrow fwd final cold-arrow" style="--delay: 1610ms; --len: 430"
+            x1="84" y1="360" x2="506" y2="360"
+            marker-end="url(#arrow-cold-fwd)"></line>
+    </svg>
+
+    <div class="plate-foot">
+      <span class="comment">// 8 messages, 1 round-trip to object storage. Worst case.</span>
+    </div>
+  </div>
+
+  <div class="plate plate-hot">
+    <div class="plate-head">
+      <span class="fig">FIG. 02</span>
+      <span class="sep" aria-hidden="true">/</span>
+      <span class="title">HOT START</span>
+      <span class="sep" aria-hidden="true">/</span>
+      <span class="steps">4 steps</span>
+      <span class="sub">a server already has it</span>
+    </div>
+
+    <svg class="diagram" viewBox="0 0 540 230" role="img" aria-labelledby="hot-title hot-desc" preserveAspectRatio="xMidYMid meet">
+      <title id="hot-title">Hot start sequence</title>
+      <desc id="hot-desc">SPA POSTs to Platform; Platform finds the campaign in its routing table; returns the WebSocket URL and token to the SPA; SPA opens a WebSocket against the Campaign Server. Storage and Server lanes are quiet — the entire middle of the cold path is skipped.</desc>
+
+      <defs>
+        <marker id="arrow-hot-fwd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0 0 L7 3 L0 6 Z" fill="var(--color-gold)"></path>
+        </marker>
+        <marker id="arrow-hot-back" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0 0 L7 3 L0 6 Z" fill="var(--color-bronze)"></path>
+        </marker>
+      </defs>
+
+      {/* Lifelines: SPA + Platform full strength; Storage + Server ghosted */}
+      <line class="lifeline"       x1="80"  y1="48" x2="80"  y2="202"></line>
+      <line class="lifeline"       x1="220" y1="48" x2="220" y2="202"></line>
+      <line class="lifeline ghost" x1="360" y1="48" x2="360" y2="202"></line>
+      <line class="lifeline ghost" x1="510" y1="48" x2="510" y2="202"></line>
+
+      {/* Lane labels */}
+      <text class="lane-label"       x="80"  y="32" text-anchor="middle">SPA</text>
+      <text class="lane-label"       x="220" y="32" text-anchor="middle">PLATFORM</text>
+      <text class="lane-label ghost" x="360" y="32" text-anchor="middle">STORAGE</text>
+      <text class="lane-label ghost" x="510" y="32" text-anchor="middle">SERVER</text>
+
+      {/* Step 1: SPA -> Platform */}
+      <text class="step-num" x="34" y="98" text-anchor="end">01</text>
+      <text class="msg-label" x="150" y="84" text-anchor="middle">POST /checkout</text>
+      <line class="arrow fwd hot-arrow" style="--delay: 0ms; --len: 144"
+            x1="84" y1="94" x2="216" y2="94"
+            marker-end="url(#arrow-hot-fwd)"></line>
+
+      {/* Step 2: Platform self-loop */}
+      <text class="step-num" x="34" y="136" text-anchor="end">02</text>
+      <path class="arrow fwd hot-arrow" style="--delay: 230ms; --len: 60"
+            d="M 220 124 C 250 124, 250 144, 222 144"
+            fill="none"
+            marker-end="url(#arrow-hot-fwd)"></path>
+      <text class="msg-label hit" x="258" y="138" text-anchor="start">routing table HIT</text>
+
+      {/* Step 3: Platform -> SPA (return) */}
+      <text class="step-num" x="34" y="174" text-anchor="end">03</text>
+      <text class="msg-label return-label" x="150" y="160" text-anchor="middle">{`{ ws_url, token }`}</text>
+      <line class="arrow back hot-arrow" style="--delay: 460ms; --len: 144"
+            x1="216" y1="170" x2="84" y2="170"
+            marker-end="url(#arrow-hot-back)"></line>
+
+      {/* Step 4: SPA -> Server (final, heavier) */}
+      <text class="step-num" x="34" y="212" text-anchor="end">04</text>
+      <text class="msg-label final-label" x="295" y="198" text-anchor="middle">open WebSocket</text>
+      <line class="arrow fwd final hot-arrow" style="--delay: 690ms; --len: 430"
+            x1="84" y1="208" x2="506" y2="208"
+            marker-end="url(#arrow-hot-fwd)"></line>
+    </svg>
+
+    <div class="plate-foot">
+      <span class="comment">// typical path. Most opens hit this.</span>
+    </div>
+  </div>
+
+  <figcaption>
+    Same lanes, same ledger. The entire middle of the cold path simply
+    doesn&apos;t run on the hot path. Much lower latency.
+  </figcaption>
+</figure>
+
+<style>
+  .open-seq {
+    margin: 2.75rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .open-seq figcaption {
+    margin-top: 0.75rem;
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    color: var(--muted-foreground);
+    font-style: italic;
+    text-align: center;
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* ===== Plate (the technical drawing frame) ===== */
+  .plate {
+    position: relative;
+    border: 1px solid color-mix(in srgb, var(--color-bronze), transparent 60%);
+    border-radius: 0;
+    background-color: var(--background);
+    /* fine engineering grid: 8px base + accent every 40px */
+    background-image:
+      linear-gradient(to right,  color-mix(in srgb, var(--color-bronze), transparent 94%) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--color-bronze), transparent 94%) 1px, transparent 1px),
+      linear-gradient(to right,  color-mix(in srgb, var(--color-bronze), transparent 86%) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--color-bronze), transparent 86%) 1px, transparent 1px);
+    background-size: 8px 8px, 8px 8px, 40px 40px, 40px 40px;
+    background-position: 0 0;
+  }
+  :global(.dark) .plate {
+    border-color: color-mix(in srgb, var(--color-bronze), transparent 55%);
+    background-image:
+      linear-gradient(to right,  color-mix(in srgb, var(--color-bronze), transparent 88%) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--color-bronze), transparent 88%) 1px, transparent 1px),
+      linear-gradient(to right,  color-mix(in srgb, var(--color-bronze), transparent 76%) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--color-bronze), transparent 76%) 1px, transparent 1px);
+  }
+
+  /* corner registration ticks (top-left & bottom-right only — engineer's plate marks) */
+  .plate::before,
+  .plate::after {
+    content: "";
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 0 solid var(--color-bronze);
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .plate::before {
+    top: 6px;
+    left: 6px;
+    border-top-width: 1px;
+    border-left-width: 1px;
+  }
+  .plate::after {
+    bottom: 6px;
+    right: 6px;
+    border-bottom-width: 1px;
+    border-right-width: 1px;
+  }
+
+  /* ===== Header (CAD title block) ===== */
+  .plate-head {
+    position: relative;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.625rem;
+    padding: 0.6875rem 1.125rem;
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-bronze), transparent 65%);
+    background-color: color-mix(in srgb, var(--background), transparent 30%);
+  }
+  .plate-head .fig {
+    color: var(--color-bronze);
+    font-weight: 700;
+  }
+  .plate-head .sep {
+    color: color-mix(in srgb, var(--color-bronze), transparent 55%);
+    font-weight: 400;
+  }
+  .plate-head .title {
+    color: var(--foreground);
+  }
+  .plate-head .steps {
+    color: var(--color-gold);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+  }
+  .plate-head .sub {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    font-style: italic;
+    color: var(--muted-foreground);
+    margin-left: auto;
+  }
+
+  /* ===== SVG diagram ===== */
+  .diagram {
+    display: block;
+    width: 100%;
+    height: auto;
+    padding: 0.5rem 0;
+  }
+
+  .lane-label {
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px;
+    font-weight: 700;
+    fill: var(--color-bronze);
+    letter-spacing: 0.22em;
+  }
+  .lane-label.ghost {
+    opacity: 0.32;
+  }
+
+  .step-num {
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 9.5px;
+    font-weight: 600;
+    fill: color-mix(in srgb, var(--color-bronze), transparent 35%);
+    letter-spacing: 0.08em;
+  }
+
+  .lifeline {
+    stroke: color-mix(in srgb, var(--color-bronze), transparent 55%);
+    stroke-width: 1;
+  }
+  .lifeline.ghost {
+    opacity: 0.22;
+  }
+
+  .msg-label {
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    fill: var(--muted-foreground);
+    letter-spacing: 0.01em;
+  }
+  .msg-label.return-label {
+    fill: color-mix(in srgb, var(--color-bronze), var(--muted-foreground) 30%);
+  }
+  .msg-label.final-label {
+    fill: var(--color-gold);
+    font-weight: 700;
+  }
+  .msg-label.hit {
+    fill: var(--color-gold);
+    font-weight: 700;
+  }
+
+  /* ===== Arrows ===== */
+  .arrow {
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+    stroke-dasharray: var(--len, 700);
+    stroke-dashoffset: var(--len, 700);
+    transition: stroke-dashoffset 220ms cubic-bezier(0.4, 0, 0.2, 1);
+    transition-delay: var(--delay, 0ms);
+  }
+  .arrow.fwd {
+    stroke: var(--color-gold);
+  }
+  .arrow.back {
+    stroke: var(--color-bronze);
+  }
+  .arrow.final {
+    stroke-width: 2.25;
+  }
+  .open-seq.is-visible .arrow {
+    stroke-dashoffset: 0;
+  }
+
+  /* ===== Footer (mono comment) ===== */
+  .plate-foot {
+    padding: 0.5rem 1.125rem 0.625rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-bronze), transparent 80%);
+    background-color: color-mix(in srgb, var(--background), transparent 30%);
+  }
+  .plate-foot .comment {
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: color-mix(in srgb, var(--muted-foreground), transparent 15%);
+    letter-spacing: 0.02em;
+  }
+
+  /* ===== Reduced motion ===== */
+  @media (prefers-reduced-motion: reduce) {
+    .arrow {
+      stroke-dasharray: none;
+      stroke-dashoffset: 0;
+      transition: none;
+    }
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 640px) {
+    .plate-head {
+      padding: 0.625rem 0.875rem;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      gap: 0.375rem 0.5rem;
+    }
+    .plate-head .sub {
+      font-size: 12px;
+      flex-basis: 100%;
+      margin-left: 0;
+      margin-top: 2px;
+    }
+    .plate-head .steps {
+      letter-spacing: 0.1em;
+    }
+    .plate::before, .plate::after {
+      width: 8px;
+      height: 8px;
+    }
+    .plate-foot {
+      padding: 0.4375rem 0.875rem 0.5625rem;
+    }
+    .plate-foot .comment {
+      font-size: 10.5px;
+    }
+  }
+</style>
+
+<script is:inline>
+  (function () {
+    const figs = document.querySelectorAll(".open-seq");
+    if (!figs.length || typeof IntersectionObserver === "undefined") {
+      figs.forEach((f) => f.classList.add("is-visible"));
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            io.unobserve(entry.target);
+          }
+        }
+      },
+      { threshold: 0.15, rootMargin: "0px 0px -10% 0px" },
+    );
+    figs.forEach((f) => io.observe(f));
+  })();
+</script>
