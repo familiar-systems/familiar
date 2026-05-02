@@ -6,6 +6,7 @@ import BlogCard from '~/components/blog/BlogCard.astro';
 import Container from '~/components/ui/Container.astro';
 import Grid from '~/components/ui/Grid.astro';
 import { getCollection } from 'astro:content';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 import { siteConfig } from '~/site.config';
 
 import { languages, defaultLang } from '~/i18n/ui';
@@ -57,11 +58,14 @@ const t = useTranslations(lang);
             description={post.data.description}
             pubDate={post.data.pubDate}
             heroImage={post.data.heroImage}
-            slug={`/${lang}/blog/${post.id
-              .split('/')
-              .slice(1)
-              .join('/')
-              .replace(/\.[^/.]+$/, '')}`}
+            slug={getRelativeLocaleUrl(
+              lang,
+              `/blog/${post.id
+                .split('/')
+                .slice(1)
+                .join('/')
+                .replace(/\.[^/.]+$/, '')}`,
+            )}
             isVideo={post.data.isVideo}
           />
         ))
