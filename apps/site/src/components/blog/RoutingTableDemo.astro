@@ -1,0 +1,437 @@
+---
+// The platform's routing table, rendered as system output: monospace rows on
+// the same engineering plate as FIG. 01 / FIG. 02. Active campaigns are pinned
+// to a server; dormant ones are pinned to nothing. The just-acquired row is
+// flagged at the left margin to tie back to the sequence diagrams.
+---
+
+<figure class="routing-table not-prose">
+  <div class="plate">
+    <div class="plate-head">
+      <span class="fig">FIG. 03</span>
+      <span class="sep" aria-hidden="true">/</span>
+      <span class="title">PLATFORM ROUTING TABLE</span>
+      <span class="sep" aria-hidden="true">/</span>
+      <span class="size">5 entries</span>
+      <span class="sub">live system state</span>
+    </div>
+
+    <div class="rt-scroll">
+      <table class="rt" role="table" aria-label="Routing table sample">
+        <thead>
+          <tr>
+            <th class="col-indicator" scope="col" aria-hidden="true"></th>
+            <th class="col-slug" scope="col">campaign</th>
+            <th class="col-id" scope="col">id</th>
+            <th class="col-server" scope="col">server</th>
+            <th class="col-status" scope="col">status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="row row-acquired">
+            <td class="col-indicator"
+              ><span class="ind" aria-hidden="true">&rsaquo;</span></td
+            >
+            <td class="col-slug">shadows-of-doskvol</td>
+            <td class="col-id">01HG7K2M&#8230;</td>
+            <td class="col-server">campaign-2</td>
+            <td class="col-status">
+              <span class="flag flag-acquired">
+                <span class="pulse" aria-hidden="true"></span>
+                <span class="flag-text">[just acquired]</span>
+              </span>
+            </td>
+          </tr>
+          <tr class="row row-active">
+            <td class="col-indicator"></td>
+            <td class="col-slug">the-crooked-coast</td>
+            <td class="col-id">01HG6X9P&#8230;</td>
+            <td class="col-server">campaign-1</td>
+            <td class="col-status"
+              ><span class="flag flag-active">[active]</span></td
+            >
+          </tr>
+          <tr class="row row-dormant">
+            <td class="col-indicator"></td>
+            <td class="col-slug">curse-of-strahd</td>
+            <td class="col-id">01HG8B1Q&#8230;</td>
+            <td class="col-server"><span class="dash">&mdash;</span></td>
+            <td class="col-status"
+              ><span class="flag flag-dormant">[dormant]</span></td
+            >
+          </tr>
+          <tr class="row row-dormant">
+            <td class="col-indicator"></td>
+            <td class="col-slug">hollows-of-phandelver</td>
+            <td class="col-id">01HG9D4R&#8230;</td>
+            <td class="col-server"><span class="dash">&mdash;</span></td>
+            <td class="col-status"
+              ><span class="flag flag-dormant">[dormant]</span></td
+            >
+          </tr>
+          <tr class="row row-dormant">
+            <td class="col-indicator"></td>
+            <td class="col-slug">daggerheart-westmarches</td>
+            <td class="col-id">01HGA2F7&#8230;</td>
+            <td class="col-server"><span class="dash">&mdash;</span></td>
+            <td class="col-status"
+              ><span class="flag flag-dormant">[dormant]</span></td
+            >
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="plate-foot">
+      <span class="comment"
+        >// active &harr; pinned to a server. dormant &harr; pinned to nothing.</span
+      >
+    </div>
+  </div>
+
+  <figcaption>
+    The platform&apos;s only globally-stateful job: this table. The flagged row
+    is the campaign you just opened above.
+  </figcaption>
+</figure>
+
+<style>
+  .routing-table {
+    margin: 2.75rem 0;
+  }
+
+  .routing-table figcaption {
+    margin-top: 0.75rem;
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    color: var(--muted-foreground);
+    font-style: italic;
+    text-align: center;
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* ===== Plate (matches FIG. 01 / FIG. 02) ===== */
+  .plate {
+    position: relative;
+    border: 1px solid color-mix(in srgb, var(--color-bronze), transparent 60%);
+    border-radius: 0;
+    background-color: var(--background);
+    background-image:
+      linear-gradient(
+        to right,
+        color-mix(in srgb, var(--color-bronze), transparent 94%) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--color-bronze), transparent 94%) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to right,
+        color-mix(in srgb, var(--color-bronze), transparent 86%) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--color-bronze), transparent 86%) 1px,
+        transparent 1px
+      );
+    background-size:
+      8px 8px,
+      8px 8px,
+      40px 40px,
+      40px 40px;
+    background-position: 0 0;
+  }
+  :global(.dark) .plate {
+    border-color: color-mix(in srgb, var(--color-bronze), transparent 55%);
+    background-image:
+      linear-gradient(
+        to right,
+        color-mix(in srgb, var(--color-bronze), transparent 88%) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--color-bronze), transparent 88%) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to right,
+        color-mix(in srgb, var(--color-bronze), transparent 76%) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--color-bronze), transparent 76%) 1px,
+        transparent 1px
+      );
+  }
+
+  .plate::before,
+  .plate::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 0 solid var(--color-bronze);
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .plate::before {
+    top: 6px;
+    left: 6px;
+    border-top-width: 1px;
+    border-left-width: 1px;
+  }
+  .plate::after {
+    bottom: 6px;
+    right: 6px;
+    border-bottom-width: 1px;
+    border-right-width: 1px;
+  }
+
+  /* ===== Header ===== */
+  .plate-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.625rem;
+    padding: 0.6875rem 1.125rem;
+    font-family:
+      ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border-bottom: 1px solid
+      color-mix(in srgb, var(--color-bronze), transparent 65%);
+    background-color: color-mix(in srgb, var(--background), transparent 30%);
+  }
+  .plate-head .fig {
+    color: var(--color-bronze);
+    font-weight: 700;
+  }
+  .plate-head .sep {
+    color: color-mix(in srgb, var(--color-bronze), transparent 55%);
+    font-weight: 400;
+  }
+  .plate-head .title {
+    color: var(--foreground);
+  }
+  .plate-head .size {
+    color: var(--color-gold);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+  }
+  .plate-head .sub {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    font-style: italic;
+    color: var(--muted-foreground);
+    margin-left: auto;
+  }
+
+  /* ===== Table (CLI / system-output style) ===== */
+  .rt-scroll {
+    overflow-x: auto;
+  }
+  .rt {
+    width: 100%;
+    border-collapse: collapse;
+    font-family:
+      ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
+  .rt th,
+  .rt td {
+    padding: 0.625rem 0.875rem;
+    text-align: left;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .rt thead th {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-bronze), var(--muted-foreground) 30%);
+    border-bottom: 1px solid
+      color-mix(in srgb, var(--color-bronze), transparent 70%);
+    padding-top: 0.625rem;
+    padding-bottom: 0.5rem;
+  }
+  .rt tbody tr {
+    border-bottom: 1px solid
+      color-mix(in srgb, var(--color-bronze), transparent 86%);
+  }
+  .rt tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  /* Column tweaks */
+  .col-indicator {
+    width: 1.75rem;
+    padding-right: 0 !important;
+    padding-left: 1.125rem !important;
+    color: var(--color-gold);
+    font-weight: 700;
+  }
+  .col-slug {
+    color: var(--foreground);
+    font-weight: 500;
+  }
+  .col-id {
+    color: color-mix(in srgb, var(--muted-foreground), transparent 10%);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+  .col-server {
+    color: var(--foreground);
+  }
+  .col-status {
+    text-align: right !important;
+  }
+
+  /* ===== Acquired-row highlight ===== */
+  .row-acquired {
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-gold), transparent 88%) 0%,
+      color-mix(in srgb, var(--color-gold), transparent 96%) 70%,
+      transparent 100%
+    );
+    box-shadow: inset 2px 0 0 0 var(--color-gold);
+  }
+  .row-acquired .col-slug {
+    color: color-mix(in srgb, var(--foreground), var(--color-gold) 15%);
+  }
+  .row-acquired .ind {
+    display: inline-block;
+    line-height: 1;
+  }
+  /* The indicator only renders on the acquired row; other rows have an empty cell */
+
+  /* ===== Dormant rows ===== */
+  .row-dormant .col-slug,
+  .row-dormant .col-id,
+  .row-dormant .col-server {
+    color: color-mix(in srgb, var(--muted-foreground), transparent 5%);
+  }
+  .row-dormant .dash {
+    color: color-mix(in srgb, var(--muted-foreground), transparent 30%);
+  }
+
+  /* ===== Status flags ===== */
+  .flag {
+    font-family:
+      ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    white-space: nowrap;
+  }
+  .flag-acquired .flag-text {
+    color: var(--color-gold);
+    font-weight: 700;
+  }
+  .flag-acquired .pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-gold);
+    box-shadow: 0 0 0 0 rgb(184 149 48 / 0.5);
+    animation: rt-pulse 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  @keyframes rt-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgb(184 149 48 / 0.5);
+    }
+    50% {
+      box-shadow: 0 0 0 6px rgb(184 149 48 / 0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .flag-acquired .pulse {
+      animation: none;
+    }
+  }
+  .flag-active {
+    color: color-mix(in srgb, var(--color-gold), var(--foreground) 35%);
+  }
+  .flag-dormant {
+    color: color-mix(in srgb, var(--muted-foreground), transparent 25%);
+    font-style: italic;
+  }
+
+  /* ===== Footer ===== */
+  .plate-foot {
+    padding: 0.5rem 1.125rem 0.625rem;
+    border-top: 1px solid
+      color-mix(in srgb, var(--color-bronze), transparent 80%);
+    background-color: color-mix(in srgb, var(--background), transparent 30%);
+  }
+  .plate-foot .comment {
+    font-family:
+      ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: color-mix(in srgb, var(--muted-foreground), transparent 15%);
+    letter-spacing: 0.02em;
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 720px) {
+    .rt {
+      font-size: 12.5px;
+    }
+    .rt th,
+    .rt td {
+      padding: 0.5rem 0.625rem;
+    }
+    .col-indicator {
+      padding-left: 0.75rem !important;
+      width: 1.25rem;
+    }
+    .col-id {
+      font-size: 11px;
+    }
+    .flag {
+      font-size: 11px;
+    }
+  }
+
+  @media (max-width: 540px) {
+    .plate-head {
+      padding: 0.625rem 0.875rem;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      gap: 0.375rem 0.5rem;
+    }
+    .plate-head .sub {
+      font-size: 12px;
+      flex-basis: 100%;
+      margin-left: 0;
+      margin-top: 2px;
+    }
+    .rt {
+      font-size: 11.5px;
+    }
+    .col-id {
+      display: none;
+    }
+    .col-indicator {
+      padding-left: 0.625rem !important;
+    }
+  }
+</style>
