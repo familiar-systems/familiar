@@ -3,6 +3,8 @@
 //! them — this is the local escape hatch into hand-rolled SQL. Public surface
 //! takes/returns branded `BlockId`s; the SQL is bounded to one method per
 //! query shape.
+//! TODO consider moving to LanceDB instead of sqllite-vec.
+//! LanceDB gives direct to s3 access with
 
 use familiar_systems_campaign_shared::id::BlockId;
 use sea_orm::{DatabaseConnection, FromQueryResult, Statement, Value};

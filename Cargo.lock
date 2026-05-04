@@ -893,10 +893,13 @@ dependencies = [
  "familiar-systems-app-shared",
  "familiar-systems-campaign-shared",
  "libsqlite3-sys",
+ "loro",
  "sea-orm",
  "sea-orm-migration",
+ "serde_json",
  "sqlite-vec",
  "sqlx",
+ "thiserror 2.0.18",
  "tokio",
  "ulid",
 ]
@@ -905,10 +908,8 @@ dependencies = [
 name = "familiar-systems-campaign-shared"
 version = "0.0.0"
 dependencies = [
- "loro",
  "nanoid",
  "serde",
- "serde_json",
  "ts-rs",
  "ulid",
  "uuid",

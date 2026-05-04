@@ -5,13 +5,8 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-loro.workspace = true
 nanoid.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 ts-rs.workspace = true
 ulid.workspace = true
 uuid.workspace = true
-
-[dev-dependencies]
-serde_json.workspace = true

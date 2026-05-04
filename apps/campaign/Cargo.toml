@@ -10,10 +10,13 @@ familiar-systems-campaign-shared = { path = "../../crates/campaign-shared" }
 
 chrono             = { workspace = true }
 libsqlite3-sys     = "0.30"
+loro               = { workspace = true }
 sea-orm            = { workspace = true }
 sea-orm-migration  = { workspace = true }
+serde_json         = { workspace = true }
 sqlite-vec         = "0.1"
 sqlx               = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite"] }
+thiserror          = { workspace = true }
 tokio              = { workspace = true }
 ulid               = { workspace = true }
 
