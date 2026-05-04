@@ -96,7 +96,7 @@ The key architectural hedge: the campaign context interface (search_entities, ge
 
 ## References
 
-- [Campaign Actor Domain Design](../plans/2026-03-25-campaign-actor-domain-design.md) - actor topology, RelationshipGraph, ThingActor, persistence model
+- [Campaign Actor Domain Design](../plans/2026-05-04-campaign-actor-domain-design.md) - actor topology, RelationshipGraph, ThingActor, persistence model
 - [Campaign Collaboration Architecture](../plans/2026-03-25-campaign-collaboration-architecture.md) - campaign checkout, libSQL as cold storage, scaling model
 - [Audio Pipeline Architecture](./audio_ingest/audio_overview.md) - campaign context interface, push vs pull context patterns
 - [SQLite over PostgreSQL](./2026-03-09-sqlite-over-postgres-decision.md) - database-per-campaign decision, libSQL choice

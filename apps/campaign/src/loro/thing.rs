@@ -48,10 +48,7 @@ impl CrdtDoc for LoroThingDoc {
     fn apply_updates(&mut self, updates: &[Vec<u8>]) -> Result<(), DocError> {
         for (i, update) in updates.iter().enumerate() {
             self.doc.import(update).map_err(|e| {
-                DocError::ApplyUpdate(format!(
-                    "update {i} ({} bytes): {e}",
-                    update.len()
-                ))
+                DocError::ApplyUpdate(format!("update {i} ({} bytes): {e}", update.len()))
             })?;
         }
         Ok(())

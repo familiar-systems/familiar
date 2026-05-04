@@ -1,9 +1,19 @@
 # ADR: Campaign Actor Domain Design
 
-**Status:** Draft (rev 2)
-**Date:** 2026-03-25 (rev 2: 2026-04-02)
-**Supersedes:** None (new decision area; refines and extends [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md))
-**Related decisions:** [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md)
+**Status:** Active
+**Date:** 2026-05-04
+**Supersedes:** [`2026-03-25-campaign-actor-domain-design.md`](../archive/plans/2026-03-25-campaign-actor-domain-design.md) (refines and extends [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md))
+**Related decisions:** [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md), [Project Structure](./2026-03-26-project-structure-design.md)
+**Validated by:** [`experiment-single-campaign-editor/tiptap-loro-kameo-rust`](../../../experiment-single-campaign-editor/tiptap-loro-kameo-rust) (throwaway spike that proved Loro + TipTap + kameo + loro-protocol end to end)
+
+> **What changed from the 2026-03-25 version**
+>
+> - **Trait split.** `CrdtDoc` (data algebra: apply updates, export/import snapshot, version) and `CrdtRoom` (membership, dispatch, broadcast policy) are now separate. The previous draft had only `CrdtRoom`; the spike validated `CrdtDoc` independently and the production design follows.
+> - **Permission filtering moved to the client.** gm_only content is filtered at the TipTap render layer based on a `status` block attribute, not by server-side projection. The server is single-doc per Thing. Loro's wire format does not expose paths cleanly enough to redact subtrees server-side without leaking structure ([investigation](https://github.com/loro-dev/protocol/blob/edf4065da1642ec7e394e555f0e68421427ea701/protocol.md), [`loro::json::redact`](https://github.com/loro-dev/loro/blob/cc587edeb8a777b653e98fd60a17272c0cf34fb0/crates/loro-internal/src/encoding/json_schema.rs#L1455)), and multi-doc projection sacrifices shared cursors and editing simplicity.
+> - **File layout codified.** `apps/campaign/src/domain/crdt/` holds the trait algebras. `apps/campaign/src/loro/` holds concrete `LoroThingDoc` / `LoroTocDoc` impls. `crates/campaign-shared/src/loro/` holds only ts-rs-exported schema types (`ThingHandle`, `TocEntry`, `TocEntryKind`) and key/container constants. The `CrdtDoc` trait is *not* in `campaign-shared` because it has no cross-crate consumer.
+> - **Persistence framed as a service.** Four explicit layers: data algebra (`CrdtDoc`), domain algebra (`CrdtRoom`, `Persistent`), service host (the actor), service implementation (`DatabaseActor`). Three persistence shapes: snapshot (Thing/Toc/Conversation), delta (RelationshipGraph), derived (CampaignVocabulary).
+>
+> Sections not listed above are unchanged from the previous version. Where this doc copies forward verbatim, it does so deliberately - the underlying decisions hold.
 
 ### Key External Dependencies
 
@@ -14,7 +24,7 @@
 | **kameo**                | Rust actor framework. Typed actor refs, async message passing, supervision trees. Each actor in the topology is a kameo actor.                                                                        | [tqwewe/kameo](https://github.com/tqwewe/kameo) · [docs](https://docs.rs/kameo)                                                                                                                                                                                                                                                            |
 | **axum**                 | HTTP/WebSocket server. Handles the WS upgrade, REST endpoints, and spawns per-connection read/write tasks.                                                                                            | [tokio-rs/axum](https://github.com/tokio-rs/axum) · [docs](https://docs.rs/axum)                                                                                                                                                                                                                                                           |
 | **petgraph**             | In-memory graph representation for the RelationshipGraph actor. Loaded at campaign checkout, ~500 nodes / ~2,000 edges.                                                                               | [petgraph/petgraph](https://github.com/petgraph/petgraph) · [docs](https://docs.rs/petgraph)                                                                                                                                                                                                                                               |
-| **libSQL / Turso**       | Campaign database. Database-per-campaign as isolated `.db` files. Turso is the identified upgrade path (MIT-licensed Rust rewrite of SQLite with `BEGIN CONCURRENT` and native vector search).        | [tursodatabase/libsql](https://github.com/tursodatabase/libsql)                                                                                                                                                                                                                                                                            |
+| **SQLite + sqlite-vec + sea-orm** | Campaign database. Database-per-campaign as isolated `.db` files. Vector search via the `sqlite-vec` extension; ORM via `sea-orm`. libSQL/Turso remain identified as a future upgrade path if vector indexing or `BEGIN CONCURRENT` becomes load-bearing.        | [sqlite.org](https://www.sqlite.org/) · [asg017/sqlite-vec](https://github.com/asg017/sqlite-vec) · [SeaORM](https://www.sea-ql.org/SeaORM/)                                                                                                                                                                                                                                                                            |
 | **TipTap / ProseMirror** | Frontend rich text editor. The LoroDoc content must round-trip through ProseMirror's document model. TipTap extensions define custom node types (suggestion marks, transclusion blocks, etc.).        | [ueberdosis/tiptap](https://github.com/ueberdosis/tiptap) · [TipTap docs](https://tiptap.dev/docs) · [TipTap comments (architectural reference for suggestion marks)](https://tiptap.dev/docs/comments/getting-started/overview)                                                                                                           |
 | **loro-prosemirror**     | Official ProseMirror binding for Loro. Provides `LoroSyncPlugin` (bidirectional doc ↔ editor sync), `LoroUndoPlugin`, `LoroEphemeralCursorPlugin`. TipTap compatible. Validated in prior integration. | [loro-dev/loro-prosemirror](https://github.com/loro-dev/loro-prosemirror)                                                                                                                                                                                                                                                                  |
 | **Hetzner**              | Compute (CX22, hel1 datacenter), object storage (campaign DB source of truth), volumes (local NVMe cache).                                                                                            | [hetzner.com](https://www.hetzner.com)                                                                                                                                                                                                                                                                                                     |
@@ -43,9 +53,42 @@ The loro-dev/protocol defines a transport-agnostic CRDT sync protocol with room-
 ### Constraints
 
 - **Long-term reasoning over short-term convenience.** Operational complexity matters, but the right abstraction is worth the upfront cost if it prevents larger problems later. Don't optimize for "easy to build first time" at the expense of "easy to reason about in six months."
-- **Campaign-as-file isolation.** Each campaign is a self-contained libSQL database file. All actors for a campaign operate against the same file. Cross-campaign interaction is architecturally impossible.
+- **Campaign-as-file isolation.** Each campaign is a self-contained SQLite database file (with `sqlite-vec` for vector search and `sea-orm` as the ORM). All actors for a campaign operate against the same file. Cross-campaign interaction is architecturally impossible.
 - **"AI proposes, GM disposes."** The AI never modifies the campaign graph directly. All AI output is provisional until explicitly accepted.
 - **EU/EEA infrastructure.** All compute and data stays in EU/EEA. LLM inference runs on Nebius (Finnish infrastructure). Claude never sees user data.
+
+---
+
+## Current state
+
+This is the third pass at the campaign architecture (Hocuspocus/Yjs, then a Loro-based spike, now production). The spike at [`experiment-single-campaign-editor/tiptap-loro-kameo-rust`](../../../experiment-single-campaign-editor/tiptap-loro-kameo-rust) is throwaway code that validated the technology stack end to end.
+
+**Validated by the spike (and now built into production):**
+- Loro CRDT + TipTap + `loro-prosemirror` round-trip (rich text edits sync correctly between browsers and the Rust backend).
+- kameo actor topology with one `ThingActor` per active page, one `TocActor` per campaign.
+- `loro-protocol` over WebSocket, room-multiplexed (one connection joins multiple rooms).
+- The `CrdtDoc` trait shape (`apply_updates`, `export_snapshot`, `import_snapshot`, `version`, with `should_persist` / `debug_value` defaults).
+- Suggestion lifecycle as marks on block UUID ranges, suggestion classifier as a pure function, accept/reject commands routing through the CRDT cleanly.
+- Snapshot persistence on a debounce timer, write actor with single connection.
+
+**Built into the production tree (this branch):**
+- `apps/campaign/src/domain/crdt/` houses the trait algebras: `CrdtDoc` (data), `CrdtRoom` (membership/dispatch, sketched as a stub).
+- `apps/campaign/src/loro/` houses the concrete impls: `LoroThingDoc`, `LoroTocDoc`. Both implement `CrdtDoc` against a `loro::LoroDoc`.
+- `crates/campaign-shared/src/loro/` holds only ts-rs-exported domain types (`ThingHandle`, `TocEntry`, `TocEntryKind`) and Loro container/key constants. No traits, no wrappers. The trait/wrapper layer is consumed only by the campaign server.
+- Schema migrations under `apps/campaign/src/migrations/` and entities under `apps/campaign/src/entities/` (sea-orm).
+- A typed `DocError` enum on the trait surface (replaces the spike's `String` errors).
+
+**Designed in this doc but not yet built:**
+- `CampaignSupervisor`, `CampaignVocabulary`, `RelationshipGraph`, `UserSession`, `AgentConversation` actors.
+- `CampaignDatabase` module facade (reader/writer split with `CampaignStore` lifecycle).
+- The `Persistent` and `Evictable` pattern traits and the `DatabaseActor`'s command vocabulary.
+- WebSocket per-connection routing table and the read/write task pair.
+- Suggestion-mark plumbing for the production editor (the spike has it; the production editor package needs it).
+- Permission enforcement (write validation server-side, render filtering client-side; see Permission Model below).
+
+**Open and not yet decided:**
+- Whether `Persistent` lives kameo-aware (`: Actor + Message<...>` bounds) or kameo-free as a pure algebra. The current sketch leaves it kameo-free; the trade is discussed in Trait System.
+- Whether non-CRDT side-channel notifications get their own room type or multiplex over the doc's `LOR` room. See Notifiable.
 
 ---
 
@@ -73,11 +116,11 @@ CampaignSupervisor (one per checked-out campaign)
 
 **TocActor** is an actor because the table of contents is a user-authored organizational structure - not a materialized view derivable from Thing metadata. Each campaign's organizational hierarchy is arbitrary and game-specific (planets → spaceports → NPCs in Star Wars, kingdoms → cities → guilds in fantasy). The ToC is itself a collaborative document that syncs via CRDT, with the same lifecycle semantics as a ThingActor (persistence, eviction, real-time sync). Reconciliation with Thing creation/deletion is necessary regardless - the same infrastructure that reconciles AI-proposed entities handles ToC dangling references.
 
-**RelationshipGraph** is a dedicated actor (not owned by the CampaignSupervisor) because graph queries are on the hot path for AI context building and the serialization compiler. At campaign scale (~500 nodes, ~2,000 edges), the full graph loads into memory at checkout time (trivially small - roughly 100KB). The actor owns the in-memory petgraph representation and the persistence path back to libSQL. It is NOT a CRDT room - relationships are server-authoritative, mutated via REST, with change notifications broadcast over the websocket side-channel.
+**RelationshipGraph** is a dedicated actor (not owned by the CampaignSupervisor) because graph queries are on the hot path for AI context building and the serialization compiler. At campaign scale (~500 nodes, ~2,000 edges), the full graph loads into memory at checkout time (trivially small - roughly 100KB). The actor owns the in-memory petgraph representation and the persistence path back to SQLite. It is NOT a CRDT room - relationships are server-authoritative, mutated via REST, with change notifications broadcast over the websocket side-channel.
 
 **Why the full graph in memory, not partial loading:** The AI agent's context-building pass traverses relationships for entities that are overwhelmingly not being edited. "What do we know about Kael? What's his relationship to Dantooine?" is a multi-hop query touching inactive entities. If the graph only held edges for active Things, every AI context query would fall through to the database. At 2,000 edges, the in-memory representation costs nothing and saves the complexity of a partial-loading lifecycle. If campaigns grow to 10,000+ nodes (unlikely - that's an enormous campaign), lazy loading can be added then.
 
-**Why not SurrealDB or a graph database:** ~500 nodes and ~2,000 relationships per campaign is solved by recursive CTEs on SQLite. A graph database would add an operational dependency for ergonomic gains that don't manifest at this scale. petgraph in memory gives the traversal performance. libSQL gives the persistence and portability (campaign-as-file). The combination is simpler to operate than any graph database.
+**Why not SurrealDB or a graph database:** ~500 nodes and ~2,000 relationships per campaign is solved by recursive CTEs on SQLite. A graph database would add an operational dependency for ergonomic gains that don't manifest at this scale. petgraph in memory gives the traversal performance. SQLite gives the persistence and portability (campaign-as-file). The combination is simpler to operate than any graph database.
 
 **UserSession** is an actor because it carries user-scoped state (role, permissions, active conversations), has its own lifecycle (connect → idle → reconnect → disconnect), and is the natural supervision boundary for AgentConversations. The alternative - the CampaignSupervisor tracking user state directly - dilutes the supervisor's campaign-level responsibilities with per-user concerns.
 
@@ -180,7 +223,7 @@ enum VocabularyNotification {
 
 ### Mention Model
 
-Mentions in the LoroDoc store a `ThingId` and a display label. The relational data (libSQL) stores only the `ThingId` as a foreign key. The display label does not exist in the database.
+Mentions in the LoroDoc store a `ThingId` and a display label. The relational data stores only the `ThingId` as a foreign key. The display label does not exist in the database.
 
 ```
 LoroDoc (live editing):   { type: "mention", attrs: { thingId: "abc123", label: "Korgath" } }
@@ -230,9 +273,30 @@ pub struct CampaignDatabase {
 }
 ```
 
+Storage is **SQLite + sqlite-vec + sea-orm**. The campaign-as-file isolation property holds: each campaign's data is one `.db` file. The hosted topology hands that file to/from object storage on checkout/release; local-dev keeps it on the local filesystem. The actor and trait abstractions are storage-engine-neutral by design, so the choice between sea-orm-backed SQLite and a future libSQL/Turso path is a swap of the implementation behind `CampaignReader` and `DatabaseActor`, not a topology change.
+
+#### Persistence as a service: three shapes
+
+Persistence is not one thing; it's a small family of service patterns that share a `DatabaseActor` command vocabulary. Each actor type uses one shape:
+
+| Shape | Used by | How it works | Trait |
+|-------|---------|--------------|-------|
+| **Snapshot** | ThingActor, TocActor, AgentConversation | Debounced full-state write. Actor marks dirty on update, snapshots on a per-actor timer, sends `PersistenceCommand::Snapshot*` to the DatabaseActor, clears dirty on ack. | `Persistent` |
+| **Delta** | RelationshipGraph | Each `Mutable::apply_command` produces a `PersistenceCommand::SnapshotGraph(GraphMutation)` immediately. No debounce, no dirty bit. | `Mutable` (the algebra and the persistence path are the same call) |
+| **Derived** | CampaignVocabulary | No write path. Restored from Thing data on startup; mutations come from event subscriptions, never from the user. | (no trait; restoration only) |
+
+The four-layer split that organizes this:
+
+- **Data algebra** (`CrdtDoc`): pure CRDT operations on bytes.
+- **Domain algebra** (`CrdtRoom`, `Persistent`): adds room policy and snapshot intent on top of the doc.
+- **Service host** (the actor): debounce timer, dirty flag, `persistence_degraded` flag, db_writer handle, subscriber dispatch.
+- **Service implementation** (`DatabaseActor` + `CampaignStore`): SQL writes, object-storage lifecycle.
+
+The actor is *not* where the logic lives; it's where the algebras get scheduled. A `Message<PersistTick>` handler reads `room.is_dirty()`, calls `room.snapshot()` if needed, sends the result to `DatabaseActor`, clears dirty on success. Mechanical, easy to review.
+
 #### Read Algebra
 
-Reads go through a trait that speaks the domain language. The implementation holds a pool of read-only libSQL connections (WAL mode allows concurrent readers). The trait is `Clone + Send + Sync` so it can be handed to every actor at spawn time.
+Reads go through a trait that speaks the domain language. The implementation holds a pool of read-only SQLite connections (WAL mode allows concurrent readers). The trait is `Clone + Send + Sync` so it can be handed to every actor at spawn time.
 
 ```rust
 trait CampaignReader: Clone + Send + Sync + 'static {
@@ -249,7 +313,7 @@ This is where all SELECT queries live. Adding a new actor type means adding one 
 
 #### Write Actor
 
-Writes are domain-typed commands sent to a `DatabaseActor` that owns the single read-write connection. The actor's mailbox serializes writes - one message processed at a time - but this is a convenience for clean shutdown draining, not a correctness requirement. libSQL in WAL mode with `busy_timeout = 5000` already serializes writers at the database level. The actor prevents the CampaignSupervisor from blocking on IO during debounce writebacks.
+Writes are domain-typed commands sent to a `DatabaseActor` that owns the single read-write connection. The actor's mailbox serializes writes - one message processed at a time - but this is a convenience for clean shutdown draining, not a correctness requirement. SQLite in WAL mode with `busy_timeout = 5000` already serializes writers at the database level. The actor prevents the CampaignSupervisor from blocking on IO during debounce writebacks.
 
 Snapshot types carry their own identity and convert into persistence commands:
 
@@ -301,7 +365,7 @@ enum PersistenceCommand {
 }
 
 struct DatabaseActor {
-    write_conn: libsql::Connection,
+    write_conn: sea_orm::DatabaseConnection,
 }
 ```
 
@@ -339,7 +403,7 @@ async fn persist(&mut self) {
 
 #### Storage Backend
 
-Where the libSQL file physically lives - local filesystem vs. object storage - is a separate concern from what gets written to it. A `CampaignStore` algebra abstracts the storage lifecycle:
+Where the SQLite file physically lives - local filesystem vs. object storage - is a separate concern from what gets written to it. A `CampaignStore` algebra abstracts the storage lifecycle:
 
 ```rust
 trait CampaignStore: Send + Sync + 'static {
@@ -396,28 +460,54 @@ impl CampaignDatabase {
 
 #### Module Boundary
 
-All SQL, row mapping, and schema knowledge lives in a single `persistence` module. Nothing outside this module touches a connection or a row.
+All SQL, row mapping, and schema knowledge lives under one persistence boundary. Nothing outside touches a connection or a row. The module split mirrors the trait split: pure algebras under `domain/`, concrete adapters under `loro/` and `persistence/`, actors that host services under `actors/`.
 
 ```
-campaign/
-├── actors/
+apps/campaign/src/
+├── domain/                    // pure algebras, no kameo, no Loro impl
+│   ├── crdt/
+│   │   ├── doc.rs             // CrdtDoc, Snapshot, VersionVector, DocError
+│   │   └── room.rs            // CrdtRoom (composes CrdtDoc + members)
+│   └── ...                    // SuggestionTarget, DocumentState, etc.
+├── loro/                      // concrete CrdtDoc impls
+│   ├── thing.rs               // LoroThingDoc
+│   └── toc.rs                 // LoroTocDoc, TocTreeNode
+├── actors/                    // kameo actors (service hosts)
 │   ├── supervisor.rs
-│   ├── thing.rs
+│   ├── thing.rs               // ThingActor, owns a ThingRoom
 │   ├── toc.rs
 │   ├── graph.rs
 │   ├── vocabulary.rs
 │   ├── session.rs
 │   └── conversation.rs
 ├── persistence/
-│   ├── mod.rs          // CampaignDatabase, re-exports
-│   ├── reader.rs       // CampaignReader trait + CampaignReaderImpl
-│   ├── writer.rs       // DatabaseActor, PersistenceCommand
-│   ├── restore.rs      // restore_thing(), restore_graph(), etc.
-│   ├── schema.rs       // table definitions, migrations
-│   └── snapshots.rs    // ThingSnapshot, TocSnapshot, From impls
-├── compiler/           // serialization compiler
-└── domain.rs           // ThingId, BlockId, etc.
+│   ├── mod.rs                 // CampaignDatabase, re-exports
+│   ├── reader.rs              // CampaignReader trait + CampaignReaderImpl
+│   ├── writer.rs              // DatabaseActor, PersistenceCommand
+│   ├── restore.rs             // restore_thing(), restore_graph(), etc.
+│   ├── snapshots.rs           // ThingSnapshot, TocSnapshot, From impls
+│   ├── traits.rs              // Persistent (pattern trait)
+│   └── connection.rs          // sea-orm pool + sqlite-vec extension
+├── entities/                  // sea-orm row types
+├── migrations/                // sea-orm migrations
+└── compiler/                  // serialization compiler
+
+crates/campaign-shared/src/
+├── id.rs                      // ts-rs branded ID newtypes
+├── loro/                      // ts-rs schema types ONLY
+│   ├── thing.rs               // ThingHandle (the type, not the wrapper)
+│   ├── toc.rs                 // TocEntry, TocEntryKind, container/key constants
+│   └── prosemirror.rs         // PM convention constants (NODE_NAME_KEY, etc.)
+├── notification.rs            // WS side-channel envelope types
+└── status.rs                  // Status enum (gm_only / known / retconned)
 ```
+
+Two principles drive the layout:
+
+- **`domain/` is pure algebra.** Trait definitions and value types only, no kameo, no Loro wrappers, no SQL. A non-actor implementation could satisfy these traits in principle (and tests do).
+- **`crates/campaign-shared/` holds only what crosses the language or service boundary.** Types that ts-rs exports for the SPA (`ThingHandle`, `TocEntry`), the cross-server identity primitives (`ThingId`, `BlockId`), and constants both sides must agree on (PM keys, ToC kinds). Behaviour with one Rust consumer (the campaign server) lives in `apps/campaign/`. The crate is a *shared types* crate, not a shared *code* crate.
+
+The previous version of this doc placed `CrdtDoc` and the Loro wrappers in `campaign-shared` because the spike landed them there. The move into `apps/campaign/` happened in the same branch as this rewrite; see commit history for the diff.
 
 ---
 
@@ -583,9 +673,9 @@ struct ThingActor {
 
 `persistence_degraded` gates notification delivery (one per degradation episode, not every debounce tick) and blocks eviction (cannot safely discard in-memory state when the write path is broken). `db_writer` is the handle to the DatabaseActor for snapshot writes. The subscriber list is shared between CrdtRoom and Notifiable -- both push messages through the same outbound `mpsc::Sender` per client, multiplexed by the write_task on the websocket.
 
-**The LoroDoc is always reconstructed on actor startup.** There is no "cold" state where the actor holds only relational data. `restore()` reads from libSQL and builds the full LoroDoc via the equivalent of `toYdoc()`. The doc is live from the moment the actor exists.
+**The LoroDoc is always reconstructed on actor startup.** There is no "cold" state where the actor holds only relational data. `restore()` reads from SQLite and builds the full LoroDoc via the equivalent of `toYdoc()`. The doc is live from the moment the actor exists.
 
-**Why no two-phase state (cold relational / hot CRDT):** The Hocuspocus architecture had two read paths (Y.Doc for active pages, libSQL for inactive pages) because loading a Y.Doc on the Node.js event loop consumed shared memory and blocked the single thread. In Rust, each actor is an independent async task. Reconstructing a LoroDoc in one actor has zero impact on any other actor. The reconstruction cost is a few milliseconds of CPU to walk relational rows and build a document tree. At campaign scale, even a context-building pass that spins up 30 ThingActors costs ~30ms of CPU and ~3MB of memory. The actors evict themselves after idle timeout.
+**Why no two-phase state (cold relational / hot CRDT):** The Hocuspocus architecture had two read paths (Y.Doc for active pages, SQL for inactive pages) because loading a Y.Doc on the Node.js event loop consumed shared memory and blocked the single thread. In Rust, each actor is an independent async task. Reconstructing a LoroDoc in one actor has zero impact on any other actor. The reconstruction cost is a few milliseconds of CPU to walk relational rows and build a document tree. At campaign scale, even a context-building pass that spins up 30 ThingActors costs ~30ms of CPU and ~3MB of memory. The actors evict themselves after idle timeout.
 
 One state representation means one read path, one write path, and no conditional logic around "do I have a doc or not." The compiler always reads from a LoroDoc. The CRDT room is always joinable. The debounce timer always has a doc to snapshot. Every code path is exercised in every scenario.
 
@@ -595,11 +685,84 @@ One state representation means one read path, one write path, and no conditional
 
 ### Trait System
 
-The trait system captures two kinds of contracts:
+The trait system has three kinds of contract, each owned by a different layer:
 
-**Interface traits** have external consumers that interact with actors through them. The websocket read_task dispatches to CrdtRoom implementors. REST handlers query Queryable actors. The serialization compiler reads from DocumentState. These are real polymorphic boundaries, dispatched through typed enums rather than vtables.
+**Data algebra (`CrdtDoc`).** Pure CRDT operations on a single document: apply updates, export/import snapshots, report a version. Knows nothing about clients, auth, broadcasts, or persistence policy. Implemented by Loro-backed wrappers (`LoroThingDoc`, `LoroTocDoc`).
 
-**Pattern traits** encode repeated internal behavior. No external consumer calls them polymorphically. Their value is consistency and compile-time verification: they connect actors to the systems they participate in and let the compiler check the wiring.
+**Domain algebra (`CrdtRoom`, `Persistent`, `SuggestionTarget`, `DocumentState`).** Composes the data algebra with campaign-level concepts: membership, identity, status, persistence intent. Each implementor wraps a `CrdtDoc` and adds the campaign-side policy.
+
+**Pattern and service-host traits (`Persistent`, `Evictable`, `Notifiable`).** Wire actors into the systems that consume them: persistence pipeline, eviction sweep, side-channel notifications. Their value is consistency and compile-time verification: they connect actors to systems they participate in and let the compiler check the wiring.
+
+The split matters because each layer has a different audience. `CrdtDoc` is testable in isolation. `CrdtRoom` is testable with stubbed clients. The pattern traits need a kameo runtime to exercise; their consumers are actors. Keeping them in separate modules prevents an actor framework dependency from leaking into algebra tests.
+
+#### Data algebra: `CrdtDoc`
+
+```rust
+pub trait CrdtDoc: Send {
+    /// Current version vector (oplog state).
+    fn version(&self) -> VersionVector;
+
+    /// Apply one or more CRDT updates from a peer.
+    fn apply_updates(&mut self, updates: &[Vec<u8>]) -> Result<(), DocError>;
+
+    /// Export the full document as a snapshot blob.
+    fn export_snapshot(&self) -> Result<Snapshot, DocError>;
+
+    /// Import a snapshot blob (used on startup to restore state).
+    fn import_snapshot(&mut self, data: &Snapshot) -> Result<(), DocError>;
+
+    /// Whether this doc participates in the snapshot persistence pipeline.
+    fn should_persist(&self) -> bool { true }
+
+    /// Optional debug representation. Default: None.
+    fn debug_value(&self) -> Option<serde_json::Value> { None }
+}
+```
+
+`CrdtDoc` is the contract every Loro-backed wrapper satisfies. The trait lives at [`apps/campaign/src/domain/crdt/doc.rs`](../../apps/campaign/src/domain/crdt/doc.rs) with `Snapshot`, `VersionVector`, and the typed `DocError` enum. Concrete impls live at [`apps/campaign/src/loro/{thing,toc}.rs`](../../apps/campaign/src/loro/).
+
+The shape was validated by the spike's [`server/src/doc.rs`](../../../experiment-single-campaign-editor/tiptap-loro-kameo-rust/server/src/doc.rs); the production version differs only in `DocError` (typed) replacing `String` (loose).
+
+`should_persist` and `debug_value` carry defaults because they're optional concerns: persistence intent and dev tooling. The trait is `Send` because actor-owned state crosses tokio's runtime threads, and not `Sync` because mutating methods take `&mut self` (the actor's mailbox serializes mutations, no shared-mutable access).
+
+#### Domain algebra: `CrdtRoom`
+
+```rust
+pub trait CrdtRoom {
+    fn room_id(&self) -> &str;
+    fn crdt_room_type(&self) -> CrdtRoomType;
+
+    /// Validate room-level access (the role may enter at all) and return
+    /// a snapshot. The snapshot is full and role-blind; per-block
+    /// permission filtering happens in the TipTap renderer (see
+    /// [Permission Model](#permission-model)).
+    fn on_join(&mut self, client: ClientId, auth: &[u8])
+        -> Result<JoinResponse, JoinError>;
+
+    /// Validate the write, apply to the inner doc, return a uniform
+    /// broadcast plus per-sender ack. The broadcast is role-blind;
+    /// invalid writes (a player touching gm_only) are rejected here.
+    fn apply_updates(&mut self, from: ClientId, updates: &[Vec<u8>])
+        -> Result<(Broadcast, Ack), UpdateError>;
+
+    fn on_leave(&mut self, client: ClientId);
+}
+```
+
+`CrdtRoom` composes a `CrdtDoc` with campaign-side membership and dispatch:
+
+```rust
+pub struct ThingRoom {
+    id: ThingId,
+    doc: LoroThingDoc,
+    members: HashMap<ClientId, Role>,
+    status_tree: StatusTree,
+}
+```
+
+The actor wrapper (`ThingActor`) holds the kameo-shaped state on top: subscriber mpsc senders, the dirty flag, the db writer handle. `apply_updates` on the actor calls `room.apply_updates(...)`, broadcasts the bytes to every other subscriber's outbound mpsc, sets `dirty = true`, and returns the ack. The actor never reaches into the room's internals - it sequences trait calls.
+
+This split lets us write property tests against `ThingRoom` directly (apply N updates in two orders, assert convergence) without spinning up an actor system. The actor itself stays mechanical.
 
 #### Pattern Traits
 
@@ -756,23 +919,11 @@ async fn restore_campaign_actors(
 
 The function signature documents exactly what each actor needs. CampaignVocabulary doesn't need the writer -- it's derived, not independently persistent.
 
-#### Interface Traits
+#### Other interface traits
 
-These are unchanged from the original design. Each has external consumers that interact with actors through them.
+`CrdtRoom` is defined above. The remaining interface traits cover non-CRDT capabilities:
 
 ```rust
-trait CrdtRoom {
-    fn room_id(&self) -> &str;
-    fn crdt_type(&self) -> CrdtType;
-    async fn on_join(&mut self, client: ClientId, auth: &[u8])
-        -> Result<JoinResponse, JoinError>;
-    fn apply_update(&mut self, from: ClientId, update: &[u8])
-        -> Result<(Broadcast, Ack), UpdateError>;
-    fn on_leave(&mut self, client: ClientId);
-    fn state_vector(&self) -> Vec<u8>;
-    fn full_state(&self) -> Vec<u8>;
-}
-
 trait Notifiable {
     type Notification: Serialize;
     fn subscribe(&mut self, client: ClientId);
@@ -810,7 +961,9 @@ trait DocumentState {
 }
 ```
 
-**Why serialization is NOT a trait on the actor:** The serialization compiler (`f()`) needs the actor's document state AND the campaign relationship graph AND embedding results (for Tier 2 RAG) AND the user's role (for gm_only filtering). Putting serialization on the actor would require the actor to hold references to all of those services. Instead, the compiler is a stateless service that takes `&dyn DocumentState` plus context and produces markdown. The actor exposes its state. The compiler does the work. Clean separation of concerns.
+**Why serialization is NOT a trait on the actor:** The serialization compiler (`f()`) needs the actor's document state AND the campaign relationship graph AND embedding results (for Tier 2 RAG). Putting serialization on the actor would require the actor to hold references to all of those services. Instead, the compiler is a stateless service that takes `&dyn DocumentState` plus context and produces markdown. The actor exposes its state. The compiler does the work. Clean separation of concerns.
+
+Per-block status filtering is a renderer concern, not a compiler concern (see [Permission Model](#permission-model)). The compiler reads everything; the AI agent it serves is server-side and knows the full graph regardless. Tool availability (read vs read+write tools) is what gates AI behaviour by role, not data filtering.
 
 #### Trait Composition by Actor
 
@@ -843,6 +996,44 @@ trait DocumentState {
 **Why CampaignVocabulary is not Persistent:** Derived entirely from Thing data. No independent state to write back.
 
 **Why UserSession is Evictable but not Persistent:** Has a lifecycle (connect, idle, disconnect) but no state worth persisting. Session state is reconstructable from the auth token.
+
+---
+
+### Permission Model
+
+Some content within a Thing is `gm_only` and must not display to Player clients. Status cascades down (a gm_only block hides everything inside it). The implementation question is how to enforce this in a CRDT collaboration system.
+
+**Decision: filter at the TipTap render layer in TypeScript. Validate writes server-side as defence in depth. Single doc per Thing, no server-side projection.**
+
+#### What this means concretely
+
+1. **One canonical Loro doc per Thing.** No partitioning, no per-role projection, no shared/gm_only doc split.
+2. **Each block carries a `status` attribute** (`gm_only`, `known`, `retconned`) as part of its CRDT state, alongside `id`. The TipTap `UniqueID` extension already manages `id`; a sibling `BlockStatus` extension manages `status`.
+3. **The TipTap renderer drops blocks whose status the current user is not allowed to see.** A Player viewing a Thing receives the full doc over the wire and renders only the non-gm_only blocks.
+4. **The server validates writes.** `CrdtRoom::apply_updates` rejects updates from a Player that touch a gm_only block (the server walks the update against the status tree). This is a guard, not a security boundary; the client is expected not to attempt invalid writes in the first place.
+5. **Cursors and presence work everywhere.** A GM editing a shared block has their cursor visible to Players because everyone is on the same Loro doc.
+
+#### What we accept by going this way
+
+- **Players see structural shape they're not authorized to read.** A Player who opens devtools can dump the full LoroDoc state and read gm_only block content. We accept this.
+- **The renderer is the security boundary.** A bug that fails to filter a gm_only block surfaces hidden content. Mitigation: regression tests over `(doc state, status tree, role) -> rendered output`. The rendering pass is a pure function and easy to property-test.
+
+#### Why not server-side filtering
+
+Three options were considered and rejected:
+
+1. **Server-side per-update redaction.** Loro's [`json::redact()`](https://github.com/loro-dev/loro/blob/cc587edeb8a777b653e98fd60a17272c0cf34fb0/crates/loro-internal/src/encoding/json_schema.rs#L1455) only nulls out content values; it does not remove structural ops. Players would still see "this block exists" markers. Doesn't gain enough security to justify the implementation cost.
+2. **One Loro doc per visibility class** (shared + gm_only, client overlays for GM). Avoids the structural leak but breaks shared cursors, requires a TipTap-side overlay engine, and forces block IDs to stay stable across docs. Substantial complexity for a security improvement that doesn't change the threat model meaningfully (TTRPG players are not adversaries; they have access to GM screens irl).
+3. **Two-doc projection** (canonical + materialized player view). Reintroduces the CRDT history sync problems we deliberately walked away from: player edits land on the projection and have to be reflected on canonical with cross-doc peer-id reconciliation.
+
+The full investigation lives in this branch's git history; the protocol-level finding is that [`loro-dev/protocol`](https://github.com/loro-dev/protocol/blob/edf4065da1642ec7e394e555f0e68421427ea701/protocol.md) has no per-container subscription, so even Strategy 2's structural privacy would require building a routing layer the protocol does not provide.
+
+#### What still belongs server-side
+
+Permission filtering on the client is *display*. Two related concerns stay server-side:
+
+- **Write authorization.** A Player's update touching a gm_only block is rejected by `CrdtRoom::apply_updates` before being applied or broadcast. A misbehaving client cannot smuggle in a write the server doesn't accept.
+- **AI tool availability.** GMs get write tools (`suggest_replace`, `create_page`, `propose_relationship`); Players get read-only tools. The AI agent itself sees the full graph regardless; what changes by role is *what it can do*, not *what it knows*.
 
 ---
 
@@ -1034,7 +1225,7 @@ The serialization compiler (`f()` / `f⁻¹()`) is a stateless service, not an a
 
 **Why the compiler is not on the actor:** The compiler needs the actor's document state AND the relationship graph AND embedding results (Tier 2) AND role context AND conversation scoping. Putting this on the ThingActor would require the actor to hold references to all of these. The compiler is a pure function with multiple inputs. The AgentConversation orchestrates: it asks the ThingActor for DocumentState, asks the RelationshipGraph for context, calls the compiler, and routes the result back to the ThingActor.
 
-**Why the compiler always reads from actors:** In the Hocuspocus architecture, the compiler had two read paths - Y.Doc for active pages, libSQL for inactive pages - because loading a Y.Doc on the Node.js event loop was expensive and could starve other connections. In the Rust actor model, spinning up a ThingActor to serve a Tier 1 index card costs one libSQL read and a few milliseconds of CPU. The actor evicts itself on idle. There is no event loop to starve. One read path, through the actor, always.
+**Why the compiler always reads from actors:** In the Hocuspocus architecture, the compiler had two read paths - Y.Doc for active pages, SQL for inactive pages - because loading a Y.Doc on the Node.js event loop was expensive and could starve other connections. In the Rust actor model, spinning up a ThingActor to serve a Tier 1 index card costs one SQLite read and a few milliseconds of CPU. The actor evicts itself on idle. There is no event loop to starve. One read path, through the actor, always.
 
 ---
 
@@ -1046,17 +1237,17 @@ The designs in this section were not planned top-down. Each one fell out of a sp
 
 The starting problem was: multiple actors need to read from the campaign database concurrently (especially during restoration, when the RelationshipGraph, TocActor, and initial ThingActors all need data), but writes need to be serialized. An actor model gives serialization for free via the mailbox, but if every actor reads through the same write actor, reads become a bottleneck.
 
-The resolution split reads from writes. Reads go through a `CampaignReader` trait - a domain-typed algebra backed by a pool of read-only libSQL connections (WAL mode allows concurrent readers). Writes go through a `DatabaseActor` that owns the single read-write connection.
+The resolution split reads from writes. Reads go through a `CampaignReader` trait - a domain-typed algebra backed by a pool of read-only SQLite connections (WAL mode allows concurrent readers). Writes go through a `DatabaseActor` that owns the single read-write connection.
 
 This also established the persistence module boundary: all SQL lives in one place. Actors never see a connection, a query, or a row. They see domain-typed snapshots going in and out.
 
-**Why a write actor instead of `Arc<Mutex<Connection>>`:** Not for correctness - libSQL in WAL mode with `busy_timeout` already serializes writers at the database level. The actor buys two things: the CampaignSupervisor never blocks on IO during a debounce writeback, and shutdown has a natural drain point (stop accepting new commands, flush pending writes, then release).
+**Why a write actor instead of `Arc<Mutex<Connection>>`:** Not for correctness - SQLite in WAL mode with `busy_timeout` already serializes writers at the database level. The actor buys two things: the CampaignSupervisor never blocks on IO during a debounce writeback, and shutdown has a natural drain point (stop accepting new commands, flush pending writes, then release).
 
 #### CampaignStore algebra: "local vs. hosted is not the database's concern"
 
 While designing the CampaignDatabase module, a temptation arose to put the storage lifecycle (downloading from object storage, periodic writeback, final upload) inside the DatabaseActor. This was rejected because it conflates two responsibilities with different triggers, different error handling, and different shutdown ordering.
 
-Per-write persistence (actor snapshots to libSQL) is identical in both local and hosted topologies. The DatabaseActor doesn't know or care where its file came from. The storage lifecycle (where the file comes from, where it goes) is a CampaignSupervisor concern.
+Per-write persistence (actor snapshots to SQLite) is identical in both local and hosted topologies. The DatabaseActor doesn't know or care where its file came from. The storage lifecycle (where the file comes from, where it goes) is a CampaignSupervisor concern.
 
 The `CampaignStore` trait encapsulates this: local impl is mostly no-ops, hosted impl downloads/uploads from object storage. The CampaignSupervisor owns it. The DatabaseActor never sees it.
 
@@ -1155,8 +1346,10 @@ Free functions in `persistence/restore.rs` are honest about each actor's require
 
 ## Open Questions
 
-- **Loro's mark/annotation primitives.** The suggestion model depends on marks over block ranges. Loro's native support for this (vs. building range tracking on top of LoroText/LoroTree) needs investigation in the Loro/TipTap spike.
-- **Non-CRDT side channel wire framing.** The architecture now has concrete consumers: persistence health notifications (ThingNotification) and vocabulary change notifications (VocabularyNotification) both flow through the Notifiable trait, sharing the same subscriber list as CrdtRoom and multiplexed by the write_task via message envelope discrimination. The remaining open question is the exact wire format: custom message type in the loro protocol envelope, a separate binary prefix, or JSON messages interleaved with binary CRDT frames. This depends on how the frontend parses incoming frames and needs resolution during the Loro/TipTap spike.
+- **Loro's mark/annotation primitives.** The suggestion model depends on marks over block ranges. Loro's native support was validated in the spike for the simple case (one suggestion = one mark over a contiguous block range); see [`tiptap-loro-kameo-rust/server/src/suggestion_classifier.rs`](../../../experiment-single-campaign-editor/tiptap-loro-kameo-rust/server/src/suggestion_classifier.rs). Multi-mark overlap and mark survival across complex edits remain less exercised; needs focused testing during the production rollout.
+- **Non-CRDT side-channel wire framing.** Persistence health notifications (ThingNotification) and vocabulary change notifications (VocabularyNotification) both flow through the Notifiable trait, sharing the same subscriber list as CrdtRoom and multiplexed by the write_task via message envelope discrimination. The remaining open question is the exact wire format: custom message type in the loro-protocol envelope, a separate binary prefix, or JSON messages interleaved with binary CRDT frames. The spike used a rough JSON sidecar; production needs a deliberate choice.
+- **`Persistent` trait shape: kameo-aware or kameo-free?** The current sketch keeps `Persistent` kameo-free as a pure algebra (`fn snapshot()` on the room), with the actor's `Message<PersistTick>` handler doing the dispatch. The alternative is `Persistent: Actor + Message<PersistTick, Reply = ...>`, which makes the wiring a compile-time check at the cost of binding the trait to kameo. The same question applies to `Notifiable` (which is more naturally kameo-shaped). To be resolved when the supervisor and DatabaseActor land.
 - **Conversation LoroDoc schema.** The exact block types for user messages, assistant messages, thinking tokens, and historical suggestion records in the conversation document. Needs design alongside the TipTap extension for the chat UI.
-- **Campaign graph change notification payloads.** The delivery mechanism is decided: RelationshipGraph implements `Notifiable`, sharing the same subscriber list and write_task multiplexing as other notification consumers. The remaining question is the notification payload shape -- what information does the client need when an edge is added, removed, or when a `propose_relationship` is accepted? This determines whether the frontend can update its local graph representation incrementally or needs to re-fetch.
+- **Campaign graph change notification payloads.** The delivery mechanism is decided: RelationshipGraph implements `Notifiable`, sharing the same subscriber list and write_task multiplexing as other notification consumers. The remaining question is the notification payload shape: what information does the client need when an edge is added, removed, or when a `propose_relationship` is accepted? This determines whether the frontend can update its local graph representation incrementally or needs to re-fetch.
 - **Eviction under active suggestions.** If a ThingActor has pending suggestions and evicts on idle, the suggestions must survive in the database. On restoration, the actor must reconstruct both the document content and the suggestion marks. This is a `restore()` implementation concern, not an architectural one, but it's a correctness requirement that needs explicit testing.
+- **Permission-filter regression coverage.** Per-block status filtering happens client-side in the TipTap renderer. Property tests over `(doc state, status tree, role) -> rendered output` are the regression surface. The shape of those tests, where they live in the editor package, and whether they should run in CI on every editor PR is not yet decided.
