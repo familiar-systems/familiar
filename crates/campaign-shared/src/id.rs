@@ -10,6 +10,9 @@ macro_rules! define_id {
     ($(#[$meta:meta])* $name:ident, uuid, $brand:expr) => {
         define_id!(@inner $(#[$meta])* $name, uuid::Uuid, uuid::Uuid::now_v7(), $brand);
     };
+    ($(#[$meta:meta])* $name:ident, ulid, $brand:expr) => {
+        define_id!(@inner $(#[$meta])* $name, ulid::Ulid, ulid::Ulid::new(), $brand);
+    };
     ($(#[$meta:meta])* $name:ident, nanoid, $brand:expr) => {
         define_id!(@inner $(#[$meta])* $name, String, nanoid::nanoid!(), $brand);
     };
@@ -42,16 +45,18 @@ define_id!(
     "string & { readonly __brand: \"ThingId\" }"
 );
 define_id!(
-    /// Uniquely identifies a block within a document.
-    /// Kept as a UUID7 to enable approximate chronological creation ordering.
+    /// Uniquely identifies a block within a document. ULID gives approximate
+    /// chronological creation ordering and a single representation across
+    /// regular tables (TEXT primary key) and sqlite-vec virtual tables (which
+    /// only accept INTEGER or TEXT primary keys, not BLOB).
     BlockId,
-    uuid,
+    ulid,
     "string & { readonly __brand: \"BlockId\" }"
 );
 define_id!(
     /// Identifies a play session (discord call, table session, etc.).
     SessionId,
-    uuid,
+    ulid,
     "string & { readonly __brand: \"SessionId\" }"
 );
 define_id!(
@@ -64,12 +69,12 @@ define_id!(
 define_id!(
     /// Identifies a specific suggestion made by an AI assistant.
     SuggestionId,
-    uuid,
+    ulid,
     "string & { readonly __brand: \"SuggestionId\" }"
 );
 define_id!(
     /// Identifies a specific conversation between one or more users and an AI assistant.
     ConversationId,
-    uuid,
+    ulid,
     "string & { readonly __brand: \"ConversationId\" }"
 );

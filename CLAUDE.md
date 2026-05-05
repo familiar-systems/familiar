@@ -20,7 +20,7 @@ familiar.systems is an AI-assisted campaign notebook for tabletop RPG game maste
 - `docs/plans/2026-03-30-infrastructure.md`: Infrastructure (k3s cluster, Hetzner Volume, Pulumi project structure, certificates, CI/CD)
 - `docs/plans/2026-03-30-deployment-architecture.md`: Deployment architecture (platform/campaign service split, graceful restarts, preview environments)
 - `docs/plans/2026-03-25-campaign-collaboration-architecture.md`: **Authoritative** collaboration architecture (Rust/kameo/Loro, supersedes Hocuspocus ADR). Campaign checkout/checkin, actor topology, scaling model.
-- `docs/plans/2026-03-25-campaign-actor-domain-design.md`: Actor topology, trait system, WebSocket architecture, suggestion model
+- `docs/plans/2026-05-04-campaign-actor-domain-design.md`: Actor topology, trait system, WebSocket architecture, suggestion model
 - `docs/plans/2026-04-10-entity-relationship-temporal-model.md`: Relationship schema, temporal model (sessions as knowledge time), relationship lifecycle (superseded, retconned, deleted)
 - `docs/plans/2026-04-11-app-server-prd.md`: App server PRD (auth, campaign CRUD, routing table, shard coordination, billing)
 - `docs/plans/2026-03-25-ai-serialization-format-v2.md`: Agent serialization format, progressive disclosure tiers, compiler pipeline, tool signatures
@@ -41,6 +41,7 @@ familiar.systems is an AI-assisted campaign notebook for tabletop RPG game maste
 - `docs/archive/discovery/2026-02-18-solo-dev-deployment-landscape.md`: Deployment exploration (decided: Hetzner)
 - `docs/archive/discovery/2026-02-18-eu-deployment-landscape.md`: EU deployment exploration (decided: Hetzner)
 - `docs/archive/plans/2026-03-14-hocuspocus-architecture.md`: **Superseded** by Campaign Collaboration Architecture. Hocuspocus/Yjs-era design; hypotheses validated, implementation technology replaced.
+- `docs/archive/plans/2026-03-25-campaign-actor-domain-design.md`: **Superseded** by the 2026-05-04 revision. Trait split (CrdtDoc + CrdtRoom), permission model (TS-side filtering), and file layout drifted; the rest still holds.
 
 Read the project structure doc (`docs/plans/2026-03-26-project-structure-design.md`) before making architectural decisions. It is the source of truth.
 
@@ -90,7 +91,7 @@ Two execution paths, same output primitives:
 
 Both produce **Suggestions**: proposed mutations to the campaign graph. AI never modifies the graph directly; every change requires GM approval. Suggestions are always durable (persisted immediately).
 
-The AI agent writes via tool calls (`suggest_replace`, `create_page`, `propose_relationship`). The serialization compiler translates tool calls into compiled suggestions routed to ThingActors. Document-level proposals use suggestion marks on block UUID ranges; graph-level proposals use the suggestion queue. See [AI Serialization Format v2](docs/plans/2026-03-25-ai-serialization-format-v2.md) and [Campaign Actor Domain Design](docs/plans/2026-03-25-campaign-actor-domain-design.md).
+The AI agent writes via tool calls (`suggest_replace`, `create_page`, `propose_relationship`). The serialization compiler translates tool calls into compiled suggestions routed to ThingActors. Document-level proposals use suggestion marks on block UUID ranges; graph-level proposals use the suggestion queue. See [AI Serialization Format v2](docs/plans/2026-03-25-ai-serialization-format-v2.md) and [Campaign Actor Domain Design](docs/plans/2026-05-04-campaign-actor-domain-design.md).
 
 Tool availability determines AI behavior (no mode toggles): GMs get read+write tools, players get read-only tools.
 

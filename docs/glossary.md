@@ -254,7 +254,7 @@ Three layers, most specific wins:
 
 **DatabaseActor** - Owns the single read-write connection to the campaign's libSQL file. Serializes all writes. Exists for non-blocking IO and clean shutdown drain, not for correctness.
 
-> See [campaign-actor-domain-design](plans/2026-03-25-campaign-actor-domain-design.md) for actor traits, message patterns, persistence, and eviction. The trait taxonomy (interface traits vs. pattern traits) draws from the mindset in _Functional and Reactive Domain Modeling_ by Debasish Ghosh.
+> See [campaign-actor-domain-design](plans/2026-05-04-campaign-actor-domain-design.md) for actor traits, message patterns, persistence, and eviction. The trait taxonomy (interface traits vs. pattern traits) draws from the mindset in _Functional and Reactive Domain Modeling_ by Debasish Ghosh.
 
 ### Persistence Model
 

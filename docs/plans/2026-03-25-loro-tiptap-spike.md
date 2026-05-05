@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2026-03-25
-**Purpose:** Validate the one unproven assumption in the [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md) and [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md): that AI suggestions can be modeled as marks on block UUID ranges in a LoroDoc, rendered as inline diffs in TipTap, with blocking semantics on the target blocks.
+**Purpose:** Validate the one unproven assumption in the [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md) and [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md): that AI suggestions can be modeled as marks on block UUID ranges in a LoroDoc, rendered as inline diffs in TipTap, with blocking semantics on the target blocks.
 
 ---
 
@@ -24,7 +24,7 @@
 
 | Resource                                                                                      | Why it matters                                                                                                                                                                  |
 | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md)                  | Defines `SuggestionTarget` trait, `Suggestion` struct, the ThingActor's role                                                                                                    |
+| [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md)                  | Defines `SuggestionTarget` trait, `Suggestion` struct, the ThingActor's role                                                                                                    |
 | [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md)                      | Defines the suggestion model: marks on blocks, blocking, conversation scoping, supersession rules, outcomes table                                                               |
 | [loro-prosemirror](https://github.com/loro-dev/loro-prosemirror)                              | The binding we're building on. `LoroSyncPlugin` handles doc ↔ editor sync. We need to understand how it maps custom nodes/marks to determine where suggestion metadata lives.   |
 | [TipTap comments](https://tiptap.dev/docs/comments/getting-started/overview)                  | Architectural pattern reference. Comments are marks on ranges with thread data. Our suggestions follow the same pattern. Study the `setThread` / `resolveThread` command model. |

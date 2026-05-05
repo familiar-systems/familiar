@@ -1,5 +1,6 @@
 /// Campaign content is filtered at the retrieval layer based on the users' permission.
 /// See: docs/plans/2026-02-22-ai-prd.md
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Status {
     /// This is known only to the GM.
     /// It could be a secret plot point or hidden story arc.

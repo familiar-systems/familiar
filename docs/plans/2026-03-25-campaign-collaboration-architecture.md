@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-03-25
 **Supersedes:** [Document-Centric Campaign Architecture (Hocuspocus ADR)](../archive/plans/2026-03-14-hocuspocus-architecture.md) - validated its hypotheses, then replaced the implementation technology (Yjs/Hocuspocus/Node.js → Loro/kameo/Rust). The campaign model, scaling model, and operational invariants carry forward. The collaboration layer, persistence hooks, and AI interaction model change.
-**Related decisions:** [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md), [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Suggestion Marks Spike](./2026-03-25-loro-tiptap-spike.md), [Project structure](./2026-03-26-project-structure-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](./2026-02-20-templates-as-prototype-pages.md)
+**Related decisions:** [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Suggestion Marks Spike](./2026-03-25-loro-tiptap-spike.md), [Project structure](./2026-03-26-project-structure-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](./2026-02-20-templates-as-prototype-pages.md)
 
 ---
 
@@ -98,7 +98,7 @@ CampaignSupervisor (one per checked-out campaign)
 
 Each ThingActor is the equivalent of "one document in Hocuspocus" - it holds a LoroDoc, syncs with connected clients via the loro-dev/protocol, and persists to the campaign database on a debounce timer. The critical difference: **there is no shared event loop.** Each actor is an independent async task. Loading a document in one actor has zero impact on any other. This eliminates the memory pressure and event loop contention that drove the Hocuspocus ADR's "two read paths" and "two write paths" design.
 
-The full actor topology, trait system, and interaction patterns are defined in the [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md).
+The full actor topology, trait system, and interaction patterns are defined in the [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md).
 
 ### LoroDoc lifecycle replaces Y.Doc lifecycle
 
@@ -179,7 +179,7 @@ The staleness concern from the Hocuspocus ADR ("what if the agent reads stale co
 
 ### WebSocket architecture
 
-The Hocuspocus ADR didn't detail WebSocket architecture because Hocuspocus handled it. The new design requires explicit WebSocket management, defined in the [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md):
+The Hocuspocus ADR didn't detail WebSocket architecture because Hocuspocus handled it. The new design requires explicit WebSocket management, defined in the [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md):
 
 - One WebSocket per campaign per client, upgraded by axum
 - Read/write task pair per connection

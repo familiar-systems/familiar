@@ -1,9 +1,18 @@
-# ADR: Campaign Actor Domain Design
+# ADR: Campaign Actor Domain Design (archived)
 
-**Status:** Draft (rev 2)
+**Status:** Superseded
 **Date:** 2026-03-25 (rev 2: 2026-04-02)
-**Supersedes:** None (new decision area; refines and extends [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md))
-**Related decisions:** [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md)
+**Superseded by:** [`2026-05-04-campaign-actor-domain-design.md`](../../plans/2026-05-04-campaign-actor-domain-design.md)
+**Supersedes:** None (new decision area; refines and extends [Hocuspocus Architecture ADR](./2026-03-14-hocuspocus-architecture.md))
+**Related decisions:** [AI Serialization Format v2](../../plans/2026-03-25-ai-serialization-format-v2.md), [Hocuspocus Architecture ADR](./2026-03-14-hocuspocus-architecture.md), [AI Workflow Unification](../../plans/2026-02-14-ai-workflow-unification-design.md)
+
+> **Why this is archived.** The successor doc updates four areas where this version drifted from what got built:
+> - Trait split: `CrdtDoc` (data algebra) and `CrdtRoom` (membership/dispatch) are now separate; this doc only had `CrdtRoom`.
+> - Permission model: gm_only filtering is enforced in the TipTap renderer (TypeScript), not server-side projection; the server is single-doc.
+> - File layout: codified as `domain/crdt/` (algebra) + `apps/campaign/loro/` (impls); this doc's location-by-implication is replaced.
+> - Persistence framing: explicit data / domain / service-host / service-impl layering, with three persistence shapes (snapshot, delta, derived).
+>
+> Most of this doc is still load-bearing (actor topology, mention model, suggestion model, restoration as free functions, websocket architecture, persistence pattern traits). The successor copies those sections forward unchanged.
 
 ### Key External Dependencies
 

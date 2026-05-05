@@ -3,7 +3,7 @@
 **Status:** Implemented
 **Date:** 2026-03-26
 **Supersedes:** [Project Structure Design (SPA)](../archive/plans/2026-02-14-project-structure-spa-design.md) -- same SPA decision, fundamentally different backend architecture (TypeScript full-stack to Rust server + TypeScript frontend + Python ML workers)
-**Related decisions:** [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md), [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Infrastructure](./2026-03-30-infrastructure.md), [Deployment Architecture](./2026-03-30-deployment-architecture.md), [Public site design](./2026-02-20-public-site-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](./2026-02-20-templates-as-prototype-pages.md), [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)
+**Related decisions:** [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Infrastructure](./2026-03-30-infrastructure.md), [Deployment Architecture](./2026-03-30-deployment-architecture.md), [Public site design](./2026-02-20-public-site-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](./2026-02-20-templates-as-prototype-pages.md), [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)
 
 ---
 
@@ -47,8 +47,8 @@ Unchanged from the superseded design. familiar.systems's content is entirely beh
 | Editor                 | TipTap (MIT, on ProseMirror)                                | [tiptap.md](../discovery/stack/editor/tiptap.md)                                           |
 | Frontend               | React (Vite SPA)                                            | [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md)                    |
 | Server                 | Rust: Axum + kameo actors                                   | [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) |
-| CRDTs                  | Loro + loro-dev/protocol                                    | [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md)               |
-| ProseMirror binding    | loro-prosemirror                                            | [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md)               |
+| CRDTs                  | Loro + loro-dev/protocol                                    | [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md)               |
+| ProseMirror binding    | loro-prosemirror                                            | [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md)               |
 | Database               | libSQL (database-per-campaign), Turso Database upgrade path | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)                |
 | API contract           | ts-rs (type generation) + utoipa (OpenAPI)                  | This document                                                                              |
 | Public site            | Astro (static site generator)                               | [Public site design](./2026-02-20-public-site-design.md)                                   |
@@ -217,7 +217,7 @@ The `helpers/` directory from the superseded design (doc-parser, doc-writer) is 
 Two binaries and two shared crates, all in one Cargo workspace. The internal architecture of the campaign server is defined in:
 
 - [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) -- campaign checkout/checkin, actor topology, scaling model, WebSocket architecture, suggestion model
-- [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md) -- actor traits, message patterns, persistence, eviction
+- [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md) -- actor traits, message patterns, persistence, eviction
 
 The service topology, graceful restart protocol, and preview environment design are in the [Deployment Architecture](./2026-03-30-deployment-architecture.md).
 

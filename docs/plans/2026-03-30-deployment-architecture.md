@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-03-30
 **Supersedes:** [k3s + Pulumi Infrastructure (deployment strategy)](../archive/plans/2026-03-12-deployment-strategy.md) - jointly with [Infrastructure](./2026-03-30-infrastructure.md). The superseded document covered both infrastructure primitives and deployment concerns as one plan. This ADR covers service topology, deployment lifecycle, and preview environments. The [Infrastructure](./2026-03-30-infrastructure.md) doc covers the cluster, storage, certificates, and CI/CD pipeline.
-**Related decisions:** [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md), [Project Structure](./2026-03-26-project-structure-design.md), [Infrastructure](./2026-03-30-infrastructure.md)
+**Related decisions:** [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [Project Structure](./2026-03-26-project-structure-design.md), [Infrastructure](./2026-03-30-infrastructure.md)
 
 ---
 
@@ -79,7 +79,7 @@ The platform's data store is platform.db - a single libSQL file holding users, c
 
 ### The campaign server
 
-The campaign server owns everything that happens after a campaign is checked out. Its internal architecture is defined in the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) and [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md). From a deployment perspective, the relevant properties are:
+The campaign server owns everything that happens after a campaign is checked out. Its internal architecture is defined in the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) and [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md). From a deployment perspective, the relevant properties are:
 
 - **Stateful.** Holds WebSocket connections, in-memory LoroDocs in actor trees, and the local libSQL cache of campaign files.
 - **Campaign-pinned.** All traffic for a given campaign routes to the same server. No cross-instance state.

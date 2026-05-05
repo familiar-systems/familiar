@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-03-25
 **Supersedes:** AI Serialization Format v1 (undated)
-**Related decisions:** [Campaign Actor Domain Design](./2026-03-25-campaign-actor-domain-design.md), [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md), [AI PRD](./2026-02-22-ai-prd.md), [Templates as Prototype Pages](./2026-02-20-templates-as-prototype-pages.md)
+**Related decisions:** [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md), [AI PRD](./2026-02-22-ai-prd.md), [Templates as Prototype Pages](./2026-02-20-templates-as-prototype-pages.md)
 
 ---
 

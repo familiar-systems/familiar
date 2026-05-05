@@ -37,6 +37,26 @@ APP_URL_DEV = "http://app.localhost:8080"
 SITE_URL = "http://localhost:8080"
 SITE_BASE_PATH = "/"
 
+# --- setup ---
+
+[tasks.setup]
+description = "Install all dev dependencies (pnpm + uv venvs). Run after cloning or in a new worktree."
+depends = ["setup:*"]
+
+[tasks."setup:ts"]
+description = "Install TS workspace dependencies"
+run = "pnpm install"
+
+[tasks."setup:python-workers"]
+description = "Sync Python venv for ML workers"
+dir = "workers/whisperx"
+run = "uv sync"
+
+[tasks."setup:python-infra"]
+description = "Sync Python venv for Pulumi infra"
+dir = "infra/pulumi-cloud"
+run = "uv sync"
+
 # --- check ---
 
 [tasks.check]

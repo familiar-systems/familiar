@@ -30,6 +30,7 @@ tower-http = { version = "0.6", features = ["cors", "request-id", "trace", "util
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 ts-rs = { version = "12.0.1", features = ["uuid-impl"] }
+ulid = { version = "1", features = ["serde"] }
 utoipa = { version = "5.4.0", features = ["uuid"] }
 utoipa-axum = "0.2.0"
 utoipa-scalar = { version = "0.3.0", features = ["axum"] }
