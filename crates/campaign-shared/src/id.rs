@@ -78,3 +78,33 @@ define_id!(
     ulid,
     "string & { readonly __brand: \"ConversationId\" }"
 );
+
+/// Identifies one connected client (one WebSocket upgrade -> one tab).
+///
+/// Server-minted at WS upgrade. Distinct from [`UserId`](familiar_systems_app_shared::id::UserId):
+/// a single user with two tabs has one `UserId` and two `ClientId`s. Routing
+/// (which socket to send an ack to) keys on `ClientId`; authorship and
+/// permissions key on `UserId`.
+///
+/// `u64` to match Loro's `PeerID` width. Whether a `ClientId` is *also* used
+/// as the Loro peer id, or whether the client picks its own peer id, is a
+/// CrdtRoom-level decision; the type is shape-compatible with both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(
+    export,
+    export_to = "types-campaign/src/generated/id/",
+    type = "number & { readonly __brand: \"ClientId\" }"
+)]
+pub struct ClientId(pub u64);
+
+impl ClientId {
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for ClientId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}

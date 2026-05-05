@@ -894,6 +894,7 @@ dependencies = [
  "familiar-systems-campaign-shared",
  "libsqlite3-sys",
  "loro",
+ "loro-protocol",
  "sea-orm",
  "sea-orm-migration",
  "serde_json",
@@ -1927,6 +1928,11 @@ dependencies = [
  "tracing",
  "xxhash-rust",
 ]
+
+[[package]]
+name = "loro-protocol"
+version = "0.1.0"
+source = "git+https://github.com/loro-dev/protocol.git?tag=loro-protocol-v0.3.0#c2eade3bd88e48e9847a7f2a390a505978f067f9"
 
 [[package]]
 name = "loro-rle"
