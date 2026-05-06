@@ -10,7 +10,7 @@
 
 use loro::LoroDoc;
 
-use crate::domain::crdt::{CrdtDoc, DocError, Snapshot, VersionVector};
+use crate::domain::crdt::doc::{CrdtDoc, DocError, Snapshot, VersionVector};
 
 /// Typed wrapper around a `LoroDoc` for Thing pages.
 ///

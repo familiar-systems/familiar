@@ -15,7 +15,7 @@ use familiar_systems_campaign_shared::loro::toc::{
 };
 use loro::{LoroDoc, LoroMap, LoroTree, LoroValue, TreeID, ValueOrContainer};
 
-use crate::domain::crdt::{CrdtDoc, DocError, Snapshot, VersionVector};
+use crate::domain::crdt::doc::{CrdtDoc, DocError, Snapshot, VersionVector};
 
 /// A node in the ToC tree, as read from the LoroDoc.
 /// Contains the entry data and its children (recursive).
