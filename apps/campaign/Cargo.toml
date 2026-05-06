@@ -5,23 +5,24 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-familiar-systems-app-shared      = { path = "../../crates/app-shared" }
+familiar-systems-app-shared = { path = "../../crates/app-shared" }
 familiar-systems-campaign-shared = { path = "../../crates/campaign-shared" }
 
-chrono             = { workspace = true }
-libsqlite3-sys     = "0.30"
-loro               = { workspace = true }
-sea-orm            = { workspace = true }
-sea-orm-migration  = { workspace = true }
-serde_json         = { workspace = true }
-sqlite-vec         = "0.1"
-sqlx               = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite"] }
-thiserror          = { workspace = true }
-tokio              = { workspace = true }
-ulid               = { workspace = true }
-
-[package.metadata.cargo-machete]
-ignored = ['familiar-systems-app-shared']
+chrono = { workspace = true }
+kameo = { workspace = true }
+libsqlite3-sys = "0.30"
+loro = { workspace = true }
+# Not on crates.io (upstream publishing issue); pinned via git tag.
+# Bump when upstream cuts a newer release.
+loro-protocol = { git = "https://github.com/loro-dev/protocol.git", tag = "loro-protocol-v0.3.0" }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+serde_json = { workspace = true }
+sqlite-vec = "0.1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite"] }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+ulid = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

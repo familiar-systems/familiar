@@ -12,6 +12,7 @@
 > - **Permission filtering moved to the client.** gm_only content is filtered at the TipTap render layer based on a `status` block attribute, not by server-side projection. The server is single-doc per Thing. Loro's wire format does not expose paths cleanly enough to redact subtrees server-side without leaking structure ([investigation](https://github.com/loro-dev/protocol/blob/edf4065da1642ec7e394e555f0e68421427ea701/protocol.md), [`loro::json::redact`](https://github.com/loro-dev/loro/blob/cc587edeb8a777b653e98fd60a17272c0cf34fb0/crates/loro-internal/src/encoding/json_schema.rs#L1455)), and multi-doc projection sacrifices shared cursors and editing simplicity.
 > - **File layout codified.** `apps/campaign/src/domain/crdt/` holds the trait algebras. `apps/campaign/src/loro/` holds concrete `LoroThingDoc` / `LoroTocDoc` impls. `crates/campaign-shared/src/loro/` holds only ts-rs-exported schema types (`ThingHandle`, `TocEntry`, `TocEntryKind`) and key/container constants. The `CrdtDoc` trait is *not* in `campaign-shared` because it has no cross-crate consumer.
 > - **Persistence framed as a service.** Four explicit layers: data algebra (`CrdtDoc`), domain algebra (`CrdtRoom`, `Persistent`), service host (the actor), service implementation (`DatabaseActor`). Three persistence shapes: snapshot (Thing/Toc/Conversation), delta (RelationshipGraph), derived (CampaignVocabulary).
+> - **Wire vs domain split.** `CrdtRoom` is wire-format-agnostic: it operates on assembled `Vec<Vec<u8>>` updates and never sees `BatchId`, `Permission`, or fragmentation. Wire-protocol concerns live in [`apps/campaign/src/wire/`](../../apps/campaign/src/wire/) as two pure state machines (`BatchAssembler`, `BatchFragmenter`), composed by the actor. `JoinResponse` carries a domain `Capability` enum mapped to `loro_protocol::Permission` at the wire boundary.
 >
 > Sections not listed above are unchanged from the previous version. Where this doc copies forward verbatim, it does so deliberately - the underlying decisions hold.
 
@@ -740,14 +741,20 @@ pub trait CrdtRoom {
         -> Result<JoinResponse, JoinError>;
 
     /// Validate the write, apply to the inner doc, return a uniform
-    /// broadcast plus per-sender ack. The broadcast is role-blind;
-    /// invalid writes (a player touching gm_only) are rejected here.
+    /// broadcast plus an `AckPayload` carrying the post-apply version.
+    /// The broadcast is role-blind; invalid writes (a player touching
+    /// gm_only) are rejected here. The actor wraps `AckPayload` into
+    /// the wire-level `ProtocolMessage::Ack` along with the originating
+    /// `BatchId` and status byte; correlation is the actor's concern,
+    /// not the room's.
     fn apply_updates(&mut self, from: ClientId, updates: &[Vec<u8>])
-        -> Result<(Broadcast, Ack), UpdateError>;
+        -> Result<(Broadcast, AckPayload), UpdateError>;
 
     fn on_leave(&mut self, client: ClientId);
 }
 ```
+
+`JoinResponse` carries a `Capability` rather than `loro_protocol::Permission`. The trait deliberately doesn't import wire types; the actor's encode-side maps `Capability` to `loro_protocol::Permission` when building `ProtocolMessage::JoinResponseOk`. Same for `BatchId` and the `Ack` status byte: those live at the wire layer (see [Wire-Protocol Utilities](#wire-protocol-utilities)).
 
 `CrdtRoom` composes a `CrdtDoc` with campaign-side membership and dispatch:
 
@@ -760,9 +767,9 @@ pub struct ThingRoom {
 }
 ```
 
-The actor wrapper (`ThingActor`) holds the kameo-shaped state on top: subscriber mpsc senders, the dirty flag, the db writer handle. `apply_updates` on the actor calls `room.apply_updates(...)`, broadcasts the bytes to every other subscriber's outbound mpsc, sets `dirty = true`, and returns the ack. The actor never reaches into the room's internals - it sequences trait calls.
+The actor wrapper (`ThingActor`) holds the kameo-shaped state on top: subscriber mpsc senders, the dirty flag, the db writer handle, plus wire-shape adaptation. On inbound, the actor reassembles fragmented batches into a single update before invoking `room.apply_updates(...)`. On outbound, the actor fragments large broadcasts to fit the protocol's per-message cap. The actor never reaches into the room's internals — it sequences trait calls and adapts wire shape on either side. See [Wire-Protocol Concerns Live at the Actor](#wire-protocol-concerns-live-at-the-actor) below.
 
-This split lets us write property tests against `ThingRoom` directly (apply N updates in two orders, assert convergence) without spinning up an actor system. The actor itself stays mechanical.
+This split lets us write property tests against `ThingRoom` directly (apply N updates in two orders, assert convergence) without spinning up an actor system, and lets the wire utilities be fuzzed without standing up a room.
 
 #### Pattern Traits
 
@@ -996,6 +1003,12 @@ Per-block status filtering is a renderer concern, not a compiler concern (see [P
 **Why CampaignVocabulary is not Persistent:** Derived entirely from Thing data. No independent state to write back.
 
 **Why UserSession is Evictable but not Persistent:** Has a lifecycle (connect, idle, disconnect) but no state worth persisting. Session state is reconstructable from the auth token.
+
+#### Wire-Protocol Concerns Live at the Actor
+
+The trait surface is wire-format-agnostic by design. `CrdtRoom` operates on already-assembled `Vec<Vec<u8>>` updates; it never sees `BatchId`, `Permission`, fragmentation, or the loro-protocol message envelope. Those concerns live at the actor layer, which adapts wire shape on both ingress (reassembling fragmented batches before invoking `room.apply_updates`) and egress (fragmenting large broadcasts to fit the protocol's 256 KB per-message cap).
+
+For implementation details — assembler/fragmenter internals, the reassembly timeout pattern, the kameo wiring — see the module docs in [`apps/campaign/src/wire/`](../../apps/campaign/src/wire/). The wire format itself is defined by [loro-protocol v0.3.0](https://github.com/loro-dev/protocol/blob/loro-protocol-v0.3.0/protocol.md) and was validated end-to-end by the [`tiptap-loro-kameo-rust`](../../../experiment-single-campaign-editor/tiptap-loro-kameo-rust) spike.
 
 ---
 
