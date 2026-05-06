@@ -9,6 +9,7 @@ familiar-systems-app-shared = { path = "../../crates/app-shared" }
 familiar-systems-campaign-shared = { path = "../../crates/campaign-shared" }
 
 chrono = { workspace = true }
+kameo = { workspace = true }
 libsqlite3-sys = "0.30"
 loro = { workspace = true }
 # Not on crates.io (upstream publishing issue); pinned via git tag.

@@ -1,10 +1,22 @@
+use super::doc::{Snapshot, VersionVector};
 use familiar_systems_campaign_shared::id::ClientId;
-use loro_protocol::{BatchId, Permission};
 
 pub enum CrdtRoomType {
     Thing,
     Toc,
     Conversation,
+}
+
+/// Closely mirrors
+/// - loro_protocol::Permission
+/// - a similar Yrs construct.
+///
+/// Maps to `Read`/`Write` capabilities on the wire.
+/// Kept as a separate enum to avoid coupling domain with Loro.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Capability {
+    Read,
+    Write,
 }
 
 /// A CRDT room is a doc that clients can join, exchange updates against, and leave.
@@ -14,14 +26,15 @@ pub trait CrdtRoom {
     fn crdt_room_type(&self) -> CrdtRoomType;
     fn on_join(&mut self, client: ClientId, auth: &[u8]) -> Result<JoinResponse, JoinError>;
     /// Apply one or more updates from a client. Returns a uniform broadcast
-    /// (fanned out to other subscribers) plus a per-sender ack that echoes
-    /// the originating `batch_id`.
+    /// (fanned out to other subscribers) plus an `AckPayload` carrying the
+    /// post-apply version. The actor wraps the version into the wire-level
+    /// `ProtocolMessage::Ack` along with the originating `batch_id` and
+    /// status byte; correlation is the actor's concern, not the room's.
     fn apply_updates(
         &mut self,
         from: ClientId,
-        batch_id: BatchId,
         updates: &[Vec<u8>],
-    ) -> Result<(Broadcast, Ack), UpdateError>;
+    ) -> Result<(Broadcast, AckPayload), UpdateError>;
     fn on_leave(&mut self, client: ClientId);
 }
 
@@ -30,13 +43,13 @@ pub trait CrdtRoom {
 #[derive(Debug, Clone)]
 pub struct JoinResponse {
     /// Encoded full-document snapshot (loro `export(Snapshot)`).
-    pub snapshot: Vec<u8>,
+    pub snapshot: Snapshot,
     /// Server's current oplog version vector at join time.
-    pub version: Vec<u8>,
+    pub version: VersionVector,
     /// Coarse capability gate for this socket (`Read` or `Write`). Domain
     /// authorization (GM vs player, gm_only blocks) lives in `apply_updates`,
     /// not here; this is only the wire-level handshake.
-    pub permission: Permission,
+    pub permission: Capability,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -66,12 +79,9 @@ pub struct Broadcast {
 /// Per-sender acknowledgment that a batch was applied. The actor encodes
 /// this into `ProtocolMessage::Ack` and sends it to the originating client.
 #[derive(Debug, Clone)]
-pub struct Ack {
-    /// Echoes the `batch_id` of the originating `DocUpdate` so the client
-    /// can correlate the ack with the write it sent.
-    pub batch_id: BatchId,
+pub struct AckPayload {
     /// Server's oplog version vector after applying the batch.
-    pub version: Vec<u8>,
+    pub version: VersionVector,
 }
 
 #[derive(Debug, thiserror::Error)]
