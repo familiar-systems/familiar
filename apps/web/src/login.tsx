@@ -1,6 +1,6 @@
 import { register } from "@teamhanko/hanko-elements";
 import { useEffect } from "react";
-import { CookieNotice } from "./components/CookieNotice";
+import { LoginCookieNotice } from "./components/LoginCookieNotice";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { hanko, hankoApiUrl } from "./lib/hanko";
 import { assetPath, siteLink, spaRoute } from "./lib/paths";
@@ -114,7 +114,7 @@ export function Login() {
         background than the card so the harbor (densest detail at the
         bottom) reads through the glass. */}
       <div className="fixed inset-x-0 bottom-0 z-10 border-t border-foreground/10 bg-background/50 backdrop-blur-md">
-        <CookieNotice />
+        <LoginCookieNotice />
       </div>
 
       {/* Theme toggle, last in source order so it stacks on top of the
