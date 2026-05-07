@@ -88,7 +88,7 @@ export function Login() {
             the ambient primary-color orbs in the background. */}
           <span
             aria-hidden="true"
-            className="block h-10 w-10 bg-foreground transition-[filter] duration-300 dark:drop-shadow-[0_0_10px_var(--color-primary)]"
+            className="block h-10 w-10 bg-foreground dark:bg-primary transition-[filter] duration-300 dark:drop-shadow-[0_0_10px_var(--color-primary)]"
             style={{
               maskImage: RAVEN_URL,
               maskRepeat: "no-repeat",

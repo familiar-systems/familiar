@@ -2,6 +2,9 @@ packages:
   - apps/*
   - packages/*
   - tooling/*
+allowBuilds:
+  esbuild: set this to true or false
+  sharp: set this to true or false
 catalog:
   "@tailwindcss/vite": ^4.2.4
   "@types/react": ^19
