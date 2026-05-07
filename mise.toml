@@ -98,7 +98,11 @@ env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", VITE_SITE_URL = "{{ 
 
 [tasks."dev:platform"]
 description = "Platform server (port 3000). dev-ui mounts Scalar at /api/docs."
-run = "cargo run -p familiar-systems-platform --features dev-ui"
+# `mkdir -p data` is here, not in the binary, because DATABASE_URL is set per
+# task and the data directory only matters in dev. Fresh worktrees don't
+# inherit the directory; SQLite's `mode=rwc` creates the file but not the
+# parent. Cheap enough to run every dev start.
+run = ["mkdir -p data", "cargo run -p familiar-systems-platform --features dev-ui"]
 # CORS origin is the app-apex front door, not the marketing apex. The SPA
 # lives on app.localhost:8080 and any browser fetch from it to /api/* is
 # same-origin, so no preflight fires; this entry is defense-in-depth for

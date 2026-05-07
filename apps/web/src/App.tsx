@@ -1,5 +1,6 @@
+import { Hub } from "./hub";
 import { Login } from "./login";
-import { Home } from "./home";
+import { Settings } from "./settings";
 import { spaRoute } from "./lib/paths";
 
 // The SPA lives at the root of the app apex in dev/prod (base "/") and
@@ -12,8 +13,12 @@ function currentRoute(): string {
 }
 
 export function App(): React.ReactElement {
-  if (currentRoute() === "login") {
-    return <Login />;
+  switch (currentRoute()) {
+    case "login":
+      return <Login />;
+    case "settings":
+      return <Settings />;
+    default:
+      return <Hub />;
   }
-  return <Home />;
 }
