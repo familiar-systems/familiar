@@ -6,7 +6,12 @@
 # -- Stage 1: Build ----------------------------------------------------------
 FROM node:24-bookworm-slim AS builder
 
-RUN corepack enable
+# pnpm version is the single source of truth in mise.toml (resolved to an exact
+# patch by mise.lock). CI reads it via `mise current 'npm:pnpm'` and passes it
+# as a build-arg. We install pnpm directly instead of via corepack so the
+# Dockerfile cannot float to whatever npm marks `latest` mid-release.
+ARG PNPM_VERSION
+RUN npm install -g pnpm@${PNPM_VERSION}
 
 WORKDIR /build
 

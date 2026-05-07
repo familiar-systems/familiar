@@ -167,6 +167,7 @@ jobs:
           # site-base-path above), so the privacy-policy link must include
           # the per-PR prefix to land on the right rendered page.
           vite-site-url: https://preview.familiar.systems/pr-${{ github.event.pull_request.number }}
+          pnpm-version: ${{ steps.versions.outputs.pnpm }}
 
       - name: Build and push platform
         if: matrix.target == 'platform'
