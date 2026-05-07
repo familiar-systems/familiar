@@ -29,6 +29,12 @@ inputs:
       includes the per-PR prefix because the marketing site itself is
       path-prefixed in preview.
     required: true
+  pnpm-version:
+    description: |
+      pnpm version to install in the builder stage (PNPM_VERSION ARG).
+      Source of truth is `mise.toml` (with `mise.lock` pinning the exact
+      patch); CI resolves this via `mise current 'npm:pnpm'`.
+    required: true
   push:
     description: Whether to push the built image to the registry.
     required: false
@@ -60,9 +66,8 @@ runs:
         context: .
         file: apps/web/Dockerfile
         push: ${{ inputs.push }}
-        # No PNPM_VERSION here: the web Dockerfile uses `corepack enable` and
-        # resolves pnpm from packageManager in package.json, unlike site.
         build-args: |
+          PNPM_VERSION=${{ inputs.pnpm-version }}
           VITE_HANKO_API_URL=${{ inputs.vite-hanko-api-url }}
           VITE_BASE_PATH=${{ inputs.vite-base-path }}
           VITE_SITE_URL=${{ inputs.vite-site-url }}

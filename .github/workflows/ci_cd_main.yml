@@ -162,6 +162,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           vite-hanko-api-url: ${{ env.HANKO_API_URL_PROD }}
           vite-site-url: https://familiar.systems
+          pnpm-version: ${{ steps.versions.outputs.pnpm }}
           gha-cache: "false"
 
       - name: Build and push platform
