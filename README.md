@@ -25,6 +25,7 @@ workers/                  Job processors, language-agnostic (Python ML today)
 
 crates/app-shared         Rust library: IDs, auth (used by both Rust binaries)
 crates/campaign-shared    Rust library: Loro/ToC/PM conventions (campaign-only)
+crates/fs-id, fs-id-macros  Rust utility crates: type-safe ID branding (used by both shared crates)
 packages/types-app        @familiar-systems/types-app, generated from app-shared via ts-rs
 packages/types-campaign   @familiar-systems/types-campaign, generated from campaign-shared via ts-rs
 packages/editor           @familiar-systems/editor, TipTap/ProseMirror schema + custom extensions

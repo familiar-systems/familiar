@@ -4,6 +4,6 @@ Campaign-scoped shared library. Schema types, Loro document wrappers, and the Cr
 
 Everything here is used exclusively by the campaign server. The platform server does not depend on this crate.
 
-Depends on `app-shared` for IDs and `loro` for CRDT operations.
+Depends on `app-shared` for cross-service IDs, on `fs-id` for the `#[fs_id]` ID-branding macro, and on `loro` for CRDT operations.
 
-All types with `#[derive(TS)]` export to `packages/types/` via ts-rs.
+All types with `#[derive(TS)]` export to `packages/types-campaign/` via ts-rs.

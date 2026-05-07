@@ -70,7 +70,9 @@ familiar/
 │   └── campaign/          # Rust binary: Axum + kameo (actors, collab, AI, compiler)
 ├── crates/
 │   ├── app-shared/        # Rust library: IDs, auth, libSQL helpers (platform + campaign)
-│   └── campaign-shared/   # Rust library: Loro wrappers, ToC/Thing schema, CrdtDoc trait, status (campaign only)
+│   ├── campaign-shared/   # Rust library: Loro wrappers, ToC/Thing schema, CrdtDoc trait, status (campaign only)
+│   ├── fs-id/             # Rust utility: branded-ID inner types and traits
+│   └── fs-id-macros/      # Rust utility: #[fs_id] proc-macro for typed ID newtypes
 ├── packages/
 │   ├── types-app/         # @familiar-systems/types-app -- generated from app-shared via ts-rs
 │   ├── types-campaign/    # @familiar-systems/types-campaign -- generated from campaign-shared via ts-rs
@@ -255,6 +257,10 @@ The litmus test: **does the platform server need this type?** If yes, it belongs
 ### `crates/campaign-shared/` -- the campaign-only crate
 
 Campaign-scoped types and infrastructure that the platform server never touches. Contains the Loro document layer (CrdtDoc trait, typed wrappers for Thing and ToC documents, ProseMirror interop conventions), campaign-scoped IDs (ThingId, BlockId, SessionId, JournalId, SuggestionId, ConversationId), view status types (GmOnly, Known, Retconned), and WebSocket notification types. Only the campaign server depends on this crate.
+
+### Utility crates
+
+Smaller cross-cutting libraries used by both shared crates live alongside them under `crates/`. Currently: `fs-id` and `fs-id-macros`, which provide the `#[fs_id]` attribute macro for type-safe ID branding (the boilerplate behind `CampaignId`, `ThingId`, etc., including the ts-rs / serde / utoipa derives). The split into two crates is a Rust requirement: proc-macro crates must be standalone.
 
 ### Type generation
 
