@@ -1,15 +1,19 @@
 //! Branded ID infrastructure shared by familiar-systems crates.
 //!
 //! Defines the inner types ([`Nanoid`] newtype + re-exported [`Uuid`] /
-//! [`Ulid`]), the [`BrandedInner`] / [`BrandedInnerAuto`] traits they
-//! implement, and re-exports the [`fs_id`] attribute macro from
-//! `fs-id-macros`.
+//! [`Ulid`]) and re-exports the [`fs_id`] attribute macro from
+//! `fs-id-macros`. Recognized inner types are gated by the macro's
+//! `classify` allow-list, not a trait — implementing a trait is not
+//! sufficient to make a new inner type work.
 //!
 //! ```ignore
 //! use fs_id::{fs_id, Nanoid};
 //!
 //! #[fs_id(export_to = "types-app/src/generated/id/")]
 //! pub struct CampaignId(pub Nanoid);
+//!
+//! let fresh = CampaignId::generate();
+//! let from_db = CampaignId::new(some_nanoid);
 //! ```
 
 pub use fs_id_macros::fs_id;
@@ -20,11 +24,25 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;
 
+/// Re-exports of the crates the `#[fs_id]` macro routes through.
+///
+/// `serde` is routed via `#[serde(crate = "...")]`; `ulid` / `uuid` via
+/// the constructor expression in `Constructor::Auto`. `ts-rs` and `utoipa`
+/// are intentionally not here — their derives generate code that
+/// hard-codes `ts_rs::*` / `utoipa::*` paths and they have no
+/// crate-rename attribute, so consumers of `#[fs_id]` need those crates
+/// as direct deps regardless. Putting them here would mislead.
+#[doc(hidden)]
+pub mod __private {
+    pub use serde;
+    pub use ulid;
+    pub use uuid;
+}
+
 /// Nanoid-backed string ID.
 ///
-/// Newtype around `String` so it can implement [`BrandedInner`] without
-/// blanket-impling for every `String` (which would conflict with `u64`
-/// branding for [`crate::Uuid`] etc.).
+/// Newtype around `String` so the `#[fs_id]` allow-list can distinguish
+/// nanoid-shaped inputs from arbitrary strings.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS, ToSchema)]
 #[ts(type = "string")]
 #[schema(value_type = String)]
@@ -67,62 +85,5 @@ impl AsRef<str> for Nanoid {
 impl std::fmt::Display for Nanoid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-/// JSON primitive a branded ID type wraps.
-///
-/// The proc macro emits `<Inner as BrandedInner>::TS_PRIMITIVE` indirectly
-/// via its allow-list match (ts-rs needs the brand string at expansion
-/// time, before trait consts are available). The trait itself is the
-/// single source of truth for the runtime/serde shape.
-pub trait BrandedInner: Sized {
-    /// `"string"` or `"number"`.
-    const TS_PRIMITIVE: &'static str;
-}
-
-/// Inner types that mint a fresh value with no input.
-///
-/// Numeric IDs (server-assigned counters, etc.) deliberately don't impl
-/// this — their `new()` takes a value.
-pub trait BrandedInnerAuto: BrandedInner {
-    fn generate() -> Self;
-}
-
-impl BrandedInner for Nanoid {
-    const TS_PRIMITIVE: &'static str = "string";
-}
-impl BrandedInner for Uuid {
-    const TS_PRIMITIVE: &'static str = "string";
-}
-impl BrandedInner for Ulid {
-    const TS_PRIMITIVE: &'static str = "string";
-}
-impl BrandedInner for u64 {
-    const TS_PRIMITIVE: &'static str = "number";
-}
-impl BrandedInner for u32 {
-    const TS_PRIMITIVE: &'static str = "number";
-}
-impl BrandedInner for i64 {
-    const TS_PRIMITIVE: &'static str = "number";
-}
-impl BrandedInner for i32 {
-    const TS_PRIMITIVE: &'static str = "number";
-}
-
-impl BrandedInnerAuto for Nanoid {
-    fn generate() -> Self {
-        Self::new()
-    }
-}
-impl BrandedInnerAuto for Uuid {
-    fn generate() -> Self {
-        Uuid::now_v7()
-    }
-}
-impl BrandedInnerAuto for Ulid {
-    fn generate() -> Self {
-        Ulid::new()
     }
 }

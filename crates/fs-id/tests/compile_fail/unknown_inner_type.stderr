@@ -1,4 +1,4 @@
-error: `#[fs_id]` does not recognize inner type `String`. Implement `BrandedInner` (and optionally `BrandedInnerAuto`) for it in `fs-id`, then add it to the allow-list in `fs-id-macros/src/lib.rs`.
+error: `#[fs_id]` does not recognize inner type `String`. Add a match arm for it in `classify` (and a `__private` re-export in `fs-id` if it's a foreign type).
  --> tests/compile_fail/unknown_inner_type.rs:4:20
   |
 4 | pub struct Bad(pub String);

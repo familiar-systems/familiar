@@ -8,14 +8,11 @@ publish = false
 fs-id = { workspace = true }
 serde.workspace = true
 ts-rs.workspace = true
-ulid.workspace = true
 utoipa.workspace = true
-uuid.workspace = true
 
-# `ulid`, `uuid`, and `utoipa` are not textually imported here — they're
-# referenced through fully-qualified paths in code expanded from the
-# `#[fs_id]` proc macro (e.g. `::utoipa::ToSchema` derive, `<Ulid as
-# fs_id::BrandedInnerAuto>`). cargo-machete only does a textual scan, so
-# tell it these are intentional.
+# `utoipa` is not textually imported here — `#[fs_id]` expands to
+# `#[derive(::utoipa::ToSchema)]`, and utoipa's derive output references
+# `utoipa::*` paths that bind to this crate's namespace. cargo-machete only
+# does a textual scan, so tell it the dep is intentional.
 [package.metadata.cargo-machete]
-ignored = ["ulid", "utoipa", "uuid"]
+ignored = ["utoipa"]

@@ -27,7 +27,7 @@ async fn things_and_blocks_round_trip_branded_types() {
     let now = Utc::now();
 
     // Insert a Thing.
-    let thing_id = ThingId::new();
+    let thing_id = ThingId::generate();
     things::ActiveModel {
         id: Set(thing_id.clone().into()),
         name: Set("Vex the Bone Sage".into()),
@@ -45,7 +45,7 @@ async fn things_and_blocks_round_trip_branded_types() {
     let statuses = [Status::Known, Status::Known, Status::GmOnly];
     for (i, status) in statuses.into_iter().enumerate() {
         blocks::ActiveModel {
-            id: Set(BlockId::new().into()),
+            id: Set(BlockId::generate().into()),
             thing_id: Set(thing_id.clone().into()),
             status: Set(status.into()),
             ordering: Set(i as i64),

@@ -26,9 +26,9 @@ pub struct I64Id(pub i64);
 
 #[test]
 fn auto_ids_generate_distinct_values() {
-    assert_ne!(NanoidId::new(), NanoidId::new());
-    assert_ne!(UuidId::new(), UuidId::new());
-    assert_ne!(UlidId::new(), UlidId::new());
+    assert_ne!(NanoidId::generate(), NanoidId::generate());
+    assert_ne!(UuidId::generate(), UuidId::generate());
+    assert_ne!(UlidId::generate(), UlidId::generate());
 }
 
 #[test]
@@ -41,8 +41,18 @@ fn numeric_ids_take_value() {
 }
 
 #[test]
+fn auto_ids_wrap_existing_values() {
+    // `new` is the universal "wrap a value" constructor. For auto inners
+    // it's how hydration paths (DB rows, CRDT decode) reconstruct an ID
+    // from an inner value they already have.
+    let n = Nanoid::new();
+    let wrapped = NanoidId::new(n.clone());
+    assert_eq!(wrapped.0, n);
+}
+
+#[test]
 fn serde_roundtrip_nanoid() {
-    let id = NanoidId::new();
+    let id = NanoidId::generate();
     let json = serde_json::to_string(&id).unwrap();
     let back: NanoidId = serde_json::from_str(&json).unwrap();
     assert_eq!(id, back);
@@ -50,7 +60,7 @@ fn serde_roundtrip_nanoid() {
 
 #[test]
 fn serde_roundtrip_uuid() {
-    let id = UuidId::new();
+    let id = UuidId::generate();
     let json = serde_json::to_string(&id).unwrap();
     let back: UuidId = serde_json::from_str(&json).unwrap();
     assert_eq!(id, back);
@@ -58,7 +68,7 @@ fn serde_roundtrip_uuid() {
 
 #[test]
 fn serde_roundtrip_ulid() {
-    let id = UlidId::new();
+    let id = UlidId::generate();
     let json = serde_json::to_string(&id).unwrap();
     let back: UlidId = serde_json::from_str(&json).unwrap();
     assert_eq!(id, back);

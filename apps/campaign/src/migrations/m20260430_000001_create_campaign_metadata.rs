@@ -84,7 +84,7 @@ mod tests {
         let now = Utc::now();
         campaign_metadata::ActiveModel {
             id: Set(id),
-            campaign_id: Set(CampaignId::new().into()),
+            campaign_id: Set(CampaignId::generate().into()),
             name: Set("Curse of Strahd".into()),
             description: Set(Some("Gothic horror in Barovia".into())),
             created_at: Set(now),

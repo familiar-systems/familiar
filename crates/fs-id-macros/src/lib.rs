@@ -13,8 +13,11 @@ use syn::{
 /// `i64`, `i32`).
 ///
 /// Emits a branded ID type with serde, ts-rs, utoipa, `Display`,
-/// `From<Inner>`, and a `new()` constructor (auto-generating for
-/// [`Nanoid`] / [`Uuid`] / [`Ulid`], value-taking for numeric inners).
+/// `From<Inner>`, and constructors:
+/// - `pub const fn new(value: Inner) -> Self` (always emitted — wraps a
+///   value, used for hydration / numeric IDs).
+/// - `pub fn generate() -> Self` (emitted only for [`Nanoid`] / [`Uuid`] /
+///   [`Ulid`] — mints a fresh ID).
 ///
 /// The brand string is constructed at macro expansion time from the
 /// struct's own ident — it cannot drift.
@@ -88,10 +91,22 @@ impl Primitive {
     }
 }
 
+/// How the emitted brand type mints values.
+///
+/// `Auto` carries a recipe (`fn() -> TokenStream`) for the expression that
+/// produces a fresh inner value; the macro splices it into the body of
+/// `generate()`. `Value` types only get `new(value)` — they're inputs
+/// (numeric counters, externally-assigned IDs) that don't self-mint.
+#[derive(Clone, Copy)]
+enum Constructor {
+    Auto(fn() -> proc_macro2::TokenStream),
+    Value,
+}
+
 #[derive(Clone, Copy)]
 struct InnerKind {
     primitive: Primitive,
-    auto: bool,
+    constructor: Constructor,
     copy: bool,
     /// utoipa `value_type` selection.
     schema_value_type: &'static str,
@@ -100,57 +115,59 @@ struct InnerKind {
 }
 
 /// The allow-list. Adding a new inner type:
-/// 1. Add an `impl BrandedInner` (and optionally `BrandedInnerAuto`) in
-///    `crates/fs-id/src/lib.rs`.
-/// 2. Add a match arm here with the right (primitive, auto, copy, schema)
-///    quadruple.
+/// 1. Add a match arm here with the right `InnerKind`. For auto inners,
+///    the `Constructor::Auto` closure must produce an expression that
+///    yields a fresh value of that inner type.
+/// 2. If the inner type lives in a foreign crate, re-export it from
+///    `fs-id`'s `__private` module so the emitted path stays
+///    self-contained for consumers.
 fn classify(ident: &syn::Ident) -> Option<InnerKind> {
     Some(match ident.to_string().as_str() {
         "Nanoid" => InnerKind {
             primitive: Primitive::String,
-            auto: true,
+            constructor: Constructor::Auto(|| quote!(::fs_id::Nanoid::new())),
             copy: false,
             schema_value_type: "String",
             schema_format: "nanoid",
         },
         "Uuid" => InnerKind {
             primitive: Primitive::String,
-            auto: true,
+            constructor: Constructor::Auto(|| quote!(::fs_id::__private::uuid::Uuid::now_v7())),
             copy: false,
             schema_value_type: "String",
             schema_format: "uuid",
         },
         "Ulid" => InnerKind {
             primitive: Primitive::String,
-            auto: true,
+            constructor: Constructor::Auto(|| quote!(::fs_id::__private::ulid::Ulid::new())),
             copy: false,
             schema_value_type: "String",
             schema_format: "ulid",
         },
         "u64" => InnerKind {
             primitive: Primitive::Number,
-            auto: false,
+            constructor: Constructor::Value,
             copy: true,
             schema_value_type: "u64",
             schema_format: "int64",
         },
         "u32" => InnerKind {
             primitive: Primitive::Number,
-            auto: false,
+            constructor: Constructor::Value,
             copy: true,
             schema_value_type: "u32",
             schema_format: "int32",
         },
         "i64" => InnerKind {
             primitive: Primitive::Number,
-            auto: false,
+            constructor: Constructor::Value,
             copy: true,
             schema_value_type: "i64",
             schema_format: "int64",
         },
         "i32" => InnerKind {
             primitive: Primitive::Number,
-            auto: false,
+            constructor: Constructor::Value,
             copy: true,
             schema_value_type: "i32",
             schema_format: "int32",
@@ -211,9 +228,8 @@ fn expand(args: Args, item: ItemStruct) -> Result<proc_macro2::TokenStream> {
             inner_ty,
             format!(
                 "`#[fs_id]` does not recognize inner type `{inner_ident}`. \
-                 Implement `BrandedInner` (and optionally `BrandedInnerAuto`) \
-                 for it in `fs-id`, then add it to the allow-list in \
-                 `fs-id-macros/src/lib.rs`.",
+                 Add a match arm for it in `classify` (and a `__private` \
+                 re-export in `fs-id` if it's a foreign type).",
             ),
         )
     })?;
@@ -243,25 +259,36 @@ fn expand(args: Args, item: ItemStruct) -> Result<proc_macro2::TokenStream> {
         quote! {}
     };
 
-    let new_impl = if kind.auto {
-        quote! {
-            impl #ident {
-                #[allow(clippy::new_without_default)]
-                pub fn new() -> Self {
-                    Self(<#inner_ty as ::fs_id::BrandedInnerAuto>::generate())
-                }
-            }
-        }
-    } else {
-        quote! {
-            impl #ident {
-                pub const fn new(value: #inner_ty) -> Self {
-                    Self(value)
-                }
+    // `new` always wraps; `generate` mints fresh and only exists on auto
+    // inners.
+    let new_impl = quote! {
+        impl #ident {
+            pub const fn new(value: #inner_ty) -> Self {
+                Self(value)
             }
         }
     };
 
+    let generate_impl = match kind.constructor {
+        Constructor::Auto(expr_fn) => {
+            let body = expr_fn();
+            quote! {
+                impl #ident {
+                    pub fn generate() -> Self {
+                        Self(#body)
+                    }
+                }
+            }
+        }
+        Constructor::Value => quote! {},
+    };
+
+    // serde supports `#[serde(crate = "...")]` so consumers don't need
+    // serde as a direct dep when only #[fs_id] uses it. ts-rs and utoipa
+    // have no equivalent — their derives expand to `ts_rs::*` / `utoipa::*`
+    // path references that bind to the consumer's crate namespace, so we
+    // emit them with bare crate paths and the consumer must depend on
+    // them directly.
     Ok(quote! {
         #(#attrs)*
         #[derive(
@@ -271,11 +298,12 @@ fn expand(args: Args, item: ItemStruct) -> Result<proc_macro2::TokenStream> {
             ::core::cmp::PartialEq,
             ::core::cmp::Eq,
             ::core::hash::Hash,
-            ::serde::Serialize,
-            ::serde::Deserialize,
+            ::fs_id::__private::serde::Serialize,
+            ::fs_id::__private::serde::Deserialize,
             ::ts_rs::TS,
             ::utoipa::ToSchema,
         )]
+        #[serde(crate = "::fs_id::__private::serde")]
         #ts_attr
         #[schema(value_type = #schema_value_type, format = #schema_format)]
         #vis struct #ident(#field_vis #inner_ty);
@@ -287,6 +315,7 @@ fn expand(args: Args, item: ItemStruct) -> Result<proc_macro2::TokenStream> {
         }
 
         #new_impl
+        #generate_impl
 
         impl ::core::fmt::Display for #ident {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {

@@ -925,9 +925,7 @@ dependencies = [
  "fs-id",
  "serde",
  "ts-rs",
- "ulid",
  "utoipa",
- "uuid",
 ]
 
 [[package]]

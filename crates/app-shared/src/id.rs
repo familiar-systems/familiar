@@ -19,21 +19,21 @@ mod tests {
 
     #[test]
     fn nanoid_ids_are_unique() {
-        let a = CampaignId::new();
-        let b = CampaignId::new();
+        let a = CampaignId::generate();
+        let b = CampaignId::generate();
         assert_ne!(a, b);
     }
 
     #[test]
     fn uuid7_ids_are_unique() {
-        let a = UserId::new();
-        let b = UserId::new();
+        let a = UserId::generate();
+        let b = UserId::generate();
         assert_ne!(a, b);
     }
 
     #[test]
     fn serde_roundtrip_nanoid() {
-        let id = CampaignId::new();
+        let id = CampaignId::generate();
         let json = serde_json::to_string(&id).unwrap();
         let back: CampaignId = serde_json::from_str(&json).unwrap();
         assert_eq!(id, back);
@@ -41,7 +41,7 @@ mod tests {
 
     #[test]
     fn serde_roundtrip_uuid() {
-        let id = UserId::new();
+        let id = UserId::generate();
         let json = serde_json::to_string(&id).unwrap();
         let back: UserId = serde_json::from_str(&json).unwrap();
         assert_eq!(id, back);
