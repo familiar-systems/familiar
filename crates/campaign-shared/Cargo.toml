@@ -5,8 +5,17 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-nanoid.workspace = true
+fs-id = { workspace = true }
 serde.workspace = true
 ts-rs.workspace = true
 ulid.workspace = true
+utoipa.workspace = true
 uuid.workspace = true
+
+# `ulid`, `uuid`, and `utoipa` are not textually imported here — they're
+# referenced through fully-qualified paths in code expanded from the
+# `#[fs_id]` proc macro (e.g. `::utoipa::ToSchema` derive, `<Ulid as
+# fs_id::BrandedInnerAuto>`). cargo-machete only does a textual scan, so
+# tell it these are intentional.
+[package.metadata.cargo-machete]
+ignored = ["ulid", "utoipa", "uuid"]

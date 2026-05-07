@@ -8,13 +8,13 @@ pub struct CampaignIdCol(pub String);
 
 impl From<CampaignId> for CampaignIdCol {
     fn from(id: CampaignId) -> Self {
-        Self(id.0)
+        Self(id.0.into())
     }
 }
 
 impl From<CampaignIdCol> for CampaignId {
     fn from(col: CampaignIdCol) -> Self {
-        Self(col.0)
+        Self(col.0.into())
     }
 }
 

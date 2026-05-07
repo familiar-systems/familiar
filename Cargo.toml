@@ -1,6 +1,13 @@
 [workspace]
 resolver = "3"
-members = ["apps/platform", "apps/campaign", "crates/app-shared", "crates/campaign-shared"]
+members = [
+  "apps/platform",
+  "apps/campaign",
+  "crates/app-shared",
+  "crates/campaign-shared",
+  "crates/fs-id",
+  "crates/fs-id-macros",
+]
 
 [workspace.package]
 edition = "2024"
@@ -9,11 +16,15 @@ repository = "https://github.com/familiar-systems/familiar"
 [workspace.dependencies]
 axum = "0.8"
 chrono = { version = "0.4.44", features = ["serde"] }
+fs-id = { path = "crates/fs-id" }
+fs-id-macros = { path = "crates/fs-id-macros" }
 kameo = "0.20"
 # garde = { version = "0.22", features = ["derive", "email"] }
 # Not today but soon
 loro = "1"
 nanoid = "0.5.0"
+proc-macro2 = "1"
+quote = "1"
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls"] }
 sea-orm = { version = "1.1", features = [
   "sqlx-sqlite",
@@ -25,6 +36,7 @@ sea-orm = { version = "1.1", features = [
 sea-orm-migration = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-rustls"] }
 serde = "1"
 serde_json = "1"
+syn = { version = "2", features = ["full"] }
 thiserror = "2.0.18"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "request-id", "trace", "util"] }
