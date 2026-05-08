@@ -1,6 +1,7 @@
 import type { MeResponse } from "@familiar-systems/types-app";
+import { Link } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { assetPath, spaRoute } from "../lib/paths";
+import { assetPath } from "../lib/paths";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu } from "./UserMenu";
 
@@ -16,8 +17,8 @@ export function HubNav({ me, hasCampaigns, onNewCampaign }: HubNavProps): React.
   return (
     <nav className="sticky top-0 z-30 border-b border-foreground/5 bg-background/40 backdrop-blur-md">
       <div className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between gap-6">
-        <a
-          href={spaRoute("")}
+        <Link
+          to="/"
           aria-label="familiar.systems hub"
           className="inline-flex items-center gap-3 transition-opacity hover:opacity-80"
         >
@@ -38,7 +39,7 @@ export function HubNav({ me, hasCampaigns, onNewCampaign }: HubNavProps): React.
           <span className="font-display text-xl font-medium tracking-tight text-foreground">
             familiar.systems
           </span>
-        </a>
+        </Link>
 
         <div className="flex items-center gap-3">
           <ThemeToggle />

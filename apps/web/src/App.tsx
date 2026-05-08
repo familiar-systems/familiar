@@ -1,24 +1,22 @@
-import { Hub } from "./hub";
-import { Login } from "./login";
-import { Settings } from "./settings";
-import { spaRoute } from "./lib/paths";
+import { RouterProvider } from "@tanstack/react-router";
+import { useAuthedMe } from "./lib/auth";
+import { router } from "./router";
 
-// The SPA lives at the root of the app apex in dev/prod (base "/") and
-// under a per-PR prefix in preview (base "/pr-42/"). Strip the base prefix
-// before matching routes so the matcher sees e.g. "login" regardless of env.
-function currentRoute(): string {
-  const base = spaRoute("");
-  const path = window.location.pathname;
-  return path.startsWith(base) ? path.slice(base.length) : path.replace(/^\//, "");
-}
-
+// Auth bootstraps once at app mount. Until that resolves we render a
+// minimal loading shell rather than handing a null-me context to the
+// router; otherwise requireAuth would redirect to /login on first match
+// and the URL would change before /me could refute it. Once auth resolves,
+// RouterProvider mounts with me in context (null = unauthed, in which case
+// the router's requireAuth handles the redirect).
 export function App(): React.ReactElement {
-  switch (currentRoute()) {
-    case "login":
-      return <Login />;
-    case "settings":
-      return <Settings />;
-    default:
-      return <Hub />;
+  const { me, error, loading } = useAuthedMe();
+
+  if (loading) {
+    return <div className="p-8 text-muted-foreground">Loading...</div>;
   }
+  if (error) {
+    return <pre className="p-8">Error: {error}</pre>;
+  }
+
+  return <RouterProvider router={router} context={{ me }} />;
 }

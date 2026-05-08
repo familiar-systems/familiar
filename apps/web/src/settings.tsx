@@ -1,13 +1,12 @@
+import { useRouteContext } from "@tanstack/react-router";
 import { Shell } from "./components/Shell";
-import { useAuthedMe } from "./lib/auth";
 import { hanko } from "./lib/hanko";
 import { spaRoute } from "./lib/paths";
 
 export function Settings(): React.ReactElement {
-  const { me, error } = useAuthedMe();
-
-  if (error) return <pre className="p-8">Error: {error}</pre>;
-  if (!me) return <div className="p-8 text-muted-foreground">Loading...</div>;
+  // me is refined to MeResponse by requireAuth; auth/loading/error states
+  // are handled in App and the router's beforeLoad, not here.
+  const { me } = useRouteContext({ from: "/settings" });
 
   const onSignOut = async (): Promise<void> => {
     try {

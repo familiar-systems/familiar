@@ -17,6 +17,7 @@
     "@familiar-systems/types-app": "workspace:*",
     "@familiar-systems/types-campaign": "workspace:*",
     "@tailwindcss/vite": "catalog:",
+    "@tanstack/react-router": "^1.169.2",
     "@teamhanko/hanko-elements": "^2.6.0",
     "lucide-react": "catalog:",
     "openapi-fetch": "^0.17",

@@ -1,4 +1,5 @@
 import type { MeResponse } from "@familiar-systems/types-app";
+import { Link } from "@tanstack/react-router";
 import { LogOut, Settings as SettingsIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { hanko } from "../lib/hanko";
@@ -83,15 +84,15 @@ export function UserMenu({ me }: UserMenuProps): React.ReactElement {
             </span>
           </div>
           <div className="my-1 h-px bg-foreground/10" />
-          <a
+          <Link
             ref={firstItemRef}
             role="menuitem"
-            href={spaRoute("settings")}
+            to="/settings"
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-foreground/5 transition-colors focus:outline-none focus:bg-foreground/5"
           >
             <SettingsIcon className="w-4 h-4 text-primary" />
             <span>Settings</span>
-          </a>
+          </Link>
           <a
             role="menuitem"
             href={spaRoute("login")}
