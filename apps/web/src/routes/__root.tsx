@@ -29,7 +29,7 @@ function NotFound(): React.ReactElement {
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-8 text-center">
       <p className="font-display text-2xl">404: Not Found.</p>
       <p className="font-display text-2xl">The labyrinth claims another one.</p>
-      <Link to="/" className="text-muted-foreground text-sm underline hover:text-foreground">
+      <Link to="/" className="text-sm text-muted-foreground underline hover:text-foreground">
         Return to hub
       </Link>
     </div>

@@ -22,6 +22,14 @@
           "run": "onSave"
         }
       }
+    },
+    "vscode-css-language-server": {
+      "settings": {
+        // Does not understand tailwind css v4 signals
+        "css": { "lint": { "unknownAtRules": "ignore" } },
+        "scss": { "lint": { "unknownAtRules": "ignore" } },
+        "less": { "lint": { "unknownAtRules": "ignore" } }
+      }
     }
   },
   "languages": {

@@ -9,10 +9,10 @@ function Hub(): React.ReactElement {
   return hasCampaigns ? (
     <section className="mx-auto w-full max-w-6xl px-8 pt-24 pb-32">
       <header className="mb-16 text-center">
-        <span className="text-muted-foreground mb-4 block text-xs font-medium tracking-[0.28em] uppercase motion-safe:duration-700 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4">
+        <span className="mb-4 block text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase enter-from-below">
           Welcome back
         </span>
-        <h1 className="font-display text-5xl leading-none font-medium tracking-tight [animation-delay:100ms] motion-safe:duration-700 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4 md:text-7xl lg:text-8xl">
+        <h1 className="font-display text-5xl leading-none font-medium tracking-tight enter-from-below [animation-delay:100ms] md:text-7xl lg:text-8xl">
           Your <em className="font-normal text-gold italic">worlds</em> await.
         </h1>
       </header>

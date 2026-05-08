@@ -73,7 +73,7 @@ export function UserMenu({ me }: UserMenuProps): React.ReactElement {
           ].join(" ")}
         >
           <div className="px-3 py-2">
-            <span className="text-muted-foreground block text-xs tracking-[0.2em] uppercase">
+            <span className="block text-xs tracking-[0.2em] text-muted-foreground uppercase">
               Signed in as
             </span>
             <span
@@ -99,7 +99,7 @@ export function UserMenu({ me }: UserMenuProps): React.ReactElement {
             onClick={onSignOut}
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-foreground/5 focus:bg-foreground/5 focus:outline-none"
           >
-            <LogOut className="text-muted-foreground size-4" />
+            <LogOut className="size-4 text-muted-foreground" />
             <span>Sign out</span>
           </a>
         </div>

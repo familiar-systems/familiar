@@ -21,7 +21,7 @@ export function EmptyHubCard(): React.ReactElement {
         "dark:shadow-[0_12px_40px_-18px_rgb(0_0_0/0.55)]",
         "transition-all duration-300",
         "hover:-translate-y-1 hover:shadow-2xl hover:shadow-primary/10 hover:border-primary/20",
-        "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4 motion-safe:duration-700",
+        "enter-from-below",
       ].join(" ")}
     >
       <Banner className="h-14" />

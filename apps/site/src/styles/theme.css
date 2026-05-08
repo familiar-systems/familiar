@@ -1,5 +1,10 @@
 /* Light Theme (Default) - Warm parchment */
 :root {
+  /* Signals built-in dual-scheme support to the browser and extensions
+    like Dark Reader, so they don't apply their own auto-darkening on
+    top of ours. Also gives native controls (scrollbars, form elements)
+    a matching tone without per-element overrides. */
+  color-scheme: light;
   --background: #f8f4ec;
   --foreground: #1c1917;
   --muted: #ede8dd;
@@ -15,6 +20,7 @@
 
 /* Dark Theme - Deep warm charcoal */
 .dark {
+  color-scheme: dark;
   --background: #0f0d0a;
   --foreground: #e7e5e4;
   --color-primary: #9a86aa;

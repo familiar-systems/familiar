@@ -40,9 +40,13 @@ function Login(): React.ReactElement {
       {/* Harbor woodcut backdrop. Same mask-image technique as the marketing
         hero: SVG drives the shape, --color-bronze drives the fill, opacity
         differs between themes to keep contrast comparable. */}
+      {/* Theme-paired harbor masks. Opacity-toggle (not display-toggle) so
+        each layer states its presence in both modes for the linter — the
+        off-theme layer composites at opacity 0, negligible cost on a
+        static page. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-bronze opacity-[0.16] dark:hidden"
+        className="pointer-events-none absolute inset-0 bg-bronze opacity-[0.16] dark:opacity-0"
         style={{
           maskImage: HARBOR_LIGHT_URL,
           maskRepeat: "no-repeat",
@@ -56,7 +60,7 @@ function Login(): React.ReactElement {
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 hidden bg-bronze opacity-[0.22] dark:block"
+        className="pointer-events-none absolute inset-0 bg-bronze opacity-0 dark:opacity-[0.22]"
         style={{
           maskImage: HARBOR_DARK_URL,
           maskRepeat: "no-repeat",
@@ -99,7 +103,7 @@ function Login(): React.ReactElement {
             the ambient primary-color orbs in the background. */}
           <span
             aria-hidden="true"
-            className="block size-10 bg-foreground transition-[filter] duration-300 dark:bg-primary dark:drop-shadow-[0_0_10px_var(--color-primary)]"
+            className="block size-10 bg-foreground drop-shadow-none transition-[filter] duration-300 dark:bg-primary dark:drop-shadow-[0_0_10px_var(--color-primary)]"
             style={{
               maskImage: RAVEN_URL,
               maskRepeat: "no-repeat",

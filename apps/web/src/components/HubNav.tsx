@@ -24,7 +24,7 @@ export function HubNav({ me, hasCampaigns, onNewCampaign }: HubNavProps): React.
         >
           <span
             aria-hidden="true"
-            className="block size-7 bg-foreground transition-[filter] duration-300 dark:bg-primary dark:drop-shadow-[0_0_8px_var(--color-primary)]"
+            className="block size-7 bg-foreground drop-shadow-none transition-[filter] duration-300 dark:bg-primary dark:drop-shadow-[0_0_8px_var(--color-primary)]"
             style={{
               maskImage: RAVEN_URL,
               maskRepeat: "no-repeat",

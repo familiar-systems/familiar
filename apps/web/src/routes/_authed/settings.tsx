@@ -18,7 +18,7 @@ function Settings(): React.ReactElement {
   return (
     <section className="mx-auto max-w-2xl px-6 py-24">
       <header className="mb-12">
-        <span className="text-muted-foreground block text-xs font-medium tracking-[0.28em] uppercase">
+        <span className="block text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase">
           Settings
         </span>
         <h1 className="mt-3 font-display text-3xl tracking-tight md:text-4xl">Account</h1>
@@ -27,18 +27,18 @@ function Settings(): React.ReactElement {
       <article className="mb-6 rounded-2xl border border-foreground/10 bg-background p-6 shadow-[0_8px_32px_-16px_rgb(28_25_23/0.18)] dark:shadow-[0_12px_40px_-18px_rgb(0_0_0/0.45)]">
         <h2 className="mb-5 font-display text-xl">Profile</h2>
         <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-8 gap-y-4">
-          <dt className="text-muted-foreground text-sm">Email</dt>
+          <dt className="text-sm text-muted-foreground">Email</dt>
           <dd className="font-display text-base break-all text-foreground md:text-lg">
             {user.email}
           </dd>
-          <dt className="text-muted-foreground text-sm">User ID</dt>
-          <dd className="text-muted-foreground/80 font-mono text-xs break-all">{user.id}</dd>
+          <dt className="text-sm text-muted-foreground">User ID</dt>
+          <dd className="font-mono text-xs break-all text-muted-foreground/80">{user.id}</dd>
         </dl>
       </article>
 
       <article className="rounded-2xl border border-foreground/10 bg-background p-6 shadow-[0_8px_32px_-16px_rgb(28_25_23/0.18)] dark:shadow-[0_12px_40px_-18px_rgb(0_0_0/0.45)]">
         <h2 className="mb-2 font-display text-xl">Session</h2>
-        <p className="text-muted-foreground mb-5 text-sm">
+        <p className="mb-5 text-sm text-muted-foreground">
           Sign out on this device. Your campaign data stays.
         </p>
         <button

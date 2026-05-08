@@ -12,7 +12,7 @@ export function App(): React.ReactElement {
   const { state, error } = useAuth();
 
   if (error) return <pre className="p-8">Error: {error}</pre>;
-  if (state === null) return <div className="text-muted-foreground p-8">Loading...</div>;
+  if (state === null) return <div className="p-8 text-muted-foreground">Loading...</div>;
 
   return <RouterProvider router={router} context={{ auth: state }} />;
 }
