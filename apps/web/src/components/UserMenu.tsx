@@ -73,11 +73,11 @@ export function UserMenu({ me }: UserMenuProps): React.ReactElement {
           ].join(" ")}
         >
           <div className="px-3 py-2">
-            <span className="block text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            <span className="text-muted-foreground block text-xs tracking-[0.2em] uppercase">
               Signed in as
             </span>
             <span
-              className="block font-display text-sm text-foreground truncate mt-1"
+              className="mt-1 block truncate font-display text-sm text-foreground"
               title={me.email}
             >
               {me.email}
@@ -88,18 +88,18 @@ export function UserMenu({ me }: UserMenuProps): React.ReactElement {
             ref={firstItemRef}
             role="menuitem"
             to="/settings"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-foreground/5 transition-colors focus:outline-none focus:bg-foreground/5"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-foreground/5 focus:bg-foreground/5 focus:outline-none"
           >
-            <SettingsIcon className="w-4 h-4 text-primary" />
+            <SettingsIcon className="size-4 text-primary" />
             <span>Settings</span>
           </Link>
           <a
             role="menuitem"
             href={spaRoute("login")}
             onClick={onSignOut}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-foreground/5 transition-colors focus:outline-none focus:bg-foreground/5"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-foreground/5 focus:bg-foreground/5 focus:outline-none"
           >
-            <LogOut className="w-4 h-4 text-muted-foreground" />
+            <LogOut className="text-muted-foreground size-4" />
             <span>Sign out</span>
           </a>
         </div>

@@ -22,7 +22,7 @@ export function ThemeToggle({ className }: ThemeToggleProps): React.ReactElement
         className ?? "",
       ].join(" ")}
     >
-      {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+      {isDark ? <Sun className="size-5" /> : <Moon className="size-5" />}
     </button>
   );
 }

@@ -62,11 +62,18 @@ description = "Sync Python venv for Pulumi infra"
 dir = "infra/pulumi-cloud"
 run = "uv sync"
 
+[tasks."setup:e2e"]
+description = "Install Playwright's browser binary (chromium) for apps/web e2e tests"
+# Playwright pins exact browser revisions per @playwright/test version, so
+# we let Playwright manage the install itself instead of mise tracking the
+# browser as a tool. Cached at ~/.cache/ms-playwright; idempotent.
+run = "pnpm --filter @familiar-systems/web exec playwright install chromium"
+
 # --- check ---
 
 [tasks.check]
-description = "Run all checks in parallel (format:check, lint, typecheck, test)"
-depends = ["format:check", "lint", "typecheck", "test"]
+description = "Run all checks in parallel (format:check, lint, typecheck, test, e2e)"
+depends = ["format:check", "lint", "typecheck", "test", "e2e"]
 
 # --- dev ---
 
@@ -194,6 +201,24 @@ sources = [
   "workers/whisperx/**/*.py",
   "workers/whisperx/pyproject.toml",
   "workers/whisperx/uv.lock",
+]
+
+# --- e2e ---
+
+[tasks.e2e]
+description = "Browser E2E tests for apps/web (run `mise run setup:e2e` once before first use)"
+# Deliberately not under `test:*`: Playwright spins up a Vite dev server
+# and chromium per run, which would slow `mise run test` (the inner-loop
+# command) and require browser binaries on every fresh worktree. `mise
+# run check` includes this task, so PR-ready verification still covers
+# the full browser flow; CI runs `check`, so e2e fires on every PR.
+run = "pnpm --filter @familiar-systems/web e2e"
+sources = [
+  "apps/web/src/**/*.{ts,tsx}",
+  "apps/web/e2e/**/*.ts",
+  "apps/web/playwright.config.ts",
+  "apps/web/package.json",
+  "pnpm-lock.yaml",
 ]
 
 # --- lint ---

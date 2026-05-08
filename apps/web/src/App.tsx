@@ -1,22 +1,18 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { useAuthedMe } from "./lib/auth";
+import { useAuth } from "./lib/auth";
 import { router } from "./router";
 
-// Auth bootstraps once at app mount. Until that resolves we render a
-// minimal loading shell rather than handing a null-me context to the
-// router; otherwise requireAuth would redirect to /login on first match
-// and the URL would change before /me could refute it. Once auth resolves,
-// RouterProvider mounts with me in context (null = unauthed, in which case
-// the router's requireAuth handles the redirect).
+// Auth bootstraps once at app mount. While the fetch is in flight,
+// render a minimal loading shell instead of mounting the router with a
+// placeholder context - that would briefly resolve _authed beforeLoad
+// against {kind:'unauthed'} and bounce the user to /login before /me
+// could refute it. Once auth resolves, RouterProvider mounts with the
+// live AuthState in context.
 export function App(): React.ReactElement {
-  const { me, error, loading } = useAuthedMe();
+  const { state, error } = useAuth();
 
-  if (loading) {
-    return <div className="p-8 text-muted-foreground">Loading...</div>;
-  }
-  if (error) {
-    return <pre className="p-8">Error: {error}</pre>;
-  }
+  if (error) return <pre className="p-8">Error: {error}</pre>;
+  if (state === null) return <div className="text-muted-foreground p-8">Loading...</div>;
 
-  return <RouterProvider router={router} context={{ me }} />;
+  return <RouterProvider router={router} context={{ auth: state }} />;
 }

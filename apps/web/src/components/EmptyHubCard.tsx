@@ -26,21 +26,21 @@ export function EmptyHubCard(): React.ReactElement {
     >
       <Banner className="h-14" />
 
-      <div className="px-10 md:px-14 py-14 text-center">
-        <p className="font-display italic text-lg md:text-xl leading-relaxed text-foreground/90 max-w-lg mx-auto mb-6 text-pretty">
+      <div className="px-10 py-14 text-center md:px-14">
+        <p className="mx-auto mb-6 max-w-lg font-display text-lg leading-relaxed text-pretty text-foreground/90 italic md:text-xl">
           You sit at the desk, empty but for one paper. The sheet is blank but your mind conjures a
           large, black corvid gazing back at you. Its glowing, purple eyes lock with yours.
           &ldquo;Master Wizard,&rdquo; the raven whispers,
         </p>
-        <p className="font-display italic font-medium text-2xl md:text-3xl leading-snug max-w-lg mx-auto mb-9 text-pretty">
+        <p className="mx-auto mb-9 max-w-lg font-display text-2xl leading-snug font-medium text-pretty italic md:text-3xl">
           &ldquo;your <span className="text-gold">worlds</span> await.&rdquo;
         </p>
         <button
           type="button"
           onClick={onStart}
-          className="inline-flex items-center gap-2 rounded-full bg-gold text-white shadow-lg shadow-gold/25 hover:bg-gold/90 transition-colors px-8 py-4 font-medium"
+          className="inline-flex items-center gap-2 rounded-full bg-gold px-8 py-4 font-medium text-white shadow-lg shadow-gold/25 transition-colors hover:bg-gold/90"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="size-4" />
           <span>Start your first campaign.</span>
         </button>
       </div>

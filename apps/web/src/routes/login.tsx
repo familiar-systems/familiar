@@ -1,17 +1,28 @@
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { register } from "@teamhanko/hanko-elements";
 import { useEffect } from "react";
-import { LoginCookieNotice } from "./components/LoginCookieNotice";
-import { ThemeToggle } from "./components/ThemeToggle";
-import { hanko, hankoApiUrl } from "./lib/hanko";
-import { assetPath, siteLink, spaRoute } from "./lib/paths";
+import { z } from "zod";
+import { LoginCookieNotice } from "../components/LoginCookieNotice";
+import { ThemeToggle } from "../components/ThemeToggle";
+import { hanko, hankoApiUrl } from "../lib/hanko";
+import { assetPath, siteLink, spaRoute } from "../lib/paths";
+import "../styles/hanko.css";
+
+// `redirect` is the post-login destination - _authed.tsx passes
+// location.href when it bounces an unauthed user here, so we can return
+// them to the page they were trying to reach. Validated through Zod
+// because TanStack search-param schemas are part of the project's
+// "Zod at every system boundary" rule.
+const loginSearchSchema = z.object({
+  redirect: z.string().optional(),
+});
 
 const HARBOR_LIGHT_URL = `url('${assetPath("/harbor-for-light.svg")}')`;
 const HARBOR_DARK_URL = `url('${assetPath("/harbor-for-dark.svg")}')`;
 const RAVEN_URL = `url('${assetPath("/raven-icon.svg")}')`;
 const GRID_PATTERN_URL = `url('${assetPath("/grid-pattern.svg")}')`;
-import "./styles/hanko.css";
 
-export function Login() {
+function Login(): React.ReactElement {
   useEffect(() => {
     register(hankoApiUrl).catch((error: unknown) => {
       console.error("hanko register failed", error);
@@ -60,9 +71,9 @@ export function Login() {
 
       {/* Ambient glow orbs. motion-safe gates the pulse for vestibular users. */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-30">
-        <div className="absolute top-[12%] left-[18%] h-[480px] w-[480px] rounded-full bg-primary/30 blur-[140px] motion-safe:animate-pulse" />
+        <div className="absolute top-[12%] left-[18%] size-120 rounded-full bg-primary/30 blur-[140px] motion-safe:animate-pulse" />
         <div
-          className="absolute bottom-[10%] right-[12%] h-[420px] w-[420px] rounded-full bg-gold/25 blur-[120px] motion-safe:animate-pulse"
+          className="absolute right-[12%] bottom-[10%] size-105 rounded-full bg-gold/25 blur-[120px] motion-safe:animate-pulse"
           style={{ animationDelay: "3s" }}
         />
       </div>
@@ -88,7 +99,7 @@ export function Login() {
             the ambient primary-color orbs in the background. */}
           <span
             aria-hidden="true"
-            className="block h-10 w-10 bg-foreground dark:bg-primary transition-[filter] duration-300 dark:drop-shadow-[0_0_10px_var(--color-primary)]"
+            className="block size-10 bg-foreground transition-[filter] duration-300 dark:bg-primary dark:drop-shadow-[0_0_10px_var(--color-primary)]"
             style={{
               maskImage: RAVEN_URL,
               maskRepeat: "no-repeat",
@@ -120,7 +131,21 @@ export function Login() {
       {/* Theme toggle, last in source order so it stacks on top of the
         full-viewport content column at the same z-index and clicks aren't
         absorbed by the empty area of the centered flex container. */}
-      <ThemeToggle className="absolute right-6 top-6 z-10" />
+      <ThemeToggle className="absolute top-6 right-6 z-10" />
     </div>
   );
 }
+
+export const Route = createFileRoute("/login")({
+  validateSearch: loginSearchSchema,
+  beforeLoad: ({ context }) => {
+    // If the user is already authenticated, /login is a dead end -
+    // bounce them to the hub so they don't land on the Hanko form
+    // unnecessarily and so /me's lazy-provisioning upsert isn't
+    // re-triggered for what's effectively a no-op visit.
+    if (context.auth.kind === "authed") {
+      throw redirect({ to: "/" });
+    }
+  },
+  component: Login,
+});
