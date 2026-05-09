@@ -121,14 +121,16 @@ impl LoroTocDoc {
             KIND_TEXT => Some(TocEntry::Text { title }),
             KIND_THING => {
                 let thing_id = match meta.get(KEY_THING_ID)? {
-                    ValueOrContainer::Value(LoroValue::String(s)) => ThingId(s.to_string()),
+                    ValueOrContainer::Value(LoroValue::String(s)) => ThingId(s.to_string().into()),
                     _ => return None,
                 };
                 Some(TocEntry::Thing { title, thing_id })
             }
             KIND_JOURNAL => {
                 let journal_id = match meta.get(KEY_JOURNAL_ID)? {
-                    ValueOrContainer::Value(LoroValue::String(s)) => JournalId(s.to_string()),
+                    ValueOrContainer::Value(LoroValue::String(s)) => {
+                        JournalId(s.to_string().into())
+                    }
                     _ => return None,
                 };
                 Some(TocEntry::Journal { title, journal_id })
@@ -322,14 +324,14 @@ mod tests {
         let mut doc = LoroTocDoc::new();
         let entry = TocEntry::Thing {
             title: "Korgath the Destroyer".to_string(),
-            thing_id: ThingId("abc123".to_string()),
+            thing_id: ThingId("abc123".to_string().into()),
         };
         let (_, _) = doc.add_entry(None, &entry).unwrap();
 
         let tree = doc.read_tree();
         assert_eq!(tree[0].entry.kind(), TocEntryKind::Thing);
         if let TocEntry::Thing { thing_id, .. } = &tree[0].entry {
-            assert_eq!(thing_id.0, "abc123");
+            assert_eq!(thing_id.0.as_str(), "abc123");
         } else {
             panic!("expected Thing variant");
         }
@@ -340,7 +342,7 @@ mod tests {
         let mut doc = LoroTocDoc::new();
         let entry = TocEntry::Journal {
             title: "Session 5 Notes".to_string(),
-            journal_id: JournalId("j001".to_string()),
+            journal_id: JournalId("j001".to_string().into()),
         };
         let (_, _) = doc.add_entry(None, &entry).unwrap();
 
@@ -359,7 +361,7 @@ mod tests {
 
         let child_entry = TocEntry::Thing {
             title: "The Dragon's Lair".to_string(),
-            thing_id: ThingId("xyz".to_string()),
+            thing_id: ThingId("xyz".to_string().into()),
         };
         let (_, _child_id) = doc.add_entry(Some(parent_id), &child_entry).unwrap();
 
@@ -402,7 +404,7 @@ mod tests {
 
         let updated = TocEntry::Thing {
             title: "Final".to_string(),
-            thing_id: ThingId("t1".to_string()),
+            thing_id: ThingId("t1".to_string().into()),
         };
         doc.update_entry(id, &updated).unwrap();
 

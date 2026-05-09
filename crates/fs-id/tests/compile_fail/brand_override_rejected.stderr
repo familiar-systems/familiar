@@ -1,0 +1,13 @@
+error: `brand` is intentionally not supported. The brand string is derived from the struct ident; allowing overrides would let it drift from the type name.
+ --> tests/compile_fail/brand_override_rejected.rs:3:9
+  |
+3 | #[fs_id(brand = "number")]
+  |         ^^^^^
+
+warning: unused import: `Nanoid`
+ --> tests/compile_fail/brand_override_rejected.rs:1:13
+  |
+1 | use fs_id::{Nanoid, fs_id};
+  |             ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

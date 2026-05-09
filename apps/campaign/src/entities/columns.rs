@@ -24,12 +24,12 @@ pub struct ThingIdCol(pub String);
 
 impl From<ThingId> for ThingIdCol {
     fn from(v: ThingId) -> Self {
-        Self(v.0)
+        Self(v.0.into())
     }
 }
 impl From<ThingIdCol> for ThingId {
     fn from(v: ThingIdCol) -> Self {
-        ThingId(v.0)
+        ThingId(v.0.into())
     }
 }
 
