@@ -6,17 +6,20 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit",
-    "lint": "oxlint .",
+    "generate:routes": "tsr generate",
+    "typecheck": "pnpm generate:routes && tsc --noEmit",
+    "lint": "oxlint --threads 4 .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@familiar-systems/editor": "workspace:*",
     "@familiar-systems/types-app": "workspace:*",
     "@familiar-systems/types-campaign": "workspace:*",
     "@tailwindcss/vite": "catalog:",
+    "@tanstack/react-router": "^1.169.2",
     "@teamhanko/hanko-elements": "^2.6.0",
     "lucide-react": "catalog:",
     "openapi-fetch": "^0.17",
@@ -28,10 +31,15 @@
   },
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",
+    "@playwright/test": "^1.59.1",
+    "@tanstack/router-cli": "^1.166.43",
+    "@tanstack/router-plugin": "^1.167.35",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^5",
+    "oxlint-tailwindcss": "^0.7.1",
     "typescript": "catalog:",
-    "vite": "^7"
+    "vite": "^7",
+    "vitest": "^4.1.5"
   }
 }

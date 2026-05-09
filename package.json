@@ -8,13 +8,13 @@
     "typecheck": "pnpm -r run typecheck",
     "build:web": "pnpm --filter @familiar-systems/web build",
     "build:site": "pnpm --filter @familiar-systems/site build",
-    "test": "vitest run --passWithNoTests"
+    "test": "pnpm -r run test"
   },
   "devDependencies": {
+    "@oxlint/plugins": "^1.63.0",
     "oxfmt": "^0.46.0",
-    "oxlint": "^1.61.0",
-    "typescript": "catalog:",
-    "vitest": "^4.1.5"
+    "oxlint": "^1.63.0",
+    "typescript": "catalog:"
   },
   "pnpm": {
     "overrides": {

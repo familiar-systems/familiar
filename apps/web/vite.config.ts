@@ -1,3 +1,4 @@
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
@@ -12,9 +13,13 @@ const basePath = process.env.VITE_BASE_PATH ?? "/";
 // on :8080, which exposes `app.localhost:8080/` as the SPA origin and forwards
 // /api and /campaign to their respective backends. Vite itself serves at
 // localhost:5173. See `mise run dev:proxy` + Caddyfile.dev.
+//
+// tanstackRouter must come before react(): the plugin transforms route
+// files into typed exports the React plugin then compiles. Order matters,
+// per TanStack's docs.
 export default defineConfig({
   base: basePath,
-  plugins: [react(), tailwindcss()],
+  plugins: [tanstackRouter({ target: "react", autoCodeSplitting: true }), react(), tailwindcss()],
   server: {
     port: 5173,
   },

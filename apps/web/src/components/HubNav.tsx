@@ -1,6 +1,7 @@
 import type { MeResponse } from "@familiar-systems/types-app";
+import { Link } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { assetPath, spaRoute } from "../lib/paths";
+import { assetPath } from "../lib/paths";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu } from "./UserMenu";
 
@@ -15,15 +16,15 @@ interface HubNavProps {
 export function HubNav({ me, hasCampaigns, onNewCampaign }: HubNavProps): React.ReactElement {
   return (
     <nav className="sticky top-0 z-30 border-b border-foreground/5 bg-background/40 backdrop-blur-md">
-      <div className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between gap-6">
-        <a
-          href={spaRoute("")}
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-6 px-6">
+        <Link
+          to="/"
           aria-label="familiar.systems hub"
           className="inline-flex items-center gap-3 transition-opacity hover:opacity-80"
         >
           <span
             aria-hidden="true"
-            className="block h-7 w-7 bg-foreground dark:bg-primary transition-[filter] duration-300 dark:drop-shadow-[0_0_8px_var(--color-primary)]"
+            className="block size-7 bg-foreground drop-shadow-none transition-[filter] duration-300 dark:bg-primary dark:drop-shadow-[0_0_8px_var(--color-primary)]"
             style={{
               maskImage: RAVEN_URL,
               maskRepeat: "no-repeat",
@@ -38,7 +39,7 @@ export function HubNav({ me, hasCampaigns, onNewCampaign }: HubNavProps): React.
           <span className="font-display text-xl font-medium tracking-tight text-foreground">
             familiar.systems
           </span>
-        </a>
+        </Link>
 
         <div className="flex items-center gap-3">
           <ThemeToggle />
@@ -46,9 +47,9 @@ export function HubNav({ me, hasCampaigns, onNewCampaign }: HubNavProps): React.
             <button
               type="button"
               onClick={onNewCampaign}
-              className="inline-flex items-center gap-2 rounded-full bg-gold text-white shadow-lg shadow-gold/25 hover:bg-gold/90 transition-colors px-4 py-2 text-sm font-medium"
+              className="inline-flex items-center gap-2 rounded-full bg-gold px-4 py-2 text-sm font-medium text-white shadow-lg shadow-gold/25 transition-colors hover:bg-gold/90"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="size-4" />
               <span>New campaign</span>
             </button>
           ) : null}

@@ -3,14 +3,22 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-primary: #5a4a6a;
-  --color-gold: #b89530;
-  --color-bronze: #5c3a1f;
-  --color-bronze-muted: #ead8b8;
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-gold: var(--gold);
+  --color-bronze: var(--bronze);
+  --color-bronze-muted: var(--bronze-muted);
+  --color-line: var(--line);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
   --font-sans: "Alegreya", Georgia, serif;
   --font-display: "Cormorant Garamond", Georgia, serif;
 }
 
 @import "./theme.css";
+
+@utility enter-from-below {
+  @apply motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4 motion-safe:duration-700;
+}

@@ -12,10 +12,15 @@ const GRID_PATTERN_URL = `url('${assetPath("/grid-pattern.svg")}')`;
 export function EpicBackdrop(): React.ReactElement {
   return (
     <>
-      {/* Light theme mask: bronze (#5c3a1f) at 0.16 opacity, warm walnut. */}
+      {/* Theme-paired masks. Opacity-toggle (rather than display-toggle) so
+        each element states its presence in both modes — keeps the lint's
+        no-dark-without-light rule satisfied without per-line suppressions.
+        Light: bronze (#5c3a1f) at 0.16, warm walnut. Dark: lit bronze
+        (#c4956b) at 0.22, slightly brighter so the artwork holds on the
+        deep charcoal background. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-bronze opacity-[0.16] dark:hidden"
+        className="pointer-events-none absolute inset-0 bg-bronze opacity-[0.16] dark:opacity-0"
         style={{
           maskImage: EPIC_LIGHT_URL,
           maskRepeat: "no-repeat",
@@ -27,11 +32,9 @@ export function EpicBackdrop(): React.ReactElement {
           WebkitMaskSize: "cover",
         }}
       />
-      {/* Dark theme mask: lit bronze (#c4956b) at 0.22, slightly brighter
-        so the artwork holds on the deep charcoal background. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 hidden bg-bronze opacity-[0.22] dark:block"
+        className="pointer-events-none absolute inset-0 bg-bronze opacity-0 dark:opacity-[0.22]"
         style={{
           maskImage: EPIC_DARK_URL,
           maskRepeat: "no-repeat",
@@ -46,9 +49,9 @@ export function EpicBackdrop(): React.ReactElement {
 
       {/* Ambient glow orbs. motion-safe gates the pulse for vestibular users. */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-25">
-        <div className="absolute top-[14%] left-[16%] h-[480px] w-[480px] rounded-full bg-primary/30 blur-[140px] motion-safe:animate-pulse" />
+        <div className="absolute top-[14%] left-[16%] size-120 rounded-full bg-primary/30 blur-[140px] motion-safe:animate-pulse" />
         <div
-          className="absolute bottom-[12%] right-[10%] h-[420px] w-[420px] rounded-full bg-gold/25 blur-[120px] motion-safe:animate-pulse"
+          className="absolute right-[10%] bottom-[12%] size-105 rounded-full bg-gold/25 blur-[120px] motion-safe:animate-pulse"
           style={{ animationDelay: "3s" }}
         />
       </div>
@@ -65,7 +68,7 @@ export function EpicBackdrop(): React.ReactElement {
         around the page center to keep the hero type unambiguously legible. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 dark:hidden"
+        className="pointer-events-none absolute inset-0 opacity-100 dark:opacity-0"
         style={{
           background:
             "linear-gradient(180deg, color-mix(in srgb, var(--background), transparent 40%) 0%, transparent 18%, transparent 70%, color-mix(in srgb, var(--background), transparent 40%) 100%)",
@@ -73,7 +76,7 @@ export function EpicBackdrop(): React.ReactElement {
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 hidden dark:block"
+        className="pointer-events-none absolute inset-0 opacity-0 dark:opacity-100"
         style={{
           background:
             "radial-gradient(ellipse at 50% 30%, transparent 25%, color-mix(in srgb, var(--background), transparent 30%) 75%), linear-gradient(180deg, color-mix(in srgb, var(--background), transparent 50%) 0%, transparent 22%, transparent 55%, color-mix(in srgb, var(--background), transparent 20%) 100%)",

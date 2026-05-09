@@ -1,24 +1,18 @@
-import { Hub } from "./hub";
-import { Login } from "./login";
-import { Settings } from "./settings";
-import { spaRoute } from "./lib/paths";
+import { RouterProvider } from "@tanstack/react-router";
+import { useAuth } from "./lib/auth";
+import { router } from "./router";
 
-// The SPA lives at the root of the app apex in dev/prod (base "/") and
-// under a per-PR prefix in preview (base "/pr-42/"). Strip the base prefix
-// before matching routes so the matcher sees e.g. "login" regardless of env.
-function currentRoute(): string {
-  const base = spaRoute("");
-  const path = window.location.pathname;
-  return path.startsWith(base) ? path.slice(base.length) : path.replace(/^\//, "");
-}
-
+// Auth bootstraps once at app mount. While the fetch is in flight,
+// render a minimal loading shell instead of mounting the router with a
+// placeholder context - that would briefly resolve _authed beforeLoad
+// against {kind:'unauthed'} and bounce the user to /login before /me
+// could refute it. Once auth resolves, RouterProvider mounts with the
+// live AuthState in context.
 export function App(): React.ReactElement {
-  switch (currentRoute()) {
-    case "login":
-      return <Login />;
-    case "settings":
-      return <Settings />;
-    default:
-      return <Hub />;
-  }
+  const { state, error } = useAuth();
+
+  if (error) return <pre className="p-8">Error: {error}</pre>;
+  if (state === null) return <div className="p-8 text-muted-foreground">Loading...</div>;
+
+  return <RouterProvider router={router} context={{ auth: state }} />;
 }
