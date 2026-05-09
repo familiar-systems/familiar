@@ -374,6 +374,7 @@ sources = [
   "tsconfig*.json",
   "apps/**/tsconfig*.json",
   "packages/**/tsconfig*.json",
+  "apps/web/tsr.config.json",
 ]
 
 [tasks."typecheck:rust"]

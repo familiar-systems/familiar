@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit",
+    "generate:routes": "tsr generate",
+    "typecheck": "pnpm generate:routes && tsc --noEmit",
     "lint": "oxlint --threads 4 .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
@@ -31,6 +32,7 @@
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",
     "@playwright/test": "^1.59.1",
+    "@tanstack/router-cli": "^1.166.43",
     "@tanstack/router-plugin": "^1.167.35",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
