@@ -13,16 +13,112 @@ import { getRelativeLocaleUrl } from 'astro:i18n';
     <div class="max-w-4xl mx-auto px-6">
       <h1 class="text-4xl md:text-5xl font-bold mb-8">Privacy Policy</h1>
       <div class="prose dark:prose-invert max-w-none text-foreground/80">
-        <p class="text-lg mb-6">Last updated: 27 April 2026</p>
+        <p class="text-lg mb-6">
+          <a
+            href="https://github.com/familiar-systems/familiar/commits/main/apps/site/src/pages/privacy.astro"
+            class="text-primary hover:underline"
+            >Content last updated: 10 May 2026</a
+          >
+        </p>
+
+        <p>
+          When you and your friends sit down at a table and press record, you
+          are trusting this website and the person who runs it with some of your
+          most intimate moments. This privacy policy explains what we do with
+          your data. This preamble explains why we do it that way, and why we
+          think we're worthy of your trust.
+        </p>
+
+        <p>
+          Firstly, by paying us for this service, you are the customer, not the
+          product. There are no ads, no cross-site marketing tracking, and no
+          analytics for anything other than understanding how we can make the
+          service you pay for better. We never sell or give away your data to
+          third parties.
+        </p>
+
+        <p>You pay us. We ease your tabletop bookkeeping burden. That's it.</p>
+
+        <p>
+          Secondly, we host every service in the EEA, using exclusively
+          EEA-headquartered companies, under GDPR.
+        </p>
+
+        <p>
+          The U.S. is no longer a viable jurisdiction for your data. The
+          <a
+            href="https://www.softwareseni.com/how-the-us-cloud-act-and-fisa-702-create-legal-exposure-for-eu-cloud-data/"
+            class="text-primary hover:underline"
+            >U.S. CLOUD Act and FISA Section 702 compel American companies to
+            hand over data on demand to the U.S. government</a
+          >. The
+          <a
+            href="https://www.whitehouse.gov/wp-content/uploads/2025/12/2025-National-Security-Strategy.pdf"
+            class="text-primary hover:underline">current U.S. policy</a
+          > treats opposition to the administration as targets, including both
+          <a
+            href="https://www.eff.org/deeplinks/2026/02/open-letter-tech-companies-protect-your-users-lawless-dhs-subpoenas"
+            class="text-primary hover:underline">U.S. citizens</a
+          > and
+          <a
+            href="https://www.whitehouse.gov/wp-content/uploads/2026/05/2026-USCT-Strategy-1.pdf"
+            class="text-primary hover:underline"
+            >foreigners, such as Europeans</a
+          >. We commit to never hosting even a single byte of your information
+          in countries where privacy laws do not work for you, the customer.
+        </p>
+
+        <p>
+          By contrast, the EU and EEA have a law we can point to, a regulator we
+          can name, and a reconciliation process we all know about. The EU and
+          EEA are not perfect but, for matters of privacy and consumer
+          protection, they are unquestionably the best in the world.
+        </p>
+
+        <p>
+          The creator of this website is originally from the United States, but
+          the legal entity familiar.systems operates under is Norwegian. This
+          arrangement protects you, your friends, and your family under the
+          umbrella of a government that consistently ranks within the global top
+          5 on
+          <a
+            href="https://en.wikipedia.org/wiki/List_of_freedom_indices"
+            class="text-primary hover:underline"
+            >the Freedom in the World Index, the Democracy Index, the Press
+            Freedom Index</a
+          >, and the
+          <a
+            href="https://en.wikipedia.org/wiki/World_Justice_Project"
+            class="text-primary hover:underline"
+            >World Justice Project's Rule of Law Index</a
+          >.
+        </p>
+
+        <p>See also:</p>
+        <ul class="list-disc pl-6 space-y-2 mt-4">
+          <li>
+            <a
+              href={getRelativeLocaleUrl(
+                defaultLang,
+                '/blog/2026-03-13-our-providers',
+              )}
+              class="text-primary hover:underline">Our Providers</a
+            > (blog post)
+          </li>
+          <li>
+            <a
+              href={getRelativeLocaleUrl(defaultLang, '/sub-processors')}
+              class="text-primary hover:underline">Sub-processors</a
+            >
+          </li>
+        </ul>
 
         <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">
           1. Introduction
         </h2>
         <p>
           familiar.systems is operated by {siteConfig.legal?.entityName} (Org. nr.
-          {siteConfig.legal?.orgNumber}). This policy explains what data we
-          collect and how we use it. The short version: your data is yours, and
-          we only use it to run the service you pay for.
+          {siteConfig.legal?.orgNumber}).
         </p>
 
         <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">
