@@ -1,8 +1,14 @@
 ---
 import UntranslatedLayout from '~/layouts/UntranslatedLayout.astro';
 import { siteConfig } from '~/site.config';
-import { defaultLang } from '~/i18n/ui';
+import { languages } from '~/i18n/ui';
 import { getRelativeLocaleUrl } from 'astro:i18n';
+
+export async function getStaticPaths() {
+  return Object.keys(languages).map((lang) => ({ params: { lang } }));
+}
+
+const { lang } = Astro.params;
 ---
 
 <UntranslatedLayout
@@ -15,7 +21,7 @@ import { getRelativeLocaleUrl } from 'astro:i18n';
       <div class="prose dark:prose-invert max-w-none text-foreground/80">
         <p class="text-lg mb-6">
           <a
-            href="https://github.com/familiar-systems/familiar/commits/main/apps/site/src/pages/privacy.astro"
+            href="https://github.com/familiar-systems/familiar/commits/main/apps/site/src/pages/%5Blang%5D/privacy.astro"
             class="text-primary hover:underline"
             >Content last updated: 10 May 2026</a
           >
@@ -99,7 +105,7 @@ import { getRelativeLocaleUrl } from 'astro:i18n';
           <li>
             <a
               href={getRelativeLocaleUrl(
-                defaultLang,
+                lang,
                 '/blog/2026-03-13-our-providers',
               )}
               class="text-primary hover:underline">Our Providers</a
@@ -107,7 +113,7 @@ import { getRelativeLocaleUrl } from 'astro:i18n';
           </li>
           <li>
             <a
-              href={getRelativeLocaleUrl(defaultLang, '/sub-processors')}
+              href={getRelativeLocaleUrl(lang, '/sub-processors')}
               class="text-primary hover:underline">Sub-processors</a
             >
           </li>
@@ -235,7 +241,7 @@ import { getRelativeLocaleUrl } from 'astro:i18n';
           All of them process data within the EU/EEA. A current list is
           available at
           <a
-            href={getRelativeLocaleUrl(defaultLang, '/sub-processors')}
+            href={getRelativeLocaleUrl(lang, '/sub-processors')}
             class="text-primary hover:underline">Sub-processors</a
           >.
         </p>
