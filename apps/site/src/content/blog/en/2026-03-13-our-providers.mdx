@@ -3,6 +3,7 @@ title: "Our Providers"
 description: "Every service familiar.systems depends on and why we chose them."
 author: "Michael Grinshpon"
 pubDate: 2026-03-13
+updatedDate: 2026-05-10
 heroImage: "~/assets/blog/2026-03-13-eea-flags.png"
 tags: ["about", "infrastructure"]
 ---
@@ -12,6 +13,8 @@ This post lists every third-party service that familiar.systems depends on. Not 
 This was heavily inspired by [Coinerella's "Made in EU" post](https://www.coinerella.com/made-in-eu-it-was-harder-than-i-thought/). Their conclusion matched my experience: building on European infrastructure is mostly doable, but it takes deliberate effort. The defaults in this industry pull toward American services, and resisting that pull means making active choices at every layer.
 
 Every provider listed here is based in the EU or EEA. Your data never leaves this jurisdiction.
+
+This post is updated as our infrastructure evolves. Because the source is open, every change ever made to it is public: [view the full edit history on GitHub](https://github.com/familiar-systems/familiar/commits/main/apps/site/src/content/blog/en/2026-03-13-our-providers.mdx).
 
 ## Why bother?
 
@@ -36,25 +39,23 @@ Why split between Hetzner and Scaleway? Hetzner's strength is raw compute and st
 
 Beyond that, Scaleway [requires personal identity authentication](https://www.scaleway.com/en/docs/account/how-to/verify-identity/) via [jumio.com](https://www.jumio.com/privacy-center/privacy-notices/online-services-notice/). This US company has one of the most onerous privacy policies I've ever read. I'm not interested in having my core identity documents sold for advertising for the next 3 years. If anyone from Scaleway ever reads this, please pick literally anything less awful. No identity verification? Massively lower compute levels.
 
-### Coolify (being replaced by k3s)
+### k3s
 
-[Coolify](https://coolify.io) is a self-hosted, open-source deployment platform. It currently runs on the Hetzner server and handles container orchestration, reverse proxying (via Traefik), and SSL certificate management. Coolify occupies the space where you'd otherwise use Heroku, Railway, or Vercel. The difference is that it runs on your own server, so the data never touches a third party's infrastructure. For a solo developer who wants push-to-deploy without giving up control, it got us live quickly.
+[k3s](https://k3s.io) is a lightweight Kubernetes distribution from SUSE, a German company. It runs on the Hetzner server and handles container orchestration, reverse proxying (via Traefik), and SSL certificate management.
 
-As an aside, the work that [coollabs.io](https://coollabs.io/) does is really impressive and great for the open-source community. Definitely check them out.
+Cluster state lives on the Hetzner Volume, so server replacement is "provision a new server, attach the same volume, run k3s." No dashboard to reconfigure, no applications to re-create. PR preview environments are a wildcard SSL cert plus a namespace per open PR, automated through GitHub Actions.
 
-That said, we're migrating to [k3s](https://k3s.io) (a lightweight Kubernetes distribution by SUSE, a German company). Coolify's state lives in a Postgres database inside a Docker named volume, which makes server replacement fragile. Its proxy configuration is managed through a UI with no API, and application migration between servers requires manual re-creation. None of this is codifiable or testable.
+We started on [Coolify](https://coolify.io), an open-source self-hosted deployment platform. The work [coollabs.io](https://coollabs.io/) does for the open-source community is genuinely impressive, and Coolify got us live quickly. But its state lives in a Postgres database inside a Docker named volume, its proxy configuration is managed through a UI with no API, and migrating applications between servers requires manual re-creation. Once the project needed independent deployment of multiple services and PR preview environments, that envelope got tight.
 
-k3s changes the dependency envelope in a meaningful way. Coolify is a third-party application that manages your containers for you. k3s is a container orchestrator that _you_ manage through declarative manifests stored in git. The entire cluster state lives on the Hetzner Volume, so server replacement becomes "provision a new server, attach the same volume, run k3s." No dashboard to reconfigure, no applications to re-create. It also unlocks PR preview environments (namespace-per-PR with a wildcard SSL cert), which Coolify couldn't do.
+k3s changes the dependency envelope in a meaningful way. Coolify is a third-party application that manages your containers for you. k3s is a container orchestrator that _you_ manage through declarative manifests stored in git. The trade-off is operational complexity: Kubernetes has a learning curve that Coolify deliberately hides from you. But for a project that ships five independent services (static site, SPA, platform API, campaign server, ML workers), that complexity surfaces somewhere either way. Better to have it in typed, version-controlled Python (via Pulumi) than in a UI.
 
-The trade-off is operational complexity. Kubernetes has a learning curve that Coolify deliberately hides from you. But for a project that needs independent deployment of five different services (static site, SPA, API, WebSocket server, worker), that complexity is going to show up somewhere. Better to have it in typed, version-controlled Python (via Pulumi) than in a UI.
-
-k3s can also run locally and it'll be the pathway for anyone who is masochistic enough to try self-hosting this beast in the near future.
+k3s also runs locally and will be the path for anyone masochistic enough to try self-hosting this beast in the future.
 
 ### Pulumi
 
-[Pulumi](https://www.pulumi.com) is the infrastructure-as-code tool that provisions everything above. The entire infrastructure definition is open source: [github.com/familiar-systems/familiar/tree/main/infra/pulumi-cloud](https://github.com/familiar-systems/familiar/tree/main/infra/pulumi-cloud)
+[Pulumi](https://www.pulumi.com) is the infrastructure-as-code tool that provisions everything above. The entire infrastructure definition is open source: [infra/pulumi-cloud](https://github.com/familiar-systems/familiar/tree/5cd03ea8db103c11eea05e852b82ef59653a7e20/infra/pulumi-cloud).
 
-You can read exactly what gets created, how it's configured, and why. No secrets in the repo (those live in Scaleway Secrets Manager), but the structure is all there. Pulumi itself is an American company, but nothing runs through their servers. Their open source, self-hosted model powers the familiar.systems infrastructure-as-code. The state backend is [Scaleway Object Storage in the EU](https://github.com/familiar-systems/familiar/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/infra/pulumi-cloud/scripts/bootstrap.sh).
+You can read exactly what gets created, how it's configured, and why. No secrets in the repo (those live in Scaleway Secrets Manager), but the structure is all there. Pulumi itself is an American company, but nothing runs through their servers. Their open source, self-hosted model powers the familiar.systems infrastructure-as-code. The state backend is [Scaleway Object Storage in the EU](https://github.com/familiar-systems/familiar/blob/5cd03ea8db103c11eea05e852b82ef59653a7e20/infra/pulumi-cloud/scripts/bootstrap.sh).
 
 One of the frustrating things about Pulumi is the lack of integration of Pulumi with Scaleway's secrets manager. We have yet to properly integrate with it using [the external provider](https://www.pulumi.com/docs/esc/integrations/dynamic-secrets/external/) but it's somewhere on the roadmap.
 
@@ -113,4 +114,4 @@ There are no easily usable EU-sovereign branching databases. Certainly none that
 - [neon.tech](https://neon.tech) is a serverless PostgreSQL database. It's US-based.
 - [turso.tech](https://turso.tech) are the people behind [libSQL](https://github.com/tursodatabase/libsql) and [turso](https://github.com/tursodatabase/turso). They're an American company. Their copy-on-branch model for SQLite is what we based our database strategy on but they are AWS-only right now with no EU-based alternatives.
 
-Our workaround is using [a database-per-campaign strategy](https://github.com/familiar-systems/familiar/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/docs/discovery/2026-03-09-sqlite-over-postgres-decision.md) via libSQL and copy-on-deploy [preview environments via k3s](https://github.com/familiar-systems/familiar/blob/0ca9cc5dcbc649c2a301b864bc88e7d0ffebf076/docs/plans/2026-03-12-deployment-strategy.md).
+Our workaround is using [a database-per-campaign strategy](https://github.com/familiar-systems/familiar/blob/5cd03ea8db103c11eea05e852b82ef59653a7e20/docs/discovery/2026-03-09-sqlite-over-postgres-decision.md) on top of plain SQLite, with copy-on-deploy [preview environments via k3s](https://github.com/familiar-systems/familiar/blob/5cd03ea8db103c11eea05e852b82ef59653a7e20/docs/plans/2026-03-30-deployment-architecture.md).
