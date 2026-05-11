@@ -82,6 +82,10 @@ export const NAV_LINKS = [
   {
     href: "/about",
     label: "About",
+    children: [
+      { href: "/about", label: "About Us" },
+      { href: "/privacy", label: "Privacy" },
+    ],
   },
 ];
 

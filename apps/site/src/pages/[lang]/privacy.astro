@@ -2,6 +2,7 @@
 import UntranslatedLayout from '~/layouts/UntranslatedLayout.astro';
 import { siteConfig } from '~/site.config';
 import { languages } from '~/i18n/ui';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 
 export async function getStaticPaths() {
   return Object.keys(languages).map((lang) => ({ params: { lang } }));
@@ -18,16 +19,132 @@ const { lang } = Astro.params;
     <div class="max-w-4xl mx-auto px-6">
       <h1 class="text-4xl md:text-5xl font-bold mb-8">Privacy Policy</h1>
       <div class="prose dark:prose-invert max-w-none text-foreground/80">
-        <p class="text-lg mb-6">Last updated: 27 April 2026</p>
+        <p class="text-lg mb-6">
+          <a
+            href="https://github.com/familiar-systems/familiar/commits/main/apps/site/src/pages/%5Blang%5D/privacy.astro"
+            class="text-primary hover:underline"
+            >Content last updated: 10 May 2026</a
+          >
+        </p>
+
+        <p>
+          When you and your friends sit down at a table and press record, you
+          are trusting this website and the person who runs it with some of your
+          most intimate moments. This privacy policy explains what we do with
+          your data. This preamble explains why we do it that way, and why we
+          think we're worthy of your trust.
+        </p>
+
+        <p>
+          Firstly, by paying us for this service, you are the customer, not the
+          product. There are no ads, no cross-site marketing tracking, and no
+          analytics for anything other than understanding how we can make the
+          service you pay for better. We never sell or give away your data to
+          third parties.
+        </p>
+
+        <p>You pay us. We ease your tabletop bookkeeping burden. That's it.</p>
+
+        <p>
+          Secondly, we host every service in the EEA, using exclusively
+          EEA-headquartered companies.
+        </p>
+        <p>
+          Every link in our chain that touches your data - us, our hosting
+          provider, our payment processors, our analytics - operates under the
+          same law,
+          <a
+            href="https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+            class="text-primary hover:underline">GDPR</a
+          >, with the same regulators and enforcement mechanisms. When we tell
+          you your data is protected, we can point to the specific law that
+          protects it, name the
+          <a
+            href="https://www.datatilsynet.no/en/"
+            class="text-primary hover:underline">authority that enforces it</a
+          >, and show you the fines that have been levied when companies
+          violated it. The EU and EEA are not perfect, but for matters of
+          privacy and consumer protection, they are unquestionably the best in
+          the world. That's why we feel comfortable asking you to trust us with
+          your table.
+        </p>
+
+        <p>
+          The creator of familiar.systems is American. The legal entity that
+          operates it, {siteConfig.legal?.entityName} (Org. nr.
+          {siteConfig.legal?.orgNumber}), is Norwegian, and that's a deliberate
+          choice. This arrangement protects you, your friends, and your family
+          under the umbrella of a government that consistently ranks within the
+          global top 5 on
+          <a
+            href="https://en.wikipedia.org/wiki/List_of_freedom_indices"
+            class="text-primary hover:underline"
+            >the Freedom in the World Index, the Democracy Index, the Press
+            Freedom Index</a
+          >, and the
+          <a
+            href="https://en.wikipedia.org/wiki/World_Justice_Project"
+            class="text-primary hover:underline"
+            >World Justice Project's Rule of Law Index</a
+          >. The privacy laws that govern us here were written to protect the
+          people whose data is being held.
+        </p>
+
+        <p>
+          U.S. law was not. We cannot use U.S. technology if we want to keep our
+          promise to you. If you live outside the U.S., your data would be
+          reachable through the
+          <a
+            href="https://en.wikipedia.org/wiki/CLOUD_Act"
+            class="text-primary hover:underline">CLOUD Act</a
+          > and
+          <a
+            href="https://en.wikipedia.org/wiki/Foreign_Intelligence_Surveillance_Act"
+            class="text-primary hover:underline">FISA Section 702</a
+          >. If you live inside it, your data held by any U.S. company is
+          reachable under the
+          <a
+            href="https://en.wikipedia.org/wiki/Third-party_doctrine"
+            class="text-primary hover:underline">third-party doctrine</a
+          >, through administrative subpoenas issued without judicial review,
+          and through the commercial data that federal agencies routinely
+          purchase from brokers.
+        </p>
+
+        <p>
+          We commit to never storing or moving a single byte of your information
+          in or through a jurisdiction whose privacy laws cannot give you what
+          we have promised you. These aren't just some rows in a database or
+          files on a hard drive. They're some of your most intimate moments, and
+          we're holding them. We commit to making sure you never have to think
+          twice about the sanctity of your table.
+        </p>
+
+        <p>See also:</p>
+        <ul class="list-disc pl-6 space-y-2 mt-4">
+          <li>
+            <a
+              href={getRelativeLocaleUrl(
+                lang,
+                '/blog/2026-03-13-our-providers',
+              )}
+              class="text-primary hover:underline">Our Providers</a
+            > (blog post)
+          </li>
+          <li>
+            <a
+              href={getRelativeLocaleUrl(lang, '/sub-processors')}
+              class="text-primary hover:underline">Sub-processors</a
+            >
+          </li>
+        </ul>
 
         <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">
           1. Introduction
         </h2>
         <p>
           familiar.systems is operated by {siteConfig.legal?.entityName} (Org. nr.
-          {siteConfig.legal?.orgNumber}). This policy explains what data we
-          collect and how we use it. The short version: your data is yours, and
-          we only use it to run the service you pay for.
+          {siteConfig.legal?.orgNumber}).
         </p>
 
         <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">
@@ -126,10 +243,48 @@ const { lang } = Astro.params;
           </li>
         </ul>
         <p class="mt-4">
-          This is enabled by default. You can opt out at any time in your
-          account settings. No explanation needed, no impact on the service you
-          receive. Opting out means your audio is used solely for your own
-          transcriptions and is not included in any model training.
+          <strong>Per-campaign choice.</strong> When you create a campaign, you must
+          explicitly choose whether its audio may be used to improve our speech recognition
+          models. There is no default. The campaign cannot be created without making
+          this choice, and you can change it at any time in the campaign's settings.
+        </p>
+        <p>
+          If you start a campaign with training enabled and later switch it off,
+          your audio is removed from our training pool. We will not include it
+          in any future training run. Period.
+        </p>
+        <p>
+          To be straight about the limit of that commitment: training a speech
+          recognition model from scratch is prohibitively expensive. We
+          fine-tune existing weights to produce new ones, and the weights that
+          exist today were shaped in part by data that may now be opted out. We
+          treat those weights as derivative works - our own transformed output,
+          not your data - and we will continue to use them as starting points
+          for future training. Think of it this way: a teacher who learned from
+          reading your essay still knows what they learned, even after returning
+          the essay. Opt-out guarantees that your audio files will never enter
+          another training pass.
+        </p>
+
+        <h3 class="text-xl font-semibold mt-8 mb-3 text-foreground">
+          Audio retention
+        </h3>
+        <p>
+          Your audio is kept for as long as your subscription is active and the
+          campaign exists. We keep it because the journal feature uses it:
+          post-session recaps surface major plot moments and memorable lines,
+          and each surfaced moment links back to the audio of when it happened
+          at the table. The feature only works if the audio is still there.
+        </p>
+        <p>
+          When you delete a campaign, its audio is deleted immediately. There is
+          no trash, no grace window, no recovery.
+        </p>
+        <p>
+          If your subscription lapses, we hold your data for 90 days. During
+          that window your campaigns and audio remain intact and are restored if
+          you reactivate. After 90 days without an active subscription, the
+          audio is deleted along with the rest of the lapsed account's data.
         </p>
 
         <h2 class="text-2xl font-bold mt-12 mb-4 text-foreground">
@@ -144,7 +299,7 @@ const { lang } = Astro.params;
           All of them process data within the EU/EEA. A current list is
           available at
           <a
-            href={`/${lang}/sub-processors`}
+            href={getRelativeLocaleUrl(lang, '/sub-processors')}
             class="text-primary hover:underline">Sub-processors</a
           >.
         </p>
@@ -179,7 +334,7 @@ const { lang } = Astro.params;
           <li><strong>Export</strong> your data in a portable format.</li>
           <li>
             <strong>Object</strong> to processing based on legitimate interest. For
-            speech recognition model training, use the opt-out in your account settings.
+            speech recognition model training, use the per-campaign training setting.
             For other processing based on legitimate interest, we are a small operation
             and do not currently offer granular opt-out controls. If the service no
             longer works for you, you can delete your account and all associated data
