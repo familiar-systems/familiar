@@ -11,6 +11,7 @@ dependencies = [
   "pulumi-command>=1",
   "pulumi-kubernetes>=4",
   "pulumiverse-scaleway>=1",
+  "pulumi-minio>=0.16,<1",
 ]
 
 [dependency-groups]

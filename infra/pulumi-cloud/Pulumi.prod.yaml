@@ -5,3 +5,4 @@ config:
   loreweaver-cloud:personal-ssh-public-key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFjlAABfkRXDoTzPMvu6hD5nUy99ipNsF07swWTWEBcH mg@dionysus-l
   loreweaver-cloud:deploy-ssh-public-key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP6Xc6pmPvbQT54Tw+K8M0W6cCtS3uvIx1qusxODhIFR loreweaver-deploy
   loreweaver-cloud:acme-email: webmaster@familiar.systems
+  loreweaver-cloud:hetzner-project-id: "13686940"

@@ -263,6 +263,7 @@ dependencies = [
     { name = "pulumi-command" },
     { name = "pulumi-hcloud" },
     { name = "pulumi-kubernetes" },
+    { name = "pulumi-minio" },
     { name = "pulumiverse-scaleway" },
     { name = "pydantic" },
 ]
@@ -280,6 +281,7 @@ requires-dist = [
     { name = "pulumi-command", specifier = ">=1" },
     { name = "pulumi-hcloud", specifier = ">=1" },
     { name = "pulumi-kubernetes", specifier = ">=4" },
+    { name = "pulumi-minio", specifier = ">=0.16,<1" },
     { name = "pulumiverse-scaleway", specifier = ">=1" },
     { name = "pydantic", specifier = ">=2" },
 ]
@@ -517,6 +519,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/63/d7/9b397f1328c15711210e06e25e6fead63b308edfc0298955746d23f043bb/pulumi_kubernetes-4.30.0.tar.gz", hash = "sha256:5d488be2a88ac9b3ea99d86c6d4a81be1fad449b3dcb2879f2c7757c63c92a72", size = 1981298, upload-time = "2026-04-25T00:05:30.513Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/ff/7aede0e0a620a878f35c3aebf2d1cf0ed1642b208b38ed94269cf9293d1e/pulumi_kubernetes-4.30.0-py3-none-any.whl", hash = "sha256:e8c2534ed8cd91105edc4ce1c57356259976b1ad5c26eecc7a4456098b61ac7f", size = 3095280, upload-time = "2026-04-25T00:05:26.918Z" },
+]
+
+[[package]]
+name = "pulumi-minio"
+version = "0.16.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "parver" },
+    { name = "pulumi" },
+    { name = "semver" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ca/7d/b24b61e748bc678a088ce1df260e7f0343231e9f1140d513defa1074d9b6/pulumi_minio-0.16.9.tar.gz", hash = "sha256:ca06451ca94d44c6d08526753a662ee87ae9db840bcac7f572e91611f752def1", size = 25375, upload-time = "2026-05-01T18:52:45.496Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/83/9c/fa095cc5c5f13aa101ff07ed31e81af0a87fc1ed26f1d3d4c6833fd925d4/pulumi_minio-0.16.9-py3-none-any.whl", hash = "sha256:fa4499e33bb007628ea908e00391fbf177483b9c46b810559e679679bbdeb948", size = 50151, upload-time = "2026-05-01T18:52:43.245Z" },
 ]
 
 [[package]]
