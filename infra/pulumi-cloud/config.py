@@ -52,13 +52,18 @@ def read_secret(name: str) -> pulumi.Output[str]:
     """Read a secret value from Scaleway Secrets Manager.
 
     Looks up the latest version of the named secret and returns the
-    decoded plaintext as a Pulumi Output (automatically marked sensitive).
+    decoded plaintext as a Pulumi Output explicitly marked sensitive so
+    it is redacted in `pulumi preview` / `pulumi up` output.
     """
     version = scw_secrets.get_version_output(
         secret_name=name,
         revision="latest",
         region="fr-par",
     )
-    # SecretVersion.data is returned as base64 by the Scaleway API, but the
-    # Pulumi provider's `data` INPUT field takes raw plaintext (not base64).
-    return version.apply(lambda r: base64.b64decode(r.data).decode("utf-8"))
+    # SecretVersion.data is base64 from the Scaleway API. `.apply` does not
+    # reliably preserve the secret flag through the transform, so we wrap
+    # the result with `Output.secret(...)` to mark it sensitive ourselves --
+    # otherwise the plaintext can surface verbatim when the value flows into
+    # a resource input (e.g. as a Provider credential).
+    decoded = version.apply(lambda r: base64.b64decode(r.data).decode("utf-8"))
+    return pulumi.Output.secret(decoded)

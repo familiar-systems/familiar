@@ -300,7 +300,7 @@ A single cert-manager `Certificate` covers all four apex domains - `familiar.sys
 
 **PR open / sync:** `.github/workflows/deploy-preview.yml` builds the three images (site, web, platform), runs the data-setup Job, then applies the manifests in `infra/k8s/preview/*.yaml` via `envsubst` templating. Template variables are `NAMESPACE` (`preview-pr-${PR_NUMBER}`), `PR_NUMBER`, and per-image tags. A single PR comment posts one URL to open: `https://app.preview.familiar.systems/pr-${N}/`.
 
-**PR close:** `.github/workflows/cleanup-preview.yml` deletes the namespace, which cascade-removes all resources inside (Deployments, Services, Ingresses, Middlewares, PVCs, Jobs). The preview object-storage prefix is cleaned separately.
+**PR close:** `.github/workflows/cleanup-preview.yml` deletes the namespace, which cascade-removes all resources inside (Deployments, Services, Ingresses, Middlewares, PVCs, Jobs); it also deletes the platform hostPath PV and the per-PR registry image tags. The preview bucket's `campaigns/pr-<N>/` prefix is **not** cleaned eagerly: the preview bucket's bucket-wide `expiration: "7d"` lifecycle rule expires the objects 7 days after the last writeback (so within a week of PR close). Storage cost during the grace window is sub-cent per PR at realistic campaign-DB sizes, so the simpler "let lifecycle do it" path wins over wiring up S3 deletes in CI.
 
 Per-PR manifests are plain YAML with `${VAR}` placeholders rather than Pulumi-managed. Pulumi owns permanent cluster state (cert-manager, ClusterIssuers, the TLS cert, prod deployments, RBAC, the k8s Provider itself); CI owns ephemeral per-PR state. Ephemeral resources don't deserve Pulumi state overhead, and `kubectl apply` on raw YAML is ~2s per resource.
 

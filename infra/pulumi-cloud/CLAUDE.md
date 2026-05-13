@@ -13,12 +13,14 @@ Single deployment target: **k3s cluster** serving `familiar.systems` + `app.fami
 | `__main__.py`          | Pulumi entrypoint. Wires together modules, declares exports.                                                              |
 | `config.py`            | Shared constants: `LOCATION`, `SERVER_TYPE`, `IMAGE`, `LABELS`, `config` object.                                          |
 | `cloud.py`             | Shared Hetzner resources (floating IP, SSH keys, firewall) + Scaleway resources (registry, secrets).                      |
+| `object_storage.py`    | Bucket policies + lifecycle + versioning on Hetzner Object Storage, applied via the `pulumi-minio` provider. Buckets themselves are pre-created in `bootstrap-object-storage.sh` and adopted via `import_=`; see the "Bucket existence" section below. |
 | `k3s_cluster.py`       | `K3sCluster` ComponentResource: provisions k3s server with automated kubeconfig extraction via `pulumi-command`.          |
 | `k8s.py`               | Kubernetes resources on the k3s cluster: cert-manager, webhook-bunny, ClusterIssuer, TLS cert, site deployment + ingress. |
 | `Pulumi.yaml`          | Project config. Runtime is Python via uv toolchain.                                                                       |
 | `Pulumi.prod.yaml`     | Stack config for `prod`. Contains encrypted secrets + SSH public keys.                                                    |
 | `pyproject.toml`       | Python deps: pulumi, pulumi-hcloud, pulumi-command, pulumi-kubernetes, pulumiverse-scaleway.                              |
 | `scripts/bootstrap.sh` | One-time setup: creates Scaleway bucket + passphrase secret.                                                              |
+| `scripts/bootstrap-object-storage.sh` | Operator-bootstrapped Hetzner Object Storage state: prompts for the five console-generated S3 credential pairs and writes them as JSON to Scaleway SM, then creates the two buckets via AWS CLI. Idempotent. |
 | `scripts/setup.sh`     | Per-machine setup: generates `.envrc` from existing Scaleway resources.                                                   |
 | `scripts/nuke-k8s.sh`  | Emergency recovery: removes k8s resources from Pulumi state (and optionally wipes k3s).                                   |
 
@@ -60,6 +62,109 @@ Pulumi manages both the Hetzner server and the k8s workloads running on it. The 
 
 k3s state on the Volume (`/data/k3s`) persists across server replacements. A new server will inherit corrupted k3s state unless `/data/k3s` is wiped first. Campaign data (`/data/campaigns`, `/data/preview`) is unaffected.
 
+### Object Storage (object_storage.py)
+
+Two Hetzner Object Storage buckets in `hel1`, generic per-env namespaces:
+
+- `familiar-systems-prod` — production data. Each campaign gets a prefix at `campaigns/<id>/`, with the libSQL file at `campaigns/<id>/campaign.db`. Per-campaign sidecars (exports, pre-migration snapshots, audit dumps) colocate under the same prefix as they're added. GDPR deletion is `aws s3 rm s3://.../campaigns/<id>/ --recursive`. Future workloads get their own top-level prefixes (`platform-backups/`, ...).
+- `familiar-systems-preview` — preview-environment data. Per-PR campaign databases at `campaigns/pr-<N>/<id>/campaign.db`.
+
+Local dev does not touch the buckets — campaign-server's `CampaignStore` has a local-filesystem implementation for that mode.
+
+#### Why pulumi-minio (not pulumi-hcloud)
+
+`pulumi_hcloud` exposes only Hetzner Cloud's older `StorageBox` resource, not Object Storage. Per Hetzner's own docs, the recommended IaC path is the [aminueza/minio Terraform provider](https://docs.hetzner.com/storage/object-storage/getting-started/creating-a-bucket-minio-terraform); the Pulumi-bridged equivalent (`pulumi-minio`, currently pinned to `0.16.x`) targets the same S3-compatible endpoint and exposes `S3Bucket`, `S3BucketPolicy`, `S3BucketVersioning`, and `IlmPolicy` (lifecycle rules).
+
+Configured against `https://hel1.your-objectstorage.com`. The provider authenticates with the `familiar-systems-pulumi-key` credential pair, read at apply time from Scaleway SM.
+
+#### Bucket existence: created in bootstrap, adopted by Pulumi
+
+The two buckets themselves are **not** created by `pulumi up`. They're created by `scripts/bootstrap-object-storage.sh` (against Hetzner's S3 endpoint via the AWS CLI, authenticated with the `pulumi-key` credentials), and the `minio.S3Bucket` resources in `object_storage.py` carry `pulumi.ResourceOptions(import_=...)` so Pulumi adopts the pre-created buckets on first apply.
+
+This works around an upstream bug. `pulumi-minio 0.16.9` (latest) pins `aminueza/terraform-provider-minio v1.20.1` — a 2023-11-08 tag that put the v1 line into maintenance mode the same day. The v1.20.1 bucket-Create flow does an immediate read-after-create that races with Hetzner's eventually-consistent bucket index: `MakeBucket` succeeds on Hetzner, the subsequent `BucketExists` polls before the index has propagated, the provider clears the resource ID and returns `(nil state, nil error)`, and the Pulumi bridge surfaces this as `expected non-nil error with nil state during Create`. The race was fixed in aminueza v3.28.1 (March 2026), but the pulumi-minio bridge has never moved off v1.x. See [pulumi-minio#754](https://github.com/pulumi/pulumi-minio/issues/754) and [aminueza/terraform-provider-minio#839](https://github.com/aminueza/terraform-provider-minio/issues/839).
+
+`S3BucketPolicy`, `S3BucketVersioning`, and `IlmPolicy` remain Pulumi-managed and target the already-propagated buckets, so they don't hit the race either.
+
+**Edge case — `pulumi destroy` + re-apply:** `pulumi destroy` deletes the bucket from Hetzner *and* removes it from Pulumi state. The next `pulumi up` would attempt to import a bucket that no longer exists and fail. Fix: comment out the `import_=` line on each `S3Bucket` resource for one apply (and re-run `./scripts/bootstrap-object-storage.sh` first so the bucket exists before Pulumi tries to adopt it — or remove `import_=` entirely and let Pulumi hit the eventual-consistency race once). For production, destroy is rare-to-never; the one-line code edit is acceptable when it happens.
+
+#### Credential model (five pairs, all operator-bootstrapped)
+
+Hetzner has **no public API** for creating S3 credentials — they can only be generated through the Hetzner Console (Security → S3 Credentials → Generate). Five pairs are bootstrapped via `scripts/bootstrap-object-storage.sh`, which prompts for each pair and writes JSON (`{"access_key_id", "secret_access_key"}`) to a Scaleway SM secret:
+
+| Credential | Used by | Prod bucket access | Preview bucket access |
+|---|---|---|---|
+| `familiar-systems-prod-key` | campaign-server (prod) | read+write | denied |
+| `familiar-systems-preview-key` | campaign-server (preview) | denied | read+write |
+| `familiar-systems-preview-seed-key` | CI (`deploy-preview.yml`) | read-only (Get + List) | write-only (PutObject) |
+| `familiar-systems-pulumi-key` | Pulumi (configures `pulumi-minio` provider) | full | full |
+| `familiar-systems-operator-key` | Human ad-hoc data access (Cyberduck, AWS CLI, `mc`) | full | full |
+
+Access enforcement is per-bucket policy. Each bucket carries a two-statement policy: (1) deny anyone whose access-key isn't in the allow list; (2) further restrict the seed key to read-only on prod / PutObject-only on preview. A leaked seed key cannot corrupt prod or exfiltrate preview content.
+
+The operator key is the **escape hatch for direct data access**: pulling a campaign DB for offline inspection, listing what's in a bucket, copying between prefixes for an ad-hoc migration. It's deliberately separate from the pulumi-key so that "do an ops task" doesn't require touching the credential Pulumi itself authenticates with, and it rotates without restarts because no pod consumes it. Fetch via:
+
+```bash
+SM_ID=$(scw secret secret list name=familiar-systems-operator-key region=fr-par -o json | jq -r '.[0].id')
+eval "$(scw secret version access "$SM_ID" revision=latest region=fr-par -o json \
+  | jq -r '.data' | base64 -d \
+  | jq -r '"export AWS_ACCESS_KEY_ID=\(.access_key_id) AWS_SECRET_ACCESS_KEY=\(.secret_access_key)"')"
+
+aws s3 ls --endpoint-url https://hel1.your-objectstorage.com s3://familiar-systems-prod/campaigns/
+```
+
+Or Cyberduck: profile = `S3 (HTTPS)`, server = `hel1.your-objectstorage.com`, paste the access-key ID and secret.
+
+**Hetzner's bucket-policy ARNs are cosmetic AWS-SDK wrappers**, not references to any IAM principal: `arn:aws:iam:::user/p<project_id>:<access_key_id>`. The `<project_id>` is the numeric Hetzner Cloud project ID, set via `pulumi config set hetzner-project-id <number>` (non-secret; find it under the project menu in the Hetzner Console).
+
+#### Lockout protection
+
+The `pulumi-key` access-key ID **must remain in every bucket policy's allow list**. If it's removed, Pulumi loses the ability to update those policies (Hetzner enforces bucket policies against project-scoped credentials including the one Pulumi is using). The construction in `object_storage.py` always includes it. Recovery if it does happen: project owner regenerates a new credential in the Console, edits the policy out-of-band via `mc admin policy set` or `aws s3api put-bucket-policy` with project-owner credentials.
+
+#### Console UI caveat
+
+Hetzner's Console bucket browser uses its own internal credentials, which are not in any of our four allow lists. So the Console's "Browse bucket" view returns empty for these buckets — that's expected, not a bug. Use Cyberduck or `aws s3 ls --endpoint-url ...` for visual exploration.
+
+#### Lifecycle and versioning
+
+- Both buckets: orphaned multipart parts accumulate over time because `pulumi-minio`'s `IlmPolicy` doesn't expose `AbortIncompleteMultipartUpload`. Hetzner has no per-request charges so the cost leak is GBs of storage only — negligible for campaign DB sizes. If it ever matters, add a periodic `mc ilm rule add` step.
+- `familiar-systems-prod`: versioning **enabled** + `noncurrent_version_expiration_days: 7`. Soft-delete safety net — overwrites and deletes are reversible within 7 days, then auto-pruned.
+- `familiar-systems-preview`: `expiration: "7d"` bucket-wide. S3 lifecycle uses last-modified semantics, so an active PR with writeback-every-30s keeps its DB perpetually fresh; the 7-day clock effectively only starts when writebacks stop (PR closed, namespace torn down). PRs that sit idle for >7 days lose their preview data and re-seed from prod on next access.
+
+#### Bootstrap and rotation
+
+Bootstrap (one-time, takes ~2 minutes once you have five credential pairs ready):
+
+```bash
+# 1. In Hetzner Console, generate five S3 credential pairs:
+#    Security -> S3 Credentials -> Generate credentials
+#    (Repeat five times. Name each one to match the table above.)
+# 2. Run the bootstrap script (prompts for each pair, then creates both
+#    buckets on Hetzner using the pulumi-key credentials):
+./scripts/bootstrap-object-storage.sh
+# 3. Set the Hetzner project ID:
+pulumi config set hetzner-project-id <numeric-id-from-console>
+# 4. Apply (adopts the pre-created buckets into Pulumi state and creates
+#    bucket policies, versioning, lifecycle):
+pulumi up
+```
+
+Rotation (option A — planned-maintenance, single key per role):
+
+1. In Hetzner Console, generate a replacement S3 credential pair for the role you're rotating (e.g. a new `familiar-systems-prod-key`). Delete the old one in the Console.
+2. Re-run `./scripts/bootstrap-object-storage.sh` and paste the new pair when prompted for that role (skip the others with Ctrl-D).
+3. `pulumi up` — the access-key ID in the bucket policy's allow list updates to match the new credential.
+4. `kubectl rollout restart deployment/campaign-server` if rotating prod-key or preview-key (so pods pick up the new SM value via their k8s Secret). Seed-key rotation needs no pod restart (next GHA preview-deploy run picks it up). Pulumi-key rotation needs nothing else — the provider re-authenticates on the next `pulumi up`.
+
+There's a brief window between step 3 and step 4 where running pods still hold the old secret-key but the bucket policy has already swapped to the new ID, so their S3 requests get 403. For zero-downtime rotation, graduate to a two-key design (active + standby in the allow list, atomic config swap).
+
+#### State recovery
+
+Pulumi state lives in Scaleway, independent of Hetzner. If state is lost:
+
+1. Project owner can always list buckets and credentials via the Hetzner Cloud API (bucket policies enforce on the S3 endpoint, not on project management).
+2. Bucket names are deterministic. Access-key IDs are recoverable from Scaleway SM (the four bootstrapped secrets) or from the Hetzner Console.
+3. `pulumi import` each resource by its identifier.
+
 ## Reference Documentation
 
 **MANDATORY: Read the relevant docs before writing or modifying any resource. Do not guess at API shapes, field names, or encoding requirements.**
@@ -72,6 +177,19 @@ k3s state on the Volume (`/data/k3s`) persists across server replacements. A new
     - RegistryNamespace: https://www.pulumi.com/registry/packages/scaleway/api-docs/registrynamespace/
 - pulumi-kubernetes: https://www.pulumi.com/registry/packages/kubernetes/api-docs/
 - pulumi-hcloud: https://www.pulumi.com/registry/packages/hcloud/api-docs/
+- pulumi-minio: https://www.pulumi.com/registry/packages/minio/api-docs/
+    - S3Bucket: https://www.pulumi.com/registry/packages/minio/api-docs/s3bucket/
+    - S3BucketPolicy: https://www.pulumi.com/registry/packages/minio/api-docs/s3bucketpolicy/
+    - S3BucketVersioning: https://www.pulumi.com/registry/packages/minio/api-docs/s3bucketversioning/
+    - IlmPolicy: https://www.pulumi.com/registry/packages/minio/api-docs/ilmpolicy/
+
+### Hetzner Object Storage
+
+- Overview: https://docs.hetzner.com/storage/object-storage/overview
+- Per-key bucket-policy FAQ: https://docs.hetzner.com/storage/object-storage/faq/s3-credentials#how-do-i-restrict-access-per-key
+- Lifecycle rules: https://docs.hetzner.com/storage/object-storage/howto-protect-objects/manage-lifecycle
+- Versioning: https://docs.hetzner.com/storage/object-storage/howto-protect-objects/protect-versioning
+- Credentials are Console-only (no API): https://docs.hetzner.com/storage/object-storage/getting-started/generating-s3-keys
 
 ### Scaleway
 
@@ -109,15 +227,22 @@ Pulumi reads secrets from Scaleway SM at deploy time via `config.read_secret(nam
 
 ### Required Scaleway SM Secrets
 
-| Secret Name                 | Purpose                                                                      |
-| --------------------------- | ---------------------------------------------------------------------------- |
-| `loreweaver-deploy-ssh-key` | Break-glass SSH private key for direct server access (rare, manual ops)      |
-| `bunny-api-key`             | bunny.net API key for DNS-01 ACME (deployed as k8s Secret)                   |
-| `k3s-kubeconfig`            | Token-based kubeconfig for GHA deploys + local kubectl (operator-managed)    |
-| `k3s-pulumi-admin-token`    | `pulumi-admin` ServiceAccount bearer token (cluster-admin, operator-managed) |
-| `k3s-cluster-ca`            | k3s cluster CA cert, base64 PEM (operator-managed, rarely rotates)           |
+| Secret Name                            | Purpose                                                                      |
+| -------------------------------------- | ---------------------------------------------------------------------------- |
+| `loreweaver-deploy-ssh-key`            | Break-glass SSH private key for direct server access (rare, manual ops)      |
+| `bunny-api-key`                        | bunny.net API key for DNS-01 ACME (deployed as k8s Secret)                   |
+| `k3s-kubeconfig`                       | Token-based kubeconfig for GHA deploys + local kubectl (operator-managed)    |
+| `k3s-pulumi-admin-token`               | `pulumi-admin` ServiceAccount bearer token (cluster-admin, operator-managed) |
+| `k3s-cluster-ca`                       | k3s cluster CA cert, base64 PEM (operator-managed, rarely rotates)           |
+| `familiar-systems-prod-key`            | Hetzner Object Storage credential pair for campaign-server prod (JSON: `{"access_key_id", "secret_access_key"}`) |
+| `familiar-systems-preview-key`         | Hetzner Object Storage credential pair for campaign-server preview (same JSON shape) |
+| `familiar-systems-preview-seed-key`    | Hetzner Object Storage credential pair for the CI seed step: read prod, write preview only |
+| `familiar-systems-pulumi-key`          | Hetzner Object Storage admin credential pair used by the `pulumi-minio` provider for bucket management |
+| `familiar-systems-operator-key`        | Hetzner Object Storage credential pair for human ad-hoc data access (Cyberduck, AWS CLI). Full access to both buckets; not bound to any pod. |
 
 The `k3s-*` secrets are populated by `scripts/bootstrap-pulumi-admin.sh`, not by Pulumi. Pulumi reads them at deploy time via `config.read_secret(name)`. Re-running the bootstrap script is safe (idempotent) and writes new SM versions for all three.
+
+The `familiar-systems-*-key` secrets are populated by `scripts/bootstrap-object-storage.sh`. The script also creates the SM containers (these five are not Pulumi-managed, mirroring how `pulumi-config-passphrase` is handled in `scripts/bootstrap.sh`). The five credentials themselves are generated by hand in the Hetzner Console — there is no API for credential creation.
 
 ### Registry pull credential (Pulumi-owned, not in SM)
 

@@ -3,6 +3,7 @@ title: "The Systems of familiar.systems"
 description: "A technical tour of our preliminary open-source per-campaign/per-world architecture"
 author: "Michael Grinshpon"
 pubDate: 2026-05-02
+updatedDate: 2026-05-12
 heroImage: "~/assets/blog/2026-05-02-familiar-systems.png"
 tags: ["about", "infrastructure"]
 ---
@@ -143,7 +144,7 @@ Big tasks fan out. A single conversation can spawn subagents. Each is its own ac
 
 A few things drop out of this design:
 
-- **Campaign-as-file** means GDPR delete is `rm`. Branch deploys are `cp`. Every PR preview environment runs against real campaign data instead of fixtures.
+- **Campaign-as-file** means GDPR delete is `rm`. Branch deploys are `cp`. Every PR preview environment runs against real campaign data instead of fixtures. Contributing to branch deployments is opt-in. If you're interested in helping out development, please consider opting-in on your campaigns.
 - **One owning server per campaign** means there is no Redis, no consensus protocol, no distributed transactions. The router is a small table on the platform; that is the entire coordination story.
 - **A small stateless platform** stays up while a campaign server restarts, so login and campaign discovery don't go down with the editor. Active editing on a particular campaign hiccups for a few seconds during a deploy; nothing else does.
 - **Object storage as the cold backing** means we can grow or shrink the campaign-server fleet without data migration. Rebalancing a campaign is "writeback, update routing table, re-checkout elsewhere."
