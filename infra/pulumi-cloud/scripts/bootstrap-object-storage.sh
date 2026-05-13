@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
-# bootstrap-object-storage.sh -- Create + populate Scaleway SM secrets for
-# Hetzner Object Storage S3 credentials.
+# bootstrap-object-storage.sh -- Operator-bootstrap Hetzner Object Storage
+# state that Pulumi can't manage end-to-end:
+#   1. Five S3 credential pairs stored in Scaleway Secrets Manager.
+#   2. The two buckets themselves (familiar-systems-prod, -preview).
 #
 # Why this exists:
-#   Hetzner Object Storage has no public API for creating S3 credentials --
-#   they can only be generated through the Hetzner Console UI. So the four
-#   credential pairs we need (prod, preview, preview-seed, pulumi) are
-#   operator-bootstrapped: created by hand in the Console, then written
-#   into Scaleway Secrets Manager as JSON blobs that Pulumi reads at apply
-#   time. The same shape `bootstrap.sh` uses for `pulumi-config-passphrase`.
+#   (1) Hetzner Object Storage has no public API for creating S3 credentials
+#       -- they can only be generated through the Hetzner Console UI. So the
+#       five credential pairs we need are operator-bootstrapped: created by
+#       hand in the Console, then written into Scaleway SM as JSON blobs
+#       that Pulumi reads at apply time. Same shape `bootstrap.sh` uses for
+#       `pulumi-config-passphrase`.
+#   (2) Bucket Create runs into an unfixed upstream bug. pulumi-minio 0.16.9
+#       pins aminueza/terraform-provider-minio v1.20.1, whose Create flow
+#       does an immediate Read-after-Create that races with Hetzner's
+#       eventually-consistent bucket index -- the Read sees NoSuchBucket
+#       and the provider returns (nil state, nil error), tripping a Pulumi
+#       bridge panic. The fix is in aminueza v3.28.1 but the bridge has
+#       never bumped past v1.20.1 (released 2023-11-08, immediately put
+#       into maintenance mode). See pulumi-minio#754, aminueza#839.
+#       So we create the buckets here, and Pulumi adopts them on first
+#       apply via `pulumi.ResourceOptions(import_=...)` in object_storage.py.
 #
 # Per-credential JSON shape stored in SM:
 #   {"access_key_id": "...", "secret_access_key": "..."}
@@ -18,6 +30,7 @@
 #   - familiar-systems-preview-key      -- campaign-server preview (full project access)
 #   - familiar-systems-preview-seed-key -- CI: read prod, write preview only
 #   - familiar-systems-pulumi-key       -- Pulumi management (configures the MinIO provider)
+#                                          AND the credential this script uses for CreateBucket.
 #   - familiar-systems-operator-key     -- Human ad-hoc data access (Cyberduck, AWS CLI)
 #
 # Bucket policies (created by Pulumi after this script runs) restrict the
@@ -27,16 +40,18 @@
 #
 # Prerequisites:
 #   - scw CLI authenticated for the familiar-systems Scaleway project
+#   - aws CLI installed (used for bucket creation against Hetzner's endpoint)
 #   - jq installed
-#   - Four S3 credential pairs already generated in the Hetzner Console
+#   - Five S3 credential pairs already generated in the Hetzner Console
 #     (Security -> S3 Credentials -> Generate credentials). Have access-key
 #     ID and secret access key ready for each one.
 #
 # Usage:
 #   ./scripts/bootstrap-object-storage.sh
 #
-# Idempotent: existing SM secrets are reused; only new versions are appended.
-# Safe to re-run after rotating one or more credentials.
+# Idempotent: existing SM secrets are reused (only new versions are appended);
+# existing buckets are skipped. Safe to re-run after rotating one or more
+# credentials.
 
 set -euo pipefail
 
@@ -52,7 +67,7 @@ SECRETS=(
 # ---------------------------------------------------------------------------
 # Pre-flight
 # ---------------------------------------------------------------------------
-for tool in scw jq; do
+for tool in scw aws jq; do
     if ! command -v "${tool}" >/dev/null 2>&1; then
         echo "ERROR: '${tool}' not found in PATH" >&2
         exit 1
@@ -92,20 +107,24 @@ ensure_secret() {
 prompt_pair() {
     # $1 = secret display name (for prompts)
     # Reads access-key-id and secret-key from the operator and prints JSON
-    # to stdout. Secret key is read silently (no echo).
+    # to stdout. Secret key is read silently (no echo). A single Ctrl-D
+    # (EOF) at the first prompt short-circuits the second prompt and
+    # returns non-zero so the caller can mark this credential "Skipped."
     local label="$1"
     local access_key_id secret_key
 
     echo "" >&2
     echo "  ${label}" >&2
-    read -r -p "    access_key_id: " access_key_id
-    read -r -s -p "    secret_access_key (hidden): " secret_key
-    echo "" >&2
-
-    if [[ -z "${access_key_id}" || -z "${secret_key}" ]]; then
-        echo "ERROR: both fields are required" >&2
+    if ! read -r -p "    access_key_id: " access_key_id || [[ -z "${access_key_id}" ]]; then
+        echo "" >&2
         return 1
     fi
+    if ! read -r -s -p "    secret_access_key (hidden): " secret_key || [[ -z "${secret_key}" ]]; then
+        echo "" >&2
+        echo "ERROR: secret_access_key cannot be empty" >&2
+        return 1
+    fi
+    echo "" >&2
 
     jq -n \
         --arg ak "${access_key_id}" \
@@ -158,6 +177,61 @@ for entry in "${SECRETS[@]}"; do
     echo "    New version pushed."
 done
 
+# ---------------------------------------------------------------------------
+# Bucket creation
+# ---------------------------------------------------------------------------
+# Buckets are created here, not by Pulumi, because pulumi-minio 0.16.9 cannot
+# survive Hetzner's read-after-create race (see header). Pulumi adopts the
+# pre-created buckets on first apply via `import_=` in object_storage.py.
+
+HETZNER_S3_ENDPOINT="https://hel1.your-objectstorage.com"
+HETZNER_REGION="hel1"
+BUCKETS=(
+    "familiar-systems-prod"
+    "familiar-systems-preview"
+)
+PULUMI_SECRET_NAME="familiar-systems-pulumi-key"
+
+echo ""
+echo "==> Creating buckets on Hetzner Object Storage"
+
+pulumi_secret_id=$(scw secret secret list name="${PULUMI_SECRET_NAME}" region="${REGION}" -o json \
+    | jq -r '.[0].id // empty')
+if [[ -z "${pulumi_secret_id}" ]]; then
+    echo "ERROR: ${PULUMI_SECRET_NAME} not found in SM. Re-run and provide that credential pair." >&2
+    exit 1
+fi
+
+pulumi_creds_b64=$(scw secret version access "${pulumi_secret_id}" \
+    revision=latest region="${REGION}" -o json 2>/dev/null \
+    | jq -r '.data // empty')
+if [[ -z "${pulumi_creds_b64}" ]]; then
+    echo "ERROR: ${PULUMI_SECRET_NAME} has no version in SM. Re-run and provide that credential pair." >&2
+    exit 1
+fi
+
+pulumi_creds_json=$(printf '%s' "${pulumi_creds_b64}" | base64 -d)
+AWS_ACCESS_KEY_ID=$(printf '%s' "${pulumi_creds_json}" | jq -r '.access_key_id')
+AWS_SECRET_ACCESS_KEY=$(printf '%s' "${pulumi_creds_json}" | jq -r '.secret_access_key')
+export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+unset AWS_SESSION_TOKEN AWS_PROFILE
+
+for bucket in "${BUCKETS[@]}"; do
+    echo ""
+    echo "==> ${bucket}"
+    if aws s3api head-bucket \
+            --bucket "${bucket}" \
+            --endpoint-url "${HETZNER_S3_ENDPOINT}" \
+            --region "${HETZNER_REGION}" >/dev/null 2>&1; then
+        echo "    Bucket exists."
+        continue
+    fi
+    aws s3 mb "s3://${bucket}" \
+        --endpoint-url "${HETZNER_S3_ENDPOINT}" \
+        --region "${HETZNER_REGION}" >/dev/null
+    echo "    Created."
+done
+
 cat <<EOF
 
 ==> Bootstrap complete.
@@ -167,7 +241,8 @@ Next steps:
        pulumi config set hetzner-project-id <numeric-project-id>
      (Find it in Hetzner Console -> top-right project menu -> the number
       after the project name. NOT a secret.)
-  2. pulumi up  -- creates the two buckets, attaches policies, lifecycle,
-                   and versioning. The pulumi-key SM secret you just set
+  2. pulumi up  -- adopts the two buckets into Pulumi state (via import_=
+                   on the S3Bucket resources) and creates the bucket policies,
+                   lifecycle rules, and versioning. The pulumi-key SM secret
                    is what the MinIO provider authenticates with.
 EOF

@@ -13,14 +13,14 @@ Single deployment target: **k3s cluster** serving `familiar.systems` + `app.fami
 | `__main__.py`          | Pulumi entrypoint. Wires together modules, declares exports.                                                              |
 | `config.py`            | Shared constants: `LOCATION`, `SERVER_TYPE`, `IMAGE`, `LABELS`, `config` object.                                          |
 | `cloud.py`             | Shared Hetzner resources (floating IP, SSH keys, firewall) + Scaleway resources (registry, secrets).                      |
-| `object_storage.py`    | Hetzner Object Storage buckets + bucket policies + lifecycle + versioning, applied via the `pulumi-minio` provider against the Hetzner S3 endpoint. |
+| `object_storage.py`    | Bucket policies + lifecycle + versioning on Hetzner Object Storage, applied via the `pulumi-minio` provider. Buckets themselves are pre-created in `bootstrap-object-storage.sh` and adopted via `import_=`; see the "Bucket existence" section below. |
 | `k3s_cluster.py`       | `K3sCluster` ComponentResource: provisions k3s server with automated kubeconfig extraction via `pulumi-command`.          |
 | `k8s.py`               | Kubernetes resources on the k3s cluster: cert-manager, webhook-bunny, ClusterIssuer, TLS cert, site deployment + ingress. |
 | `Pulumi.yaml`          | Project config. Runtime is Python via uv toolchain.                                                                       |
 | `Pulumi.prod.yaml`     | Stack config for `prod`. Contains encrypted secrets + SSH public keys.                                                    |
 | `pyproject.toml`       | Python deps: pulumi, pulumi-hcloud, pulumi-command, pulumi-kubernetes, pulumiverse-scaleway.                              |
 | `scripts/bootstrap.sh` | One-time setup: creates Scaleway bucket + passphrase secret.                                                              |
-| `scripts/bootstrap-object-storage.sh` | Operator-bootstrapped Hetzner Object Storage S3 credentials: prompts for the four console-generated key pairs and writes them as JSON to Scaleway SM. Idempotent. |
+| `scripts/bootstrap-object-storage.sh` | Operator-bootstrapped Hetzner Object Storage state: prompts for the five console-generated S3 credential pairs and writes them as JSON to Scaleway SM, then creates the two buckets via AWS CLI. Idempotent. |
 | `scripts/setup.sh`     | Per-machine setup: generates `.envrc` from existing Scaleway resources.                                                   |
 | `scripts/nuke-k8s.sh`  | Emergency recovery: removes k8s resources from Pulumi state (and optionally wipes k3s).                                   |
 
@@ -77,6 +77,16 @@ Local dev does not touch the buckets — campaign-server's `CampaignStore` has a
 
 Configured against `https://hel1.your-objectstorage.com`. The provider authenticates with the `familiar-systems-pulumi-key` credential pair, read at apply time from Scaleway SM.
 
+#### Bucket existence: created in bootstrap, adopted by Pulumi
+
+The two buckets themselves are **not** created by `pulumi up`. They're created by `scripts/bootstrap-object-storage.sh` (against Hetzner's S3 endpoint via the AWS CLI, authenticated with the `pulumi-key` credentials), and the `minio.S3Bucket` resources in `object_storage.py` carry `pulumi.ResourceOptions(import_=...)` so Pulumi adopts the pre-created buckets on first apply.
+
+This works around an upstream bug. `pulumi-minio 0.16.9` (latest) pins `aminueza/terraform-provider-minio v1.20.1` — a 2023-11-08 tag that put the v1 line into maintenance mode the same day. The v1.20.1 bucket-Create flow does an immediate read-after-create that races with Hetzner's eventually-consistent bucket index: `MakeBucket` succeeds on Hetzner, the subsequent `BucketExists` polls before the index has propagated, the provider clears the resource ID and returns `(nil state, nil error)`, and the Pulumi bridge surfaces this as `expected non-nil error with nil state during Create`. The race was fixed in aminueza v3.28.1 (March 2026), but the pulumi-minio bridge has never moved off v1.x. See [pulumi-minio#754](https://github.com/pulumi/pulumi-minio/issues/754) and [aminueza/terraform-provider-minio#839](https://github.com/aminueza/terraform-provider-minio/issues/839).
+
+`S3BucketPolicy`, `S3BucketVersioning`, and `IlmPolicy` remain Pulumi-managed and target the already-propagated buckets, so they don't hit the race either.
+
+**Edge case — `pulumi destroy` + re-apply:** `pulumi destroy` deletes the bucket from Hetzner *and* removes it from Pulumi state. The next `pulumi up` would attempt to import a bucket that no longer exists and fail. Fix: comment out the `import_=` line on each `S3Bucket` resource for one apply (and re-run `./scripts/bootstrap-object-storage.sh` first so the bucket exists before Pulumi tries to adopt it — or remove `import_=` entirely and let Pulumi hit the eventual-consistency race once). For production, destroy is rare-to-never; the one-line code edit is acceptable when it happens.
+
 #### Credential model (five pairs, all operator-bootstrapped)
 
 Hetzner has **no public API** for creating S3 credentials — they can only be generated through the Hetzner Console (Security → S3 Credentials → Generate). Five pairs are bootstrapped via `scripts/bootstrap-object-storage.sh`, which prompts for each pair and writes JSON (`{"access_key_id", "secret_access_key"}`) to a Scaleway SM secret:
@@ -122,17 +132,19 @@ Hetzner's Console bucket browser uses its own internal credentials, which are no
 
 #### Bootstrap and rotation
 
-Bootstrap (one-time, takes ~2 minutes once you have four credential pairs ready):
+Bootstrap (one-time, takes ~2 minutes once you have five credential pairs ready):
 
 ```bash
-# 1. In Hetzner Console, generate four S3 credential pairs:
+# 1. In Hetzner Console, generate five S3 credential pairs:
 #    Security -> S3 Credentials -> Generate credentials
-#    (Repeat four times. Name each one to match the table above.)
-# 2. Run the bootstrap script (prompts for each pair):
+#    (Repeat five times. Name each one to match the table above.)
+# 2. Run the bootstrap script (prompts for each pair, then creates both
+#    buckets on Hetzner using the pulumi-key credentials):
 ./scripts/bootstrap-object-storage.sh
 # 3. Set the Hetzner project ID:
 pulumi config set hetzner-project-id <numeric-id-from-console>
-# 4. Apply:
+# 4. Apply (adopts the pre-created buckets into Pulumi state and creates
+#    bucket policies, versioning, lifecycle):
 pulumi up
 ```
 

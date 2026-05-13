@@ -53,6 +53,26 @@ pulumi-hcloud does not (as of late 2025/early 2026) expose Object Storage
 resources -- only Hetzner Cloud's older StorageBox. The pulumi-minio
 provider configured against Hetzner's S3-compatible endpoint is the
 recommended path per Hetzner's own docs.
+
+Bucket Create vs. Hetzner eventual consistency
+----------------------------------------------
+pulumi-minio 0.16.9 (latest) pins aminueza/terraform-provider-minio
+v1.20.1, which has an unfixed read-after-create race: `MakeBucket` succeeds
+on Hetzner, the provider immediately `BucketExists`-polls to populate
+state, Hetzner's index hasn't propagated yet, the provider clears the ID
+and returns (nil state, nil error), and the Pulumi bridge panics with
+"expected non-nil error with nil state during Create". The race was fixed
+in aminueza v3.28.1, but the pulumi-minio bridge has never moved off the
+maintenance-mode v1 line. See pulumi-minio#754, aminueza#839.
+
+Workaround: buckets are pre-created out-of-band by
+`scripts/bootstrap-object-storage.sh`, and the `S3Bucket` resources below
+adopt them on first apply via `pulumi.ResourceOptions(import_=...)`. The
+option is ignored on subsequent applies. Bucket policies, versioning, and
+lifecycle remain Pulumi-managed and target the already-propagated buckets,
+so no read-after-create race window exists for them either. The `import_=`
+line can stay permanently; if `pulumi destroy` ever removes the bucket,
+remove the option for one apply and re-run the bootstrap script.
 """
 
 import json
@@ -253,7 +273,14 @@ prod_bucket = minio.S3Bucket(
     bucket=PROD_BUCKET_NAME,
     acl="private",
     object_locking=False,
-    opts=_provider_opts,
+    opts=pulumi.ResourceOptions(
+        provider=minio_provider,
+        # Bucket is pre-created by bootstrap-object-storage.sh. Adopt it
+        # on first apply; ignored once it's in state. Rationale in the
+        # module docstring's "Bucket Create vs. Hetzner eventual
+        # consistency" section.
+        import_=PROD_BUCKET_NAME,
+    ),
 )
 
 preview_bucket = minio.S3Bucket(
@@ -261,7 +288,10 @@ preview_bucket = minio.S3Bucket(
     bucket=PREVIEW_BUCKET_NAME,
     acl="private",
     object_locking=False,
-    opts=_provider_opts,
+    opts=pulumi.ResourceOptions(
+        provider=minio_provider,
+        import_=PREVIEW_BUCKET_NAME,
+    ),
 )
 
 prod_bucket_policy = minio.S3BucketPolicy(
