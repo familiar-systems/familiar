@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: campaign
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: campaign
+  template:
+    metadata:
+      labels:
+        app: campaign
+    spec:
+      imagePullSecrets:
+        - name: scaleway-registry
+      # Distroless `nonroot` (UID 65532) opens the SQLite files; same
+      # HostPath-chown ritual as platform applies. Mirrors prod's pattern
+      # in infra/pulumi-cloud/k8s.py.
+      initContainers:
+        - name: chown-data
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R 65532:65532 /data/campaigns"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: campaign-data
+              mountPath: /data/campaigns
+      containers:
+        - name: campaign
+          image: ${CAMPAIGN_IMAGE}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: CAMPAIGN_DATA_DIR
+              value: /data/campaigns
+            - name: RUST_LOG
+              value: info
+          # internal-bearer Secret carries INTERNAL_BEARER_PRIMARY (and,
+          # during rotation windows only, INTERNAL_BEARER_SECONDARY). The
+          # bearer is sourced from Scaleway SM `internal-bearer-preview`
+          # by ci_cd_preview.yml and materialized into this namespace via
+          # internal-bearer-secret.yaml.
+          envFrom:
+            - secretRef:
+                name: internal-bearer
+          volumeMounts:
+            - name: campaign-data
+              mountPath: /data/campaigns
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+      volumes:
+        - name: campaign-data
+          persistentVolumeClaim:
+            claimName: campaign-pvc

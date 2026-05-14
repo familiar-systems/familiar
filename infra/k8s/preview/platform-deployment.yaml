@@ -53,6 +53,13 @@ spec:
               value: "3000"
             - name: RUST_LOG
               value: info
+          # internal-bearer Secret carries INTERNAL_BEARER_PRIMARY (and,
+          # during rotation windows, INTERNAL_BEARER_SECONDARY). The
+          # bearer gates /internal/* calls between platform and campaign;
+          # the same shape applies to the campaign Deployment.
+          envFrom:
+            - secretRef:
+                name: internal-bearer
           volumeMounts:
             - name: platform-data
               mountPath: /data/platform

@@ -211,9 +211,15 @@ jobs:
         with:
           secret-name: k3s-kubeconfig
 
+      - uses: ./.github/actions/fetch-scw-secret
+        id: internal-bearer
+        with:
+          secret-name: internal-bearer-preview
+
       - name: Deploy PR preview
         env:
           KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
+          INTERNAL_BEARER_VALUE: ${{ steps.internal-bearer.outputs.value }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REGISTRY: ${{ env.REGISTRY }}
           SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
@@ -236,6 +242,7 @@ jobs:
           export SITE_IMAGE="${REGISTRY}/site:pr-${PR_NUMBER}-${SHA}"
           export WEB_IMAGE="${REGISTRY}/web:pr-${PR_NUMBER}-${SHA}"
           export PLATFORM_IMAGE="${REGISTRY}/platform:pr-${PR_NUMBER}-${SHA}"
+          export CAMPAIGN_IMAGE="${REGISTRY}/campaign:pr-${PR_NUMBER}-${SHA}"
 
           # Docker registry auth for imagePullSecret (scaleway-registry).
           # Each derived value is masked because it embeds SCW_SECRET_KEY
@@ -252,18 +259,32 @@ jobs:
           echo "::add-mask::$DOCKERCONFIG_B64"
           export DOCKERCONFIG_B64
 
-          # Apply manifests in dependency order (namespace must exist before children)
-          for manifest in namespace registry-pull-secret \
+          # Same masking discipline applies to the bearer: fetch-scw-secret
+          # returns the decoded value, but k8s Secret manifests carry data:
+          # base64-encoded, so we re-encode here. INTERNAL_BEARER_VALUE is
+          # already masked by the fetch action.
+          INTERNAL_BEARER_PRIMARY_B64=$(printf '%s' "$INTERNAL_BEARER_VALUE" | base64 -w0)
+          echo "::add-mask::$INTERNAL_BEARER_PRIMARY_B64"
+          export INTERNAL_BEARER_PRIMARY_B64
+
+          # Apply order: namespace and shared Secrets first; PVs/PVCs and
+          # NetworkPolicies before the pods that need them; then
+          # Deployments + their Services and Ingresses.
+          for manifest in namespace registry-pull-secret internal-bearer-secret \
                           platform-pv platform-pvc \
+                          campaign-pv campaign-pvc \
+                          platform-networkpolicy campaign-networkpolicy \
                           site-deployment site-service site-ingress \
                           web-deployment web-service web-ingress \
-                          platform-deployment platform-service platform-ingress; do
+                          platform-deployment platform-service platform-ingress \
+                          campaign-deployment campaign-service campaign-ingress; do
             envsubst < "infra/k8s/preview/${manifest}.yaml" | kubectl apply -f -
           done
 
           kubectl -n "$NAMESPACE" rollout status deployment/site --timeout=180s
           kubectl -n "$NAMESPACE" rollout status deployment/web --timeout=180s
           kubectl -n "$NAMESPACE" rollout status deployment/platform --timeout=180s
+          kubectl -n "$NAMESPACE" rollout status deployment/campaign --timeout=180s
 
           rm /tmp/kubeconfig.yaml
 
