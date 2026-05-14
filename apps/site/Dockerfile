@@ -39,8 +39,9 @@ ENV PUBLIC_APP_URL=$PUBLIC_APP_URL
 RUN pnpm --filter @familiar-systems/site build
 
 # -- Stage 2: Serve -----------------------------------------------------------
-FROM nginx:alpine
+FROM nginx:1.30-alpine
 
+COPY apps/site/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/site/dist/ /usr/share/nginx/html/
 
 EXPOSE 80
