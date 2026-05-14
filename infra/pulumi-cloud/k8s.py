@@ -282,12 +282,17 @@ def create_k8s_resources(
     # Layer 3 of /internal/* defense (see docs/plans/2026-05-11-new-campaign-
     # onboarding.md §"Internal-API defense layers"). Both Deployments mount
     # this via envFrom; the binaries' middleware constant-time-compares the
-    # Authorization: Bearer header against INTERNAL_BEARER_PRIMARY (and
-    # optionally INTERNAL_BEARER_SECONDARY during rotation).
+    # Authorization: Bearer header against INTERNAL_BEARER_PRIMARY.
     #
-    # Rotation: see infra/pulumi-cloud/CLAUDE.md "Rotation: internal-bearer-
-    # prod". Empirically, k8s Secret.data changes are replace-triggering;
-    # each rotation step replaces this one Secret without cascading.
+    # `delete_before_replace=True` is structural for any k8s Secret with a
+    # fixed metadata.name: data changes trigger a replace, and Pulumi's
+    # default create-before-delete order would have the new Secret try to
+    # come up alongside the old, which the API server refuses (the name
+    # collides). Flipping the order to delete-then-create accepts a
+    # sub-second window where the Secret doesn't exist; the campaign
+    # Deployment's depends_on serialization ensures pods that need it
+    # don't try to start during that window, and rotation always pairs
+    # with a Deployment roll via the checksum annotation anyway.
     internal_bearer_secret = k8s.core.v1.Secret(
         "internal-bearer-secret",
         metadata=k8s.meta.v1.ObjectMetaArgs(
@@ -296,7 +301,7 @@ def create_k8s_resources(
         ),
         type="Opaque",
         string_data={INTERNAL_BEARER_PRIMARY_KEY: internal_bearer_primary},
-        opts=k8s_opts,
+        opts=pulumi.ResourceOptions(provider=provider, delete_before_replace=True),
     )
 
     # -- Site Deployment + Service + Ingress ----------------------------------
