@@ -901,6 +901,7 @@ dependencies = [
 name = "familiar-systems-campaign"
 version = "0.0.0"
 dependencies = [
+ "axum",
  "chrono",
  "familiar-systems-app-shared",
  "familiar-systems-campaign-shared",
@@ -911,10 +912,13 @@ dependencies = [
  "sea-orm",
  "sea-orm-migration",
  "serde_json",
+ "serial_test",
  "sqlite-vec",
  "sqlx",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "ulid",
 ]
 

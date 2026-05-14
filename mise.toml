@@ -118,7 +118,12 @@ env = { HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", DATABASE_URL = "sqlite://
 
 [tasks."dev:campaign"]
 description = "Campaign server (port 3001)"
-run = "cargo run -p familiar-systems-campaign"
+# Parallels dev:platform: per-task `data/` directory created here because
+# CAMPAIGN_DATA_DIR is set per task and the parent must exist before the
+# binary writes into it. Local-dev uses 3001 to avoid colliding with
+# dev:platform's 3000; the container default (Dockerfile + cluster) is 3000.
+run = ["mkdir -p data/dev-campaigns", "cargo run -p familiar-systems-campaign"]
+env = { PORT = "3001", CAMPAIGN_DATA_DIR = "data/dev-campaigns", RUST_LOG = "info,familiar_systems_campaign=debug" }
 
 [tasks."dev:proxy"]
 description = "Caddy reverse proxy on :8080 unifying site + SPA + platform + campaign under one origin"
