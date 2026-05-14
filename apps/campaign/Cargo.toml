@@ -5,6 +5,7 @@ edition.workspace = true
 publish = false
 
 [dependencies]
+axum = { workspace = true }
 familiar-systems-app-shared = { path = "../../crates/app-shared" }
 familiar-systems-campaign-shared = { path = "../../crates/campaign-shared" }
 
@@ -22,7 +23,10 @@ sqlite-vec = "0.1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite"] }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 ulid = { workspace = true }
 
 [dev-dependencies]
+serial_test = "3.4.0"
 tokio = { workspace = true }
