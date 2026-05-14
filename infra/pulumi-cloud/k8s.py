@@ -56,6 +56,9 @@ WEB_IMAGE_TAG = "latest"
 PLATFORM_NAME = "platform"
 PLATFORM_PORT = 3000
 PLATFORM_IMAGE_TAG = "latest"
+CAMPAIGN_NAME = "campaign"
+CAMPAIGN_PORT = 3000
+CAMPAIGN_IMAGE_TAG = "latest"
 
 # Traefik Middleware reference for the platform Ingress. The `@kubernetescrd`
 # suffix tells Traefik to resolve the name against the Kubernetes CRD store.
@@ -758,6 +761,257 @@ def create_k8s_resources(
                     ),
                 )
                 for host in APP_PROD_DOMAINS
+            ],
+        ),
+        opts=k8s_opts,
+    )
+
+    # -- Campaign tier --------------------------------------------------------
+    # Per-campaign SQLite files live under /data/campaigns/<id>/. HostPath
+    # mirrors the platform pattern; node-level /data/campaigns is provided by
+    # the K3sCluster Volume (see infra/pulumi-cloud/CLAUDE.md "Architecture").
+    # Distroless nonroot UID + chown-init container mirror platform.
+    #
+    # Routes are registered in the binary at full paths (/catalog/..., /campaign/...),
+    # so the prod Ingress needs no StripPrefix middleware — Traefik routes
+    # /catalog/* and /campaign/* straight through. Preview prepends /pr-<N>/
+    # which preview-side YAMLs strip; prod has no such prefix.
+    _campaign_pv = k8s.core.v1.PersistentVolume(
+        "campaign-pv",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name="campaign-pv",
+            labels={"app": CAMPAIGN_NAME},
+        ),
+        spec=k8s.core.v1.PersistentVolumeSpecArgs(
+            capacity={"storage": "1Gi"},
+            access_modes=["ReadWriteOnce"],
+            persistent_volume_reclaim_policy="Retain",
+            storage_class_name="",
+            host_path=k8s.core.v1.HostPathVolumeSourceArgs(
+                path="/data/campaigns",
+                type="DirectoryOrCreate",
+            ),
+            claim_ref=k8s.core.v1.ObjectReferenceArgs(
+                namespace="default",
+                name="campaign-pvc",
+            ),
+        ),
+        opts=pulumi.ResourceOptions(provider=provider, depends_on=[_wildcard_cert]),
+    )
+
+    _campaign_pvc = k8s.core.v1.PersistentVolumeClaim(
+        "campaign-pvc",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name="campaign-pvc",
+            namespace="default",
+        ),
+        spec=k8s.core.v1.PersistentVolumeClaimSpecArgs(
+            access_modes=["ReadWriteOnce"],
+            storage_class_name="",
+            volume_name="campaign-pv",
+            resources=k8s.core.v1.VolumeResourceRequirementsArgs(
+                requests={"storage": "1Gi"},
+            ),
+        ),
+        opts=pulumi.ResourceOptions(provider=provider, depends_on=[_campaign_pv]),
+    )
+
+    campaign_labels = {"app": CAMPAIGN_NAME}
+    campaign_image = registry.endpoint.apply(
+        lambda ep: f"{ep}/{CAMPAIGN_NAME}:{CAMPAIGN_IMAGE_TAG}"
+    )
+
+    _campaign_deployment = k8s.apps.v1.Deployment(
+        "campaign-deployment",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name=CAMPAIGN_NAME,
+            namespace="default",
+        ),
+        spec=k8s.apps.v1.DeploymentSpecArgs(
+            replicas=1,
+            selector=k8s.meta.v1.LabelSelectorArgs(match_labels=campaign_labels),
+            template=k8s.core.v1.PodTemplateSpecArgs(
+                metadata=k8s.meta.v1.ObjectMetaArgs(labels=campaign_labels),
+                spec=k8s.core.v1.PodSpecArgs(
+                    image_pull_secrets=[
+                        k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
+                    ],
+                    init_containers=[
+                        k8s.core.v1.ContainerArgs(
+                            name="chown-data",
+                            image="busybox:1.36",
+                            command=["sh", "-c", "chown -R 65532:65532 /data/campaigns"],
+                            security_context=k8s.core.v1.SecurityContextArgs(
+                                run_as_user=0,
+                            ),
+                            volume_mounts=[
+                                k8s.core.v1.VolumeMountArgs(
+                                    name="campaign-data",
+                                    mount_path="/data/campaigns",
+                                ),
+                            ],
+                        ),
+                    ],
+                    containers=[
+                        k8s.core.v1.ContainerArgs(
+                            name=CAMPAIGN_NAME,
+                            image=campaign_image,
+                            image_pull_policy="IfNotPresent",
+                            ports=[k8s.core.v1.ContainerPortArgs(container_port=CAMPAIGN_PORT)],
+                            env=[
+                                k8s.core.v1.EnvVarArgs(name="PORT", value=str(CAMPAIGN_PORT)),
+                                k8s.core.v1.EnvVarArgs(
+                                    name="CAMPAIGN_DATA_DIR",
+                                    value="/data/campaigns",
+                                ),
+                                k8s.core.v1.EnvVarArgs(name="RUST_LOG", value="info"),
+                            ],
+                            env_from=[
+                                k8s.core.v1.EnvFromSourceArgs(
+                                    secret_ref=k8s.core.v1.SecretEnvSourceArgs(
+                                        name=INTERNAL_BEARER_SECRET,
+                                    ),
+                                ),
+                            ],
+                            volume_mounts=[
+                                k8s.core.v1.VolumeMountArgs(
+                                    name="campaign-data",
+                                    mount_path="/data/campaigns",
+                                ),
+                            ],
+                            resources=k8s.core.v1.ResourceRequirementsArgs(
+                                requests={"cpu": "10m", "memory": "32Mi"},
+                                limits={"memory": "64Mi"},
+                            ),
+                        ),
+                    ],
+                    volumes=[
+                        k8s.core.v1.VolumeArgs(
+                            name="campaign-data",
+                            persistent_volume_claim=k8s.core.v1.PersistentVolumeClaimVolumeSourceArgs(
+                                claim_name="campaign-pvc",
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+        ),
+        opts=pulumi.ResourceOptions(
+            provider=provider,
+            depends_on=[image_pull_secret, _campaign_pvc, internal_bearer_secret],
+            ignore_changes=["spec.template.spec.containers[0].image"],
+        ),
+    )
+
+    _campaign_service = k8s.core.v1.Service(
+        "campaign-service",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name="campaign-service",
+            namespace="default",
+        ),
+        spec=k8s.core.v1.ServiceSpecArgs(
+            selector=campaign_labels,
+            ports=[
+                k8s.core.v1.ServicePortArgs(
+                    port=CAMPAIGN_PORT,
+                    target_port=CAMPAIGN_PORT,
+                ),
+            ],
+        ),
+        opts=k8s_opts,
+    )
+
+    # Two path prefixes route to the same campaign service. No StripPrefix:
+    # the binary registers /catalog/... and /campaign/... at full paths.
+    # /internal/* is intentionally absent (layer 1 of the defense).
+    _campaign_ingress = k8s.networking.v1.Ingress(
+        "campaign-ingress",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name=CAMPAIGN_NAME,
+            namespace="default",
+            annotations={
+                "traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
+            },
+        ),
+        spec=k8s.networking.v1.IngressSpecArgs(
+            tls=[
+                k8s.networking.v1.IngressTLSArgs(
+                    hosts=list(APP_PROD_DOMAINS),
+                    secret_name=WILDCARD_CERT_SECRET,
+                ),
+            ],
+            rules=[
+                k8s.networking.v1.IngressRuleArgs(
+                    host=host,
+                    http=k8s.networking.v1.HTTPIngressRuleValueArgs(
+                        paths=[
+                            k8s.networking.v1.HTTPIngressPathArgs(
+                                path=prefix,
+                                path_type="Prefix",
+                                backend=k8s.networking.v1.IngressBackendArgs(
+                                    service=k8s.networking.v1.IngressServiceBackendArgs(
+                                        name="campaign-service",
+                                        port=k8s.networking.v1.ServiceBackendPortArgs(
+                                            number=CAMPAIGN_PORT,
+                                        ),
+                                    ),
+                                ),
+                            )
+                            for prefix in ("/catalog", "/campaign")
+                        ],
+                    ),
+                )
+                for host in APP_PROD_DOMAINS
+            ],
+        ),
+        opts=k8s_opts,
+    )
+
+    _campaign_networkpolicy = k8s.networking.v1.NetworkPolicy(
+        "campaign-networkpolicy",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name="campaign",
+            namespace="default",
+        ),
+        spec=k8s.networking.v1.NetworkPolicySpecArgs(
+            pod_selector=k8s.meta.v1.LabelSelectorArgs(match_labels=campaign_labels),
+            policy_types=["Ingress"],
+            ingress=[
+                k8s.networking.v1.NetworkPolicyIngressRuleArgs(
+                    from_=[
+                        k8s.networking.v1.NetworkPolicyPeerArgs(
+                            namespace_selector=k8s.meta.v1.LabelSelectorArgs(
+                                match_labels={
+                                    "kubernetes.io/metadata.name": "kube-system",
+                                },
+                            ),
+                            pod_selector=k8s.meta.v1.LabelSelectorArgs(
+                                match_labels={"app.kubernetes.io/name": "traefik"},
+                            ),
+                        ),
+                    ],
+                    ports=[
+                        k8s.networking.v1.NetworkPolicyPortArgs(
+                            port=CAMPAIGN_PORT,
+                            protocol="TCP",
+                        ),
+                    ],
+                ),
+                k8s.networking.v1.NetworkPolicyIngressRuleArgs(
+                    from_=[
+                        k8s.networking.v1.NetworkPolicyPeerArgs(
+                            pod_selector=k8s.meta.v1.LabelSelectorArgs(
+                                match_labels={"app": "platform"},
+                            ),
+                        ),
+                    ],
+                    ports=[
+                        k8s.networking.v1.NetworkPolicyPortArgs(
+                            port=CAMPAIGN_PORT,
+                            protocol="TCP",
+                        ),
+                    ],
+                ),
             ],
         ),
         opts=k8s_opts,
