@@ -267,6 +267,17 @@ jobs:
           echo "::add-mask::$INTERNAL_BEARER_PRIMARY_B64"
           export INTERNAL_BEARER_PRIMARY_B64
 
+          # sha256 of the bearer, used by the pod-template checksum
+          # annotation in {platform,campaign}-deployment.yaml. Changing the
+          # bearer in SM (via `pulumi up --target-replace`) changes this
+          # hash, which changes the annotation, which forces a Deployment
+          # roll so pods pick up the new envFrom value. The hash itself
+          # leaks no information about the bearer (sha256 of a high-entropy
+          # random string), so no ::add-mask:: is needed; leaving it
+          # visible in logs aids debugging of rollouts.
+          INTERNAL_BEARER_CHECKSUM=$(printf '%s' "$INTERNAL_BEARER_VALUE" | sha256sum | awk '{print $1}')
+          export INTERNAL_BEARER_CHECKSUM
+
           # Apply order: namespace and shared Secrets first; PVs/PVCs and
           # NetworkPolicies before the pods that need them; then
           # Deployments + their Services and Ingresses.

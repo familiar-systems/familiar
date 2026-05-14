@@ -12,6 +12,12 @@ spec:
     metadata:
       labels:
         app: platform
+      annotations:
+        # sha256 of the internal-bearer value, computed by the deploy
+        # workflow. Changing the bearer changes this annotation, which
+        # forces the Deployment to roll so pods pick up the new env via
+        # envFrom (which is read at pod start, not on Secret update).
+        checksum/internal-bearer: ${INTERNAL_BEARER_CHECKSUM}
     spec:
       imagePullSecrets:
         - name: scaleway-registry

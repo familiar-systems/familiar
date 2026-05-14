@@ -250,25 +250,26 @@ The `internal-bearer-*` secrets are different from the other operator-bootstrapp
 
 ### Rotation: `internal-bearer-prod`
 
-The bearer is symmetric: both platform and campaign middleware constant-time-compare the incoming `Authorization: Bearer <X>` header against `INTERNAL_BEARER_PRIMARY`. v0 carries a single bearer per environment — no SECONDARY. Rotating is one `pulumi up`:
+The bearer is symmetric: both platform and campaign middleware constant-time-compare the incoming `Authorization: Bearer <X>` header against `INTERNAL_BEARER_PRIMARY`. v0 carries a single bearer per environment — no SECONDARY. Rotating is one command:
 
-1. **Force a fresh `RandomPassword`:** target the resource to replace it.
+```bash
+pulumi up \
+  --target 'urn:pulumi:prod::loreweaver-cloud::random:index/randomPassword:RandomPassword::internal-bearer-prod-value' \
+  --target-replace
+```
 
-    ```bash
-    pulumi up \
-      --target 'urn:pulumi:prod::loreweaver-cloud::random:index/randomPassword:RandomPassword::internal-bearer-prod-value' \
-      --target-replace
-    ```
+This forces Pulumi to:
 
-    Or edit `cloud.py` to add `keepers={"version": "v2"}` (bumping the value forces a replace on subsequent runs) and `pulumi up`. Either way Pulumi mints a new value, the SecretVersion resource takes a new revision in SM, and the k8s Secret's `string_data` changes (which is replace-triggering on the Secret itself — see §Registry pull credential for the empirical behavior).
+1. Mint a fresh `RandomPassword.result`.
+2. Take a new revision of `internal-bearer-prod` in SM (the SecretVersion's `data` apply re-runs against the new value).
+3. Replace the `internal-bearer` k8s Secret (empirical: any `kubernetes.core.v1.Secret.data` change is replace-triggering; see §Registry pull credential).
+4. Roll the platform and campaign Deployments. The roll is *automatic* because each Deployment's pod template carries `checksum/internal-bearer: <sha256(bearer)>`. When the bearer changes the hash changes; the template hash changes; Pulumi treats this as a Deployment update and triggers a rolling restart. Without this annotation, `envFrom` reads at pod start only, so a Secret replace would leave running pods stuck on the old value until something else restarted them.
 
-2. **`pulumi up`** completes; the platform and campaign Deployments roll over within seconds of each other to pick up the new env value.
-
-**Rolling-deploy window.** Between when the k8s Secret replaces and when both Deployments finish rolling, there is a brief window where one tier holds the new bearer and the other still holds the old. Cross-tier `/internal/*` calls in flight during that window fail. At v0 (single replica per tier, low call volume — `/internal/init` on campaign create, `/internal/campaigns/<id>/metadata` on init-commit), this is acceptable; rotation is operator-initiated, not on a schedule, and a few seconds of failed internal calls during the rollover is recovered by the SPA's retry logic.
+**Rolling-deploy window.** Between when platform finishes rolling and when campaign finishes rolling (or vice versa), there is a brief window where one tier holds the new bearer and the other still holds the old. Cross-tier `/internal/*` calls in flight during that window fail. At v0 (single replica per tier, low call volume — `/internal/init` on campaign create, `/internal/campaigns/<id>/metadata` on init-commit), this is acceptable; rotation is operator-initiated, not on a schedule, and a few seconds of failed internal calls during the rollover is recovered by the SPA's retry logic.
 
 The dual-bearer (`PRIMARY` + `SECONDARY`) contract is reintroduced when we scale either tier to multi-replica, since at that point the rolling-deploy window grows beyond "seconds." It lands then, not before — the in-binary middleware already accepts a set of bearers (a single-element set for v0 is the v0 shape; multi-element is the multi-replica shape).
 
-Preview follows the same shape. Rotation is `pulumi up --target ... --target-replace` against the `-preview-` resources. Per-PR preview pods are short-lived enough that the rolling window is sub-second per PR, even at multi-replica.
+**Preview** follows the same shape. Pulumi rotates the value with `pulumi up --target ... --target-replace` against the `-preview-` resources; the next `ci_cd_preview.yml` run for each open PR fetches the new value from SM, computes a new `INTERNAL_BEARER_CHECKSUM` (sha256 of the bearer; see the deploy step's bash), and the annotation update rolls each PR's Deployments. PRs that don't re-run after the rotation stay on the old bearer until their next push. Per-PR preview pods are short-lived enough that the rolling window is sub-second per PR, even at multi-replica.
 
 ### Registry pull credential (Pulumi-owned, not in SM)
 

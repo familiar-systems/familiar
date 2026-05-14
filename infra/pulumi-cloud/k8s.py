@@ -10,6 +10,7 @@ kubeconfig, so nothing touches a default/ambient kubeconfig.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 from typing import TYPE_CHECKING
 
@@ -91,6 +92,15 @@ def create_k8s_resources(
         kubeconfig=kubeconfig,
     )
     k8s_opts = pulumi.ResourceOptions(provider=provider)
+
+    # A pod-template annotation that hashes the bearer value forces both
+    # Deployments to roll when the bearer changes. Without this, envFrom
+    # reads at pod start only -- a Secret replace would leave running pods
+    # holding the old value until something else restarted them. With this,
+    # `pulumi up` is the only command needed to rotate end-to-end.
+    bearer_checksum = pulumi.Output.from_input(internal_bearer_primary).apply(
+        lambda v: hashlib.sha256(v.encode()).hexdigest()
+    )
 
     # -- cert-manager ---------------------------------------------------------
     cert_manager_ns = k8s.core.v1.Namespace(
@@ -430,7 +440,10 @@ def create_k8s_resources(
             replicas=1,
             selector=k8s.meta.v1.LabelSelectorArgs(match_labels=platform_labels),
             template=k8s.core.v1.PodTemplateSpecArgs(
-                metadata=k8s.meta.v1.ObjectMetaArgs(labels=platform_labels),
+                metadata=k8s.meta.v1.ObjectMetaArgs(
+                    labels=platform_labels,
+                    annotations={"checksum/internal-bearer": bearer_checksum},
+                ),
                 spec=k8s.core.v1.PodSpecArgs(
                     image_pull_secrets=[
                         k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
@@ -831,7 +844,10 @@ def create_k8s_resources(
             replicas=1,
             selector=k8s.meta.v1.LabelSelectorArgs(match_labels=campaign_labels),
             template=k8s.core.v1.PodTemplateSpecArgs(
-                metadata=k8s.meta.v1.ObjectMetaArgs(labels=campaign_labels),
+                metadata=k8s.meta.v1.ObjectMetaArgs(
+                    labels=campaign_labels,
+                    annotations={"checksum/internal-bearer": bearer_checksum},
+                ),
                 spec=k8s.core.v1.PodSpecArgs(
                     image_pull_secrets=[
                         k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
