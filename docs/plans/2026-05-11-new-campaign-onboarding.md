@@ -1,6 +1,6 @@
 # New Campaign Onboarding
 
-**Status**: design, pre-implementation.
+**Status**: design. The platform tier (`apps/platform`) is live in prod at `app.familiar.systems` and on every PR preview, serving `/health` and `/me` against a SQLite-backed `users` entity. This design adds the campaigns subsystem to it. The campaign tier (`apps/campaign`) exists as a workspace binary but is not yet containerized, not in the CI matrix, and not in Pulumi; this design also stands it up for the first time as the fifth deploy target.
 
 This document is the authoritative design for:
 
@@ -22,7 +22,14 @@ The architectural shape: **the platform tier is domain-blind.** It knows what a 
 
 Existing code worth reading before touching:
 
-- [`crates/app-shared/src/id.rs`](../../crates/app-shared/src/id.rs) — `CampaignId(pub Nanoid)`. `UserId` is `Uuid` (UUIDv7). Both stay as they are.
+- [`apps/platform/src/main.rs`](../../apps/platform/src/main.rs): live Axum entrypoint. Routes mounted today are `/health` and `/me`. New routes (`/api/campaigns`, `/internal/*`) register here.
+- [`apps/platform/src/openapi.rs`](../../apps/platform/src/openapi.rs): schema exports (`CampaignId`, `UserId`, `MeResponse`). New routes' request/response types register here.
+- [`apps/platform/src/middleware/auth.rs`](../../apps/platform/src/middleware/auth.rs): `AuthenticatedUser` extractor against the Hanko session. `POST /api/campaigns` and `GET /api/campaigns` reuse this; no new auth wiring.
+- [`apps/platform/src/migrations/m20260417_000001_create_users.rs`](../../apps/platform/src/migrations/m20260417_000001_create_users.rs): the only platform migration today. The new `campaigns` and `create_attempts` migrations follow it in date order in the same migrator.
+- [`apps/platform/src/entities/users.rs`](../../apps/platform/src/entities/users.rs): the only platform entity today. `campaigns.owner_user_id` references its primary key.
+- [`infra/pulumi-cloud/k8s.py`](../../infra/pulumi-cloud/k8s.py) (around L349 to L540): existing prod platform manifests (`platform-pv`, `platform-pvc`, `platform-deployment`, `platform-service`, `platform-strip-api-prefix`, `platform-ingress`). Modifications go on the existing resources; campaign manifests are added as net-new.
+- [`infra/k8s/preview/platform-deployment.yaml`](../../infra/k8s/preview/platform-deployment.yaml) and [`platform-pvc.yaml`](../../infra/k8s/preview/platform-pvc.yaml): live preview manifests. Distroless nonroot UID 65532, chown init-container pattern, `/data/platform/platform.db` on a 1Gi HostPath PVC. Campaign-side manifests mirror this shape.
+- [`crates/app-shared/src/id.rs`](../../crates/app-shared/src/id.rs): `CampaignId(pub Nanoid)`. `UserId` is `Uuid` (UUIDv7). Both stay as they are.
 - [`crates/fs-id/src/lib.rs`](../../crates/fs-id/src/lib.rs) — branded ID infrastructure; no changes needed.
 - [`crates/campaign-shared/src/loro/prosemirror.rs`](../../crates/campaign-shared/src/loro/prosemirror.rs) — `ROOT_DOC_KEY`, `NODE_NAME_KEY`, `ATTRIBUTES_KEY`, `CHILDREN_KEY`. The structural constants the compiler uses.
 - [`crates/campaign-shared/src/loro/toc.rs`](../../crates/campaign-shared/src/loro/toc.rs) — `TocEntry` enum; instantiated templates become `TocEntry::Thing` entries.
@@ -34,6 +41,8 @@ Existing code worth reading before touching:
 - Mockup files in [`tmp/NewCampaignOnboarding/`](../../tmp/NewCampaignOnboarding/): `Campaign Onboarding.html`, `data.js`, `onboarding.jsx`, `tweaks-panel.jsx`, `wax_seal.jsx` — the wizard surface to port.
 
 ## Context
+
+The platform binary is live in prod and previews today. It authenticates users against Hanko, persists the `users` entity to a `/data/platform/platform.db` SQLite file on a 1Gi PVC, and exposes `/health` and `/me`. It has no campaign surface yet. The campaign binary exists as a kameo-actor workspace member but is not in the CI matrix or in Pulumi. This design's scope is therefore (a) **extend** the platform with campaign CRUD, routing, and the internal-mirror surface; (b) **stand up** the campaign tier as the fifth deploy target end-to-end (Dockerfile, CI action, preview manifests, prod Pulumi); (c) define the catalog and template system that lives on the campaign tier.
 
 The mockup at `tmp/NewCampaignOnboarding/` introduces two concepts the codebase doesn't yet model:
 
@@ -139,15 +148,19 @@ Default deny on everything else. k3s ships with a built-in NetworkPolicy control
 | `internal-bearer-prod` | prod platform + campaign pods | Rotated on operator initiative |
 | `internal-bearer-preview` | every preview namespace's platform + campaign pods | Same value across all preview PRs (preview is shared trust) |
 
-Prod-side flow: Pulumi reads `internal-bearer-prod` via `config.read_secret(...)`, creates a namespace-scoped k8s `Secret` named `internal-bearer` with keys `INTERNAL_BEARER_PRIMARY` and (during rotation) `INTERNAL_BEARER_SECONDARY`. Both Deployments mount it via `envFrom: [secretRef: { name: internal-bearer }]`.
+Prod-side flow: Pulumi reads `internal-bearer-prod` via `config.read_secret(...)`, creates a namespace-scoped k8s `Secret` named `internal-bearer` with keys `INTERNAL_BEARER_PRIMARY` and (during rotation) `INTERNAL_BEARER_SECONDARY`. The platform `Deployment` already exists in `infra/pulumi-cloud/k8s.py`; this change adds an `envFrom: [secretRef: { name: internal-bearer }]` block to its container spec. The campaign `Deployment` is added in the same change with the identical mount.
 
-Preview-side flow: the existing GHA `deploy-preview.yml` workflow gains a step that fetches `internal-bearer-preview` from SM and creates the same `internal-bearer` k8s Secret in the per-PR namespace. The Secret YAML is templated like everything else under `infra/k8s/preview/`.
+Preview-side flow: the existing GHA `ci_cd_preview.yml` workflow gains a step that fetches `internal-bearer-preview` from SM and creates the same `internal-bearer` k8s Secret in the per-PR namespace. The Secret YAML is templated like everything else under `infra/k8s/preview/`.
 
 Local-dev: bearer is a fixed string in `mise.toml` (or `.envrc` template) checked into the repo. It is not a secret in any meaningful sense; the local-dev value never appears in any deployed environment, and pulling it from Scaleway at every `mise run dev` would add a Scaleway credential dependency for every dev start.
 
 **What is deferred.** Default-deny NetworkPolicy at the namespace level (catches everything not explicitly allowed, including future workloads) is not in v0; per-app policies covering the real call sites land first, and the namespace-wide default deny is a follow-on. Egress policy (e.g., "platform pods may only reach `kube-dns`, `campaign-service`, and `auth.familiar.systems`") is similarly deferred; ingress-only policy is enough for the current threat model. The upgrade path from shared bearer (k8s SA tokens via `TokenReview`, then KMS-signed JWTs) is named in §Decisions.
 
+**Prod rollout sequencing for NetworkPolicy.** k3s's built-in NetworkPolicy controller does not ship a log-only / dry-run mode, so flipping policies on the live platform tier is enforce-or-nothing. The rollout sequence: (1) apply policies to a preview namespace and run the §Verification probes; (2) once the preview soak is clean, apply to the prod namespace; (3) verify the same probes against prod immediately. If the prod probes fail, rolling back is a single `kubectl delete networkpolicy` per resource. Campaign tier follows the same sequence on its own preview-then-prod path.
+
 ### Platform's role in create
+
+Both new routes register in the existing `apps/platform/src/main.rs` alongside `/health` and `/me`. Step 1's "auth the user" uses the existing `AuthenticatedUser` extractor at `apps/platform/src/middleware/auth.rs`; no new auth wiring.
 
 `POST /api/campaigns` does exactly:
 
@@ -165,6 +178,14 @@ The platform never sees `game_system`, `content_locale`, `template_slugs`, `name
 
 - **Any step fails before step 7.** Platform returns 5xx. SPA retries with the same idempotency token. The `create_attempts` row may or may not exist; the upsert handles both. Steps 5 and 6 are idempotent on PKs. Eventually the retry walks all the way to step 7 successfully.
 - **Vanishing Nanoid collision at step 6.** PK conflict on `routing_table.id`. Return 5xx; SPA retries with a fresh idempotency token; new Nanoid gets minted; conflict effectively impossible to repeat (1-in-2^126).
+
+`GET /api/campaigns` does exactly:
+
+1. Auth the user.
+2. `SELECT id, name, tagline, game_system, content_locale, created_at FROM campaigns WHERE owner_user_id = ? ORDER BY created_at DESC`.
+3. Return `200 [{ id, name, tagline, game_system, content_locale, created_at }, ...]`.
+
+Rows whose mirrored fields are still `NULL` (campaign created, wizard not yet sealed) appear in the list as-is; the SPA renders an "Untitled campaign" placeholder for those rows. The route does not fan out to shards: the mirrored columns on `campaigns` are the only data needed for the hub.
 
 ### Repo layout
 
@@ -459,6 +480,8 @@ The Seal handler deduplicates `template_slugs` client-side before submission and
 
 ### Schema changes
 
+Platform migrations follow the existing `m20260417_000001_create_users.rs`. The new `campaigns` and `create_attempts` migrations adopt date-based names (`m{YYYYMMDD}_*` matching the implementation date) and register in the existing migrator after the users-table migration. `campaigns.owner_user_id` has a foreign-key reference to `users.id`.
+
 **`apps/platform/src/entities/campaigns.rs`** (new entity):
 
 - `id: CampaignId` (PK, Nanoid stored as TEXT)
@@ -525,9 +548,9 @@ A routine vacuum job can prune rows older than e.g. 30 days; not load-bearing fo
 | `packages/editor/`                                              | add TipTap extensions for the widgets the design doc names (portrait, relationship list, transclusion slot); schema authority lives here                                                                                                                     |
 | `apps/platform/src/entities/campaigns.rs`                       | new entity (`id, owner_user_id, shard_url, name, tagline, game_system, content_locale, timestamps`)                                                                                                                                                          |
 | `apps/platform/src/entities/create_attempts.rs`                 | new entity (`idempotency_token, campaign_id, created_at`)                                                                                                                                                                                                    |
-| `apps/platform/src/routes/campaigns.rs`                         | `POST /api/campaigns`: upsert `create_attempts`, mint `CampaignId`, call shard `/internal/init`, insert routing row, return `{ campaign_id }`                                                                                                                |
-| `apps/platform/src/routes/internal.rs`                          | `POST /internal/campaigns/<id>/metadata` receiving the mirror update from the campaign tier; bearer-token middleware on `/internal/*` (see Decisions)                                                                                                       |
-| `apps/platform/src/migrations/`                                 | new migrations for the `campaigns` and `create_attempts` tables                                                                                                                                                                                              |
+| `apps/platform/src/routes/campaigns.rs`                         | `POST /api/campaigns`: upsert `create_attempts`, mint `CampaignId`, call shard `/internal/init`, insert routing row, return `{ campaign_id }`. `GET /api/campaigns`: return the authenticated user's campaign rows from the mirrored columns. Both register in `apps/platform/src/main.rs` alongside the existing `/health` and `/me` mounts; both use the existing `AuthenticatedUser` extractor. |
+| `apps/platform/src/routes/internal.rs`                          | `POST /internal/campaigns/<id>/metadata` receiving the mirror update from the campaign tier; bearer-token middleware on `/internal/*` (see Decisions). Mounted as a nested router in `main.rs` so the middleware only applies to `/internal/*`. |
+| `apps/platform/src/migrations/`                                 | new migrations `m{YYYYMMDD}_create_campaigns.rs` and `m{YYYYMMDD}_create_create_attempts.rs`; both register in the existing migrator after the user-table migration. |
 | `apps/platform/src/shard_assigner.rs`                           | new module: round-robin in v0; pluggable for v1                                                                                                                                                                                                              |
 | `apps/campaign/src/routes/catalog.rs`                           | new: `GET /catalog/systems`                                                                                                                                                                                                                                  |
 | `apps/campaign/src/routes/internal.rs`                          | new: `POST /internal/init { campaign_id, owner_user_id }`; idempotent via `INSERT OR IGNORE` on `campaign_metadata.id`; bearer-token middleware on `/internal/*` (see §Internal-API defense layers)                                                          |
@@ -539,8 +562,8 @@ A routine vacuum job can prune rows older than e.g. 30 days; not load-bearing fo
 | `apps/campaign/src/migrations/`                                 | new migration                                                                                                                                                                                                                                                |
 | `apps/campaign/src/supervisor/`                                 | on `Ready` transition and on `campaign_metadata` write commit, fire-and-forget metadata mirror to platform                                                                                                                                                   |
 | `apps/web/src/routes/_authed/c/$campaignId.tsx` (or equivalent) | conditionally render the wizard overlay when `campaign_metadata.wizard_completed_at IS NULL`; ports the wizard component from `tmp/NewCampaignOnboarding/`                                                                                                   |
-| `apps/web/src/lib/api.ts`                                       | add campaign-creation client (mints idempotency token, POSTs to `/api/campaigns`) and catalog fetch (to `/catalog/systems`)                                                                                                                                  |
-| `apps/web/src/routes/_authed/index.tsx`                         | replace `hasCampaigns = false` with real list + button that POSTs to `/api/campaigns` and redirects to the returned campaign                                                                                                                                 |
+| `apps/web/src/lib/api.ts`                                       | add campaign list client (GETs `/api/campaigns`), campaign-creation client (mints idempotency token, POSTs to `/api/campaigns`), and catalog fetch (to `/catalog/systems`) |
+| `apps/web/src/routes/_authed/index.tsx`                         | replace the hardcoded `hasCampaigns = false` with a GET against `/api/campaigns`; render the list when populated, the existing `EmptyHubCard` when empty; both paths include a "create campaign" button that POSTs to `/api/campaigns` and redirects to the returned campaign |
 | `Caddyfile.dev`                                                 | add `/catalog/*` → campaign-tier routing                                                                                                                                                                                                                     |
 | `infra/k8s/preview/platform-deployment.yaml`                    | add pod label `app: platform`; add `envFrom: [secretRef: { name: internal-bearer }]` to source `INTERNAL_BEARER_PRIMARY` and (during rotation) `INTERNAL_BEARER_SECONDARY`                                                                                  |
 | `infra/k8s/preview/campaign-deployment.yaml`                    | new: campaign-server Deployment for previews; pod label `app: campaign`; ports 3000; `envFrom` for `internal-bearer`; HostPath volume for campaign sqlite under `/data/campaigns/pr-${PR_NUMBER}`; same nonroot UID + chown init-container pattern as platform-deployment.yaml |
@@ -549,9 +572,12 @@ A routine vacuum job can prune rows older than e.g. 30 days; not load-bearing fo
 | `infra/k8s/preview/platform-networkpolicy.yaml`                 | new: ingress on port 3000 allowed from Traefik (kube-system, `app.kubernetes.io/name=traefik`) and from same-namespace pods labeled `app=campaign`; default deny on everything else                                                                          |
 | `infra/k8s/preview/campaign-networkpolicy.yaml`                 | new: ingress on port 3000 allowed from Traefik and from same-namespace pods labeled `app=platform`; default deny on everything else                                                                                                                          |
 | `infra/k8s/preview/internal-bearer-secret.yaml`                 | new: templated `kind: Secret` named `internal-bearer` with key `INTERNAL_BEARER_PRIMARY` (value substituted by the preview workflow from `internal-bearer-preview` SM secret); optional `INTERNAL_BEARER_SECONDARY` present only during rotation              |
-| `infra/pulumi-cloud/k8s.py`                                     | when prod platform + campaign Deployments land: add `NetworkPolicy` resources mirroring the preview shape, add `kubernetes.core.v1.Secret` reading `config.read_secret("internal-bearer-prod")` and exposing the same env-var keys                            |
+| `infra/pulumi-cloud/k8s.py`                                     | Prod platform manifests already exist in this file (`platform-pv`, `platform-pvc`, `platform-deployment`, `platform-service`, `platform-strip-api-prefix`, `platform-ingress`). **Modify** the existing `platform-deployment` to add pod label `app=platform` and the `internal-bearer` envFrom. **Add** new resources: `platform-networkpolicy`; campaign-side `campaign-pv` (HostPath at `/data/campaigns`, already provisioned on the cluster volume), `campaign-pvc`, `campaign-deployment` (mirroring platform: distroless nonroot, chown init-container, pod label `app=campaign`, `internal-bearer` envFrom), `campaign-service`, `campaign-strip-prefix` Middleware, `campaign-ingress` for `/catalog/*` and `/campaign/*` on the app apex, `campaign-networkpolicy`, and the prod `internal-bearer` k8s Secret backed by SM `internal-bearer-prod`. Prod rollout of the campaign tier is gated on a preview soak (see §Verification). |
 | `infra/pulumi-cloud/CLAUDE.md`                                  | document the new SM secrets `internal-bearer-prod` and `internal-bearer-preview`, their consumers, and the two-bearer rotation contract                                                                                                                      |
-| `.github/workflows/deploy-preview.yml`                          | add a fetch step for `internal-bearer-preview` and a `kubectl apply` of the templated `internal-bearer-secret.yaml` before the Deployment manifests                                                                                                          |
+| `.github/workflows/ci_cd_preview.yml`                           | add a fetch step for `internal-bearer-preview` and a `kubectl apply` of the templated `internal-bearer-secret.yaml` before the Deployment manifests; add `campaign` to the build matrix (currently `[site, web, platform]`) with its own `paths:` filter (`apps/campaign/**`, `crates/campaign-shared/**`, `crates/app-shared/**`, `crates/fs-id/**`, `Cargo.toml`, `Cargo.lock`, workflow + actions) |
+| `.github/workflows/ci_cd_main.yml`                              | add `campaign` to the build matrix with the same `paths:` filter as preview; reuse the existing `wait-for-infrastructure` and registry-cleanup steps unchanged |
+| `.github/actions/build-campaign/`                               | new composite action mirroring `.github/actions/build-platform/` (cargo build, docker buildx, push to Scaleway registry) |
+| `apps/campaign/Dockerfile`                                      | new, mirroring `apps/platform/Dockerfile`: distroless nonroot final stage, UID 65532, same chown-init pattern compatible with the k8s manifests |
 | `mise.toml` (local-dev `[env]` block)                           | add `INTERNAL_BEARER_PRIMARY = "dev-internal-bearer-not-a-secret"` (or similar fixed string); document in the comment that this is local-only and unrelated to deployed values                                                                                |
 | `tmp/NewCampaignOnboarding/onboarding.jsx` (when porting)       | drop "Invent your own" input                                                                                                                                                                                                                                 |
 
@@ -578,7 +604,7 @@ A routine vacuum job can prune rows older than e.g. 30 days; not load-bearing fo
 **Defense layers (cluster):**
 
 - **No Ingress exposes `/internal/*`.** Enforced via a conftest policy invoked from `mise run lint:k8s` (the existing k8s-YAML lint task already runs kubeconform; the policy check appends to that same task). The `no-internal-ingress` rule denies any `Ingress` or Traefik `IngressRoute` whose path matchers contain `/internal`. Policy install (mise pin), the policy directory layout, and the fixture-test harness are the lint-infra plan's concern; this plan assumes that capability is available and asserts only that the rule exists and runs against every manifest under `infra/k8s/`.
-- **NetworkPolicy denies the unhappy path.** Spin up a debug pod in a preview namespace with no `app` label: `kubectl run debug --image=alpine -n preview-pr-<N> -- sleep infinity; kubectl exec -it -n preview-pr-<N> debug -- nc -zv platform 3000` times out. From the campaign pod in the same namespace: same command succeeds. From a pod in another namespace (e.g., `kube-system`'s `coredns`): times out, confirming cross-namespace deny.
+- **NetworkPolicy denies the unhappy path.** Spin up a debug pod in a preview namespace with no `app` label: `kubectl run debug --image=alpine -n preview-pr-<N> -- sleep infinity; kubectl exec -it -n preview-pr-<N> debug -- nc -zv platform 3000` times out. From the campaign pod in the same namespace: same command succeeds. From a pod in another namespace (e.g., `kube-system`'s `coredns`): times out, confirming cross-namespace deny. The same three probes run against the prod `default` namespace using the `app=platform` and `app=campaign` pod selectors immediately after the prod NetworkPolicy apply; see §Internal-API defense layers § "What is deferred" for the rollout sequence.
 - **Bearer absent → 401.** `kubectl exec -it -n preview-pr-<N> <campaign-pod> -- curl -X POST http://platform:3000/internal/campaigns/abc/metadata -d '{}'` returns 401. With the wrong bearer in the header: 401. With the correct bearer: 200 (or 4xx-on-payload-error, both prove the middleware accepted the bearer).
 - **Bearer rotation handshake.** Set `INTERNAL_BEARER_SECONDARY` to a new value via the templated Secret; redeploy; assert calls from both senders (using the still-active primary) succeed. Swap primary/secondary in SM; redeploy; assert calls succeed (now using the new primary, with the old as secondary). Remove the secondary; redeploy; assert calls succeed (old value fully retired). The same exercise on a single pod is sufficient for v0; multi-replica rotation is dual-node concern.
 - **Local-dev bearer works without Scaleway credentials.** `mise run dev` on a fresh checkout with no `scw` config; the wizard's Seal call succeeds end-to-end, proving the platform-to-campaign mirror's bearer is sourced from `mise.toml`, not from Scaleway SM, in dev mode.
