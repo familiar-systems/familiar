@@ -87,30 +87,18 @@ def create_k8s_resources(
 ) -> None:
     """Declare all Kubernetes resources for the preview cluster."""
     # -- Provider -------------------------------------------------------------
-    # Server-Side Apply is disabled. With SSA on, the Pulumi-defined Deployments
-    # whose image field is updated out-of-band by ci_cd_main.yml's
-    # `kubectl set image` (different field manager) trigger field-ownership
-    # conflicts every `pulumi up`. The documented escape (pulumi.com/patchForce)
-    # resolves the conflict by force-reasserting Pulumi's declared value --
-    # which is `:latest` -- and so causes an unwanted production rollout on
-    # every Pulumi apply. CSA doesn't track field ownership; `ignore_changes`
-    # properly filters the image field from the merge patch, so the cluster's
-    # current image is preserved across apply. The cost: no SSA field-level
-    # drift detection, which we weren't getting useful signal from anyway
-    # given the same image field is the only deliberately externally-managed
-    # field across the resource graph.
     provider = k8s.Provider(
         "k3s-provider",
         kubeconfig=kubeconfig,
-        enable_server_side_apply=False,
     )
     k8s_opts = pulumi.ResourceOptions(provider=provider)
 
-    # A pod-template annotation that hashes the bearer value forces both
-    # Deployments to roll when the bearer changes. Without this, envFrom
-    # reads at pod start only -- a Secret replace would leave running pods
-    # holding the old value until something else restarted them. With this,
-    # `pulumi up` is the only command needed to rotate end-to-end.
+    # A pod-template annotation that hashes the bearer value forces the
+    # campaign Deployment to roll when the bearer changes. Without this,
+    # envFrom reads at pod start only -- a Secret replace would leave the
+    # running pod holding the old value until something else restarted it.
+    # Only the campaign Deployment carries the annotation in this MR;
+    # platform doesn't read the bearer yet (its middleware lands later).
     bearer_checksum = pulumi.Output.from_input(internal_bearer_primary).apply(
         lambda v: hashlib.sha256(v.encode()).hexdigest()
     )
@@ -453,10 +441,7 @@ def create_k8s_resources(
             replicas=1,
             selector=k8s.meta.v1.LabelSelectorArgs(match_labels=platform_labels),
             template=k8s.core.v1.PodTemplateSpecArgs(
-                metadata=k8s.meta.v1.ObjectMetaArgs(
-                    labels=platform_labels,
-                    annotations={"checksum/internal-bearer": bearer_checksum},
-                ),
+                metadata=k8s.meta.v1.ObjectMetaArgs(labels=platform_labels),
                 spec=k8s.core.v1.PodSpecArgs(
                     image_pull_secrets=[
                         k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
@@ -511,17 +496,6 @@ def create_k8s_resources(
                                 k8s.core.v1.EnvVarArgs(name="PORT", value=str(PLATFORM_PORT)),
                                 k8s.core.v1.EnvVarArgs(name="RUST_LOG", value="info"),
                             ],
-                            env_from=[
-                                # internal-bearer carries INTERNAL_BEARER_PRIMARY
-                                # (and optionally _SECONDARY during rotation).
-                                # See infra/pulumi-cloud/CLAUDE.md "Rotation:
-                                # internal-bearer-prod".
-                                k8s.core.v1.EnvFromSourceArgs(
-                                    secret_ref=k8s.core.v1.SecretEnvSourceArgs(
-                                        name=INTERNAL_BEARER_SECRET,
-                                    ),
-                                ),
-                            ],
                             volume_mounts=[
                                 k8s.core.v1.VolumeMountArgs(
                                     name="platform-data",
@@ -547,7 +521,7 @@ def create_k8s_resources(
         ),
         opts=pulumi.ResourceOptions(
             provider=provider,
-            depends_on=[image_pull_secret, _platform_pvc, internal_bearer_secret],
+            depends_on=[image_pull_secret, _platform_pvc],
             ignore_changes=["spec.template.spec.containers[0].image"],
         ),
     )

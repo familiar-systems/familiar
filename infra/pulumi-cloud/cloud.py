@@ -5,11 +5,8 @@ and Scaleway Secrets Manager entries. The k3s cluster (k3s_cluster.py)
 and Kubernetes resources (k8s.py) build on these.
 """
 
-import base64
-
 import pulumi
 import pulumi_hcloud as hcloud
-import pulumi_random as random
 import pulumiverse_scaleway as scaleway
 
 from config import LABELS, LOCATION, config
@@ -179,28 +176,9 @@ k3s_kubeconfig_secret = scaleway.secrets.Secret(
     region="fr-par",
 )
 
-# ---------------------------------------------------------------------------
-# Internal-bearer secrets (Pulumi-minted, never typed by a human)
-# ---------------------------------------------------------------------------
-# Bearer token gating the platform <-> campaign /internal/* API. Distinct
-# from the externally-sourced secrets above (Bunny key, Hetzner S3 keys,
-# k3s SA token): nothing about this value comes from outside our system,
-# so Pulumi owns the lifecycle end-to-end. RandomPassword mints a 44-char
-# alphanumeric value (62^44 ~= 262 bits of entropy, comfortably above the
-# 256-bit floor of `os.urandom(32)` base64-encoded), Pulumi writes it into
-# SM as a SecretVersion, and the k8s Secret in k8s.py consumes the same
-# Output -- no `read_secret` indirection, no operator bootstrap step.
-#
-# `data=` on SecretVersion is base64-encoded payload (the Scaleway provider
-# mirrors the raw API contract; read_secret in config.py does the inverse
-# decode). We encode the random string here so the round trip
-# (Pulumi-write -> SM -> GHA-fetch / read_secret) yields the same string
-# the k8s Secret carries on the prod side.
-#
-# Rotation: `pulumi up --target ... --target-replace` against the
-# RandomPassword resource (full URN in infra/pulumi-cloud/CLAUDE.md
-# §"Rotation: internal-bearer-prod"). Pulumi mints a fresh value, a
-# new SecretVersion lands in SM, and the k8s Secret data flips.
+# Internal-bearer SM containers (empty; operator fills with `scw secret
+# version create`, same shape as `bunny-api-key-secret` above). Pulumi
+# reads "latest" via `config.read_secret(...)` in __main__.py.
 internal_bearer_prod_secret = scaleway.secrets.Secret(
     "internal-bearer-prod-secret",
     name="internal-bearer-prod",
@@ -209,35 +187,9 @@ internal_bearer_prod_secret = scaleway.secrets.Secret(
     protected=True,
 )
 
-internal_bearer_prod_value = random.RandomPassword(
-    "internal-bearer-prod-value",
-    length=44,
-    special=False,
-)
-
-_internal_bearer_prod_version = scaleway.secrets.Version(
-    "internal-bearer-prod-v1",
-    secret_id=internal_bearer_prod_secret.id,
-    data=internal_bearer_prod_value.result.apply(lambda s: base64.b64encode(s.encode()).decode()),
-)
-
 internal_bearer_preview_secret = scaleway.secrets.Secret(
     "internal-bearer-preview-secret",
     name="internal-bearer-preview",
     description="Shared bearer for preview platform <-> campaign /internal/* (shared across PRs)",
     region="fr-par",
-)
-
-internal_bearer_preview_value = random.RandomPassword(
-    "internal-bearer-preview-value",
-    length=44,
-    special=False,
-)
-
-_internal_bearer_preview_version = scaleway.secrets.Version(
-    "internal-bearer-preview-v1",
-    secret_id=internal_bearer_preview_secret.id,
-    data=internal_bearer_preview_value.result.apply(
-        lambda s: base64.b64encode(s.encode()).decode()
-    ),
 )
