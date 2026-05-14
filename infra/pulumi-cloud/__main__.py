@@ -70,6 +70,7 @@ create_k8s_resources(
     bunny_api_key=fs_config.read_secret("bunny-api-key"),
     registry_pull_key=fs_cloud.registry_pull_api_key.secret_key,
     acme_email=fs_config.config.require("acme-email"),
+    internal_bearer_primary=fs_config.read_secret("internal-bearer-prod"),
 )
 
 # ---------------------------------------------------------------------------

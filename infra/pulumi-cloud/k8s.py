@@ -44,6 +44,10 @@ BUNNY_SECRET_NAME = "bunny-api-key"  # noqa: S105
 BUNNY_SECRET_KEY = "api-key"  # noqa: S105
 WILDCARD_CERT_SECRET = "preview-wildcard-tls"  # noqa: S105
 REGISTRY_PULL_SECRET = "scaleway-registry"  # noqa: S105
+# Bearer-token Secret consumed by both platform and campaign Deployments
+# via `envFrom`. Key is the literal env-var name the binaries read.
+INTERNAL_BEARER_SECRET = "internal-bearer"  # noqa: S105
+INTERNAL_BEARER_PRIMARY_KEY = "INTERNAL_BEARER_PRIMARY"
 SITE_NAME = "site"
 SITE_PORT = 80
 WEB_NAME = "web"
@@ -75,6 +79,7 @@ def create_k8s_resources(
     bunny_api_key: pulumi.Input[str],
     registry_pull_key: pulumi.Input[str],
     acme_email: str,
+    internal_bearer_primary: pulumi.Input[str],
 ) -> None:
     """Declare all Kubernetes resources for the preview cluster."""
     # -- Provider -------------------------------------------------------------
@@ -256,6 +261,27 @@ def create_k8s_resources(
         ),
         type="kubernetes.io/dockerconfigjson",
         string_data={".dockerconfigjson": docker_config},
+        opts=k8s_opts,
+    )
+
+    # -- internal-bearer Secret (shared by platform + campaign) ---------------
+    # Layer 3 of /internal/* defense (see docs/plans/2026-05-11-new-campaign-
+    # onboarding.md §"Internal-API defense layers"). Both Deployments mount
+    # this via envFrom; the binaries' middleware constant-time-compares the
+    # Authorization: Bearer header against INTERNAL_BEARER_PRIMARY (and
+    # optionally INTERNAL_BEARER_SECONDARY during rotation).
+    #
+    # Rotation: see infra/pulumi-cloud/CLAUDE.md "Rotation: internal-bearer-
+    # prod". Empirically, k8s Secret.data changes are replace-triggering;
+    # each rotation step replaces this one Secret without cascading.
+    internal_bearer_secret = k8s.core.v1.Secret(
+        "internal-bearer-secret",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name=INTERNAL_BEARER_SECRET,
+            namespace="default",
+        ),
+        type="Opaque",
+        string_data={INTERNAL_BEARER_PRIMARY_KEY: internal_bearer_primary},
         opts=k8s_opts,
     )
 
@@ -456,6 +482,17 @@ def create_k8s_resources(
                                 k8s.core.v1.EnvVarArgs(name="PORT", value=str(PLATFORM_PORT)),
                                 k8s.core.v1.EnvVarArgs(name="RUST_LOG", value="info"),
                             ],
+                            env_from=[
+                                # internal-bearer carries INTERNAL_BEARER_PRIMARY
+                                # (and optionally _SECONDARY during rotation).
+                                # See infra/pulumi-cloud/CLAUDE.md "Rotation:
+                                # internal-bearer-prod".
+                                k8s.core.v1.EnvFromSourceArgs(
+                                    secret_ref=k8s.core.v1.SecretEnvSourceArgs(
+                                        name=INTERNAL_BEARER_SECRET,
+                                    ),
+                                ),
+                            ],
                             volume_mounts=[
                                 k8s.core.v1.VolumeMountArgs(
                                     name="platform-data",
@@ -481,9 +518,64 @@ def create_k8s_resources(
         ),
         opts=pulumi.ResourceOptions(
             provider=provider,
-            depends_on=[image_pull_secret, _platform_pvc],
+            depends_on=[image_pull_secret, _platform_pvc, internal_bearer_secret],
             ignore_changes=["spec.template.spec.containers[0].image"],
         ),
+    )
+
+    # -- Platform NetworkPolicy -----------------------------------------------
+    # Layer 2 of /internal/* defense: any pod in the cluster could otherwise
+    # dial platform-service:3000/internal/campaigns/<id>/metadata directly.
+    # Allow only Traefik (kube-system) for /api/* and same-namespace pods
+    # labeled app=campaign for /internal/*. Default deny on everything else.
+    _platform_networkpolicy = k8s.networking.v1.NetworkPolicy(
+        "platform-networkpolicy",
+        metadata=k8s.meta.v1.ObjectMetaArgs(
+            name="platform",
+            namespace="default",
+        ),
+        spec=k8s.networking.v1.NetworkPolicySpecArgs(
+            pod_selector=k8s.meta.v1.LabelSelectorArgs(match_labels=platform_labels),
+            policy_types=["Ingress"],
+            ingress=[
+                k8s.networking.v1.NetworkPolicyIngressRuleArgs(
+                    from_=[
+                        k8s.networking.v1.NetworkPolicyPeerArgs(
+                            namespace_selector=k8s.meta.v1.LabelSelectorArgs(
+                                match_labels={
+                                    "kubernetes.io/metadata.name": "kube-system",
+                                },
+                            ),
+                            pod_selector=k8s.meta.v1.LabelSelectorArgs(
+                                match_labels={"app.kubernetes.io/name": "traefik"},
+                            ),
+                        ),
+                    ],
+                    ports=[
+                        k8s.networking.v1.NetworkPolicyPortArgs(
+                            port=PLATFORM_PORT,
+                            protocol="TCP",
+                        ),
+                    ],
+                ),
+                k8s.networking.v1.NetworkPolicyIngressRuleArgs(
+                    from_=[
+                        k8s.networking.v1.NetworkPolicyPeerArgs(
+                            pod_selector=k8s.meta.v1.LabelSelectorArgs(
+                                match_labels={"app": "campaign"},
+                            ),
+                        ),
+                    ],
+                    ports=[
+                        k8s.networking.v1.NetworkPolicyPortArgs(
+                            port=PLATFORM_PORT,
+                            protocol="TCP",
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        opts=k8s_opts,
     )
 
     _platform_service = k8s.core.v1.Service(
