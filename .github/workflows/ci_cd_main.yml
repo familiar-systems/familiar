@@ -85,6 +85,16 @@ jobs:
               Cargo.lock
               .github/workflows/ci_cd_main.yml
               .github/actions/**
+          - target: campaign
+            paths: |
+              apps/campaign/**
+              crates/campaign-shared/**
+              crates/app-shared/**
+              crates/fs-id/**
+              Cargo.toml
+              Cargo.lock
+              .github/workflows/ci_cd_main.yml
+              .github/actions/**
     concurrency:
       group: deploy-${{ matrix.target }}
       cancel-in-progress: true
@@ -174,6 +184,15 @@ jobs:
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           gha-cache: "false"
 
+      - name: Build and push campaign
+        if: steps.changes.outputs.any_changed == 'true' && matrix.target == 'campaign'
+        uses: ./.github/actions/build-campaign
+        with:
+          tags: |
+            ${{ env.REGISTRY }}/${{ matrix.target }}:${{ env.DEPLOY_SHA }}
+            ${{ env.REGISTRY }}/${{ matrix.target }}:latest
+          gha-cache: "false"
+
       - uses: ./.github/actions/fetch-scw-secret
         if: steps.changes.outputs.any_changed == 'true'
         id: kubeconfig
@@ -182,16 +201,25 @@ jobs:
 
       - name: Deploy to cluster
         if: steps.changes.outputs.any_changed == 'true'
+        # The Deployment-exists guard lets brand-new targets (campaign,
+        # today) land their image before the Pulumi PR that creates the
+        # Deployment resource. Benign for site/web/platform: their
+        # Deployments exist, the if-branch always takes the true path.
         run: |
           echo "${STEPS_KUBECONFIG_OUTPUTS_VALUE}" > /tmp/kubeconfig.yaml
-          kubectl set image deployment/${{ matrix.target }} \
-            "${{ matrix.target }}=${{ env.REGISTRY }}/${{ matrix.target }}:$DEPLOY_SHA" \
-            --kubeconfig /tmp/kubeconfig.yaml \
-            --namespace default
-          kubectl rollout status deployment/${{ matrix.target }} \
-            --kubeconfig /tmp/kubeconfig.yaml \
-            --namespace default \
-            --timeout=120s
+          if kubectl get deployment/${{ matrix.target }} \
+               --kubeconfig /tmp/kubeconfig.yaml --namespace default >/dev/null 2>&1; then
+            kubectl set image deployment/${{ matrix.target }} \
+              "${{ matrix.target }}=${{ env.REGISTRY }}/${{ matrix.target }}:$DEPLOY_SHA" \
+              --kubeconfig /tmp/kubeconfig.yaml \
+              --namespace default
+            kubectl rollout status deployment/${{ matrix.target }} \
+              --kubeconfig /tmp/kubeconfig.yaml \
+              --namespace default \
+              --timeout=120s
+          else
+            echo "Deployment/${{ matrix.target }} not yet provisioned. Image built and pushed; rollout skipped."
+          fi
           rm /tmp/kubeconfig.yaml
         env:
           STEPS_KUBECONFIG_OUTPUTS_VALUE: ${{ steps.kubeconfig.outputs.value }}
