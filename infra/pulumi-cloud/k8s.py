@@ -87,9 +87,22 @@ def create_k8s_resources(
 ) -> None:
     """Declare all Kubernetes resources for the preview cluster."""
     # -- Provider -------------------------------------------------------------
+    # Server-Side Apply is disabled. With SSA on, the Pulumi-defined Deployments
+    # whose image field is updated out-of-band by ci_cd_main.yml's
+    # `kubectl set image` (different field manager) trigger field-ownership
+    # conflicts every `pulumi up`. The documented escape (pulumi.com/patchForce)
+    # resolves the conflict by force-reasserting Pulumi's declared value --
+    # which is `:latest` -- and so causes an unwanted production rollout on
+    # every Pulumi apply. CSA doesn't track field ownership; `ignore_changes`
+    # properly filters the image field from the merge patch, so the cluster's
+    # current image is preserved across apply. The cost: no SSA field-level
+    # drift detection, which we weren't getting useful signal from anyway
+    # given the same image field is the only deliberately externally-managed
+    # field across the resource graph.
     provider = k8s.Provider(
         "k3s-provider",
         kubeconfig=kubeconfig,
+        enable_server_side_apply=False,
     )
     k8s_opts = pulumi.ResourceOptions(provider=provider)
 
@@ -435,19 +448,6 @@ def create_k8s_resources(
         metadata=k8s.meta.v1.ObjectMetaArgs(
             name=PLATFORM_NAME,
             namespace="default",
-            # ci_cd_main.yml's `kubectl set image deployment/platform ...`
-            # step takes ownership of the .spec.template.spec.containers[]
-            # image field via the `kubectl-set` field manager. Server-Side
-            # Apply otherwise refuses Pulumi's update with a field-ownership
-            # conflict. patchForce tells Pulumi to use --force-conflicts on
-            # apply, reasserting ownership and letting the rest of the
-            # update through. Side-effect: Pulumi briefly sets image to
-            # `:latest` on every `pulumi up`, which rolls the Deployment.
-            # CI tags every prod build with both `:latest` and `:<sha>`, so
-            # the cached `:latest` is the same bytes as the running pod;
-            # the rollout is functionally a restart, no regression. CI's
-            # next `kubectl set image` reasserts the `:<sha>` tag.
-            annotations={"pulumi.com/patchForce": "true"},
         ),
         spec=k8s.apps.v1.DeploymentSpecArgs(
             replicas=1,
@@ -852,12 +852,6 @@ def create_k8s_resources(
         metadata=k8s.meta.v1.ObjectMetaArgs(
             name=CAMPAIGN_NAME,
             namespace="default",
-            # Same patchForce rationale as platform-deployment: CI's
-            # `kubectl set image deployment/campaign ...` step (see the
-            # Deployment-exists guard in ci_cd_main.yml) takes ownership
-            # of the image field; this lets Pulumi update the rest of the
-            # spec despite the conflict.
-            annotations={"pulumi.com/patchForce": "true"},
         ),
         spec=k8s.apps.v1.DeploymentSpecArgs(
             replicas=1,
