@@ -81,6 +81,8 @@ jobs:
             paths: |
               apps/platform/**
               crates/app-shared/**
+              crates/fs-id/**
+              crates/fs-id-macros/**
               Cargo.toml
               Cargo.lock
               .github/workflows/ci_cd_main.yml
@@ -91,6 +93,7 @@ jobs:
               crates/campaign-shared/**
               crates/app-shared/**
               crates/fs-id/**
+              crates/fs-id-macros/**
               Cargo.toml
               Cargo.lock
               .github/workflows/ci_cd_main.yml
