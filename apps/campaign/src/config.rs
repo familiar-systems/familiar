@@ -9,12 +9,16 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Self {
         let port: u16 = std::env::var("PORT")
-            .ok()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(3000);
+            .expect(
+                "PORT is required. Set it in mise.toml [tasks.\"dev:campaign\"].env or in the deployment manifest.",
+            )
+            .parse()
+            .expect("PORT must be a valid u16");
         let campaign_data_dir = std::env::var("CAMPAIGN_DATA_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/data/campaigns"));
+            .expect(
+                "CAMPAIGN_DATA_DIR is required. Set it in mise.toml [tasks.\"dev:campaign\"].env or in the deployment manifest.",
+            );
         Self {
             port,
             campaign_data_dir,
@@ -43,19 +47,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn defaults_when_unset() {
-        unsafe {
-            std::env::remove_var("PORT");
-            std::env::remove_var("CAMPAIGN_DATA_DIR");
-        }
-        let c = Config::from_env();
-        assert_eq!(c.port, 3000);
-        assert_eq!(c.campaign_data_dir, PathBuf::from("/data/campaigns"));
-    }
-
-    #[test]
-    #[serial]
-    fn reads_overrides_from_env() {
+    fn reads_required_env() {
         with_env(
             &[
                 ("PORT", "3001"),
@@ -67,5 +59,27 @@ mod tests {
                 assert_eq!(c.campaign_data_dir, PathBuf::from("data/dev-campaigns"));
             },
         );
+    }
+
+    #[test]
+    #[serial]
+    #[should_panic(expected = "PORT is required")]
+    fn panics_on_missing_port() {
+        unsafe {
+            std::env::remove_var("PORT");
+            std::env::set_var("CAMPAIGN_DATA_DIR", "data/dev-campaigns");
+        }
+        let _ = Config::from_env();
+    }
+
+    #[test]
+    #[serial]
+    #[should_panic(expected = "CAMPAIGN_DATA_DIR is required")]
+    fn panics_on_missing_campaign_data_dir() {
+        unsafe {
+            std::env::set_var("PORT", "3000");
+            std::env::remove_var("CAMPAIGN_DATA_DIR");
+        }
+        let _ = Config::from_env();
     }
 }
