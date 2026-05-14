@@ -215,7 +215,7 @@ internal_bearer_prod_value = random.RandomPassword(
     special=False,
 )
 
-_internal_bearer_prod_version = scaleway.SecretVersion(
+_internal_bearer_prod_version = scaleway.secrets.Version(
     "internal-bearer-prod-v1",
     secret_id=internal_bearer_prod_secret.id,
     data=internal_bearer_prod_value.result.apply(lambda s: base64.b64encode(s.encode()).decode()),
@@ -234,7 +234,7 @@ internal_bearer_preview_value = random.RandomPassword(
     special=False,
 )
 
-_internal_bearer_preview_version = scaleway.SecretVersion(
+_internal_bearer_preview_version = scaleway.secrets.Version(
     "internal-bearer-preview-v1",
     secret_id=internal_bearer_preview_secret.id,
     data=internal_bearer_preview_value.result.apply(
