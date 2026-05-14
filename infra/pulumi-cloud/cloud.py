@@ -5,8 +5,11 @@ and Scaleway Secrets Manager entries. The k3s cluster (k3s_cluster.py)
 and Kubernetes resources (k8s.py) build on these.
 """
 
+import base64
+
 import pulumi
 import pulumi_hcloud as hcloud
+import pulumi_random as random
 import pulumiverse_scaleway as scaleway
 
 from config import LABELS, LOCATION, config
@@ -176,9 +179,33 @@ k3s_kubeconfig_secret = scaleway.secrets.Secret(
     region="fr-par",
 )
 
-# Internal-bearer SM containers (empty; operator fills with `scw secret
-# version create`, same shape as `bunny-api-key-secret` above). Pulumi
-# reads "latest" via `config.read_secret(...)` in __main__.py.
+# Internal-bearer SM containers + bootstrap values.
+#
+# The bearer has no external origin (unlike the Bunny key, Hetzner S3 keys,
+# or k3s SA token, which all come from outside our system). The value is
+# just `random_bytes`. Pulumi mints it once via `pulumi_random.RandomPassword`,
+# writes it into SM as a `scaleway.secrets.Version`, and __main__.py feeds
+# the same `Output` straight into the k8s Secret in `k8s.py`. Single
+# `pulumi up` succeeds end-to-end; no chicken-and-egg between the secret's
+# creation and its consumer's apply.
+#
+# `retain_on_delete=True` on the Version is the load-bearing detail. It
+# tells Pulumi to skip the Scaleway-side Delete call when this resource is
+# removed from the program. The follow-on cleanup commit will delete
+# RandomPassword + Version + the `pulumi-random` dep entirely and switch
+# __main__.py to `read_secret("internal-bearer-prod")`; the SM version
+# persists by virtue of this flag, the chicken-and-egg is gone (SM has a
+# value to read), and we land at the steady state we actually want:
+# operator-managed rotations via `openssl rand -base64 32 | scw secret
+# version create ...`, no `pulumi_random` dependency, no vestigial Pulumi
+# resources holding state for a "minted once" value.
+#
+# `data=` on Version is base64-encoded payload (the Scaleway provider
+# mirrors the raw API contract; consumers like GHA's fetch-scw-secret and
+# read_secret do the inverse decode). RandomPassword returns a plain
+# string; we encode it so the round trip yields the same value the
+# prod-side k8s Secret carries via Output forwarding today, and the same
+# value read_secret will return after the follow-on cleanup.
 internal_bearer_prod_secret = scaleway.secrets.Secret(
     "internal-bearer-prod-secret",
     name="internal-bearer-prod",
@@ -187,9 +214,37 @@ internal_bearer_prod_secret = scaleway.secrets.Secret(
     protected=True,
 )
 
+internal_bearer_prod_value = random.RandomPassword(
+    "internal-bearer-prod-value",
+    length=44,
+    special=False,
+)
+
+_internal_bearer_prod_version = scaleway.secrets.Version(
+    "internal-bearer-prod-v1",
+    secret_id=internal_bearer_prod_secret.id,
+    data=internal_bearer_prod_value.result.apply(lambda s: base64.b64encode(s.encode()).decode()),
+    opts=pulumi.ResourceOptions(retain_on_delete=True),
+)
+
 internal_bearer_preview_secret = scaleway.secrets.Secret(
     "internal-bearer-preview-secret",
     name="internal-bearer-preview",
     description="Shared bearer for preview platform <-> campaign /internal/* (shared across PRs)",
     region="fr-par",
+)
+
+internal_bearer_preview_value = random.RandomPassword(
+    "internal-bearer-preview-value",
+    length=44,
+    special=False,
+)
+
+_internal_bearer_preview_version = scaleway.secrets.Version(
+    "internal-bearer-preview-v1",
+    secret_id=internal_bearer_preview_secret.id,
+    data=internal_bearer_preview_value.result.apply(
+        lambda s: base64.b64encode(s.encode()).decode()
+    ),
+    opts=pulumi.ResourceOptions(retain_on_delete=True),
 )

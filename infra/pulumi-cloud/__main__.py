@@ -70,9 +70,10 @@ create_k8s_resources(
     bunny_api_key=fs_config.read_secret("bunny-api-key"),
     registry_pull_key=fs_cloud.registry_pull_api_key.secret_key,
     acme_email=fs_config.config.require("acme-email"),
-    # Operator writes versions of `internal-bearer-prod` with `scw secret
-    # version create ... data=-`; Pulumi reads "latest" at apply time.
-    internal_bearer_primary=fs_config.read_secret("internal-bearer-prod"),
+    # Pulumi-minted; same Output that backs the SM SecretVersion in cloud.py.
+    # No `read_secret` round-trip and no chicken-and-egg between secret
+    # creation and consumer apply.
+    internal_bearer_primary=fs_cloud.internal_bearer_prod_value.result,
 )
 
 # ---------------------------------------------------------------------------
