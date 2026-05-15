@@ -10,3 +10,12 @@ export type { ConversationId } from "./generated/id/ConversationId";
 export type { ThingHandle } from "./generated/document/ThingHandle";
 export type { TocEntry } from "./generated/document/TocEntry";
 export type { TocEntryKind } from "./generated/document/TocEntryKind";
+
+// Onboarding wire types (catalog response + initialize request).
+export type { CatalogResponse } from "./generated/onboarding/CatalogResponse";
+export type { SystemEntry } from "./generated/onboarding/SystemEntry";
+export type { ByoEntry } from "./generated/onboarding/ByoEntry";
+export type { TemplateRef } from "./generated/onboarding/TemplateRef";
+export type { InitializeRequest } from "./generated/onboarding/InitializeRequest";
+export type { InitializeErrorResponse } from "./generated/onboarding/InitializeErrorResponse";
+export type { AudioMode } from "./generated/onboarding/AudioMode";

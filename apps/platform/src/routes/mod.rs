@@ -1,11 +1,15 @@
+pub(crate) mod campaigns;
 pub(crate) mod health;
+pub(crate) mod internal_campaigns;
 pub(crate) mod me;
 
+use crate::middleware::internal_auth::require_internal_bearer;
 use crate::openapi::api_router;
 use crate::state::AppState;
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, Method};
-use axum::{Json, Router, routing::get};
+use axum::routing::post;
+use axum::{Json, Router, middleware, routing::get};
 use std::sync::Arc;
 use tower_http::{
     cors::{AllowOrigin, CorsLayer},
@@ -37,6 +41,39 @@ fn make_request_span(req: &Request) -> Span {
         user_id = tracing::field::Empty,
         session_id = tracing::field::Empty,
     )
+}
+
+/// Internal-only routes (`/internal/platform/*`). Mounted with the
+/// internal-bearer middleware *and* with state already bound, so the result
+/// is a `Router<()>` that callers can `.merge()` onto a fully-stated public
+/// router.
+///
+/// Lives separately from [`router`] because the bearer middleware is a
+/// stateful layer (it reads the configured bearer out of [`AppState`]), and
+/// `axum::middleware::from_fn_with_state` requires an actual state value at
+/// construction time. The OpenAPI spec deliberately does *not* describe
+/// these routes (they're not part of the SPA contract).
+pub fn internal_router(state: AppState) -> Router {
+    Router::new()
+        .route(
+            "/internal/platform/campaigns/{id}/init-failed",
+            post(internal_campaigns::report_init_failed),
+        )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_internal_bearer,
+        ))
+        .with_state(state)
+}
+
+/// Composite router: public api routes (with the cors / trace / request-id
+/// stack) merged with the internal router. This is what `main.rs` and the
+/// integration test scaffold serve. The split exists so one set of layers
+/// applies to public traffic while internal routes remain bare-bones.
+pub fn serve_router(state: AppState, origins: Vec<String>) -> Router {
+    router(origins)
+        .with_state(state.clone())
+        .merge(internal_router(state))
 }
 
 pub fn router(origins: Vec<String>) -> Router<AppState> {

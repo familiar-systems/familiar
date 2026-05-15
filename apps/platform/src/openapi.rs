@@ -10,10 +10,14 @@
 //! shapes. ts-rs is the compile-time source of truth for type bodies; utoipa
 //! is the source of truth for which routes/methods/params exist.
 
+use crate::routes::campaigns::*;
 use crate::routes::health::*;
 use crate::routes::me::*;
 use crate::state::AppState;
 use familiar_systems_app_shared::auth::MeResponse;
+use familiar_systems_app_shared::campaigns::api::{
+    Campaign, CreateCampaignRequest, CreateCampaignResponse,
+};
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use utoipa::{Modify, OpenApi};
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -26,7 +30,14 @@ use utoipa_axum::{router::OpenApiRouter, routes};
         version = "0.1.0",
         license(name = "AGPL-3.0-or-later", identifier = "AGPL-3.0-or-later"),
     ),
-    components(schemas(MeResponse, UserId, CampaignId)),
+    components(schemas(
+        MeResponse,
+        UserId,
+        CampaignId,
+        Campaign,
+        CreateCampaignRequest,
+        CreateCampaignResponse,
+    )),
     modifiers(&BearerAuth),
 )]
 pub struct ApiDoc;
@@ -61,4 +72,5 @@ pub fn api_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(health))
         .routes(routes!(me))
+        .routes(routes!(create_campaign, list_campaigns))
 }

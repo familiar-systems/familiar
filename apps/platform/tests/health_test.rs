@@ -3,7 +3,10 @@ use axum::{
     http::{Request, StatusCode},
 };
 use familiar_systems_app_shared::auth::HankoSessionValidator;
-use familiar_systems_platform::{config::Config, routes::router, state::AppState};
+use familiar_systems_platform::{
+    clients::campaign_internal::CampaignInternalClient, config::Config, routes::serve_router,
+    state::AppState,
+};
 use sea_orm::Database;
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -14,15 +17,23 @@ async fn make_app() -> axum::Router {
         hanko_api_url: "http://127.0.0.1:0".into(),
         port: 0,
         cors_origins: vec![],
+        internal_bearer_primary: "health-test-bearer".into(),
+        internal_bearer_secondary: None,
+        campaign_shard_url: "http://127.0.0.1:0".into(),
     });
     let db = Database::connect(&config.database_url).await.unwrap();
     let validator = Arc::new(HankoSessionValidator::new(&config.hanko_api_url));
+    let campaign_internal = CampaignInternalClient::new(
+        config.campaign_shard_url.clone(),
+        &config.internal_bearer_primary,
+    );
     let state = AppState {
         db,
         validator,
         config,
+        campaign_internal,
     };
-    router(vec![]).with_state(state)
+    serve_router(state, vec![])
 }
 
 #[tokio::test]

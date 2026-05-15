@@ -31,3 +31,12 @@ systems:
       - common/player
       - common/npc
       - blades-in-the-dark/crew
+
+# Always-available "bring your own" affordance. Maintainer configuration
+# is the default template bundle; the BYO card's UI copy (title, body,
+# empty-input fallback, swatch color) lives in the wizard frontend
+# alongside the rest of its hardcoded strings, so it isn't repeated here.
+byo:
+  bundle:
+    - common/player
+    - common/npc

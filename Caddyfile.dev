@@ -8,6 +8,12 @@
 #   http://app.localhost:8080/            -> Vite SPA at root (port 5173)
 #   http://app.localhost:8080/api/*       -> platform server (port 3000)
 #   http://app.localhost:8080/campaign/*  -> campaign server (port 3001)
+#   http://app.localhost:8080/catalog/*   -> campaign server (port 3001)
+#
+# /catalog/* is its own prefix (not nested under /campaign/) because the
+# catalog endpoint is campaign-tier-stateless: any shard can answer it,
+# round-robin in prod. In local dev there is one shard, so it's a degenerate
+# case, but keeping the path shape consistent with prod prevents drift.
 #
 # Why two hosts: the marketing site and the app must live on different
 # browser origins so that cookie / localStorage scope, CORS, and Hanko's
@@ -40,8 +46,15 @@ http://app.localhost:8080 {
 		reverse_proxy localhost:3000
 	}
 
-	# Campaign shards: strip /campaign so the backend sees /ws, /checkout, etc.
+	# Campaign shards: strip /campaign so the backend sees /<id>/initialize,
+	# /ws, /checkout, etc.
 	handle_path /campaign/* {
+		reverse_proxy localhost:3001
+	}
+
+	# Catalog: campaign-tier route, strip /catalog so the backend sees /systems.
+	# Same upstream as /campaign/*; stateless across shards in prod.
+	handle_path /catalog/* {
 		reverse_proxy localhost:3001
 	}
 

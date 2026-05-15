@@ -20,7 +20,7 @@ const loginSearchSchema = z.object({
 const HARBOR_LIGHT_URL = `url('${assetPath("/harbor-for-light.svg")}')`;
 const HARBOR_DARK_URL = `url('${assetPath("/harbor-for-dark.svg")}')`;
 const RAVEN_URL = `url('${assetPath("/raven-icon.svg")}')`;
-const GRID_PATTERN_URL = `url('${assetPath("/grid-pattern.svg")}')`;
+const CROSSHATCH_URL = `url('${assetPath("/crosshatch.svg")}')`;
 
 function Login(): React.ReactElement {
   useEffect(() => {
@@ -86,7 +86,7 @@ function Login(): React.ReactElement {
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 opacity-[0.04] dark:opacity-[0.06]"
-        style={{ backgroundImage: GRID_PATTERN_URL }}
+        style={{ backgroundImage: CROSSHATCH_URL }}
       />
 
       {/* Centered content column. Bottom padding clears the glass cookie
