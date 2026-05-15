@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../.schemas/starter-content-schema.json
+meta:
+  name:
+    en: Crew
+  description:
+    en: Your shared reputation.
+  icon: network
+
+body:
+  - node: paragraph
+    text:
+      en: "A Crew in Blades in the Dark is a shared second character owned by the whole table — a parallel sheet representing the gang the player scoundrels operate as in Doskvol. At creation it picks a type (Assassins, Bravos, Cult, Hawkers, Shadows, Smugglers) which defines special abilities, hunting grounds, contacts, and XP triggers. The crew tracks its own advancement and assets independent of the individual PCs."
+  - node: paragraph
+    text:
+      en: "Core stats are Tier (0–IV power level, gated by Hold: Strong or Weak), Rep (progress toward the next Tier), Heat (current attention from authorities, which converts to Wanted Level when it fills), and Coin (shared treasury). The sheet also holds a Lair, a one-word earned Reputation, faction status (-3 to +3) with every named faction, and Crew Upgrades bought with XP — cohorts, equipment, training. The Crew drives the downtime phase: claim maps, long-term projects, faction moves, and rep-to-tier all happen here, making the Crew the engine that turns individual scores into structural change in the city."

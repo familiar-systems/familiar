@@ -17,6 +17,7 @@ zizmor = "latest"
 pinact = "latest"
 trufflehog = "latest"
 gitleaks = "latest"
+"pipx:check-jsonschema" = "latest"
 
 [settings]
 python.uv_venv_auto = "create|source"
@@ -299,6 +300,17 @@ sources = [
   ".github/workflows/**/*.yaml",
   ".github/actions/**/*.yml",
   ".github/actions/**/*.yaml",
+]
+
+[tasks."lint:content"]
+description = "Validate content/ YAML authoring files against their JSON Schemas"
+run = [
+  "check-jsonschema --schemafile content/.schemas/systems-schema.json content/systems.yaml",
+  "check-jsonschema --schemafile content/.schemas/starter-content-schema.json content/templates/**/*.yaml",
+]
+sources = [
+  "content/**/*.yaml",
+  "content/.schemas/*.json",
 ]
 
 [tasks."lint:k8s"]

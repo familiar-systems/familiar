@@ -263,6 +263,27 @@ jobs:
         # Default persona; auditor persona is louder and can come later.
         run: zizmor .github/workflows/ .github/actions/
 
+  # ── Content (YAML templates + system catalog) ──────────
+  # Validates `content/systems.yaml` and `content/templates/**/*.yaml`
+  # against the JSON Schemas in `content/.schemas/`. See `mise run lint:content`.
+  # Once `apps/campaign/src/starter_content/` lands, the Rust compiler's
+  # `cargo test` will subsume structural validation; this job can stay as a
+  # fast pre-cargo gate or be retired.
+  content:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install_args: "uv pipx:check-jsonschema"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+
+      - name: lint
+        run: mise run lint:content
+
   # ── Dependency review (PR only) ─────────────────────────
   # Catches PRs that introduce known-vulnerable npm/cargo/pip deps. The
   # underlying API is free on public repos and gated behind GHAS on private
@@ -287,7 +308,7 @@ jobs:
   # ── Gate ────────────────────────────────────────────────
   ci-ok:
     if: always()
-    needs: [ts, rust, python, infra, dep-review]
+    needs: [ts, rust, python, infra, content, dep-review]
     runs-on: ubuntu-latest
     steps:
       - run: |

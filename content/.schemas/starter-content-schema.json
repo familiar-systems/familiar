@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "starter-content-schema.json",
+  "type": "object",
+  "required": ["meta", "body"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["name", "description", "icon"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/definitions/LocalizedString" },
+        "description": { "$ref": "#/definitions/LocalizedString" },
+        "icon": { "type": "string" }
+      }
+    },
+    "body": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Node" }
+    }
+  },
+  "definitions": {
+    "LocalizedString": {
+      "type": "object",
+      "required": ["en"],
+      "patternProperties": {
+        "^[a-z]{2}(-[A-Z]{2})?$": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "Node": {
+      "type": "object",
+      "required": ["node"],
+      "additionalProperties": false,
+      "properties": {
+        "node": {
+          "type": "string",
+          "enum": ["paragraph", "heading"]
+        },
+        "attrs": { "type": "object" },
+        "text": { "$ref": "#/definitions/LocalizedString" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Node" }
+        }
+      }
+    }
+  }
+}
