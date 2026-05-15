@@ -1,0 +1,33 @@
+# Mirror of platform-networkpolicy.yaml for the campaign tier:
+#   - Traefik (kube-system, app.kubernetes.io/name=traefik) for /catalog/*
+#     and /campaign/<id>/* (the genuinely public routes)
+#   - Same-namespace pods labeled app=platform for /internal/init
+# Default deny on everything else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: campaign
+  namespace: ${NAMESPACE}
+spec:
+  podSelector:
+    matchLabels:
+      app: campaign
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 3000
+          protocol: TCP
+    - from:
+        - podSelector:
+            matchLabels:
+              app: platform
+      ports:
+        - port: 3000
+          protocol: TCP

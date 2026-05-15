@@ -30,6 +30,14 @@ lockfile = true
 # derived copy because GHA cannot read TOML natively.
 [env]
 HANKO_API_URL_DEV = "https://auth.preview.familiar.systems"
+# Shared bearer for the platform <-> campaign /internal/* API. Local-only
+# value: never appears in any deployed environment. Both prod and preview
+# pull their bearer from Scaleway SM (`internal-bearer-prod`,
+# `internal-bearer-preview`); see infra/pulumi-cloud/CLAUDE.md "Required
+# Scaleway SM Secrets". Pulling from SM at every `mise run dev` would add
+# a Scaleway credential dependency for every dev start, which we explicitly
+# don't want — hence the fixed string here.
+INTERNAL_BEARER_PRIMARY = "dev-internal-bearer-not-a-secret"
 # Marketing-site link target for Sign In. The site is built statically, so the
 # value is baked in at build time. Local dev uses the Caddy app-apex front
 # door; preview/prod set PUBLIC_APP_URL in their CI build steps.

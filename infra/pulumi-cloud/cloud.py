@@ -175,3 +175,33 @@ k3s_kubeconfig_secret = scaleway.secrets.Secret(
     description="k3s cluster kubeconfig for GHA deploys",
     region="fr-par",
 )
+
+# Internal-bearer SM containers, Pulumi-owned, operator-filled.
+#
+# The bearer values were minted into SM by `pulumi_random.RandomPassword`
+# + `scaleway.secrets.Version` on a previous apply (with retain_on_delete=
+# True so the SM versions persisted when those resources were dropped from
+# the program). Pulumi now reads `revision="latest"` from SM at apply time
+# via `config.read_secret`; rotation is operator-driven:
+#
+#   openssl rand -base64 32 | scw secret version create internal-bearer-prod \
+#       data=- region=fr-par
+#   pulumi up
+#
+# The `scw secret version create` writes a new version; consumers always
+# read latest; `pulumi up` flips the prod k8s Secret's data and the
+# campaign pod template's checksum annotation rolls the Deployment.
+internal_bearer_prod_secret = scaleway.secrets.Secret(
+    "internal-bearer-prod-secret",
+    name="internal-bearer-prod",
+    description="Shared bearer for prod platform <-> campaign /internal/*",
+    region="fr-par",
+    protected=True,
+)
+
+internal_bearer_preview_secret = scaleway.secrets.Secret(
+    "internal-bearer-preview-secret",
+    name="internal-bearer-preview",
+    description="Shared bearer for preview platform <-> campaign /internal/* (shared across PRs)",
+    region="fr-par",
+)

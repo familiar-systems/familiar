@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: campaign-pv-${NAMESPACE}
+  labels:
+    app: campaign
+    namespace: ${NAMESPACE}
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef:
+    namespace: ${NAMESPACE}
+    name: campaign-pvc
+  hostPath:
+    path: /data/preview/${NAMESPACE}/campaign
+    type: DirectoryOrCreate
