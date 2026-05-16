@@ -19,18 +19,18 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * `GET /api/campaigns` — list the authenticated user's campaigns,
+     * `GET /api/campaigns`: list the authenticated user's campaigns,
      *     most-recent first. Reads only the platform-side routing table; no
      *     fan-out to shards.
      */
     get: operations["list_campaigns"];
     put?: never;
     /**
-     * `POST /api/campaigns` — mint a CampaignId, ask the campaign tier to
+     * `POST /api/campaigns`: mint a CampaignId, ask the campaign tier to
      *     initialize per-campaign state, write the routing row, return the id.
      * @description Idempotent on `idempotency_token`: a retry with the same token returns
      *     the same `campaign_id`. The order (write `create_attempts` first, then
-     *     call shard, then write `campaigns`) is what makes retries safe — see
+     *     call shard, then write `campaigns`) is what makes retries safe; see
      *     the long form in the design doc.
      */
     post: operations["create_campaign"];
