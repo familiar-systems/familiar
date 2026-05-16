@@ -3,7 +3,7 @@
 //! Defines the inner types ([`Nanoid`] newtype + re-exported [`Uuid`] /
 //! [`Ulid`]) and re-exports the [`fs_id`] attribute macro from
 //! `fs-id-macros`. Recognized inner types are gated by the macro's
-//! `classify` allow-list, not a trait — implementing a trait is not
+//! `classify` allow-list, not a trait. Implementing a trait is not
 //! sufficient to make a new inner type work.
 //!
 //! ```ignore
@@ -28,7 +28,7 @@ use utoipa::ToSchema;
 ///
 /// `serde` is routed via `#[serde(crate = "...")]`; `ulid` / `uuid` via
 /// the constructor expression in `Constructor::Auto`. `ts-rs` and `utoipa`
-/// are intentionally not here — their derives generate code that
+/// are intentionally not here; their derives generate code that
 /// hard-codes `ts_rs::*` / `utoipa::*` paths and they have no
 /// crate-rename attribute, so consumers of `#[fs_id]` need those crates
 /// as direct deps regardless. Putting them here would mislead.

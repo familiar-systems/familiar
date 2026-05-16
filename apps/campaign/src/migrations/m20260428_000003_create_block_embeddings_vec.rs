@@ -6,7 +6,7 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // vec0 is a virtual table — sea-query's schema builder can't model it,
+        // vec0 is a virtual table that sea-query's schema builder can't model,
         // so we emit raw SQL. `block_id` is the primary key (vec0 accepts TEXT
         // PKs); the ULID Crockford base32 form is the same encoding the
         // regular `blocks.id` column uses, so the embedding's PK is

@@ -1,4 +1,4 @@
-//! `BatchFragmenter` — split a CRDT update payload for the loro-protocol wire.
+//! `BatchFragmenter`: split a CRDT update payload for the loro-protocol wire.
 //!
 //! When the server pushes a CRDT update larger than its `fragment_size` cap
 //! (typically a hair under 256 KB to leave room for wire-frame overhead),

@@ -62,7 +62,7 @@ function CampaignPage(): React.ReactElement {
   }
 
   if (load.campaign.wizard_completed_at !== null) {
-    // Sealed campaigns get a placeholder view — the next slice replaces
+    // Sealed campaigns get a placeholder view; the next slice replaces
     // this with the real campaign editor.
     return (
       <section

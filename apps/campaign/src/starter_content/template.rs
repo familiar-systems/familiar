@@ -1,7 +1,7 @@
 //! Per-template YAML deserialization.
 //!
 //! v0 only reads `meta` (name + description + icon). The `body` field is
-//! deserialized into `serde_yaml::Value` and ignored at runtime — the catalog
+//! deserialized into `serde_yaml::Value` and ignored at runtime; the catalog
 //! endpoint never returns body content. The body parser and Loro compiler
 //! land in a later slice; keeping `body` permissively typed here means a
 //! template with a future widget node still parses today and is ignored.

@@ -1,4 +1,4 @@
-// Type-level guards. No runtime code, no test runner — TypeScript itself
+// Type-level guards. No runtime code, no test runner; TypeScript itself
 // checks these on every `tsc --noEmit` (run via `mise run typecheck`).
 //
 // What we're protecting: openapi-fetch's mapped-type expansion turns ts-rs

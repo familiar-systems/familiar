@@ -1,4 +1,4 @@
-//! `BatchAssembler` — reassemble fragmented loro-protocol updates.
+//! `BatchAssembler`: reassemble fragmented loro-protocol updates.
 //!
 //! A producer sending a CRDT update larger than the protocol's per-message
 //! cap (256 KB per `protocol.md` §"Update Fragments") splits it into one
@@ -6,7 +6,7 @@
 //! assembler accepts those frames in any order and produces the original
 //! payload once all fragments have arrived.
 //!
-//! This is a pure state machine — no time, no scheduler, no mailbox. The
+//! This is a pure state machine: no time, no scheduler, no mailbox. The
 //! protocol's 10-second reassembly timeout is enforced one layer up by the
 //! [`FragmentReassembly`](super::reassembly::FragmentReassembly) trait,
 //! which schedules a self-message at the deadline and calls
@@ -118,7 +118,7 @@ impl BatchAssembler {
     /// Protocol-violation errors (anything other than `UnknownBatch`) drop
     /// the in-flight buffer so the actor doesn't accumulate broken state;
     /// the actor responds with the appropriate `Ack { status }` and moves
-    /// on. `UnknownBatch` is non-destructive — there's nothing to drop.
+    /// on. `UnknownBatch` is non-destructive; there's nothing to drop.
     pub fn add(
         &mut self,
         client: ClientId,
@@ -191,7 +191,7 @@ impl BatchAssembler {
 
     /// Drop one batch. Returns `true` if it was in flight (i.e. the caller
     /// should emit a `fragment_timeout` ack), `false` if it had already
-    /// completed or never started (a stale timeout-fire — no-op).
+    /// completed or never started (a stale timeout-fire that no-ops).
     pub fn drop_batch(&mut self, client: ClientId, batch_id: BatchId) -> bool {
         self.in_flight.remove(&(client, batch_id)).is_some()
     }

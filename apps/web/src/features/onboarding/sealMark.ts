@@ -2,7 +2,7 @@
 //
 // Direct port of `tmp/NewCampaignOnboarding/wax_seal.jsx`. The behaviour is
 // load-bearing: for "The Embergrove Saga" (Latin, with English stop-word
-// "The") this returns "ES" — the first grapheme of each non-stop-word, up
+// "The") this returns "ES", the first grapheme of each non-stop-word, up
 // to three. For "蒼穹のファフナー" it takes the first grapheme; for
 // "العاصفة" it returns the whole first word as a calligraphic block; for
 // empty / punctuation-only / symbol-only names it returns null so the

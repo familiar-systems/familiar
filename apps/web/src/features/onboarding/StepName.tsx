@@ -1,4 +1,4 @@
-// Step 1: name + tagline. The wizard's most legible step — focus on the
+// Step 1: name + tagline. The wizard's most legible step: focus on the
 // type, the lede, and the input. No system picker, no privacy buttons.
 
 import { useEffect, useRef } from "react";

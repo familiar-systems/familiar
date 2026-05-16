@@ -46,7 +46,7 @@ impl PlatformInternalClient {
         }
     }
 
-    /// `POST /internal/platform/campaigns/<id>/init-failed` — tells the
+    /// `POST /internal/platform/campaigns/<id>/init-failed`: tells the
     /// platform "I tried to initialize this campaign and failed."  The
     /// platform persists `reason` onto `campaigns.last_init_error`.
     pub async fn report_init_failed(

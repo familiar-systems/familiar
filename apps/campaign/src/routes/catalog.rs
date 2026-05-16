@@ -1,9 +1,9 @@
-//! `GET /catalog/systems` — locale-resolved game systems and bundle templates.
+//! `GET /catalog/systems`: locale-resolved game systems and bundle templates.
 //!
 //! Honors `?locale=<bcp-47>` (precedence) then `Accept-Language` (first tag
-//! only — no q-value parsing in v0; FE always passes an explicit
+//! only; no q-value parsing in v0). FE always passes an explicit
 //! `?locale=` so the header path is a fallback for non-FE callers like
-//! curl-from-a-tool).
+//! curl-from-a-tool.
 
 use crate::{starter_content::catalog::Catalog, state::AppState};
 use axum::{

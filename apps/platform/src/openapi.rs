@@ -6,7 +6,7 @@
 //! at `/openapi.json` and the spec consumed by TS codegen are byte-identical.
 //!
 //! Components registered here flow through to `packages/types-app/src/openapi/`
-//! as imports of the matching ts-rs types — never as locally regenerated
+//! as imports of the matching ts-rs types, never as locally regenerated
 //! shapes. ts-rs is the compile-time source of truth for type bodies; utoipa
 //! is the source of truth for which routes/methods/params exist.
 

@@ -1,6 +1,6 @@
 //! Vector search over `block_embeddings`. The `MATCH` operator and `k = ?`
 //! predicate are vec0-specific so sea-orm's typed query builder can't model
-//! them — this is the local escape hatch into hand-rolled SQL. Public surface
+//! them, so this is the local escape hatch into hand-rolled SQL. Public surface
 //! takes/returns branded `BlockId`s; the SQL is bounded to one method per
 //! query shape.
 //! TODO consider moving to LanceDB instead of sqllite-vec.
@@ -32,7 +32,7 @@ impl<'a> EmbeddingsRepo<'a> {
         viewer: ViewerKind,
         k: u32,
     ) -> Result<Vec<(BlockId, f32)>, sea_orm::DbErr> {
-        // Static fragments only — not user input. The visibility predicate
+        // Static fragments only (not user input). The visibility predicate
         // lives at the Thing level (per docs/plans/2026-02-22-ai-prd.md §2.2);
         // block-level redaction inside an otherwise-visible thing happens at
         // document materialization, not in SQL.

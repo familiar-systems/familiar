@@ -26,7 +26,7 @@ RUN pnpm install --frozen-lockfile --filter @familiar-systems/site...
 COPY apps/site/ apps/site/
 
 # Build static site + pagefind index.
-# All three values are required and have no defaults — astro.config.mjs throws
+# All three values are required and have no defaults; astro.config.mjs throws
 # at build time if any is unset. Different values per environment (dev/preview/
 # prod), so a default would silently bake the wrong apex or path prefix into
 # deployed artifacts.

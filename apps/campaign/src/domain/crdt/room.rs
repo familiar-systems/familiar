@@ -68,7 +68,7 @@ pub enum JoinError {
 #[derive(Debug, Clone)]
 pub struct Broadcast {
     pub updates: Vec<Vec<u8>>,
-    /// `Some(c)` skips subscriber `c` when fanning out — the originator,
+    /// `Some(c)` skips subscriber `c` when fanning out (the originator,
     /// who sees their own write echoed back via the `Ack` rather than the
     /// broadcast. `None` broadcasts to all subscribers, used when the room
     /// produced cascade-style edits the originator hasn't seen yet

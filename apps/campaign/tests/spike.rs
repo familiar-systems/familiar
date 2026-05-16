@@ -72,7 +72,7 @@ async fn things_and_blocks_round_trip_branded_types() {
         .expect("find related blocks");
 
     // Boundary: domain types come out branded. The let bindings are the
-    // assertion — if any of these types disagreed with the entity columns,
+    // assertion: if any of these types disagreed with the entity columns,
     // the cast would fail to compile.
     let thing_id_back: ThingId = thing.id.into();
     let block_ids_back: Vec<BlockId> = block_models.iter().map(|b| b.id.clone().into()).collect();

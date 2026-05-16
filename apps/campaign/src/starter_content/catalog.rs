@@ -4,7 +4,7 @@
 //! a missing template referenced by `systems.yaml` fails the test that
 //! constructs the catalog (see [`Catalog::load_from_embedded`]); a
 //! malformed YAML fails likewise. There is no runtime path that returns
-//! "template not found" — by the time `axum::serve` runs, the catalog is
+//! "template not found"; by the time `axum::serve` runs, the catalog is
 //! either fully resolved or the binary aborted.
 
 use crate::starter_content::{localized::LocalizedString, template::Template};

@@ -81,7 +81,7 @@ export function WaxSeal({
             : "0 12px 28px -10px rgb(0 0 0 / 0.55), inset 0 2px 4px rgb(255 255 255 / 0.18), inset 0 -3px 6px rgb(0 0 0 / 0.35)",
         }}
       >
-        {/* Inner ring — gold pulse during sealing. */}
+        {/* Inner ring: gold pulse during sealing. */}
         <span
           aria-hidden="true"
           className={[

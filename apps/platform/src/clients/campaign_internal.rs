@@ -58,7 +58,7 @@ impl CampaignInternalClient {
         }
     }
 
-    /// `POST /internal/campaign/init` — tells the campaign tier "this
+    /// `POST /internal/campaign/init`: tells the campaign tier "this
     /// campaign now exists; allocate whatever per-campaign state you need."
     /// Idempotent on `campaign_id`; safe to retry.
     pub async fn init(

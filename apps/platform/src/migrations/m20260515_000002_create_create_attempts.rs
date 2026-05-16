@@ -24,7 +24,7 @@ impl MigrationTrait for Migration {
     //
     // **No FK to `campaigns.id`.** The route writes the `create_attempts` row
     // *before* it calls the shard and *before* it inserts the `campaigns`
-    // row, because that ordering is what makes retries safe — see the
+    // row, because that ordering is what makes retries safe. See the
     // numbered steps in `apps/platform/src/routes/campaigns.rs::create_campaign`.
     // An FK here would block step 3 with a constraint failure since the
     // `campaigns` row doesn't exist yet. The relationship is logical only;

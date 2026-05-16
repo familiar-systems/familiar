@@ -1,6 +1,6 @@
 // Campaign-tier client for catalog + initialize. Lives separately from
 // `lib/api.ts` (which is the platform-side openapi-fetch client) because
-// the campaign tier doesn't ship an OpenAPI spec yet — types come from
+// the campaign tier doesn't ship an OpenAPI spec yet; types come from
 // `@familiar-systems/types-campaign` directly.
 //
 // Authentication: the campaign tier doesn't validate Hanko sessions today

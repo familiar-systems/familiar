@@ -2,8 +2,8 @@
    Property names extracted from @teamhanko/hanko-elements@2.6 dist/. CSS
    custom properties cross the shadow-DOM boundary, so setting them on the
    host element propagates inward without needing ::part. Anything Hanko
-   doesn't expose as a property (icon stroke widths, etc.) stays default —
-   acceptable; escalation path is a headless rebuild. */
+   doesn't expose as a property (icon stroke widths, etc.) stays default.
+   That's acceptable; escalation path is a headless rebuild. */
 
 hanko-auth {
   /* Text + surfaces */
@@ -21,7 +21,7 @@ hanko-auth {
   --link-text-decoration: none;
   --link-text-decoration-hover: underline;
 
-  /* Typography — body in Alegreya so inputs/buttons match the page. */
+  /* Typography: body in Alegreya so inputs/buttons match the page. */
   --font-family: "Alegreya", Georgia, serif;
   --font-size: 1rem;
   --font-weight: 400;
@@ -35,14 +35,14 @@ hanko-auth {
   --headline2-font-weight: 600;
   --headline2-margin: 1.5rem 0 0.75rem 0;
 
-  /* Geometry — match our card's roundness; let inputs breathe. */
+  /* Geometry: match our card's roundness; let inputs breathe. */
   --border-radius: 0.5rem;
   --border-style: solid;
   --border-width: 1px;
   --item-height: 2.75rem;
   --item-margin: 0.5rem 0;
 
-  /* Layout — let the card own width + padding. */
+  /* Layout: let the card own width + padding. */
   --container-max-width: 100%;
   --container-padding: 0;
   --button-min-width: 100%;

@@ -15,7 +15,7 @@ use chrono::Utc;
 use familiar_systems_app_shared::campaigns::internal::InitFailedRequest;
 use sea_orm::{ActiveValue::Set, EntityTrait};
 
-/// `POST /internal/platform/campaigns/<id>/init-failed` — record that the
+/// `POST /internal/platform/campaigns/<id>/init-failed`: record that the
 /// campaign tier tried to initialize this campaign and failed. The platform
 /// persists `reason` onto `campaigns.last_init_error` so the SPA can render
 /// an "initialization failed" badge in the hub list.

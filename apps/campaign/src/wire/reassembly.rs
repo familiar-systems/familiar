@@ -2,11 +2,11 @@
 //!
 //! The pure [`BatchAssembler`](super::assembler::BatchAssembler) tracks
 //! fragment buffers but does not enforce the protocol's 10-second
-//! reassembly timeout — that requires a scheduler. This module provides:
+//! reassembly timeout; that requires a scheduler. This module provides:
 //!
-//! - [`FragmentTimeout`] — a self-message an actor sends to itself at a
+//! - [`FragmentTimeout`]: a self-message an actor sends to itself at a
 //!   batch's deadline.
-//! - [`schedule_fragment_timeout`] — helper that the
+//! - [`schedule_fragment_timeout`]: helper that the
 //!   `Message<DocUpdateFragmentHeader>` handler calls after starting a
 //!   batch. Spawns a tokio task that sleeps and `tell`s the timeout
 //!   message to the actor.
@@ -46,7 +46,7 @@ pub struct FragmentTimeout {
 }
 
 /// Spawn a tokio task that sleeps for `timeout` and then tells the actor
-/// a [`FragmentTimeout`]. The send error is ignored — if the actor is
+/// a [`FragmentTimeout`]. The send error is ignored; if the actor is
 /// gone by then, there is nothing to do.
 ///
 /// The bound `A: Message<FragmentTimeout, Reply = ()>` is the only
@@ -90,7 +90,7 @@ mod tests {
     /// A minimal actor that owns an assembler and records timeout fires.
     /// The `Message<FragmentTimeout>` impl below is exactly the shape
     /// each real actor (ThingActor, TocActor, AgentConversationActor)
-    /// will write — direct, no trait, no macro.
+    /// will write: direct, no trait, no macro.
     struct TestActor {
         assembler: BatchAssembler,
         fired: Arc<Mutex<Vec<(ClientId, BatchId)>>>,
@@ -180,7 +180,7 @@ mod tests {
         };
         let actor_ref = TestActor::spawn(actor);
 
-        // Schedule a timeout for a batch that was never started — same
+        // Schedule a timeout for a batch that was never started: same
         // shape as the "completed before timeout fired" case from the
         // assembler's perspective (drop_batch returns false either way).
         schedule_fragment_timeout(actor_ref.clone(), cid(1), bid(1), Duration::from_millis(20));

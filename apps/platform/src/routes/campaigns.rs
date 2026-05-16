@@ -1,6 +1,6 @@
 //! Public campaign routes (`/api/campaigns`).
 //!
-//! Per the platform CLAUDE.md, paths here are post-strip — declare
+//! Per the platform CLAUDE.md, paths here are post-strip: declare
 //! `/campaigns`, browsers reach it at `/api/campaigns`.
 
 use crate::{
@@ -21,12 +21,12 @@ use sea_orm::{
     ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, sea_query::OnConflict,
 };
 
-/// `POST /api/campaigns` — mint a CampaignId, ask the campaign tier to
+/// `POST /api/campaigns`: mint a CampaignId, ask the campaign tier to
 /// initialize per-campaign state, write the routing row, return the id.
 ///
 /// Idempotent on `idempotency_token`: a retry with the same token returns
 /// the same `campaign_id`. The order (write `create_attempts` first, then
-/// call shard, then write `campaigns`) is what makes retries safe — see
+/// call shard, then write `campaigns`) is what makes retries safe; see
 /// the long form in the design doc.
 #[utoipa::path(
     post,
@@ -129,7 +129,7 @@ pub async fn create_campaign(
     }))
 }
 
-/// `GET /api/campaigns` — list the authenticated user's campaigns,
+/// `GET /api/campaigns`: list the authenticated user's campaigns,
 /// most-recent first. Reads only the platform-side routing table; no
 /// fan-out to shards.
 #[utoipa::path(

@@ -1,4 +1,4 @@
-//! `POST /campaign/<id>/initialize` — wizard's Seal handler.
+//! `POST /campaign/<id>/initialize` - wizard's Seal handler.
 //!
 //! v0 thin slice: validates the payload shape, fires a callback to the
 //! platform's `init-failed` endpoint (exercising the bidirectional
@@ -43,8 +43,9 @@ pub async fn initialize(
 
     // Fire the platform callback. Awaited so the platform records the
     // failure before the SPA learns of it; if the callback itself fails,
-    // log at warn but still return the deliberate failure to the SPA — we
-    // don't want to mask the FE-visible failure with a different one.
+    // log at warn but still return the deliberate failure to the SPA.
+    // Masking the FE-visible failure with a different one defeats the
+    // point of this thin slice.
     if let Err(e) = state
         .platform_internal
         .report_init_failed(&campaign_id, FAILURE_REASON)

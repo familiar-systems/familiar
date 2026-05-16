@@ -15,7 +15,7 @@ pub struct LocalizedString(pub BTreeMap<String, String>);
 
 impl LocalizedString {
     /// Resolves the string for `locale`, falling back to `en` if absent.
-    /// Panics if `en` is also absent — the JSON Schema makes that case a
+    /// Panics if `en` is also absent. The JSON Schema makes that case a
     /// build-time error, so encountering it at runtime means the schema
     /// was bypassed (a real invariant violation, not a missing default).
     pub fn resolve(&self, locale: &str) -> &str {

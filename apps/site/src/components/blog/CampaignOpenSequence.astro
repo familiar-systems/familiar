@@ -2,7 +2,7 @@
 // Two stacked engineering plates showing the campaign-open lifecycle.
 // FIG. 01 is the cold start (8 steps); FIG. 02 is the hot start (4 steps,
 // most common). Sharp hairline frame, graph-paper background, monospace
-// labels — these are technical artefacts, not parchment ornaments.
+// labels. These are technical artefacts, not parchment ornaments.
 ---
 
 <figure class="open-seq not-prose">
@@ -212,7 +212,7 @@
         >SPA POSTs to Platform; Platform finds the campaign in its routing
         table; returns the WebSocket URL and token to the SPA; SPA opens a
         WebSocket against the Campaign Server. Storage and Server lanes are
-        quiet — the entire middle of the cold path is skipped.</desc
+        quiet; the entire middle of the cold path is skipped.</desc
       >
 
       <defs>
@@ -405,7 +405,7 @@
       );
   }
 
-  /* corner registration ticks (top-left & bottom-right only — engineer's plate marks) */
+  /* corner registration ticks (top-left & bottom-right only; engineer's plate marks) */
   .plate::before,
   .plate::after {
     content: '';

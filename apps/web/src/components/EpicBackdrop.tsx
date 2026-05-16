@@ -13,7 +13,7 @@ export function EpicBackdrop(): React.ReactElement {
   return (
     <>
       {/* Theme-paired masks. Opacity-toggle (rather than display-toggle) so
-        each element states its presence in both modes — keeps the lint's
+        each element states its presence in both modes, which keeps the lint's
         no-dark-without-light rule satisfied without per-line suppressions.
         Light: bronze (#5c3a1f) at 0.16, warm walnut. Dark: lit bronze
         (#c4956b) at 0.22, slightly brighter so the artwork holds on the

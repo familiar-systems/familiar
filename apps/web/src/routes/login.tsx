@@ -41,7 +41,7 @@ function Login(): React.ReactElement {
         hero: SVG drives the shape, --color-bronze drives the fill, opacity
         differs between themes to keep contrast comparable. */}
       {/* Theme-paired harbor masks. Opacity-toggle (not display-toggle) so
-        each layer states its presence in both modes for the linter — the
+        each layer states its presence in both modes for the linter. The
         off-theme layer composites at opacity 0, negligible cost on a
         static page. */}
       <div
