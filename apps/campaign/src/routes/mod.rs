@@ -14,16 +14,15 @@ use axum::{
     routing::{get, post},
 };
 
-/// Public routes (catalog + per-campaign initialize). Caddy strips
-/// `/campaign/` and `/catalog/` before requests arrive, so paths here are
-/// post-strip: `/systems`, `/<id>/initialize`. The `/catalog/*` and
-/// `/campaign/*` Caddy entries route to the same binary at port 3001;
-/// merging here keeps the per-binary axum routing flat.
+/// Public routes (catalog + per-campaign endpoints). Routes use full
+/// service-prefixed paths (`/catalog/systems`, `/campaign/<id>/initialize`).
+/// Reverse proxies strip only the per-environment prefix (nothing in local
+/// dev, `/pr-N` in preview) and forward the service prefix intact.
 pub fn public_router() -> Router<AppState> {
     Router::new()
         .route("/health", get(health))
-        .route("/systems", get(catalog::list_systems))
-        .route("/{id}/initialize", post(initialize::initialize))
+        .route("/catalog/systems", get(catalog::list_systems))
+        .route("/campaign/{id}/initialize", post(initialize::initialize))
 }
 
 /// Internal-only routes (`/internal/campaign/*`). Bearer-protected.

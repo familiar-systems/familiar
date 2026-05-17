@@ -9,8 +9,8 @@ Covers `apps/campaign/` only: the `familiar-systems-campaign` Axum + kameo binar
 ## Today's surface
 
 - `GET /health`: 200 `ready` when the registry is in `Phase::Ready`, 503 `draining` once drain has begun. Wired to the k8s readiness probe.
-- `GET /systems` (post-strip from `/catalog/systems`): locale-resolved catalog of game systems and bundled template metadata. Honors `?locale=` then `Accept-Language`, falls back to `en`.
-- `POST /{id}/initialize` (post-strip from `/campaign/<id>/initialize`): wizard Seal handler. **Deliberate 500 in the thin slice.** Validates payload shape, fires `init-failed` to the platform, returns a structured error body. Real init transaction lands in a later slice.
+- `GET /catalog/systems`: locale-resolved catalog of game systems and bundled template metadata. Honors `?locale=` then `Accept-Language`, falls back to `en`.
+- `POST /campaign/{id}/initialize`: wizard Seal handler. **Deliberate 500 in the thin slice.** Validates payload shape, fires `init-failed` to the platform, returns a structured error body. Real init transaction lands in a later slice.
 - `POST /internal/campaign/init`: bearer-protected. Asks `CampaignRegistry` to ensure a supervisor exists; idempotent on `campaign_id`. Returns 200 on success, 503 during drain, 500 on init failure.
 
 CRDT room actors (Thing, ToC, AgentConversation), the WebSocket layer, the real wizard transaction, template instantiation, and object-storage checkin/checkout do not exist yet. See "Design docs" below for where each is specified.
@@ -42,7 +42,7 @@ Read rustdoc at each site for detail; this table is a where-to-go index.
 | If you are touching... | Read |
 | --- | --- |
 | actor topology, registry/supervisor/database lifecycle, drain workflow | `src/actors/mod.rs`, `src/actors/registry.rs`, `src/actors/supervisor.rs`, `src/actors/database.rs` |
-| route registration, bearer-protected vs public split, post-strip paths | `src/routes/mod.rs` |
+| route registration, bearer-protected vs public split, full-path routes | `src/routes/mod.rs` |
 | `/internal/campaign/init` handler and status mapping | `src/routes/internal.rs` |
 | `/systems` catalog (locale resolution) | `src/routes/catalog.rs` |
 | wizard Seal handler (currently deliberate 500) | `src/routes/initialize.rs` |
@@ -83,7 +83,7 @@ cargo test -p familiar-systems-campaign --test internal_init_test init_during_dr
 
 ## Cross-file facts
 
-- **Routes are post-strip.** Caddy/Traefik removes `/catalog/` and `/campaign/` before requests arrive; declare `/systems`, `/{id}/initialize`, not the full prefixed paths. `/internal/*` is not stripped (and is never registered in any Ingress).
+- **Routes use full service-prefixed paths.** Public routes are registered as `/catalog/systems`, `/campaign/{id}/initialize`, etc. Reverse proxies strip only the per-environment prefix (nothing in local dev, `/pr-N` in preview) and forward the service prefix intact. `/internal/*` is pod-to-pod only and is never registered in any Ingress.
 - **`register_sqlite_vec()` must run before any sea-orm pool opens.** Migrations include a `vec0` virtual table. `main.rs` calls it once at startup; tests must call it too (it's `Once`-guarded so spamming is fine).
 - **CampaignId is a Nanoid** minted by the platform tier, not validated here on the wire. `<data_dir>/<campaign_id>.db` is the on-disk shape; no path-traversal concern because Nanoid is URL-safe.
 - **`SetStopCause` is first-writer-wins.** A supervisor that self-tags `Idle` does not get clobbered by a later drain-side `SetStopCause(Drain)`. See the rustdoc on `SetStopCause`.
@@ -99,7 +99,7 @@ When writing actor tests, set `idle_timeout` to seconds (60+) so the timer doesn
 
 ## Adding code
 
-- **New route**: post-strip path, new module under `src/routes/`, register in `routes/mod.rs`. Internal routes go through `internal_router`; public routes through `public_router`.
+- **New route**: full service-prefixed path (`/catalog/...` or `/campaign/...`), new module under `src/routes/`, register in `routes/mod.rs`. Internal routes go through `internal_router`; public routes through `public_router`.
 - **New env var**: panic-on-missing in `Config::from_env`; add a `#[serial]` test for the missing-var case. Update `mise.toml`'s `dev:campaign` env block.
 - **New actor message**: bump `last_activity` if it's a real operational message (Ping is the pattern). Update the supervisor's drain ordering if the new handler does I/O that must complete before `on_stop`.
 - **New `AppState` field**: cheap clone only (`Arc` or kameo `ActorRef`); `AppState` is cloned per handler invocation.

@@ -4,7 +4,7 @@ mod common;
 async fn list_systems_returns_locale_resolved_catalog() {
     let app = common::spawn_app().await;
 
-    let resp = reqwest::get(format!("{}/systems", app.base_url))
+    let resp = reqwest::get(format!("{}/catalog/systems", app.base_url))
         .await
         .unwrap();
     assert_eq!(resp.status().as_u16(), 200);
@@ -47,7 +47,7 @@ async fn list_systems_returns_locale_resolved_catalog() {
 async fn explicit_locale_query_takes_precedence_and_falls_back_for_unknown() {
     let app = common::spawn_app().await;
 
-    let resp = reqwest::get(format!("{}/systems?locale=de", app.base_url))
+    let resp = reqwest::get(format!("{}/catalog/systems?locale=de", app.base_url))
         .await
         .unwrap();
     assert_eq!(resp.status().as_u16(), 200);

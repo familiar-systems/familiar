@@ -42,7 +42,7 @@ async fn initialize_fires_platform_callback_and_returns_500() {
         .await;
 
     let resp = reqwest::Client::new()
-        .post(format!("{}/{}/initialize", app.base_url, CAMPAIGN_ID))
+        .post(format!("{}/campaign/{}/initialize", app.base_url, CAMPAIGN_ID))
         .json(&valid_payload())
         .send()
         .await
@@ -74,7 +74,7 @@ async fn initialize_still_returns_500_when_platform_callback_itself_errors() {
         .await;
 
     let resp = reqwest::Client::new()
-        .post(format!("{}/{}/initialize", app.base_url, CAMPAIGN_ID))
+        .post(format!("{}/campaign/{}/initialize", app.base_url, CAMPAIGN_ID))
         .json(&valid_payload())
         .send()
         .await
@@ -89,7 +89,7 @@ async fn initialize_rejects_malformed_body_with_4xx() {
     // shape.
     let app = common::spawn_app().await;
     let resp = reqwest::Client::new()
-        .post(format!("{}/{}/initialize", app.base_url, CAMPAIGN_ID))
+        .post(format!("{}/campaign/{}/initialize", app.base_url, CAMPAIGN_ID))
         .json(&json!({ "not": "valid" }))
         .send()
         .await

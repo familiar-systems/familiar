@@ -46,15 +46,16 @@ http://app.localhost:8080 {
 		reverse_proxy localhost:3000
 	}
 
-	# Campaign shards: strip /campaign so the backend sees /<id>/initialize,
-	# /ws, /checkout, etc.
-	handle_path /campaign/* {
+	# Campaign shards: forward with /campaign prefix intact so the binary
+	# sees /campaign/<id>/initialize, /campaign/<id>/ws, etc.
+	handle /campaign/* {
 		reverse_proxy localhost:3001
 	}
 
-	# Catalog: campaign-tier route, strip /catalog so the backend sees /systems.
-	# Same upstream as /campaign/*; stateless across shards in prod.
-	handle_path /catalog/* {
+	# Catalog: campaign-tier route, forward with /catalog prefix intact so
+	# the binary sees /catalog/systems. Same upstream as /campaign/*;
+	# stateless across shards in prod.
+	handle /catalog/* {
 		reverse_proxy localhost:3001
 	}
 
