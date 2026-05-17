@@ -44,6 +44,12 @@ spec:
               value: "3000"
             - name: CAMPAIGN_DATA_DIR
               value: /data/campaigns
+            - name: PLATFORM_URL
+              value: http://platform:3000
+            - name: CAMPAIGN_IDLE_TIMEOUT_SECS
+              value: "1800"
+            - name: CAMPAIGN_EVICTION_CHECK_INTERVAL_SECS
+              value: "180"
             - name: RUST_LOG
               value: info
           # internal-bearer Secret carries INTERNAL_BEARER_PRIMARY (and,

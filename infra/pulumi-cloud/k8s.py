@@ -446,7 +446,10 @@ def create_k8s_resources(
             replicas=1,
             selector=k8s.meta.v1.LabelSelectorArgs(match_labels=platform_labels),
             template=k8s.core.v1.PodTemplateSpecArgs(
-                metadata=k8s.meta.v1.ObjectMetaArgs(labels=platform_labels),
+                metadata=k8s.meta.v1.ObjectMetaArgs(
+                    labels=platform_labels,
+                    annotations={"checksum/internal-bearer": bearer_checksum},
+                ),
                 spec=k8s.core.v1.PodSpecArgs(
                     image_pull_secrets=[
                         k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
@@ -498,8 +501,19 @@ def create_k8s_resources(
                                     # header.
                                     value="https://app.familiar.systems",
                                 ),
+                                k8s.core.v1.EnvVarArgs(
+                                    name="CAMPAIGN_SHARD_URL",
+                                    value=f"http://{CAMPAIGN_NAME}:{CAMPAIGN_PORT}",
+                                ),
                                 k8s.core.v1.EnvVarArgs(name="PORT", value=str(PLATFORM_PORT)),
                                 k8s.core.v1.EnvVarArgs(name="RUST_LOG", value="info"),
+                            ],
+                            env_from=[
+                                k8s.core.v1.EnvFromSourceArgs(
+                                    secret_ref=k8s.core.v1.SecretEnvSourceArgs(
+                                        name=INTERNAL_BEARER_SECRET,
+                                    ),
+                                ),
                             ],
                             volume_mounts=[
                                 k8s.core.v1.VolumeMountArgs(
@@ -526,14 +540,14 @@ def create_k8s_resources(
         ),
         opts=pulumi.ResourceOptions(
             provider=provider,
-            depends_on=[image_pull_secret, _platform_pvc],
+            depends_on=[image_pull_secret, _platform_pvc, internal_bearer_secret],
             ignore_changes=["spec.template.spec.containers[0].image"],
         ),
     )
 
     # -- Platform NetworkPolicy -----------------------------------------------
     # Layer 2 of /internal/* defense: any pod in the cluster could otherwise
-    # dial platform-service:3000/internal/campaigns/<id>/metadata directly.
+    # dial platform:3000/internal/campaigns/<id>/metadata directly.
     # Allow only Traefik (kube-system) for /api/* and same-namespace pods
     # labeled app=campaign for /internal/*. Default deny on everything else.
     _platform_networkpolicy = k8s.networking.v1.NetworkPolicy(
@@ -589,7 +603,7 @@ def create_k8s_resources(
     _platform_service = k8s.core.v1.Service(
         "platform-service",
         metadata=k8s.meta.v1.ObjectMetaArgs(
-            name="platform-service",
+            name=PLATFORM_NAME,
             namespace="default",
         ),
         spec=k8s.core.v1.ServiceSpecArgs(
@@ -650,7 +664,7 @@ def create_k8s_resources(
                                 path_type="Prefix",
                                 backend=k8s.networking.v1.IngressBackendArgs(
                                     service=k8s.networking.v1.IngressServiceBackendArgs(
-                                        name="platform-service",
+                                        name=PLATFORM_NAME,
                                         port=k8s.networking.v1.ServiceBackendPortArgs(
                                             number=PLATFORM_PORT,
                                         ),
@@ -872,6 +886,18 @@ def create_k8s_resources(
                                     name="CAMPAIGN_DATA_DIR",
                                     value="/data/campaigns",
                                 ),
+                                k8s.core.v1.EnvVarArgs(
+                                    name="PLATFORM_URL",
+                                    value=f"http://{PLATFORM_NAME}:{PLATFORM_PORT}",
+                                ),
+                                k8s.core.v1.EnvVarArgs(
+                                    name="CAMPAIGN_IDLE_TIMEOUT_SECS",
+                                    value="1800",
+                                ),
+                                k8s.core.v1.EnvVarArgs(
+                                    name="CAMPAIGN_EVICTION_CHECK_INTERVAL_SECS",
+                                    value="180",
+                                ),
                                 k8s.core.v1.EnvVarArgs(name="RUST_LOG", value="info"),
                             ],
                             env_from=[
@@ -914,7 +940,7 @@ def create_k8s_resources(
     _campaign_service = k8s.core.v1.Service(
         "campaign-service",
         metadata=k8s.meta.v1.ObjectMetaArgs(
-            name="campaign-service",
+            name=CAMPAIGN_NAME,
             namespace="default",
         ),
         spec=k8s.core.v1.ServiceSpecArgs(
@@ -958,7 +984,7 @@ def create_k8s_resources(
                                 path_type="Prefix",
                                 backend=k8s.networking.v1.IngressBackendArgs(
                                     service=k8s.networking.v1.IngressServiceBackendArgs(
-                                        name="campaign-service",
+                                        name=CAMPAIGN_NAME,
                                         port=k8s.networking.v1.ServiceBackendPortArgs(
                                             number=CAMPAIGN_PORT,
                                         ),
