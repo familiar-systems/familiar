@@ -27,22 +27,6 @@ enum Users {
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
-    // The `campaigns` table is the platform's routing table for the campaign
-    // tier. `id` is a Nanoid (TEXT, since SQLite has no native nanoid type)
-    // minted by the platform on `POST /api/campaigns`. `shard_url` records
-    // which campaign-tier shard hosts this campaign so future requests can
-    // be routed without a fan-out.
-    //
-    // The four nullable mirror columns (`name`, `tagline`, `game_system`,
-    // `content_locale`) and `wizard_completed_at` are populated by the
-    // campaign tier on successful initialize via a metadata mirror call.
-    // Until that lands, they read NULL and the SPA renders an "Untitled
-    // campaign" placeholder.
-    //
-    // `last_init_error` is populated by the campaign tier when an initialize
-    // attempt fails (via `POST /internal/platform/campaigns/<id>/init-failed`).
-    // Distinct from "no init attempt yet" (`wizard_completed_at IS NULL` AND
-    // `last_init_error IS NULL`).
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
             .create_table(
