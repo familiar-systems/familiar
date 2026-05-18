@@ -61,6 +61,21 @@ CAMPAIGN_NAME = "campaign"
 CAMPAIGN_PORT = 3000
 CAMPAIGN_IMAGE_TAG = "latest"
 
+# Node role labels for workload scheduling. The label key is a custom domain
+# prefix so it won't collide with well-known k8s labels. In a single-node
+# cluster, the server gets role=platform; in dual-node, the agent gets
+# role=campaign.
+NODE_ROLE_LABEL = "node-role.familiar.systems/role"
+PLATFORM_NODE_ROLE = "platform"
+
+# GHA's deploy workflow uses `kubectl set image` to roll Deployments, which
+# creates a `kubectl-set` SSA field manager that owns the image field.
+# Pulumi's SSA then conflicts when it tries to update the same Deployment
+# (even with ignore_changes on image, SSA ownership checks fire first).
+# Force-adopting the conflicting fields is safe because ignore_changes
+# prevents Pulumi from actually writing the image value.
+_SSA_FORCE_ANNOTATIONS = {"pulumi.com/patchForce": "true"}
+
 # Traefik Middleware reference for the platform Ingress. The `@kubernetescrd`
 # suffix tells Traefik to resolve the name against the Kubernetes CRD store.
 PLATFORM_STRIP_API_MIDDLEWARE = "default-strip-api-prefix@kubernetescrd"
@@ -79,6 +94,7 @@ ACTIVE_CLUSTER_ISSUER_NAME = PROD_CLUSTER_ISSUER_NAME
 def create_k8s_resources(
     *,
     kubeconfig: pulumi.Output[str],
+    node_name: str,
     registry: scaleway.registry.Namespace,
     bunny_api_key: pulumi.Input[str],
     registry_pull_key: pulumi.Input[str],
@@ -101,6 +117,21 @@ def create_k8s_resources(
     # platform doesn't read the bearer yet (its middleware lands later).
     bearer_checksum = pulumi.Output.from_input(internal_bearer_primary).apply(
         lambda v: hashlib.sha256(v.encode()).hexdigest()
+    )
+
+    # -- Node role label ------------------------------------------------------
+    # Labels the k3s server node so workloads can target it via nodeSelector.
+    # In the current single-node cluster this is a no-op for scheduling, but
+    # it exercises the label machinery before the second node arrives.
+    platform_node_selector = {NODE_ROLE_LABEL: PLATFORM_NODE_ROLE}
+
+    server_node_label = k8s.core.v1.NodePatch(
+        "server-node-role",
+        metadata=k8s.meta.v1.ObjectMetaPatchArgs(
+            name=node_name,
+            labels=platform_node_selector,
+        ),
+        opts=k8s_opts,
     )
 
     # -- cert-manager ---------------------------------------------------------
@@ -314,6 +345,7 @@ def create_k8s_resources(
         metadata=k8s.meta.v1.ObjectMetaArgs(
             name=SITE_NAME,
             namespace="default",
+            annotations=_SSA_FORCE_ANNOTATIONS,
         ),
         spec=k8s.apps.v1.DeploymentSpecArgs(
             replicas=1,
@@ -321,6 +353,7 @@ def create_k8s_resources(
             template=k8s.core.v1.PodTemplateSpecArgs(
                 metadata=k8s.meta.v1.ObjectMetaArgs(labels=site_labels),
                 spec=k8s.core.v1.PodSpecArgs(
+                    node_selector=platform_node_selector,
                     image_pull_secrets=[
                         k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
                     ],
@@ -341,7 +374,7 @@ def create_k8s_resources(
         ),
         opts=pulumi.ResourceOptions(
             provider=provider,
-            depends_on=[image_pull_secret],
+            depends_on=[image_pull_secret, server_node_label],
             ignore_changes=["spec.template.spec.containers[0].image"],
         ),
     )
@@ -410,6 +443,7 @@ def create_k8s_resources(
                 namespace="default",
                 name="platform-pvc",
             ),
+            node_affinity=_node_affinity_for_role(PLATFORM_NODE_ROLE),
         ),
         opts=pulumi.ResourceOptions(provider=provider, depends_on=[_wildcard_cert]),
     )
@@ -441,6 +475,7 @@ def create_k8s_resources(
         metadata=k8s.meta.v1.ObjectMetaArgs(
             name=PLATFORM_NAME,
             namespace="default",
+            annotations=_SSA_FORCE_ANNOTATIONS,
         ),
         spec=k8s.apps.v1.DeploymentSpecArgs(
             replicas=1,
@@ -451,6 +486,7 @@ def create_k8s_resources(
                     annotations={"checksum/internal-bearer": bearer_checksum},
                 ),
                 spec=k8s.core.v1.PodSpecArgs(
+                    node_selector=platform_node_selector,
                     image_pull_secrets=[
                         k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
                     ],
@@ -540,7 +576,12 @@ def create_k8s_resources(
         ),
         opts=pulumi.ResourceOptions(
             provider=provider,
-            depends_on=[image_pull_secret, _platform_pvc, internal_bearer_secret],
+            depends_on=[
+                image_pull_secret,
+                _platform_pvc,
+                internal_bearer_secret,
+                server_node_label,
+            ],
             ignore_changes=["spec.template.spec.containers[0].image"],
         ),
     )
@@ -693,6 +734,7 @@ def create_k8s_resources(
         metadata=k8s.meta.v1.ObjectMetaArgs(
             name=WEB_NAME,
             namespace="default",
+            annotations=_SSA_FORCE_ANNOTATIONS,
         ),
         spec=k8s.apps.v1.DeploymentSpecArgs(
             replicas=1,
@@ -700,6 +742,7 @@ def create_k8s_resources(
             template=k8s.core.v1.PodTemplateSpecArgs(
                 metadata=k8s.meta.v1.ObjectMetaArgs(labels=web_labels),
                 spec=k8s.core.v1.PodSpecArgs(
+                    node_selector=platform_node_selector,
                     image_pull_secrets=[
                         k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
                     ],
@@ -720,7 +763,7 @@ def create_k8s_resources(
         ),
         opts=pulumi.ResourceOptions(
             provider=provider,
-            depends_on=[image_pull_secret],
+            depends_on=[image_pull_secret, server_node_label],
             ignore_changes=["spec.template.spec.containers[0].image"],
         ),
     )
@@ -814,6 +857,7 @@ def create_k8s_resources(
                 namespace="default",
                 name="campaign-pvc",
             ),
+            node_affinity=_node_affinity_for_role(PLATFORM_NODE_ROLE),
         ),
         opts=pulumi.ResourceOptions(provider=provider, depends_on=[_wildcard_cert]),
     )
@@ -845,6 +889,7 @@ def create_k8s_resources(
         metadata=k8s.meta.v1.ObjectMetaArgs(
             name=CAMPAIGN_NAME,
             namespace="default",
+            annotations=_SSA_FORCE_ANNOTATIONS,
         ),
         spec=k8s.apps.v1.DeploymentSpecArgs(
             replicas=1,
@@ -855,6 +900,7 @@ def create_k8s_resources(
                     annotations={"checksum/internal-bearer": bearer_checksum},
                 ),
                 spec=k8s.core.v1.PodSpecArgs(
+                    node_selector=platform_node_selector,
                     image_pull_secrets=[
                         k8s.core.v1.LocalObjectReferenceArgs(name=REGISTRY_PULL_SECRET),
                     ],
@@ -932,7 +978,12 @@ def create_k8s_resources(
         ),
         opts=pulumi.ResourceOptions(
             provider=provider,
-            depends_on=[image_pull_secret, _campaign_pvc, internal_bearer_secret],
+            depends_on=[
+                image_pull_secret,
+                _campaign_pvc,
+                internal_bearer_secret,
+                server_node_label,
+            ],
             ignore_changes=["spec.template.spec.containers[0].image"],
         ),
     )
@@ -1049,6 +1100,25 @@ def create_k8s_resources(
             ],
         ),
         opts=k8s_opts,
+    )
+
+
+def _node_affinity_for_role(role: str) -> k8s.core.v1.VolumeNodeAffinityArgs:
+    """Build a PV nodeAffinity that pins to the given node role."""
+    return k8s.core.v1.VolumeNodeAffinityArgs(
+        required=k8s.core.v1.NodeSelectorArgs(
+            node_selector_terms=[
+                k8s.core.v1.NodeSelectorTermArgs(
+                    match_expressions=[
+                        k8s.core.v1.NodeSelectorRequirementArgs(
+                            key=NODE_ROLE_LABEL,
+                            operator="In",
+                            values=[role],
+                        ),
+                    ],
+                ),
+            ],
+        ),
     )
 
 

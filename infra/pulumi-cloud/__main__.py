@@ -66,6 +66,7 @@ _static_kubeconfig: pulumi.Output[str] = pulumi.Output.all(
 # ---------------------------------------------------------------------------
 create_k8s_resources(
     kubeconfig=_static_kubeconfig,
+    node_name=k3s.node_name,
     registry=fs_cloud.registry,
     bunny_api_key=fs_config.read_secret("bunny-api-key"),
     registry_pull_key=fs_cloud.registry_pull_api_key.secret_key,

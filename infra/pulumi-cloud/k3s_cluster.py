@@ -22,6 +22,7 @@ class K3sCluster(pulumi.ComponentResource):
     """Provisions a k3s server with auto-applied SA bootstrap manifest."""
 
     server_ip: pulumi.Output[str]
+    node_name: str
 
     def __init__(
         self,
@@ -86,6 +87,7 @@ class K3sCluster(pulumi.ComponentResource):
         )
 
         self.server_ip = server.ipv4_address
+        self.node_name = f"loreweaver-{name}"
 
         # -- Floating IP Assignment -------------------------------------------
         _ = hcloud.FloatingIpAssignment(
@@ -104,7 +106,7 @@ class K3sCluster(pulumi.ComponentResource):
             opts=child_opts,
         )
 
-        self.register_outputs({"serverIp": self.server_ip})
+        self.register_outputs({"serverIp": self.server_ip, "nodeName": self.node_name})
 
 
 def _render_cloud_init(*, fip: str, device: str, tls_sans: str) -> str:
