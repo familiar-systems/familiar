@@ -41,7 +41,7 @@ jobs:
             echo "pnpm=$(mise current 'npm:pnpm')"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+      - uses: pnpm/action-setup@739bfe42ca9233c5e6aca07c1a25a9d34aca49b0 # v6.0.7
         with:
           version: ${{ steps.versions.outputs.pnpm }}
 
@@ -108,7 +108,7 @@ jobs:
           # Cheap insurance for the proc-macro-heavy graph (sea-orm, ts-rs, utoipa).
           cache-all-crates: true
 
-      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+      - uses: pnpm/action-setup@739bfe42ca9233c5e6aca07c1a25a9d34aca49b0 # v6.0.7
         with:
           version: ${{ steps.versions.outputs.pnpm }}
 
