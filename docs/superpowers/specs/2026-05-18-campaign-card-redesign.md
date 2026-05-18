@@ -56,7 +56,7 @@ For campaigns that have completed the wizard. Ported from the WorldsAwait wirefr
 
 Top-to-bottom:
 
-1. **Banner** (80px): gradient background + subtle CSS grid lines + optional gold glow
+1. **Banner** (80px): gradient background + crosshatch texture + optional gold glow
 2. **Body**: status indicator row, display title, italic tagline, footer
 3. **Footer**: relative timestamp (from `updated_at`) on the left, game system on the right, separated by a `border-t`
 
@@ -66,7 +66,7 @@ Campaign shard is in the routing table: actors running, WebSocket ready.
 
 - **Banner gradient**: warm gold. `radial-gradient(ellipse at 50% 120%, rgb(184 149 48 / .40), transparent 70%), linear-gradient(160deg, gold/22%, bronze/22%)`
 - **Banner glow**: `radial-gradient(circle at 80% 0%, rgb(184 149 48 / .30), transparent 55%)`, `mix-blend-mode: screen`
-- **Banner grid lines**: `rgb(0 0 0 / .06)` at 0.3 opacity
+- **Banner texture**: crosshatch pattern (diagonal cross-lines, like engraved bronze). CSS-only: two `repeating-linear-gradient` layers at 45deg and -45deg, `rgb(0 0 0 / .04)` lines at 5px intervals, 0.8 opacity. Uses the same visual vocabulary as the existing `crosshatch.svg` asset but rendered in CSS for color adaptability.
 - **Border**: `rgb(184 149 48 / .3)` with `0 0 0 1px rgb(184 149 48 / .10) inset` shadow
 - **Hover**: border intensifies to `gold/.5`, shadow grows
 - **Status indicator**: gold ember dot with pulse animation ("Loaded")
@@ -78,7 +78,7 @@ Campaign is sealed and healthy but not currently checked out. Will cold-start on
 
 - **Banner gradient**: cool plum. `radial-gradient(ellipse at 50% 120%, rgb(90 74 106 / .20), transparent 70%), linear-gradient(160deg, primary/12%, bronze-muted/30%)`
 - **Banner glow**: none
-- **Banner grid lines**: `rgb(0 0 0 / .05)` at 0.25 opacity
+- **Banner texture**: same crosshatch pattern as loaded, but at reduced opacity (0.5) so it recedes behind the muted gradient
 - **Border**: `rgb(90 74 106 / .15)`
 - **Hover**: border intensifies to `primary/.35`, plum shadow
 - **Status indicator**: muted static dot, `var(--color-line)` ("Ready to Load")
@@ -143,17 +143,51 @@ SealedCard (props: { campaign: Campaign, loaded: boolean })
 
 - `CampaignCard.tsx`: rewritten from a single flat card to a dispatcher over `GraphPaperCard` / `SealedCard`
 - `_authed/index.tsx`: grid changes from 3-col to 2-col, container width may narrow
-- New CSS: graph-paper background pattern (CSS-only, no SVG asset needed), banner gradients, ember dot animation, status indicators. All Tailwind utility classes; no new CSS files.
+- New CSS: graph-paper background (CSS grid lines for draft cards), crosshatch texture (CSS diagonal lines for sealed banners), banner gradients, ember dot animation, status indicators. All CSS-only, no new SVG assets. Tailwind utility classes where possible; inline styles for gradients and repeating patterns.
 
 ## Dark Mode
 
-The banner gradients and graph-paper lines use `color-mix()` with CSS custom properties that already shift under `.dark`. Borders and shadows that use raw `rgb()` values need explicit `dark:` Tailwind variants:
+The banner gradients use `color-mix()` with CSS custom properties (`--color-gold`, `--color-primary`, `--color-bronze`, `--color-bronze-muted`) that already shift under `.dark` in `theme.css`. No gradient overrides needed. Borders, shadows, and a few accent colors need explicit `dark:` Tailwind variants.
 
-- **Sealed card border (default)**: `border-foreground/8` (adapts via token). Raw `rgb(0 0 0 / .08)` in wireframe CSS becomes `border-black/8 dark:border-white/8`.
-- **Footer separator**: same treatment as border.
-- **Card shadow**: use `dark:shadow-[0_12px_40px_-18px_rgb(0_0_0/0.55)]` for the deeper dark-mode elevation (matching wireframe).
-- **Graph paper card**: dashed border shifts to `dark:border-primary/15`. Grid lines shift via token.
-- **Init-failed amber**: stays amber in both modes (semantic color, not themed).
+### Sealed Card (both states)
+
+| Property | Light | Dark |
+|---|---|---|
+| Card background | `bg-background` (adapts) | (same) |
+| Default border | `border-black/8` | `dark:border-white/8` |
+| Card shadow | `shadow-[0_8px_32px_-16px_rgb(28_25_23/0.25)]` | `dark:shadow-[0_12px_40px_-18px_rgb(0_0_0/0.55)]` |
+| Footer separator | `border-black/6` | `dark:border-white/8` |
+| Crosshatch lines (loaded) | `rgb(0 0 0 / .04)` at 0.8 opacity | `rgb(255 255 255 / .04)` at 0.8 opacity |
+| Crosshatch lines (ready) | `rgb(0 0 0 / .04)` at 0.5 opacity | `rgb(255 255 255 / .04)` at 0.5 opacity |
+
+### Loaded State (Gold) Dark Overrides
+
+| Property | Light | Dark |
+|---|---|---|
+| Border | `rgb(184 149 48 / .3)` | `rgb(212 169 68 / .35)` (uses dark gold `#d4a944`) |
+| Inset shadow | `1px rgb(184 149 48 / .10)` | `1px rgb(212 169 68 / .15)` |
+| Card shadow | `shadow-gold-soft` | `0 12px 50px -18px rgb(212 169 68 / .25)` |
+| Ember dot glow | pulses with light gold | pulses with dark gold |
+
+### Ready to Load State (Plum) Dark Overrides
+
+| Property | Light | Dark |
+|---|---|---|
+| Border | `rgb(90 74 106 / .15)` | `rgb(154 134 170 / .15)` (uses dark primary `#9a86aa`) |
+| Hover border | `rgb(90 74 106 / .35)` | `rgb(154 134 170 / .3)` |
+| Hover shadow | `shadow-primary` | `0 25px 50px -12px rgb(0 0 0 / .3)` |
+
+### Graph Paper Card Dark Overrides
+
+| Property | Light | Dark |
+|---|---|---|
+| Dashed border | `primary/20` | `dark:border-primary/15` |
+| Grid lines | `rgb(90 74 106 / .07)` | `rgb(154 134 170 / .06)` (adapts via token) |
+| Icon container bg | `primary/8` | (adapts via token) |
+
+### Init Failed Amber
+
+Amber is a semantic color, not themed. In light mode: text `#92400e`, bg `rgb(251 191 36 / .12)`. In dark mode: text `amber-400` (`#fbbf24`), bg `rgb(251 191 36 / .08)`. The dark variant brightens the text so it reads on the dark background.
 
 ## Design Tokens Used
 
