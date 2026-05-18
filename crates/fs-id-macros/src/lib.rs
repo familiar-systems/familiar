@@ -14,13 +14,13 @@ use syn::{
 ///
 /// Emits a branded ID type with serde, ts-rs, utoipa, `Display`,
 /// `From<Inner>`, and constructors:
-/// - `pub const fn new(value: Inner) -> Self` (always emitted — wraps a
+/// - `pub const fn new(value: Inner) -> Self` (always emitted; wraps a
 ///   value, used for hydration / numeric IDs).
 /// - `pub fn generate() -> Self` (emitted only for [`Nanoid`] / [`Uuid`] /
-///   [`Ulid`] — mints a fresh ID).
+///   [`Ulid`]; mints a fresh ID).
 ///
 /// The brand string is constructed at macro expansion time from the
-/// struct's own ident — it cannot drift.
+/// struct's own ident, so it cannot drift.
 ///
 /// Optional argument: `export_to = "..."` sets ts-rs's per-type export
 /// path. If omitted, ts-rs's default applies.
@@ -95,7 +95,7 @@ impl Primitive {
 ///
 /// `Auto` carries a recipe (`fn() -> TokenStream`) for the expression that
 /// produces a fresh inner value; the macro splices it into the body of
-/// `generate()`. `Value` types only get `new(value)` — they're inputs
+/// `generate()`. `Value` types only get `new(value)`; they're inputs
 /// (numeric counters, externally-assigned IDs) that don't self-mint.
 #[derive(Clone, Copy)]
 enum Constructor {
@@ -285,7 +285,7 @@ fn expand(args: Args, item: ItemStruct) -> Result<proc_macro2::TokenStream> {
 
     // serde supports `#[serde(crate = "...")]` so consumers don't need
     // serde as a direct dep when only #[fs_id] uses it. ts-rs and utoipa
-    // have no equivalent — their derives expand to `ts_rs::*` / `utoipa::*`
+    // have no equivalent; their derives expand to `ts_rs::*` / `utoipa::*`
     // path references that bind to the consumer's crate namespace, so we
     // emit them with bare crate paths and the consumer must depend on
     // them directly.

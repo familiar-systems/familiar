@@ -2,7 +2,7 @@ import { assetPath } from "../lib/paths";
 
 const EPIC_LIGHT_URL = `url('${assetPath("/epic-square-for-light.svg")}')`;
 const EPIC_DARK_URL = `url('${assetPath("/epic-square-for-dark.svg")}')`;
-const GRID_PATTERN_URL = `url('${assetPath("/grid-pattern.svg")}')`;
+const CROSSHATCH_URL = `url('${assetPath("/crosshatch.svg")}')`;
 
 // The post-auth hub backdrop: a 3x3 fluid epic of an adventuring party,
 // rendered through a CSS mask so the bronze fill comes from --color-bronze
@@ -13,7 +13,7 @@ export function EpicBackdrop(): React.ReactElement {
   return (
     <>
       {/* Theme-paired masks. Opacity-toggle (rather than display-toggle) so
-        each element states its presence in both modes — keeps the lint's
+        each element states its presence in both modes, which keeps the lint's
         no-dark-without-light rule satisfied without per-line suppressions.
         Light: bronze (#5c3a1f) at 0.16, warm walnut. Dark: lit bronze
         (#c4956b) at 0.22, slightly brighter so the artwork holds on the
@@ -60,7 +60,7 @@ export function EpicBackdrop(): React.ReactElement {
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 opacity-[0.04] dark:opacity-[0.06]"
-        style={{ backgroundImage: GRID_PATTERN_URL }}
+        style={{ backgroundImage: CROSSHATCH_URL }}
       />
 
       {/* Vignette: top + bottom fade so the nav and footer area read

@@ -1,4 +1,4 @@
-// Runtime validators for *external* system boundaries — anything we don't
+// Runtime validators for *external* system boundaries, i.e. anything we don't
 // own the type contract for. The platform server's API is contract-checked
 // at compile time via the OpenAPI-derived `PlatformPaths` and ts-rs types
 // (see apps/web/src/lib/api.ts), so platform responses don't need Zod.
@@ -10,7 +10,7 @@
 // lands.
 //
 // If you find yourself adding a Zod schema for an `apps/platform` or
-// `apps/campaign` response, you don't need it — pull the type from
+// `apps/campaign` response, you don't need it; pull the type from
 // `@familiar-systems/types-app` (or `types-campaign`) instead and use the
 // typed `client` from `./api`.
 

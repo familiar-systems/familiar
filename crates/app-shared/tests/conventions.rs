@@ -1,8 +1,8 @@
 //! Wire-type conventions enforced as a `cargo test`.
 //!
 //! Internally-tagged enums (`#[serde(tag = "type")]` with no `content`)
-//! emit a `oneOf` with inline anonymous objects in utoipa 5.x — not
-//! `$ref` + `discriminator.mapping` — which downstream `openapi-typescript`
+//! emit a `oneOf` with inline anonymous objects in utoipa 5.x, not
+//! `$ref` + `discriminator.mapping`, which downstream `openapi-typescript`
 //! and any other codegen consume as a stringly-typed union. Adjacent
 //! tagging (`#[serde(tag, content)]`) emits clean `oneOf` references that
 //! survive both pipelines. We commit to adjacent tagging now, before any
@@ -10,7 +10,7 @@
 //!
 //! Scope: only types that derive `ToSchema` (i.e. types utoipa actually
 //! sees). Wire types that go through ts-rs / Loro alone keep their existing
-//! shape — bringing them under utoipa later means choosing the tagging
+//! shape. Bringing them under utoipa later means choosing the tagging
 //! style at that time.
 //!
 //! Drop this test once `juhaku/utoipa#1456` (and its corresponding fix in
@@ -89,7 +89,7 @@ fn parse_blocks(src: &str) -> Vec<TypeBlock> {
         }
 
         if trimmed.starts_with("//") || trimmed.is_empty() {
-            // Doc comment or blank line between attributes — keep accumulating.
+            // Doc comment or blank line between attributes; keep accumulating.
             continue;
         }
 

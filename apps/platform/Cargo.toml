@@ -16,10 +16,13 @@ dev-ui = ["dep:utoipa-scalar"]
 axum.workspace = true
 chrono.workspace = true
 familiar-systems-app-shared = { path = "../../crates/app-shared" }
+fs-id.workspace = true
+reqwest.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+subtle.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
@@ -35,8 +38,8 @@ name = "emit-openapi"
 path = "src/bin/emit-openapi.rs"
 
 [dev-dependencies]
-reqwest.workspace = true
 serial_test = "3.4.0"
 tokio.workspace = true
 tower = { version = "0.5.3", features = ["util"] }
+tracing-subscriber.workspace = true
 wiremock = "0.6.5"

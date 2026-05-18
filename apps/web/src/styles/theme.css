@@ -1,4 +1,4 @@
-/* Light theme — warm parchment */
+/* Light theme: warm parchment */
 :root {
   /* Signals built-in dual-scheme support to the browser and extensions
     like Dark Reader, so they don't apply their own auto-darkening on
@@ -17,7 +17,7 @@
   --line: #c9c1c5;
 }
 
-/* Dark theme — deep warm charcoal */
+/* Dark theme: deep warm charcoal */
 .dark {
   color-scheme: dark;
   --background: #0f0d0a;

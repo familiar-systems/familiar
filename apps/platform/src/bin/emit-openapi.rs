@@ -1,7 +1,7 @@
 //! Prints the platform OpenAPI spec as pretty-printed JSON to stdout.
 //!
 //! Used by `mise run generate-types` to feed `openapi-typescript`. Runs
-//! without any AppState, database, or environment variables — pure spec
+//! without any AppState, database, or environment variables: pure spec
 //! emission, no I/O.
 
 use familiar_systems_platform::openapi::api_router;

@@ -5,7 +5,7 @@ import { hanko } from "./hanko";
 
 // Typed fetch client for the platform server. Routes, methods, path/query
 // parameters, request bodies, and responses are all checked against the
-// OpenAPI spec generated from utoipa — calling a route that doesn't exist
+// OpenAPI spec generated from utoipa: calling a route that doesn't exist
 // or sending a wrong-shape body fails to compile.
 //
 // Component shapes (e.g. MeResponse, UserId) come from ts-rs, so the

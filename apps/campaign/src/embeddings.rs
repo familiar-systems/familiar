@@ -1,10 +1,23 @@
-//! Vector search over `block_embeddings`. The `MATCH` operator and `k = ?`
-//! predicate are vec0-specific so sea-orm's typed query builder can't model
-//! them — this is the local escape hatch into hand-rolled SQL. Public surface
-//! takes/returns branded `BlockId`s; the SQL is bounded to one method per
-//! query shape.
-//! TODO consider moving to LanceDB instead of sqllite-vec.
-//! LanceDB gives direct to s3 access with
+//! Vector search over `block_embeddings`, a vec0 virtual table.
+//!
+//! vec0 lives outside sea-orm's typed query builder (`MATCH` and `k = ?` are
+//! vec0-specific operators), so this module is the escape hatch into hand-rolled
+//! SQL. Public surface takes/returns branded `BlockId`s; the SQL is bounded to
+//! one method per query shape.
+//!
+//! ## Schema notes (see migration `m20260428_000003`)
+//!
+//! `block_id` is a TEXT primary key using the same ULID Crockford-base32
+//! encoding as `blocks.id`, so the embedding row's PK is structurally the same
+//! value as the block's PK.
+//!
+//! `+status` is a vec0 auxiliary column that enables KNN-time pre-filtering:
+//! vec0 filters on it during the search rather than over-fetching and filtering
+//! after, which keeps recall correct when a corner of the graph is
+//! GM-only-heavy.
+//!
+//! Embedding dimension is 8. This is a spike placeholder; real embeddings (1536
+//! etc.) would slow the test loop without changing the wiring.
 
 use familiar_systems_campaign_shared::id::BlockId;
 use sea_orm::{DatabaseConnection, FromQueryResult, Statement, Value};
@@ -32,7 +45,7 @@ impl<'a> EmbeddingsRepo<'a> {
         viewer: ViewerKind,
         k: u32,
     ) -> Result<Vec<(BlockId, f32)>, sea_orm::DbErr> {
-        // Static fragments only — not user input. The visibility predicate
+        // Static fragments only (not user input). The visibility predicate
         // lives at the Thing level (per docs/plans/2026-02-22-ai-prd.md §2.2);
         // block-level redaction inside an otherwise-visible thing happens at
         // document materialization, not in SQL.

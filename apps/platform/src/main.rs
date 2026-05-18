@@ -1,6 +1,7 @@
 use familiar_systems_app_shared::auth::HankoSessionValidator;
 use familiar_systems_platform::{
-    config::Config, migrations::Migrator, routes::router, state::AppState,
+    clients::campaign_internal::CampaignInternalClient, config::Config, migrations::Migrator,
+    routes::serve_router, state::AppState,
 };
 use sea_orm::Database;
 use sea_orm_migration::MigratorTrait;
@@ -28,19 +29,21 @@ async fn main() {
         .expect("db connect");
     Migrator::up(&db, None).await.expect("migrate");
     let validator = Arc::new(HankoSessionValidator::new(config.hanko_api_url.clone()));
+    let campaign_internal = CampaignInternalClient::new(
+        config.campaign_shard_url.clone(),
+        &config.internal_bearer_primary,
+    );
     let state = AppState {
         db,
         validator,
         config: config.clone(),
+        campaign_internal,
     };
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port))
         .await
         .unwrap();
     tracing::info!("platform listening on :{}", config.port);
-    axum::serve(
-        listener,
-        router(config.cors_origins.clone()).with_state(state),
-    )
-    .await
-    .unwrap();
+    axum::serve(listener, serve_router(state, config.cors_origins.clone()))
+        .await
+        .unwrap();
 }

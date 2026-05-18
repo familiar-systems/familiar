@@ -1,6 +1,8 @@
 # New Campaign Onboarding
 
-**Status**: design. The platform tier (`apps/platform`) is live in prod at `app.familiar.systems` and on every PR preview, serving `/health` and `/me` against a SQLite-backed `users` entity. This design adds the campaigns subsystem to it. The campaign tier (`apps/campaign`) exists as a workspace binary but is not yet containerized, not in the CI matrix, and not in Pulumi; this design also stands it up for the first time as the fifth deploy target.
+**Status**: design + thin slice landed 2026-05-15. The thin slice ships the FE wizard end-to-end against a deliberate-failure backend: platform create + list + `init-failed` callback receiver, campaign catalog + no-op `init` + `initialize` that fires the failure callback and returns 500. Per-campaign DB, actor topology, WebSocket, the real init transaction, the metadata mirror, and prod rollout (Pulumi + NetworkPolicy + preview k8s) are still to-do. This document remains the design of record for the full system; route paths, payload shapes, and schema notes below have been updated to reflect what the slice actually shipped.
+
+The platform tier (`apps/platform`) is live in prod at `app.familiar.systems` and on every PR preview, serving `/health` and `/me` against a SQLite-backed `users` entity. This design adds the campaigns subsystem to it. The campaign tier (`apps/campaign`) exists as a workspace binary but is not yet containerized, not in the CI matrix, and not in Pulumi; this design also stands it up for the first time as the fifth deploy target.
 
 This document is the authoritative design for:
 
@@ -63,13 +65,13 @@ The current campaign-creation surface is an empty hub page. This design defines:
 | **The campaign WebSocket opens on entering the campaign route, not on first editor mount.** Joined to zero rooms during the wizard, but subscribed to supervisor-level pushes (`CampaignPhase`, `server_restarting`, `PersistenceDegraded`). It is the supervisor's campaign-level activity signal: the checkout/checkin lifecycle gates on "active WebSocket connections for this campaign." When the last connection closes, an idle timer starts; if no new connection arrives within the window, the supervisor begins checkin to object storage. Wizard writes stay on REST. | The supervisor needs a campaign-level activity signal to drive checkin. Connection lifecycle is unambiguous and server-observable; the REST-activity-timestamp alternative needs per-handler activity classification, a startup grace window to cover the wizard's read-heavy first 30 seconds, and a second transport for any supervisor-level push during the wizard. The WebSocket is on the critical path post-wizard anyway; opening it on landing avoids defining two presence regimes.                                                                                                                                                                                          |
 | **Platform mints `CampaignId`.** Single source of truth for ID allocation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | With single-source minting, the routing table's PK is the consistency boundary. Collision (1-in-2^126 with Nanoid) is caught by the unique constraint and surfaces as a 5xx the SPA retries with a fresh token. Retry safety comes from three PK constraints (`create_attempts.idempotency_token`, `campaign_metadata.id`, `routing_table.id`); no extra status columns or reconciliation pass.                                                                                                                                                                                                                                                                                        |
 | **`CampaignId` is a Nanoid** (21-char URL-safe).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Short URLs for sharing. With single-source platform minting, 126 bits of entropy plus the routing-table PK constraint make collision a non-design-concern: any improbable conflict surfaces as a 5xx that the SPA retries with a fresh token. `created_at` on the routing row is the authority for time ordering.                                                                                                                                                                                                                                                                                                                                                                      |
-| **Idempotency at every retry boundary.** Create-flow: the platform's `create_attempts` table maps `(idempotency_token → campaign_id)`; the shard's `/internal/init` is idempotent via `INSERT OR IGNORE` on `campaign_metadata.id`; the routing-table insert is idempotent via PK. Init-flow: the campaign tier's `/initialize` is guarded by a `wizard_completed_at IS NULL` precondition — a retry against an already-committed campaign returns `409`.                                                                                                                         | Two retryable client calls (`/api/campaigns` and `/initialize`), two idempotency strategies. The create flow uses three PK constraints so retries no-op cleanly. The init flow uses a precondition gate: the SPA's Seal retry on 5xx is safe because the only way a retry can land "again" is if the first attempt did not commit, in which case `wizard_completed_at` is still NULL and the second call proceeds. If the first attempt did commit, the second returns 409 and the SPA dismisses. No status columns, no reconciliation pass.                                                                                                                                           |
+| **Idempotency at every retry boundary.** Create-flow: the platform's `create_attempts` table maps `(idempotency_token → campaign_id)`; the shard's `/internal/campaign/init` is idempotent via `INSERT OR IGNORE` on `campaign_metadata.id`; the routing-table insert is idempotent via PK. Init-flow: the campaign tier's `/initialize` is guarded by a `wizard_completed_at IS NULL` precondition — a retry against an already-committed campaign returns `409`.                                                                                                                         | Two retryable client calls (`/api/campaigns` and `/initialize`), two idempotency strategies. The create flow uses three PK constraints so retries no-op cleanly. The init flow uses a precondition gate: the SPA's Seal retry on 5xx is safe because the only way a retry can land "again" is if the first attempt did not commit, in which case `wizard_completed_at` is still NULL and the second call proceeds. If the first attempt did commit, the second returns 409 and the SPA dismisses. No status columns, no reconciliation pass.                                                                                                                                           |
 | **No reaper.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Under atomic Seal, there is no special "abandoned" state. A campaign whose GM clicked "new" and walked away mid-wizard is a fully-formed blank campaign: real ID, empty SQLite file, routing row. Its lifecycle is identical to any other idle campaign — the supervisor checks it in to object storage on idle, the GM picks back up when they're ready (perhaps after the baby has been put to sleep). The user can delete it from the hub like any other campaign. The vanishingly rare "shard wrote but platform routing-insert failed" orphan still costs cents-per-million in object storage; not worth a scheduled job.                                                         |
-| **Platform mirrors `name`, `tagline`, `game_system`, `content_locale`** on the routing row as `Option<String>`. Populated by the campaign actor in one mirror call on `/initialize` commit and on every subsequent `Ready` transition / settings edit via `POST /internal/campaigns/<id>/metadata`.                                                                                                                                                                                                                                                                               | Hub listing is a single platform query, no per-shard fan-out. `Option` models the source-of-truth honestly: `NULL` means "campaign hasn't initialized yet" (newly created, wizard not sealed) rather than "campaign has no value." Atomic Seal means the mirror transitions a campaign's row from "all-NULL" to "fully populated" in one update — no partially-filled intermediate state is observable from the hub.                                                                                                                                                                                                                                                                   |
-| **Internal-API auth is a shared bearer token, sourced from Scaleway Secrets Manager.** Both `/internal/init` (platform → campaign) and `/internal/campaigns/<id>/metadata` (campaign → platform) are protected by middleware that constant-time-compares the `Authorization: Bearer <token>` header against a process-startup-read secret. The token is symmetric (same value used in both directions) and distinct per environment (prod, preview, local-dev). Pulumi references the secret by path, never by value. Each service accepts a set of valid bearers (`INTERNAL_BEARER_PRIMARY` + optional `INTERNAL_BEARER_SECONDARY`) and sends only the primary; rotation is "deploy with new value as SECONDARY, swap primary/secondary in SM, deploy with old value removed." | Two services, low call volume, layer-3 threat boundary (Ingress and NetworkPolicy carry layers 1 and 2; see §Internal-API defense layers). Bearer is honest about its role as a backstop: catches Ingress drift and namespace misconfiguration, not in-cluster east-west adversaries. One secret, two readers, constant-time compare on the receive side. Symmetric (one token, both directions) trades a small blast-radius increase against doubling the secret count and rotation pages; at two services with reviewable call sites, the trade is right. The two-bearer rotation contract eliminates the rolling-deploy window where some pods hold the old value and others the new. mTLS via cert-manager is the textbook alternative but pays in local-dev pain (Issuer + per-pod certs in `mise run dev`) and operational overhead the threat model does not warrant. Kubernetes ServiceAccount tokens via `TokenReview` are a meaningful middle ground (per-pod identity, automatic rotation, no shared secret) and would land before KMS-signed JWTs if a third internal service joins or call volume grows. |
+| **Platform mirrors `name`, `tagline`, `game_system`, `content_locale`** on the routing row as `Option<String>`. Populated by the campaign actor in one mirror call on `/initialize` commit and on every subsequent `Ready` transition / settings edit via `POST /internal/platform/campaigns/<id>/metadata`.                                                                                                                                                                                                                                                                               | Hub listing is a single platform query, no per-shard fan-out. `Option` models the source-of-truth honestly: `NULL` means "campaign hasn't initialized yet" (newly created, wizard not sealed) rather than "campaign has no value." Atomic Seal means the mirror transitions a campaign's row from "all-NULL" to "fully populated" in one update — no partially-filled intermediate state is observable from the hub.                                                                                                                                                                                                                                                                   |
+| **Internal-API auth is a shared bearer token, sourced from Scaleway Secrets Manager.** Both `/internal/campaign/init` (platform → campaign) and `/internal/platform/campaigns/<id>/metadata` + `/internal/platform/campaigns/<id>/init-failed` (campaign → platform) are protected by middleware that constant-time-compares the `Authorization: Bearer <token>` header against a process-startup-read secret. The token is symmetric (same value used in both directions) and distinct per environment (prod, preview, local-dev). Pulumi references the secret by path, never by value. Each service accepts a set of valid bearers (`INTERNAL_BEARER_PRIMARY` + optional `INTERNAL_BEARER_SECONDARY`) and sends only the primary; rotation is "deploy with new value as SECONDARY, swap primary/secondary in SM, deploy with old value removed." | Two services, low call volume, layer-3 threat boundary (Ingress and NetworkPolicy carry layers 1 and 2; see §Internal-API defense layers). Bearer is honest about its role as a backstop: catches Ingress drift and namespace misconfiguration, not in-cluster east-west adversaries. One secret, two readers, constant-time compare on the receive side. Symmetric (one token, both directions) trades a small blast-radius increase against doubling the secret count and rotation pages; at two services with reviewable call sites, the trade is right. The two-bearer rotation contract eliminates the rolling-deploy window where some pods hold the old value and others the new. mTLS via cert-manager is the textbook alternative but pays in local-dev pain (Issuer + per-pod certs in `mise run dev`) and operational overhead the threat model does not warrant. Kubernetes ServiceAccount tokens via `TokenReview` are a meaningful middle ground (per-pod identity, automatic rotation, no shared secret) and would land before KMS-signed JWTs if a third internal service joins or call volume grows. |
 | **Ingress and NetworkPolicy gate `/internal/*` before the bearer ever runs.** `/internal/*` is never registered in any `Ingress` resource on either tier; external callers cannot reach it via 443. `NetworkPolicy` on each Service allow-lists only the legitimate peer pod label (platform's policy allows `app=campaign`; campaign's policy allows `app=platform`), plus Traefik for the genuinely public paths. Default deny on everything else. | The bearer alone is not a credible defense in a multi-tenant cluster: any pod in any namespace can dial any Service unless policy says otherwise. Ingress is the cheapest control ("don't expose what you don't want reachable") and NetworkPolicy is the cheapest in-cluster control (k3s ships a built-in NetworkPolicy controller alongside Flannel; no CNI swap needed). The bearer is the third layer, scoped to what the first two cannot catch (a future contributor adding a debug Ingress, an Ingress drift after Traefik config edits). |
 | **Starter content lives as a module under `apps/campaign/src/`, not a separate crate.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | The campaign binary is its only consumer. A crate boundary buys nothing without external consumers or a shared dependency.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **Templates live as `.yaml` files in `content/templates/`** with `common/` and per-system folders. Flat slug namespace across systems. No override mechanic.                                                                                                                                                                                                                                                                                                                                                                                                                      | Community-authorable, schema-validatable, version-controlled. A "Clock" or "Monster" is not owned by any system. A D&D campaign borrowing a Blades clock post-onboarding is a real combination.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Templates live as `.yaml` files under `content/templates/`** with `content/templates/common/` for cross-system templates (`npc.yaml`, `player.yaml`) and `content/templates/<system-id>/` for per-system templates (`content/templates/blades-in-the-dark/crew.yaml`). Flat slug namespace across systems. No override mechanic.                                                                                                                                                                                                                                                                                                                                                                                                                      | Community-authorable, schema-validatable, version-controlled. A "Clock" or "Monster" is not owned by any system. A D&D campaign borrowing a Blades clock post-onboarding is a real combination.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | **YAML, schema-validated by JSON Schema.** Compiler is Rust. Compiler is content-agnostic about widget vocabulary.                                                                                                                                                                                                                                                                                                                                                                                                                                                                | v0 templates are slot-and-placeholder structure, not prose; YAML+JSON Schema closes the schema-authority loop with `packages/editor`. Rust compiler shares Loro primitives with the AI. `packages/editor` is the single source of truth for widget vocabulary; the compiler stays out of that contract.                                                                                                                                                                                                                                                                                                                                                                                |
 | **Build-time embedded content (`include_dir!`).**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Templates change with code. Runtime parsing failures in prod are strictly worse than CI rejection.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | **Wizard cannot mint new template kinds.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Drop the mockup's "Invent your own" affordance from `TemplatesEditor`. Replacement copy must not promise a feature v0 does not ship: in v0 there is no in-campaign UI for promoting a Thing to `is_template = true` (see §Out of scope). Acceptable replacement: "Missing a template? Pick the closest fit; you can create freeform Things inside the campaign."                                                                                                                                                                                                                                                                                                                       |
@@ -80,14 +82,18 @@ The current campaign-creation surface is an empty hub page. This design defines:
 
 ## Architecture
 
+> **Data structures and type signatures in this section are illustrative, not final.** Field names, struct shapes, where meta lands (SQL columns vs Loro containers), and similar concrete choices are placeholders to make the prose readable — they will be revisited at implementation time. Treat them as "something with this rough shape" rather than a contract.
+
 ### Topology
+
+Internal routes use the `/internal/<owner>/...` convention: `<owner>` names the tier whose handler serves the route. Bearer middleware on each tier rejects requests addressed to the other tier as a defense-in-depth backstop (see §Internal-API defense layers).
 
 ```
 SPA
   ├─ POST /api/campaigns ──► Platform
   │   { idempotency_token }    │
   │                            ├─ upsert create_attempts(token, campaign_id)
-  │                            ├─ POST /internal/init ──► Shard (round-robin)
+  │                            ├─ POST /internal/campaign/init ──► Shard (round-robin)
   │                            │   { campaign_id,         INSERT OR IGNORE INTO
   │                            │     owner_user_id }      campaign_metadata(id, owner)
   │                            ├─ INSERT OR IGNORE INTO routing(id, owner, shard_url, ...)
@@ -96,26 +102,33 @@ SPA
   ▼ redirect to /c/<campaign_id>
   │
   ├─ GET /catalog/systems ──► Campaign tier (any shard via /catalog/*)
-  │                           returns SystemEntry[] (locale-resolved)
+  │                           returns { systems: SystemEntry[] } (locale-resolved)
   │
   └─ Wizard overlay (shown while campaign_metadata.wizard_completed_at IS NULL).
      All steps are client-side state. Nothing hits the server until Seal:
 
-       step 1: pick system          (client state only)
-       step 2: pick/unpick templates (client state only)
-       step 3: pick locale          (client state only)
-       step 4: name campaign        (client state only)
+       step 1: name campaign        (client state only)
+       step 2: pick system + templates (client state only)
+       step 3: pick privacy choices (client state only)
+       step 4: review + Seal
        seal: POST /campaign/<id>/initialize ──► Campaign tier
                 { game_system,                  validates everything, then in one
                   content_locale,               SQLite transaction:
                   name, tagline?,                 - writes campaign_metadata fields
                   template_slugs: [...],          - instantiates each template Thing
-                  wizard_completed_at: now() }    - sets wizard_completed_at
-                                                COMMIT, then fires the platform mirror
-                                                (POST /internal/campaigns/<id>/metadata)
+                  audio,                          - sets wizard_completed_at = now()
+                  evals_enabled }               COMMIT, then fires the platform mirror
+                                                (POST /internal/platform/campaigns/<id>/metadata)
                                                 with the mirrored field set
                                                 (name, tagline, game_system, content_locale).
-                                                wizard_completed_at is not mirrored.
+                                                wizard_completed_at is not mirrored;
+                                                the server stamps it on commit, the FE
+                                                does not pass it.
+
+       On failure (any slug doesn't resolve, transaction aborts, etc.) the
+       campaign tier fires POST /internal/platform/campaigns/<id>/init-failed
+       { reason } so the platform can record `last_init_error`, and returns
+       a structured 5xx to the SPA.
 
 The SPA opens the campaign-level WebSocket to the assigned shard on entering the
 campaign route, before the wizard renders. The connection is room-multiplexed;
@@ -128,14 +141,14 @@ storage. Wizard writes stay on REST.
 
 ### Internal-API defense layers
 
-`/internal/*` endpoints on both tiers (platform's `/internal/campaigns/<id>/metadata`, campaign's `/internal/init`) gate through three layers. Each layer carries its own role and its own failure mode; the bearer in §Decisions is the third, not the load-bearing one.
+`/internal/*` endpoints on both tiers (platform's `/internal/platform/campaigns/<id>/metadata` + `/internal/platform/campaigns/<id>/init-failed`, campaign's `/internal/campaign/init`) gate through three layers. Each layer carries its own role and its own failure mode; the bearer in §Decisions is the third, not the load-bearing one.
 
 **Layer 1: Ingress (primary).** `/internal/*` is never registered in any `Ingress` or `IngressRoute` resource on either tier. Traefik routes external traffic only to paths declared in an Ingress; absent an Ingress entry, the path returns 404 at the ingress controller and never reaches the backend pod. The discipline is one rule: no public Ingress uses `path: /` or any wildcard that catches `/internal/*` alongside intended paths. Always specific `PathPrefix`. The existing preview platform-ingress.yaml at `/pr-${PR_NUMBER}/api` is the pattern; new tiers (campaign's `/catalog/*` and `/campaign/<id>/*`) copy that shape and add no `/internal/*` entry. The rule is enforced via conftest policy rather than review discipline alone (see §Verification).
 
-**Layer 2: NetworkPolicy (in-cluster).** Ingress does nothing for east-west traffic between pods. Without a NetworkPolicy, any pod can dial `http://platform.<namespace>.svc.cluster.local:3000/internal/init` directly. Each Service that exposes an internal API carries a `NetworkPolicy` that allow-lists only the legitimate peer:
+**Layer 2: NetworkPolicy (in-cluster).** Ingress does nothing for east-west traffic between pods. Without a NetworkPolicy, any pod can dial `http://platform.<namespace>.svc.cluster.local:3000/internal/platform/...` directly. Each Service that exposes an internal API carries a `NetworkPolicy` that allow-lists only the legitimate peer:
 
-- **Platform Service**: ingress allowed from Traefik (for `/api/*` and `/`) and from pods labeled `app=campaign` in the same namespace (for `/internal/*`).
-- **Campaign Service**: ingress allowed from Traefik (for `/catalog/*` and `/campaign/*`) and from pods labeled `app=platform` in the same namespace (for `/internal/init`).
+- **Platform Service**: ingress allowed from Traefik (for `/api/*` and `/`) and from pods labeled `app=campaign` in the same namespace (for `/internal/platform/*`).
+- **Campaign Service**: ingress allowed from Traefik (for `/catalog/*` and `/campaign/*`) and from pods labeled `app=platform` in the same namespace (for `/internal/campaign/*`).
 
 Default deny on everything else. k3s ships with a built-in NetworkPolicy controller (kube-router-based) that enforces policy alongside Flannel; no CNI swap is required. Pod labels (`app=platform`, `app=campaign`) are load-bearing for this layer and must be set on both Deployments.
 
@@ -168,7 +181,7 @@ Both new routes register in the existing `apps/platform/src/main.rs` alongside `
 2. Look up `idempotency_token` in `create_attempts`. If found, jump to step 6 with the stored `campaign_id`.
 3. Mint a fresh `CampaignId` (Nanoid). `INSERT INTO create_attempts(token, campaign_id, created_at)`. Race on conflict: re-read the row and use its `campaign_id`.
 4. Pick a shard (round-robin in v0).
-5. `POST <shard>/internal/init { campaign_id, owner_user_id }`. Shard does `INSERT OR IGNORE INTO campaign_metadata(id, owner_user_id)` and returns 200. Idempotent.
+5. `POST <shard>/internal/campaign/init { campaign_id, owner_user_id }`. Shard does `INSERT OR IGNORE INTO campaign_metadata(id, owner_user_id)` and returns 200. Idempotent.
 6. `INSERT OR IGNORE INTO routing_table(id, owner_user_id, shard_url, ...)`. Idempotent on PK.
 7. Return `200 { campaign_id }`.
 
@@ -228,9 +241,16 @@ systems:
           - common/session-log
           - dnd-5e/monster
           - dnd-5e/magic-item
+
+byo:
+    bundle:
+        - common/player
+        - common/npc
 ```
 
 `bundle` references templates by full path-slug. The compiler fails at build time if a referenced slug doesn't resolve to a `.yaml` file.
+
+The top-level `byo:` block is a sibling, not a `systems` entry. It configures the always-available "bring your own" card the wizard renders below the systems list. The only thing a catalog maintainer configures for BYO is the default template bundle; the card's UI copy (title, body, the `"Custom"` empty-input fallback, the swatch color) lives in the wizard frontend alongside the rest of its hardcoded strings and will localize through whatever path the rest of the wizard does. The campaign tier and platform tier both treat `game_system` as an opaque label; the `freeform` slug that used to live in `systems[]` has been removed from the wire.
 
 ### Source format: YAML, schema-validated
 
@@ -282,7 +302,7 @@ The template compiler is content-agnostic about widget vocabulary. It does not i
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `packages/editor`           | Add the TipTap extension (a node spec with a name, attribute schema, and renderer).                                       |
 | Schema codegen              | Regenerate `thing-template-schema.json` from the extension list (or hand-add the node entry if codegen is not yet wired). |
-| `content/templates/**.yaml` | Use the new node type in any template that needs it.                                                                      |
+| `content/templates/common/*.yaml`, `content/templates/<system-id>/*.yaml` | Use the new node type in any template that needs it (e.g. `content/templates/common/npc.yaml`, `content/templates/blades-in-the-dark/crew.yaml`). |
 
 No Rust constant. No Rust compiler change.
 
@@ -295,12 +315,14 @@ No Rust constant. No Rust compiler change.
 
 ### Compiler
 
+> **v0 thin slice:** the parser at `apps/campaign/src/starter_content/` reads `meta` only (`name`, `description`, `icon`) and deserializes `body` into `serde_yaml::Value` which it ignores. The catalog endpoint never returns body content, so the compiler's locale-resolution path is exercised but its LoroDoc construction is not. Everything below describes the v1+ shape, where the compiler actually produces `LoroDoc`s for `/initialize` to persist.
+
 The campaign server stores all Thing content as ProseMirror-shaped Loro CRDT trees. The AI in Rust reads and writes those trees directly via the constants in `crates/campaign-shared/src/loro/prosemirror.rs`. Every existing Thing in a running campaign is one such tree.
 
 The compiler's contract:
 
-- **Input**: a parsed template body (a typed tree of nodes, post-`serde_yaml::from_str`) plus a target locale.
-- **Output**: a `LoroDoc` whose `doc` container holds a ProseMirror-shaped tree representing the template's body with `LocalizedString` maps resolved to the chosen locale (with `en` fallback for missing keys), ready to persist as the initial state of a new Thing.
+- **Input**: a parsed `Template { meta, body }` (post-`serde_yaml::from_str`) plus a target locale.
+- **Output**: a `CompiledTemplate { name, description, icon, doc }`. `name` and `description` are `meta.*` resolved to the chosen locale (with `en` fallback for missing keys). `icon` is `meta.icon` as-is (locale-independent). `doc` is a `LoroDoc` whose `doc` container holds a ProseMirror-shaped tree of the body, also locale-resolved. Together these are everything the instantiation route needs to persist as a new Thing. How meta fields land — SQL columns on `things`, Loro containers alongside `doc`, or some mix — is a persistence-layer decision deferred to implementation.
 
 It uses only the structural constants in `prosemirror.rs` (`ROOT_DOC_KEY`, `NODE_NAME_KEY`, `ATTRIBUTES_KEY`, `CHILDREN_KEY`). It does not import any per-widget constant; it does not validate widget names; it does not know what TipTap extensions exist. It writes whatever node names the template author put in the YAML, trusting the JSON Schema and the integration test to catch typos.
 
@@ -318,9 +340,9 @@ Why this lives in Rust, not TypeScript:
 apps/campaign/src/starter_content/
   mod.rs
   catalog.rs            # SystemEntry, SystemId; parses systems.yaml
-  template.rs           # TemplateMeta, TemplateBody; parses .yaml
+  template.rs           # Template { meta: TemplateMeta, body: TemplateBody }; parses .yaml
   schema.rs             # JSON Schema codegen for the template DSL
-  compile.rs            # TemplateBody tree -> LoroDoc (structural constants only)
+  compile.rs            # Template -> CompiledTemplate (structural constants only)
   hashes.rs             # build-time (slug, locale) -> (structure_hash, content_hash)
 ```
 
@@ -357,7 +379,14 @@ body:
 **Compiler signature.** The compiler takes the locale as a parameter and resolves `LocalizedString` maps inline:
 
 ```rust
-fn compile(body: &TemplateBody, locale: &Locale) -> LoroDoc
+fn compile(template: &Template, locale: &Locale) -> CompiledTemplate
+
+struct CompiledTemplate {
+    name: String,        // meta.name resolved for `locale`
+    description: String, // meta.description resolved for `locale`
+    icon: String,        // meta.icon (locale-independent)
+    doc: LoroDoc,        // ProseMirror-shaped tree of the body
+}
 ```
 
 `Locale` is a newtype around a BCP-47 tag. Snapshot tests run per `(template, locale)` pair so locale-fallback paths are visible in CI.
@@ -384,8 +413,8 @@ The new-campaign onboarding flow is not the place to ship a template-upgrade UI.
 
 **Four hashes, only two stored.** At instantiation, the compiler computes two hashes per `(template, locale)` pair:
 
-- `structure_hash`: sha256 over a canonical-serialized form of the parsed `TemplateBody` tree (node types, attributes, nesting). Locale-independent.
-- `content_hash`: sha256 over `(structure, locale-resolved strings)`. Locale-specific.
+- `structure_hash`: sha256 over a canonical-serialized form of the parsed `Template.body` tree (node types, attributes, nesting). Locale-independent; meta is not part of structure.
+- `content_hash`: sha256 over `(structure, locale-resolved strings from both meta and body)`. Locale-specific.
 
 Both are computed over `serde::Serialize` to a stable JSON form, not over raw YAML bytes, so whitespace and comments don't trigger false-positive drift. The instantiator writes the instantiation-time pair onto the Things row.
 
@@ -408,8 +437,8 @@ v0 ships the instantiation-time hashes only. v1 lights up the top-right cell. v2
 **Canonicalization invariant.** Two paths must produce the same canonical form for an unmodified Thing:
 
 ```
-YAML --parse--> TemplateBody --compile(locale)--> CanonicalDoc --sha256--> seeded_*_hash
-LoroDoc --materialize--> CanonicalDoc --sha256--> current_*_hash
+YAML --parse--> Template --compile(locale)--> CompiledTemplate --canonicalize--> CanonicalForm --sha256--> seeded_*_hash
+Thing (persisted meta + LoroDoc) --materialize--> CanonicalForm --sha256--> current_*_hash
 ```
 
 If the materializer reorders attributes, normalizes inline marks differently than the compiler, or includes Loro internal metadata, every unmodified Thing reports modified at upgrade time. v0 ships a property test that round-trips every `(template, locale)` pair through compile-then-materialize and asserts hash equality.
@@ -425,18 +454,23 @@ The wizard is an **in-campaign experience**, not a pre-campaign route. After `PO
 ```
 POST /campaign/<id>/initialize
 {
-  game_system: "<slug>",
+  game_system: "<opaque display string>",
   content_locale: "<bcp-47>",
   name: "...",
   tagline?: "...",
   template_slugs: ["common/npc", "common/clock", "dnd-5e/monster", ...],
-  wizard_completed_at: <now>
+  audio: "opt-in" | "opt-out" | "text-only",
+  evals_enabled: true | false
 }
 ```
 
+`game_system` is resolved client-side at Seal: a catalog pick ships the locale-resolved `name` from the catalog entry; a BYO pick ships the trimmed custom-name input, or the wizard's hardcoded BYO empty-input fallback when the input is empty. No magic slug (`freeform` or otherwise) crosses the wire.
+
+`wizard_completed_at` is *not* in the payload. The server stamps it as part of the commit; the FE doesn't get to claim "I'm done." Both `audio` and `evals_enabled` are required (no defaults, no pre-ticked boxes — see the wireframe's privacy step).
+
 The handler validates everything (slugs resolve against the catalog, locale is a known locale, payload schema is well-formed) and then, in one SQLite transaction:
 
-1. Writes `name`, `tagline`, `game_system`, `content_locale`, `wizard_completed_at` to `campaign_metadata`.
+1. Writes `name`, `tagline`, `game_system`, `content_locale`, `audio`, `evals_enabled`, `wizard_completed_at = now()` to `campaign_metadata`.
 2. For each `template_slug`, runs the compiler, persists a Thing with `is_template = true` + instantiation hashes, appends a `TocEntry::Thing` to the ToC.
 3. Commits.
 
@@ -444,7 +478,7 @@ After commit, the campaign actor fires the platform mirror once with the new mir
 
 **Idempotency / retry.** The endpoint is guarded by the `wizard_completed_at IS NULL` precondition. A second call after a successful Seal returns `409 Conflict` (the campaign is already initialized). A retry after a network failure that didn't commit will succeed because `wizard_completed_at` is still NULL. The SPA's retry policy on Seal is: on 5xx, retry the same payload; on 4xx (other than 409), surface the error; on 2xx, dismiss the overlay. **On 409, treat as success and dismiss the overlay** — the only way a 409 reaches the SPA on Seal is if a prior attempt committed (whether this tab or another), so the campaign is already initialized and the wizard is done.
 
-**Validation failures.** If any template slug fails to resolve, or `game_system` is not in the catalog, the entire call returns `400` with a structured error pointing at the offending field. Nothing is written. The user sees one toast and stays on the wizard.
+**Validation failures.** If any template slug fails to resolve, the entire call returns `400` with a structured error pointing at the offending field. Nothing is written. The user sees one toast and stays on the wizard. `game_system` is opaque server-side: the campaign tier and platform tier do not validate it against the catalog.
 
 **Abandonment.** Closing the tab mid-wizard discards client-side state. The campaign on the server is still `wizard_completed_at IS NULL` with no templates, no name, no system. On return, the overlay renders fresh; the user re-walks from step 1. This is the intentional UX cost of the atomic model.
 
@@ -454,7 +488,7 @@ After commit, the campaign actor fires the platform mirror once with the new mir
 
 **Wizard surface details:**
 
-- **Catalog fetch:** `GET /catalog/systems` on the campaign tier. Returns `SystemEntry[]` with each entry's resolved bundle templates (slug, name, description, source flavor for the `(D&D 5e)` parenthetical that disambiguates same-named templates from different systems). Honors `Accept-Language` (or `?locale=`) so template `meta` fields come back locale-resolved.
+- **Catalog fetch:** `GET /catalog/systems` on the campaign tier. Returns `{ systems: SystemEntry[], byo: ByoEntry }` (envelope object, not bare array) with each entry's resolved bundle templates (slug, name, description, source flavor for the `(D&D 5e)` parenthetical that disambiguates same-named templates from different systems). The `byo` sibling carries only the always-visible "bring your own" card's default template bundle; its UI copy lives in the wizard frontend. Honors `Accept-Language` (or `?locale=`) so per-template `meta` fields come back locale-resolved.
 - Replace the data inlined in `tmp/NewCampaignOnboarding/data.js` with a fetch from `/catalog/systems`. The fuzzy-match function moves into the React side using a Damerau-Levenshtein on `[name, full]`.
 - Drop the "Invent your own" input from `TemplatesEditor` (see `onboarding.jsx:593-609`). Replace with: "Missing a template? Pick the closest fit; you can create freeform Things inside the campaign." (v0 has no in-campaign UI for promoting Things to templates — see §Out of scope.)
 - The content-locale picker sits at the system-selection step. Defaults to the GM's UI locale, available locales drawn from the catalog response.
@@ -491,13 +525,17 @@ Platform migrations follow the existing `m20260417_000001_create_users.rs`. The 
 - `tagline: Option<String>` (mirrored from campaign tier)
 - `game_system: Option<String>` (mirrored from campaign tier; opaque, never interpreted; `NULL` until the wizard picks it)
 - `content_locale: Option<String>` (mirrored from campaign tier; opaque, never interpreted; `NULL` until the wizard picks it)
+- `last_init_error: Option<String>` (set by the campaign tier via `/init-failed` callback; distinct from "no init attempt yet" — that's `wizard_completed_at IS NULL` AND `last_init_error IS NULL`)
+- `wizard_completed_at: Option<DateTime<Utc>>` (mirrored from campaign tier so the SPA can decide whether to render the wizard overlay without a per-shard fetch)
 - `created_at`, `updated_at`
 
 **`apps/platform/src/entities/create_attempts.rs`** (new entity):
 
 - `idempotency_token: String` (PK, SPA-minted)
-- `campaign_id: CampaignId`
+- `campaign_id: String` (no FK to `campaigns.id`)
 - `created_at: DateTime<Utc>`
+
+**No FK to `campaigns.id`.** The route writes the `create_attempts` row *before* the shard call and *before* the `campaigns` row, because that ordering is what makes retries safe (the token claim is the idempotency anchor; the routing row writes after the shard returns). An FK would block step 3 with a constraint failure since the `campaigns` row doesn't exist yet. The relationship is logical only.
 
 A routine vacuum job can prune rows older than e.g. 30 days; not load-bearing for correctness.
 
@@ -513,9 +551,11 @@ A routine vacuum job can prune rows older than e.g. 30 days; not load-bearing fo
 
 - `name: Option<String>` (source of truth; mirrored to platform; written by `/initialize`)
 - `tagline: Option<String>` (source of truth; mirrored to platform; written by `/initialize`)
-- `game_system: Option<String>` (slug; source of truth; mirrored to platform; written by `/initialize`)
+- `game_system: Option<String>` (opaque display string; source of truth; mirrored to platform; written by `/initialize`. The wizard resolves the catalog entry's locale-resolved `name`, the trimmed BYO custom name, or the frontend's BYO empty-input fallback, and ships exactly that. Neither tier interprets this field.)
 - `content_locale: Option<String>` (BCP-47; source of truth; mirrored to platform; written by `/initialize`; sticky — see §Localization)
-- `wizard_completed_at: Option<DateTime<Utc>>` (NULL until `/initialize` commits; sticky once set; gates the wizard overlay; not mirrored to platform)
+- `audio: Option<AudioMode>` (NULL until `/initialize` commits; required at Seal; sum type `opt-in | opt-out | text-only`; not mirrored to platform — privacy choices stay on the campaign tier)
+- `evals_enabled: Option<bool>` (NULL until `/initialize` commits; required at Seal; not mirrored to platform)
+- `wizard_completed_at: Option<DateTime<Utc>>` (NULL until `/initialize` commits; server-stamped, not from the SPA payload; sticky once set; gates the wizard overlay; mirrored to platform so the SPA can route without a shard fetch)
 
 ### Implementation Time Questions
 
@@ -542,19 +582,23 @@ A routine vacuum job can prune rows older than e.g. 30 days; not load-bearing fo
 
 | Path                                                            | Change                                                                                                                                                                                                                                                       |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `content/systems.yaml`                                          | new                                                                                                                                                                                                                                                          |
-| `content/templates/**/*.yaml`                                   | new (~30 files for v0)                                                                                                                                                                                                                                       |
+| `content/systems.yaml`                                          | exists (catalog of supported systems); add a row per new system. Existing rows: `dnd-5e`, `daggerheart`, `blades-in-the-dark`.                                                                                                                               |
+| `content/templates/common/*.yaml`, `content/templates/<system-id>/*.yaml` | template files; existing: `content/templates/common/npc.yaml`, `content/templates/common/player.yaml`, `content/templates/blades-in-the-dark/crew.yaml`. Add as v0 widens.                                                                                |
+| `content/.schemas/{systems,starter-content}-schema.json`        | exists; validates the above. Run via `mise run lint:content` (rolled into `mise run lint`).                                                                                                                                                                  |
 | `apps/campaign/src/starter_content/`                            | new module; `LocalizedString` type, locale-aware compiler signature, build-time `(slug, locale) → (structure_hash, content_hash)` table                                                                                                                      |
 | `packages/editor/`                                              | add TipTap extensions for the widgets the design doc names (portrait, relationship list, transclusion slot); schema authority lives here                                                                                                                     |
-| `apps/platform/src/entities/campaigns.rs`                       | new entity (`id, owner_user_id, shard_url, name, tagline, game_system, content_locale, timestamps`)                                                                                                                                                          |
-| `apps/platform/src/entities/create_attempts.rs`                 | new entity (`idempotency_token, campaign_id, created_at`)                                                                                                                                                                                                    |
-| `apps/platform/src/routes/campaigns.rs`                         | `POST /api/campaigns`: upsert `create_attempts`, mint `CampaignId`, call shard `/internal/init`, insert routing row, return `{ campaign_id }`. `GET /api/campaigns`: return the authenticated user's campaign rows from the mirrored columns. Both register in `apps/platform/src/main.rs` alongside the existing `/health` and `/me` mounts; both use the existing `AuthenticatedUser` extractor. |
-| `apps/platform/src/routes/internal.rs`                          | `POST /internal/campaigns/<id>/metadata` receiving the mirror update from the campaign tier; bearer-token middleware on `/internal/*` (see Decisions). Mounted as a nested router in `main.rs` so the middleware only applies to `/internal/*`. |
+| `apps/platform/src/entities/campaigns.rs`                       | new entity (`id, owner_user_id, shard_url, name, tagline, game_system, content_locale, last_init_error, wizard_completed_at, timestamps`)                                                                                                                    |
+| `apps/platform/src/entities/create_attempts.rs`                 | new entity (`idempotency_token, campaign_id, created_at`); **no FK** to `campaigns.id` — see §Schema changes for why                                                                                                                                          |
+| `crates/app-shared/src/campaigns/api.rs`                        | new: FE-bound platform wire types (`CreateCampaignRequest`, `CreateCampaignResponse`, `Campaign`); ts-rs-exported to `packages/types-app/src/generated/campaigns/`                                                                                            |
+| `crates/app-shared/src/campaigns/internal.rs`                   | new: Rust-only platform↔campaign internal wire types (`InternalInitRequest`, `InitFailedRequest`); both binaries import from here so the shape can't drift                                                                                                   |
+| `crates/campaign-shared/src/onboarding/`                        | new: `catalog.rs` (`CatalogResponse`, `SystemEntry`, `TemplateRef`) + `initialize.rs` (`InitializeRequest`, `InitializeErrorResponse`, `AudioMode`); ts-rs-exported to `packages/types-campaign/src/generated/onboarding/`                                    |
+| `apps/platform/src/routes/campaigns.rs`                         | `POST /api/campaigns`: upsert `create_attempts`, mint `CampaignId`, call shard `/internal/campaign/init`, insert routing row, return `{ campaign_id }`. `GET /api/campaigns`: return the authenticated user's campaign rows from the mirrored columns. Both register in `apps/platform/src/main.rs` alongside the existing `/health` and `/me` mounts; both use the existing `AuthenticatedUser` extractor. |
+| `apps/platform/src/routes/internal_campaigns.rs`                | `POST /internal/platform/campaigns/<id>/metadata` (next slice) receiving the mirror update from the campaign tier; `POST /internal/platform/campaigns/<id>/init-failed` (shipped) recording a failure reason on the routing row. Bearer middleware mounted on `/internal/platform/*` (see Decisions); rejects requests under `/internal/<other-tier>/*` for defense in depth. |
 | `apps/platform/src/migrations/`                                 | new migrations `m{YYYYMMDD}_create_campaigns.rs` and `m{YYYYMMDD}_create_create_attempts.rs`; both register in the existing migrator after the user-table migration. |
 | `apps/platform/src/shard_assigner.rs`                           | new module: round-robin in v0; pluggable for v1                                                                                                                                                                                                              |
 | `apps/campaign/src/routes/catalog.rs`                           | new: `GET /catalog/systems`                                                                                                                                                                                                                                  |
-| `apps/campaign/src/routes/internal.rs`                          | new: `POST /internal/init { campaign_id, owner_user_id }`; idempotent via `INSERT OR IGNORE` on `campaign_metadata.id`; bearer-token middleware on `/internal/*` (see §Internal-API defense layers)                                                          |
-| `apps/platform/src/middleware/internal_auth.rs`                 | new: bearer middleware that reads `INTERNAL_BEARER_PRIMARY` (and optional `INTERNAL_BEARER_SECONDARY`) from env at startup; constant-time compare against `Authorization: Bearer <token>`; mounted on `/internal/*` only; 401 on absent/mismatched           |
+| `apps/campaign/src/routes/internal.rs`                          | new: `POST /internal/campaign/init { campaign_id, owner_user_id }`; idempotent via `INSERT OR IGNORE` on `campaign_metadata.id`; bearer-token middleware on `/internal/campaign/*` (see §Internal-API defense layers). v0 thin slice: handler is a no-op 200 — per-campaign DB provisioning lands in the next slice. |
+| `apps/platform/src/middleware/internal_auth.rs`                 | new: bearer middleware that reads `INTERNAL_BEARER_PRIMARY` (and optional `INTERNAL_BEARER_SECONDARY`) from env at startup; constant-time compare against `Authorization: Bearer <token>`; mounted on `/internal/platform/*` only; 401 on absent/mismatched. Mirror middleware exists at `apps/campaign/src/middleware/internal_auth.rs` mounted on `/internal/campaign/*`. |
 | `apps/campaign/src/middleware/internal_auth.rs`                 | new: same middleware, same env vars                                                                                                                                                                                                                          |
 | `apps/campaign/src/routes/initialize.rs`                        | new: `POST /campaign/<id>/initialize`; validates payload, runs init SQLite transaction (metadata writes + per-slug template instantiation + `wizard_completed_at`), fires platform mirror once on commit; rejects `409` if `wizard_completed_at IS NOT NULL` |
 | `apps/campaign/src/entities/things.rs`                          | add `is_template`, `seeded_from`, `seeded_locale`, `seeded_structure_hash`, `seeded_content_hash`                                                                                                                                                            |
@@ -564,7 +608,7 @@ A routine vacuum job can prune rows older than e.g. 30 days; not load-bearing fo
 | `apps/web/src/routes/_authed/c/$campaignId.tsx` (or equivalent) | conditionally render the wizard overlay when `campaign_metadata.wizard_completed_at IS NULL`; ports the wizard component from `tmp/NewCampaignOnboarding/`                                                                                                   |
 | `apps/web/src/lib/api.ts`                                       | add campaign list client (GETs `/api/campaigns`), campaign-creation client (mints idempotency token, POSTs to `/api/campaigns`), and catalog fetch (to `/catalog/systems`) |
 | `apps/web/src/routes/_authed/index.tsx`                         | replace the hardcoded `hasCampaigns = false` with a GET against `/api/campaigns`; render the list when populated, the existing `EmptyHubCard` when empty; both paths include a "create campaign" button that POSTs to `/api/campaigns` and redirects to the returned campaign |
-| `Caddyfile.dev`                                                 | add `/catalog/*` → campaign-tier routing                                                                                                                                                                                                                     |
+| `Caddyfile.dev`                                                 | add `/catalog/*` → campaign-tier routing via `handle_path` (strip-prefix). Binary serves `/systems` post-strip, not `/catalog/systems` — same shape `/campaign/*` already uses for `/<id>/initialize`. Same StripPrefix expected on the prod Traefik IngressRoute. |
 | `infra/k8s/preview/platform-deployment.yaml`                    | add pod label `app: platform`; add `envFrom: [secretRef: { name: internal-bearer }]` to source `INTERNAL_BEARER_PRIMARY` and (during rotation) `INTERNAL_BEARER_SECONDARY`                                                                                  |
 | `infra/k8s/preview/campaign-deployment.yaml`                    | new: campaign-server Deployment for previews; pod label `app: campaign`; ports 3000; `envFrom` for `internal-bearer`; HostPath volume for campaign sqlite under `/data/campaigns/pr-${PR_NUMBER}`; same nonroot UID + chown init-container pattern as platform-deployment.yaml |
 | `infra/k8s/preview/campaign-service.yaml`                       | new: ClusterIP on port 3000, selector `app=campaign`                                                                                                                                                                                                         |
@@ -595,8 +639,8 @@ A routine vacuum job can prune rows older than e.g. 30 days; not load-bearing fo
 - `apps/campaign` `/initialize` happy-path test: `POST /campaign/<id>/initialize` with a valid payload (game_system, content_locale, name, tagline, template_slugs, wizard_completed_at). Assert `campaign_metadata` rows are set, one Thing per slug exists with `is_template = true`, `seeded_locale` matches, `seeded_structure_hash` and `seeded_content_hash` match the build-time table, ToC has one new entry per slug, `wizard_completed_at` is set, and the platform receives one metadata-mirror POST.
 - `apps/campaign` `/initialize` atomicity test: inject a per-slug compile failure on the second of three template_slugs; assert the transaction rolls back — no `campaign_metadata` writes, no Things, no ToC entries, `wizard_completed_at` remains NULL — and the call returns a structured `400`.
 - `apps/campaign` `/initialize` precondition test: call `/initialize` twice on the same campaign with the same payload; assert the second call returns `409` and no state changes.
-- **TipTap render test (the schema-authority drift catcher):** for every template under `content/templates/`, compile via `starter_content`, mount the resulting Loro doc in a real TipTap editor (using the existing `loro-prosemirror` test harness), assert no node falls back to "unknown."
-- `apps/campaign` init idempotency test: call `/internal/init { campaign_id, owner_user_id }` twice with the same id; assert the second call no-ops and returns 200; only one `campaign_metadata` row exists.
+- **TipTap render test (the schema-authority drift catcher):** for every template `.yaml` under `content/templates/`, compile via `starter_content`, mount the resulting Loro doc in a real TipTap editor (using the existing `loro-prosemirror` test harness), assert no node falls back to "unknown."
+- `apps/campaign` init idempotency test: call `/internal/campaign/init { campaign_id, owner_user_id }` twice with the same id; assert the second call no-ops and returns 200; only one `campaign_metadata` row exists.
 - `apps/platform` create-call test: `POST /api/campaigns` with a stub shard. Verify a `create_attempts` row is written, the shard is called, the routing row is inserted, and `{ campaign_id }` is returned.
 - `apps/platform` retry idempotency test: re-POST `/api/campaigns` with the same idempotency token after a simulated mid-flight crash; verify the same `campaign_id` is returned and no duplicate routing row exists.
 - `apps/platform` failure-mode test: shard returns 5xx → platform returns 5xx, no routing row written (but `create_attempts` row may exist, harmless).
@@ -605,7 +649,7 @@ A routine vacuum job can prune rows older than e.g. 30 days; not load-bearing fo
 
 - **No Ingress exposes `/internal/*`.** Enforced via a conftest policy invoked from `mise run lint:k8s` (the existing k8s-YAML lint task already runs kubeconform; the policy check appends to that same task). The `no-internal-ingress` rule denies any `Ingress` or Traefik `IngressRoute` whose path matchers contain `/internal`. Policy install (mise pin), the policy directory layout, and the fixture-test harness are the lint-infra plan's concern; this plan assumes that capability is available and asserts only that the rule exists and runs against every manifest under `infra/k8s/`.
 - **NetworkPolicy denies the unhappy path.** Spin up a debug pod in a preview namespace with no `app` label: `kubectl run debug --image=alpine -n preview-pr-<N> -- sleep infinity; kubectl exec -it -n preview-pr-<N> debug -- nc -zv platform 3000` times out. From the campaign pod in the same namespace: same command succeeds. From a pod in another namespace (e.g., `kube-system`'s `coredns`): times out, confirming cross-namespace deny. The same three probes run against the prod `default` namespace using the `app=platform` and `app=campaign` pod selectors immediately after the prod NetworkPolicy apply; see §Internal-API defense layers § "What is deferred" for the rollout sequence.
-- **Bearer absent → 401.** `kubectl exec -it -n preview-pr-<N> <campaign-pod> -- curl -X POST http://platform:3000/internal/campaigns/abc/metadata -d '{}'` returns 401. With the wrong bearer in the header: 401. With the correct bearer: 200 (or 4xx-on-payload-error, both prove the middleware accepted the bearer).
+- **Bearer absent → 401.** `kubectl exec -it -n preview-pr-<N> <campaign-pod> -- curl -X POST http://platform:3000/internal/platform/campaigns/abc/init-failed -d '{}'` returns 401. With the wrong bearer in the header: 401. With the correct bearer: 200 (or 4xx-on-payload-error, both prove the middleware accepted the bearer).
 - **Bearer rotation handshake.** Set `INTERNAL_BEARER_SECONDARY` to a new value via the templated Secret; redeploy; assert calls from both senders (using the still-active primary) succeed. Swap primary/secondary in SM; redeploy; assert calls succeed (now using the new primary, with the old as secondary). Remove the secondary; redeploy; assert calls succeed (old value fully retired). The same exercise on a single pod is sufficient for v0; multi-replica rotation is dual-node concern.
 - **Local-dev bearer works without Scaleway credentials.** `mise run dev` on a fresh checkout with no `scw` config; the wizard's Seal call succeeds end-to-end, proving the platform-to-campaign mirror's bearer is sourced from `mise.toml`, not from Scaleway SM, in dev mode.
 
@@ -616,7 +660,7 @@ A routine vacuum job can prune rows older than e.g. 30 days; not load-bearing fo
 - Click Seal; verify the overlay dismisses, `campaign_metadata` is populated, the picked templates appear in the ToC as Things with `is_template = true`, and the hub reflects the new name/tagline/system.
 - Refresh the campaign URL; verify the wizard does not reappear.
 - Abandonment path: create a second campaign, walk halfway through the wizard, close the tab. Re-open the campaign URL; verify the wizard re-renders fresh (no pre-fill, no templates) and the campaign on the server is still in its just-created state.
-- Repeat for Blades, Mothership, freeform.
+- Repeat for Blades, Mothership, and the BYO card (with and without a custom name — empty input should land as `"Custom"` in the hub).
 
 **Lint / typecheck:**
 

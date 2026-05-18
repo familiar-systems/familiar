@@ -17,6 +17,7 @@ zizmor = "latest"
 pinact = "latest"
 trufflehog = "latest"
 gitleaks = "latest"
+"pipx:check-jsonschema" = "latest"
 
 [settings]
 python.uv_venv_auto = "create|source"
@@ -122,7 +123,7 @@ run = ["mkdir -p data", "cargo run -p familiar-systems-platform --features dev-u
 # lives on app.localhost:8080 and any browser fetch from it to /api/* is
 # same-origin, so no preflight fires; this entry is defense-in-depth for
 # non-browser callers that send an Origin header against :3000 directly.
-env = { HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", DATABASE_URL = "sqlite://data/dev-platform.db?mode=rwc", PORT = "3000", CORS_ORIGINS = "http://app.localhost:8080", RUST_LOG = "info,familiar_systems_platform=debug" }
+env = { HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", DATABASE_URL = "sqlite://data/dev-platform.db?mode=rwc", PORT = "3000", CORS_ORIGINS = "http://app.localhost:8080", CAMPAIGN_SHARD_URL = "http://localhost:3001", RUST_LOG = "info,familiar_systems_platform=debug" }
 
 [tasks."dev:campaign"]
 description = "Campaign server (port 3001)"
@@ -131,7 +132,7 @@ description = "Campaign server (port 3001)"
 # binary writes into it. Local-dev uses 3001 to avoid colliding with
 # dev:platform's 3000; the container default (Dockerfile + cluster) is 3000.
 run = ["mkdir -p data/dev-campaigns", "cargo run -p familiar-systems-campaign"]
-env = { PORT = "3001", CAMPAIGN_DATA_DIR = "data/dev-campaigns", RUST_LOG = "info,familiar_systems_campaign=debug" }
+env = { PORT = "3001", CAMPAIGN_DATA_DIR = "data/dev-campaigns", PLATFORM_URL = "http://localhost:3000", CAMPAIGN_IDLE_TIMEOUT_SECS = "1800", CAMPAIGN_EVICTION_CHECK_INTERVAL_SECS = "180", RUST_LOG = "info,familiar_systems_campaign=debug" }
 
 [tasks."dev:proxy"]
 description = "Caddy reverse proxy on :8080 unifying site + SPA + platform + campaign under one origin"
@@ -299,6 +300,17 @@ sources = [
   ".github/workflows/**/*.yaml",
   ".github/actions/**/*.yml",
   ".github/actions/**/*.yaml",
+]
+
+[tasks."lint:content"]
+description = "Validate content/ YAML authoring files against their JSON Schemas"
+run = [
+  "check-jsonschema --schemafile content/.schemas/systems-schema.json content/systems.yaml",
+  "check-jsonschema --schemafile content/.schemas/starter-content-schema.json content/templates/**/*.yaml",
+]
+sources = [
+  "content/**/*.yaml",
+  "content/.schemas/*.json",
 ]
 
 [tasks."lint:k8s"]

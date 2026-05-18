@@ -1,3 +1,4 @@
+pub mod clients;
 pub mod config;
 pub mod entities;
 pub mod error;

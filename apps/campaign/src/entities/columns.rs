@@ -48,7 +48,7 @@ impl TryFromU64 for ThingIdCol {
 // can't use `DeriveValueType` directly. The derive needs the inner type to
 // already implement sea-orm's `Into<Value>` / `TryGetable` / `ValueType` /
 // `Nullable`. `String` and `uuid::Uuid` do (sea-orm ships impls for both).
-// `ulid::Ulid` doesn't, and we can't add them — orphan rule (foreign trait,
+// `ulid::Ulid` doesn't, and we can't add them (orphan rule: foreign trait,
 // foreign type). So we hand-roll the four traits per ULID column type, going
 // through `String` (Crockford base32) for the on-disk representation. That's
 // the encoding vec0 needs anyway: TEXT primary keys work in vec0; BLOB ones

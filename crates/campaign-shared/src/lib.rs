@@ -16,4 +16,5 @@
 pub mod id;
 pub mod loro;
 pub mod notification;
+pub mod onboarding;
 pub mod status;

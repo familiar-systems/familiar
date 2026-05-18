@@ -8,12 +8,12 @@
 //!
 //! ## Submodules
 //!
-//! - [`assembler`] — `BatchAssembler`, the pure state machine that
+//! - [`assembler`]: `BatchAssembler`, the pure state machine that
 //!   reassembles inbound `DocUpdateFragmentHeader + N · DocUpdateFragment`
 //!   sequences into a single CRDT update payload.
-//! - [`fragmenter`] — `BatchFragmenter`, the symmetric outbound splitter
+//! - [`fragmenter`]: `BatchFragmenter`, the symmetric outbound splitter
 //!   for broadcasts that exceed the protocol's 256 KB per-message cap.
-//! - [`reassembly`] — kameo-side wiring: `FragmentTimeout` self-message
+//! - [`reassembly`]: kameo-side wiring. `FragmentTimeout` self-message
 //!   and `schedule_fragment_timeout` helper that enforce the protocol's
 //!   10-second reassembly timeout via `tokio::spawn` + `tokio::time::sleep`.
 //!

@@ -79,7 +79,7 @@ const DEFAULT_LOCALE = "en";
 // SITE_BASE_PATH mirrors the marketing apex's path prefix.
 // Prod: "https://familiar.systems" + "/". Preview: "https://preview.familiar.systems" + "/pr-${PR_NUMBER}/". Dev: Caddy front door + "/".
 // See docs/plans/2026-03-30-deployment-architecture.md §URL routing.
-// Both are required — no silent fallbacks. mise.toml provides them for local
+// Both are required; no silent fallbacks. mise.toml provides them for local
 // dev tasks; CI passes them as Docker build-args.
 const SITE_URL = process.env.SITE_URL;
 if (!SITE_URL) {

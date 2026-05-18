@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::{clients::campaign_internal::CampaignInternalClient, config::Config};
 use familiar_systems_app_shared::auth::HankoSessionValidator;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
@@ -12,4 +12,7 @@ pub struct AppState {
     pub db: DatabaseConnection,
     pub validator: Arc<HankoSessionValidator>,
     pub config: Arc<Config>,
+    /// Client for `POST /internal/campaign/init` and (later) the metadata
+    /// mirror endpoint. Holds an internal `Arc` already; cloning is cheap.
+    pub campaign_internal: CampaignInternalClient,
 }

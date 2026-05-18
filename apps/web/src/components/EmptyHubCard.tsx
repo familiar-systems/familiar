@@ -1,15 +1,17 @@
 import { Plus } from "lucide-react";
+import { useCreateCampaign } from "../features/onboarding/useCreateCampaign";
 import { assetPath } from "../lib/paths";
 
-const GRID_PATTERN_URL = `url('${assetPath("/grid-pattern.svg")}')`;
+const CROSSHATCH_URL = `url('${assetPath("/crosshatch.svg")}')`;
 
 // Solid-background card so the epic-square art doesn't bleed through and
 // steal legibility. Hover lifts via the style guide's interactive-card
-// pattern. The CTA is wired to a no-op until the campaign-create flow
-// lands; the warn makes the unwired state visible to anyone running dev.
+// pattern. The CTA POSTs to /api/campaigns and navigates into the new
+// campaign on success.
 export function EmptyHubCard(): React.ReactElement {
+  const { state, create } = useCreateCampaign();
   const onStart = (): void => {
-    console.warn("Start your first campaign: campaign-create flow not wired yet");
+    void create();
   };
 
   return (
@@ -37,12 +39,19 @@ export function EmptyHubCard(): React.ReactElement {
         </p>
         <button
           type="button"
+          data-testid="start-first-campaign"
           onClick={onStart}
-          className="inline-flex items-center gap-2 rounded-full bg-gold px-8 py-4 font-medium text-white shadow-lg shadow-gold/25 transition-colors hover:bg-gold/90"
+          disabled={state.creating}
+          className="inline-flex items-center gap-2 rounded-full bg-gold px-8 py-4 font-medium text-white shadow-lg shadow-gold/25 transition-colors hover:bg-gold/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Plus className="size-4" />
-          <span>Start your first campaign.</span>
+          <span>{state.creating ? "Opening the door..." : "Start your first campaign."}</span>
         </button>
+        {state.error !== null ? (
+          <p role="alert" data-testid="create-error" className="mt-4 text-sm text-foreground/70">
+            {state.error}
+          </p>
+        ) : null}
       </div>
 
       <Banner className="h-14" flip />
@@ -72,7 +81,7 @@ function Banner({ className, flip = false }: BannerProps): React.ReactElement {
       <div
         aria-hidden="true"
         className="absolute inset-0 opacity-[0.18]"
-        style={{ backgroundImage: GRID_PATTERN_URL }}
+        style={{ backgroundImage: CROSSHATCH_URL }}
       />
     </div>
   );

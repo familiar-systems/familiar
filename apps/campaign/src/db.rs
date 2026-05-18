@@ -6,7 +6,7 @@ use std::sync::Once;
 /// Register sqlite-vec as an auto-extension for this process. Idempotent.
 ///
 /// This is process-global state: every SQLite connection opened in the
-/// process from this point on — by sqlx, by anything else — will load vec0
+/// process from this point on (by sqlx, by anything else) will load vec0
 /// automatically. That's by design; we want vec0 available everywhere
 /// without per-connection plumbing.
 ///
@@ -37,7 +37,7 @@ pub fn register_sqlite_vec() {
 
 /// Open a sqlx sqlite pool and wrap it as a sea-orm `DatabaseConnection`.
 ///
-/// Does **not** register sqlite-vec — that's `register_sqlite_vec`'s job.
+/// Does **not** register sqlite-vec; that's `register_sqlite_vec`'s job.
 /// If you want vec0 available in this connection, the caller registers it
 /// before opening anything.
 pub async fn connect(database_url: &str) -> Result<DatabaseConnection, sqlx::Error> {

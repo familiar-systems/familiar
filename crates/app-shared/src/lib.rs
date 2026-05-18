@@ -4,4 +4,5 @@
 //! Campaign-scoped types live in `campaign-shared`.
 
 pub mod auth;
+pub mod campaigns;
 pub mod id;

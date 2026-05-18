@@ -12,6 +12,8 @@ spec:
     metadata:
       labels:
         app: platform
+      annotations:
+        checksum/internal-bearer: ${INTERNAL_BEARER_CHECKSUM}
     spec:
       imagePullSecrets:
         - name: scaleway-registry
@@ -51,8 +53,13 @@ spec:
               value: sqlite:///data/platform/platform.db?mode=rwc
             - name: PORT
               value: "3000"
+            - name: CAMPAIGN_SHARD_URL
+              value: http://campaign:3000
             - name: RUST_LOG
               value: info
+          envFrom:
+            - secretRef:
+                name: internal-bearer
           volumeMounts:
             - name: platform-data
               mountPath: /data/platform

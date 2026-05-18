@@ -29,6 +29,9 @@ const base = import.meta.env.BASE_URL;
 
 export const apiBase: string = `${base}api/`;
 export const campaignBase: string = `${base}campaign/`;
+// /catalog/* is its own prefix (campaign-tier-stateless; round-robin in
+// prod). Lives next to /campaign/* on the same app apex.
+export const catalogBase: string = `${base}catalog/`;
 
 export function apiPath(path: string): string {
   return apiBase + path.replace(/^\//, "");
@@ -36,6 +39,10 @@ export function apiPath(path: string): string {
 
 export function campaignPath(path: string): string {
   return campaignBase + path.replace(/^\//, "");
+}
+
+export function catalogPath(path: string): string {
+  return catalogBase + path.replace(/^\//, "");
 }
 
 // Relative SPA route. Use this instead of a bare "/" or "/login" when

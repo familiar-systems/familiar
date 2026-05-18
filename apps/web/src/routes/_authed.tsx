@@ -24,8 +24,8 @@
 // so the Hanko component renders without the app chrome and without
 // the auth gate.
 
-import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
-import { Shell } from "../components/Shell";
+import { Outlet, createFileRoute, redirect, useRouterState } from "@tanstack/react-router";
+import { Shell, type ShellBackdrop } from "../components/Shell";
 
 export const Route = createFileRoute("/_authed")({
   beforeLoad: ({ context, location }) => {
@@ -42,13 +42,19 @@ export const Route = createFileRoute("/_authed")({
 
 function AuthedLayout(): React.ReactElement {
   const { user } = Route.useRouteContext();
+  // Backdrop swap is route-aware: the wizard route at `/c/<id>` gets the
+  // graph-paper variant, everything else gets the EpicBackdrop. Picked
+  // here (not in the leaf route) so the cross-fade lives in the layout
+  // and survives the route transition without remounting Shell.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const backdrop: ShellBackdrop = pathname.startsWith("/c/") ? "wizard" : "default";
 
   // hasCampaigns is wired through Shell so the brand-link emphasis can
   // reflect "you have worlds" vs "no worlds yet". The actual signal will
   // come from a campaigns query when that endpoint lands; until then,
   // both the hub and settings render with hasCampaigns=false.
   return (
-    <Shell me={user} hasCampaigns={false}>
+    <Shell me={user} hasCampaigns={false} backdrop={backdrop}>
       <Outlet />
     </Shell>
   );

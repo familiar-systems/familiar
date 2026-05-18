@@ -2,8 +2,44 @@
 // Source: cargo run -p familiar-systems-platform --bin emit-openapi
 // Do not edit by hand. Run `mise run generate-types` to refresh.
 
-import type { CampaignId, MeResponse, UserId } from "@familiar-systems/types-app";
+import type {
+  Campaign,
+  CampaignId,
+  CreateCampaignRequest,
+  CreateCampaignResponse,
+  MeResponse,
+  UserId,
+} from "@familiar-systems/types-app";
 export interface paths {
+  "/campaigns": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * `GET /api/campaigns`: list the authenticated user's campaigns,
+     *     most-recent first. Reads only the platform-side routing table; no
+     *     fan-out to shards.
+     */
+    get: operations["list_campaigns"];
+    put?: never;
+    /**
+     * `POST /api/campaigns`: mint a CampaignId, ask the campaign tier to
+     *     initialize per-campaign state, write the routing row, return the id.
+     * @description Idempotent on `idempotency_token`: a retry with the same token returns
+     *     the same `campaign_id`. The order (write `create_attempts` first, then
+     *     call shard, then write `campaigns`) is what makes retries safe; see
+     *     the long form in the design doc.
+     */
+    post: operations["create_campaign"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/health": {
     parameters: {
       query?: never;
@@ -41,10 +77,33 @@ export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
     /**
+     * @description One row in the response of `GET /api/campaigns`.
+     *
+     *     Mirrored from the campaign tier on every successful initialize and
+     *     settings edit. Fields marked `Option` are `None` until the wizard's
+     *     Seal call commits, after which they are mirrored over.
+     *
+     *     `last_init_error`: populated by the campaign tier via
+     *     `POST /internal/platform/campaigns/<id>/init-failed` when an initialize
+     *     attempt fails. Distinct from "no init attempt yet" (`wizard_completed_at IS NULL`
+     *     AND `last_init_error IS NULL`).
+     */
+    Campaign: Campaign;
+    /**
      * Format: nanoid
      * @description Identifies a campaign. Kept as a nanoid for short URLs.
      */
     CampaignId: CampaignId;
+    /**
+     * @description Body for `POST /api/campaigns`.
+     *
+     *     The SPA mints `idempotency_token` (a fresh nanoid per click) so that a
+     *     retry of the same logical create call returns the same `CampaignId`
+     *     rather than allocating a new one.
+     */
+    CreateCampaignRequest: CreateCampaignRequest;
+    /** @description Response body for `POST /api/campaigns`. */
+    CreateCampaignResponse: CreateCampaignResponse;
     /**
      * @description Response body for `GET /me`.
      *
@@ -69,6 +128,71 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  list_campaigns: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of campaigns */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Campaign"][];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  create_campaign: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateCampaignRequest"];
+      };
+    };
+    responses: {
+      /** @description Campaign created */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreateCampaignResponse"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Shard or DB failure */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   health: {
     parameters: {
       query?: never;
