@@ -12,6 +12,7 @@ catalog:
   tailwindcss: ^4.2.4
   tailwindcss-animate: ^1.0.7
   typescript: ^6
+minimumReleaseAge: 10080
 allowBuilds:
   esbuild: true
   sharp: true
