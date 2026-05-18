@@ -2,10 +2,10 @@ version: 2
 
 updates:
   # GitHub Actions (the SHA pins from PR-Sec-2 are stale unless something
-  # keeps them moving). Cooldown holds new releases for a few days so a
-  # tj-actions-style supply-chain compromise has time to surface before
-  # we auto-accept the bump. Grouped so Dependabot doesn't open one PR
-  # per pinned action every week.
+  # keeps them moving). 7-day cooldown (14 for majors) gives the community
+  # time to flag supply-chain compromises before we auto-merge. Raised from
+  # 3 days after the TanStack sha1halud incident (PR #109, issue #110).
+  # Grouped so Dependabot doesn't open one PR per pinned action every week.
   - package-ecosystem: github-actions
     directories:
       - /
@@ -17,7 +17,7 @@ updates:
     schedule:
       interval: monthly
     cooldown:
-      default-days: 3
+      default-days: 7
     groups:
       gha-minor-and-patch:
         update-types:
@@ -35,7 +35,7 @@ updates:
     schedule:
       interval: monthly
     cooldown:
-      default-days: 3
+      default-days: 7
     groups:
       cargo-minor-and-patch:
         update-types:
@@ -46,16 +46,15 @@ updates:
           - major
 
   # pnpm workspace at repo root. pnpm-lock.yaml lives at /, and one update
-  # block covers all eight workspace packages (apps/site, apps/web,
-  # packages/editor, packages/types-app, packages/types-campaign, plus the
-  # tooling packages). npm is the canonical ecosystem name; pnpm is detected
-  # automatically from the lockfile.
+  # block covers all workspace packages. npm is the canonical ecosystem
+  # name; pnpm (v11, catalogs) is detected automatically from the lockfile.
+  # 7-day cooldown (14 for majors) per #110.
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: monthly
     cooldown:
-      default-days: 3
+      default-days: 7
     groups:
       npm-minor-and-patch:
         update-types:
@@ -72,7 +71,7 @@ updates:
     schedule:
       interval: monthly
     cooldown:
-      default-days: 3
+      default-days: 7
     groups:
       pulumi-minor-and-patch:
         update-types:
@@ -90,7 +89,7 @@ updates:
     schedule:
       interval: monthly
     cooldown:
-      default-days: 3
+      default-days: 7
     groups:
       whisperx-minor-and-patch:
         update-types:
