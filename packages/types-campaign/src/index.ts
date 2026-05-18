@@ -19,3 +19,8 @@ export type { TemplateRef } from "./generated/onboarding/TemplateRef";
 export type { InitializeRequest } from "./generated/onboarding/InitializeRequest";
 export type { InitializeErrorResponse } from "./generated/onboarding/InitializeErrorResponse";
 export type { AudioMode } from "./generated/onboarding/AudioMode";
+
+// `paths` describes every route the campaign server exposes. Generated
+// from utoipa's OpenAPI spec; component schemas resolve back to the
+// ts-rs branded types above (see tooling/openapi-codegen/generate.ts).
+export type { paths as CampaignPaths } from "./openapi/campaign";

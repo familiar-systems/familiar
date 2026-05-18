@@ -13,12 +13,23 @@ use axum::{
 };
 use familiar_systems_campaign_shared::onboarding::catalog::CatalogResponse;
 use serde::Deserialize;
+use utoipa::IntoParams;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct CatalogQuery {
     locale: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/catalog/systems",
+    tag = "catalog",
+    params(CatalogQuery),
+    responses(
+        (status = OK, description = "Locale-resolved game system catalog", body = CatalogResponse),
+    ),
+)]
 pub async fn list_systems(
     State(state): State<AppState>,
     headers: HeaderMap,

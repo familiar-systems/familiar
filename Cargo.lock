@@ -926,6 +926,8 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ulid",
+ "utoipa",
+ "utoipa-axum",
  "wiremock",
 ]
 

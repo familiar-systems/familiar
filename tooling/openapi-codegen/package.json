@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "generate:platform": "tsx generate.ts platform"
+    "generate:platform": "tsx generate.ts platform",
+    "generate:campaign": "tsx generate.ts campaign"
   },
   "devDependencies": {
     "openapi-typescript": "^7.13",

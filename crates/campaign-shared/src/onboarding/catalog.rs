@@ -4,8 +4,9 @@
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/onboarding/")]
 pub struct CatalogResponse {
     pub systems: Vec<SystemEntry>,
@@ -15,7 +16,7 @@ pub struct CatalogResponse {
     pub byo: ByoEntry,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/onboarding/")]
 pub struct SystemEntry {
     /// Slug, kebab-case. Stable across locales.
@@ -28,7 +29,7 @@ pub struct SystemEntry {
     pub bundle: Vec<TemplateRef>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/onboarding/")]
 pub struct ByoEntry {
     /// Default template bundle when BYO is selected. The BYO card's
@@ -39,7 +40,7 @@ pub struct ByoEntry {
     pub bundle: Vec<TemplateRef>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/onboarding/")]
 pub struct TemplateRef {
     /// `<system-id>/<template-name>` slug, e.g. `common/npc`.

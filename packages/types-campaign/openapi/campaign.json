@@ -1,0 +1,239 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "familiar.systems campaign API",
+    "description": "Campaign-scoped endpoints: catalog, initialization, and (future) CRDT room bootstrapping.",
+    "license": {
+      "name": "AGPL-3.0-or-later",
+      "identifier": "AGPL-3.0-or-later"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/campaign/{id}/initialize": {
+      "post": {
+        "tags": ["campaign"],
+        "operationId": "initialize",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitializeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Campaign initialized"
+          },
+          "500": {
+            "description": "Initialization failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitializeErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/catalog/systems": {
+      "get": {
+        "tags": ["catalog"],
+        "operationId": "list_systems",
+        "parameters": [
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Locale-resolved game system catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": ["health"],
+        "summary": "Readiness-style health endpoint. Returns 200 with `ready` body while\nthe registry is in `Phase::Ready`; once drain has begun, returns 503\nwith `draining`. k8s readiness probes consume the status code to\ntake the pod out of the LB rotation immediately when drain starts,\nso the platform's `/internal/campaign/init` calls stop being routed\nhere before in-flight requests finish. If the registry itself is\nunreachable (mailbox closed or actor crashed), returns 503 with\n`registry_unavailable`.",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Ready"
+          },
+          "503": {
+            "description": "Draining or unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AudioMode": {
+        "type": "string",
+        "description": "Audio capture / training mode chosen during the wizard.\n\nThree states modeled as a sum type, not a `bool` pair, so the FE\ncan't accidentally produce \"no recording but train on it\" or other\nnonsense combinations.",
+        "enum": ["opt-in", "opt-out", "text-only"]
+      },
+      "ByoEntry": {
+        "type": "object",
+        "required": ["bundle"],
+        "properties": {
+          "bundle": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateRef"
+            },
+            "description": "Default template bundle when BYO is selected. The BYO card's\ndisplay copy (title, body, empty-input fallback, swatch color)\nlives in the wizard frontend alongside the rest of the wizard's\nUI strings; only the bundle is catalog-maintainer configuration,\nso only the bundle ships through this struct."
+          }
+        }
+      },
+      "CatalogResponse": {
+        "type": "object",
+        "required": ["systems", "byo"],
+        "properties": {
+          "byo": {
+            "$ref": "#/components/schemas/ByoEntry",
+            "description": "The \"bring your own\" affordance: a single always-visible card\nrendered below the catalog list. Not a system itself; the wizard\nresolves its display copy and default template bundle from this."
+          },
+          "systems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SystemEntry"
+            }
+          }
+        }
+      },
+      "InitializeErrorResponse": {
+        "type": "object",
+        "description": "Returned on the deliberate failure path of v0. The FE renders `error`\ninline and surfaces `campaign_id` so the user can find their (broken)\ncampaign back in the hub.",
+        "required": ["error", "campaign_id"],
+        "properties": {
+          "campaign_id": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "InitializeRequest": {
+        "type": "object",
+        "required": [
+          "game_system",
+          "content_locale",
+          "name",
+          "template_slugs",
+          "audio",
+          "evals_enabled"
+        ],
+        "properties": {
+          "audio": {
+            "$ref": "#/components/schemas/AudioMode"
+          },
+          "content_locale": {
+            "type": "string",
+            "description": "BCP-47 language tag for the campaign's content (sticky once set)."
+          },
+          "evals_enabled": {
+            "type": "boolean"
+          },
+          "game_system": {
+            "type": "string",
+            "description": "Opaque display label for the campaign's game system. The wizard\nresolves a single string at Seal time: catalog pick -> the catalog\nentry's locale-resolved `name`; BYO with a typed name -> that name;\nBYO with an empty input -> the catalog's `byo.default_name`. The\ncampaign tier and platform tier both treat this as an opaque label;\nno special slugs cross the wire."
+          },
+          "name": {
+            "type": "string"
+          },
+          "tagline": {
+            "type": ["string", "null"]
+          },
+          "template_slugs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Bundle slugs the GM picked. Deduped client-side."
+          }
+        }
+      },
+      "SystemEntry": {
+        "type": "object",
+        "required": ["id", "name", "tagline", "color", "popular", "bundle"],
+        "properties": {
+          "bundle": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateRef"
+            }
+          },
+          "color": {
+            "type": "string",
+            "description": "Hex color (`#rrggbb`) used by the wizard's system picker."
+          },
+          "id": {
+            "type": "string",
+            "description": "Slug, kebab-case. Stable across locales."
+          },
+          "name": {
+            "type": "string"
+          },
+          "popular": {
+            "type": "boolean"
+          },
+          "tagline": {
+            "type": "string"
+          }
+        }
+      },
+      "TemplateRef": {
+        "type": "object",
+        "required": ["slug", "name", "description", "icon"],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string",
+            "description": "`lucide-react` icon name."
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string",
+            "description": "`<system-id>/<template-name>` slug, e.g. `common/npc`."
+          }
+        }
+      }
+    }
+  }
+}
