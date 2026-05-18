@@ -68,13 +68,6 @@ CAMPAIGN_IMAGE_TAG = "latest"
 NODE_ROLE_LABEL = "node-role.familiar.systems/role"
 PLATFORM_NODE_ROLE = "platform"
 
-# GHA's deploy workflow uses `kubectl set image` to roll Deployments, which
-# creates a `kubectl-set` SSA field manager that owns the image field.
-# Pulumi's SSA then conflicts when it tries to update the same Deployment
-# (even with ignore_changes on image, SSA ownership checks fire first).
-# Force-adopting the conflicting fields is safe because ignore_changes
-# prevents Pulumi from actually writing the image value.
-_SSA_FORCE_ANNOTATIONS = {"pulumi.com/patchForce": "true"}
 
 # Traefik Middleware reference for the platform Ingress. The `@kubernetescrd`
 # suffix tells Traefik to resolve the name against the Kubernetes CRD store.
@@ -103,11 +96,25 @@ def create_k8s_resources(
 ) -> None:
     """Declare all Kubernetes resources for the preview cluster."""
     # -- Provider -------------------------------------------------------------
+    # SSA is disabled because GHA's deploy workflow uses `kubectl set image`,
+    # which creates a `kubectl-set` SSA field manager that owns the image
+    # field. With SSA on, Pulumi's `ignore_changes` on the image is
+    # bypassed: SSA force-adopts the field and reverts the image to Pulumi's
+    # stale desired state. Client-side apply respects `ignore_changes`.
     provider = k8s.Provider(
         "k3s-provider",
         kubeconfig=kubeconfig,
+        enable_server_side_apply=False,
     )
     k8s_opts = pulumi.ResourceOptions(provider=provider)
+
+    # Patch resources (NodePatch) require SSA. A secondary provider with SSA
+    # enabled handles only those resources; it shares the same kubeconfig.
+    ssa_provider = k8s.Provider(
+        "k3s-provider-ssa",
+        kubeconfig=kubeconfig,
+        enable_server_side_apply=True,
+    )
 
     # A pod-template annotation that hashes the bearer value forces the
     # campaign Deployment to roll when the bearer changes. Without this,
@@ -131,7 +138,7 @@ def create_k8s_resources(
             name=node_name,
             labels=platform_node_selector,
         ),
-        opts=k8s_opts,
+        opts=pulumi.ResourceOptions(provider=ssa_provider),
     )
 
     # -- cert-manager ---------------------------------------------------------
@@ -345,7 +352,6 @@ def create_k8s_resources(
         metadata=k8s.meta.v1.ObjectMetaArgs(
             name=SITE_NAME,
             namespace="default",
-            annotations=_SSA_FORCE_ANNOTATIONS,
         ),
         spec=k8s.apps.v1.DeploymentSpecArgs(
             replicas=1,
@@ -475,7 +481,6 @@ def create_k8s_resources(
         metadata=k8s.meta.v1.ObjectMetaArgs(
             name=PLATFORM_NAME,
             namespace="default",
-            annotations=_SSA_FORCE_ANNOTATIONS,
         ),
         spec=k8s.apps.v1.DeploymentSpecArgs(
             replicas=1,
@@ -734,7 +739,6 @@ def create_k8s_resources(
         metadata=k8s.meta.v1.ObjectMetaArgs(
             name=WEB_NAME,
             namespace="default",
-            annotations=_SSA_FORCE_ANNOTATIONS,
         ),
         spec=k8s.apps.v1.DeploymentSpecArgs(
             replicas=1,
@@ -889,7 +893,6 @@ def create_k8s_resources(
         metadata=k8s.meta.v1.ObjectMetaArgs(
             name=CAMPAIGN_NAME,
             namespace="default",
-            annotations=_SSA_FORCE_ANNOTATIONS,
         ),
         spec=k8s.apps.v1.DeploymentSpecArgs(
             replicas=1,
