@@ -22,6 +22,19 @@ const FAILURE_REASON: &str = "deliberate_thin_slice_failure";
 const PUBLIC_ERROR: &str = "Campaign initialization is not yet wired up. \
                             This is a known thin-slice failure.";
 
+#[utoipa::path(
+    post,
+    path = "/campaign/{id}/initialize",
+    tag = "campaign",
+    params(
+        ("id" = String, Path, description = "Campaign ID"),
+    ),
+    request_body = InitializeRequest,
+    responses(
+        (status = OK, description = "Campaign initialized"),
+        (status = 500, description = "Initialization failed", body = InitializeErrorResponse),
+    ),
+)]
 pub async fn initialize(
     State(state): State<AppState>,
     Path(campaign_id): Path<String>,

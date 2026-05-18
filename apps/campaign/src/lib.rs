@@ -9,6 +9,8 @@ pub mod error;
 pub mod loro;
 pub mod middleware;
 pub mod migrations;
+pub mod openapi;
+pub mod router;
 pub mod routes;
 pub mod starter_content;
 pub mod state;

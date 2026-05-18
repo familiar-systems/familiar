@@ -12,7 +12,7 @@ import type {
   SystemEntry,
 } from "@familiar-systems/types-campaign";
 import { useEffect, useMemo, useState } from "react";
-import { CampaignApiError, fetchCatalog, initializeCampaign } from "../../lib/campaigns-api";
+import { campaignClient } from "../../lib/campaigns-api";
 import { StepName } from "./StepName";
 import { StepPrivacy } from "./StepPrivacy";
 import { StepRail } from "./StepRail";
@@ -56,13 +56,15 @@ export function CampaignWizard({
   // the catalog" briefly when they reach step 2.
   useEffect(() => {
     let cancelled = false;
-    fetchCatalog(locale)
-      .then((cat) => {
-        if (!cancelled) setCatalog(cat);
-      })
-      .catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : "catalog fetch failed";
-        if (!cancelled) setErrorMessage(`Catalog unavailable: ${msg}`);
+    campaignClient
+      .GET("/catalog/systems", { params: { query: { locale } } })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data) {
+          setErrorMessage("Catalog unavailable");
+          return;
+        }
+        setCatalog(data);
       });
     return () => {
       cancelled = true;
@@ -134,14 +136,16 @@ export function CampaignWizard({
       audio,
       evals_enabled: evalsEnabled,
     };
-    try {
-      await initializeCampaign(campaignId, body);
-      onDone();
-    } catch (e) {
-      const msg = e instanceof CampaignApiError ? e.message : "Seal failed; please try again.";
-      setErrorMessage(msg);
+    const { error } = await campaignClient.POST("/campaign/{id}/initialize", {
+      params: { path: { id: campaignId } },
+      body,
+    });
+    if (error) {
+      setErrorMessage(error.error ?? "Seal failed; please try again.");
       setSealState("cracked");
+      return;
     }
+    onDone();
   };
 
   return (

@@ -445,10 +445,12 @@ description = "Regenerate all TS bindings from Rust: ts-rs (via test:rust) + Ope
 # that imports its component schemas from the ts-rs output, then format.
 depends = ["test:rust"]
 run = """
-mkdir -p packages/types-app/openapi
+mkdir -p packages/types-app/openapi packages/types-campaign/openapi
 cargo run -p familiar-systems-platform --bin emit-openapi > packages/types-app/openapi/platform.json
+cargo run -p familiar-systems-campaign --bin emit-openapi-campaign > packages/types-campaign/openapi/campaign.json
 pnpm --filter @familiar-systems/openapi-codegen run generate:platform
-pnpm exec oxfmt packages/types-app/openapi packages/types-app/src/openapi
+pnpm --filter @familiar-systems/openapi-codegen run generate:campaign
+pnpm exec oxfmt packages/types-app/openapi packages/types-app/src/openapi packages/types-campaign/openapi packages/types-campaign/src/openapi
 """
 sources = [
   "apps/platform/**/*.rs",
@@ -464,6 +466,8 @@ sources = [
 outputs = [
   "packages/types-app/openapi/platform.json",
   "packages/types-app/src/openapi/platform.ts",
+  "packages/types-campaign/openapi/campaign.json",
+  "packages/types-campaign/src/openapi/campaign.ts",
 ]
 
 # --- clean ---

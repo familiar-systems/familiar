@@ -3,6 +3,11 @@ name = "familiar-systems-campaign"
 version = "0.0.0"
 edition.workspace = true
 publish = false
+default-run = "familiar-systems-campaign"
+
+[[bin]]
+name = "emit-openapi-campaign"
+path = "src/bin/emit-openapi.rs"
 
 [dependencies]
 axum = { workspace = true }
@@ -31,6 +36,8 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 ulid = { workspace = true }
+utoipa = { workspace = true }
+utoipa-axum = { workspace = true }
 
 [dev-dependencies]
 serial_test = "3.4.0"

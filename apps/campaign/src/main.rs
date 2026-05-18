@@ -4,7 +4,7 @@ use familiar_systems_campaign::{
     config::Config,
     db::register_sqlite_vec,
     error::StartupError,
-    routes::serve_router,
+    router::serve_router,
     starter_content::catalog::Catalog,
     state::AppState,
 };

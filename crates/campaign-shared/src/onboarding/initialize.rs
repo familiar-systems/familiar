@@ -7,13 +7,14 @@
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use utoipa::ToSchema;
 
 /// Audio capture / training mode chosen during the wizard.
 ///
 /// Three states modeled as a sum type, not a `bool` pair, so the FE
 /// can't accidentally produce "no recording but train on it" or other
 /// nonsense combinations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/onboarding/")]
 #[serde(rename_all = "kebab-case")]
 pub enum AudioMode {
@@ -26,7 +27,7 @@ pub enum AudioMode {
     TextOnly,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/onboarding/")]
 pub struct InitializeRequest {
     /// Opaque display label for the campaign's game system. The wizard
@@ -49,7 +50,7 @@ pub struct InitializeRequest {
 /// Returned on the deliberate failure path of v0. The FE renders `error`
 /// inline and surfaces `campaign_id` so the user can find their (broken)
 /// campaign back in the hub.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/onboarding/")]
 pub struct InitializeErrorResponse {
     pub error: String,

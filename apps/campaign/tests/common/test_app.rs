@@ -1,6 +1,6 @@
 use familiar_systems_campaign::{
     actors::registry::CampaignRegistry, clients::platform_internal::PlatformInternalClient,
-    config::Config, db::register_sqlite_vec, routes::serve_router, starter_content::Catalog,
+    config::Config, db::register_sqlite_vec, router::serve_router, starter_content::Catalog,
     state::AppState,
 };
 use kameo::actor::{ActorRef, Spawn};

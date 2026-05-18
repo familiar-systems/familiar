@@ -10,9 +10,3 @@ serde.workspace = true
 ts-rs.workspace = true
 utoipa.workspace = true
 
-# `utoipa` is not textually imported here. `#[fs_id]` expands to
-# `#[derive(::utoipa::ToSchema)]`, and utoipa's derive output references
-# `utoipa::*` paths that bind to this crate's namespace. cargo-machete only
-# does a textual scan, so tell it the dep is intentional.
-[package.metadata.cargo-machete]
-ignored = ["utoipa"]
