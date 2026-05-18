@@ -3,7 +3,7 @@
 #   docker build -f apps/site/Dockerfile -t familiar-systems-site .
 
 # -- Stage 1: Build ----------------------------------------------------------
-FROM node:24-slim AS build
+FROM node:26-slim AS build
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -39,7 +39,7 @@ ENV PUBLIC_APP_URL=$PUBLIC_APP_URL
 RUN pnpm --filter @familiar-systems/site build
 
 # -- Stage 2: Serve -----------------------------------------------------------
-FROM nginx:1.30-alpine
+FROM nginx:1.31-alpine
 
 COPY apps/site/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/site/dist/ /usr/share/nginx/html/
