@@ -51,6 +51,6 @@ envsubst < "${PREVIEW_DIR}/kustomization.yaml" > "${PREVIEW_DIR}/kustomization.y
 mv "${PREVIEW_DIR}/kustomization.yaml.tmp" "${PREVIEW_DIR}/kustomization.yaml"
 
 echo "==> Building preview overlay..."
-kubectl kustomize "$PREVIEW_DIR" | kubectl apply --server-side -f -
+kubectl kustomize "$PREVIEW_DIR" | kubectl apply --server-side --force-conflicts -f -
 
 echo "==> Preview applied to namespace ${NAMESPACE}"
