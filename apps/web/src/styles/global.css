@@ -22,3 +22,19 @@
 @utility enter-from-below {
   @apply motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4 motion-safe:duration-700;
 }
+
+@keyframes ember-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(184 149 48 / 0.55);
+  }
+  60% {
+    box-shadow: 0 0 0 6px rgb(184 149 48 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(184 149 48 / 0);
+  }
+}
+
+@utility ember-dot {
+  animation: ember-pulse 2.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}

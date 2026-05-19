@@ -64,7 +64,7 @@ interface PopulatedHubProps {
 function PopulatedHub({ campaigns }: PopulatedHubProps): React.ReactElement {
   const { state, create } = useCreateCampaign();
   return (
-    <section className="mx-auto w-full max-w-6xl px-8 pt-24 pb-32">
+    <section className="mx-auto w-full max-w-5xl px-8 pt-24 pb-32">
       <header className="mb-16 flex flex-col items-center gap-6 text-center">
         <span className="block text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase enter-from-below">
           Welcome back
@@ -89,10 +89,7 @@ function PopulatedHub({ campaigns }: PopulatedHubProps): React.ReactElement {
           </p>
         ) : null}
       </header>
-      <div
-        data-testid="campaign-list"
-        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
-      >
+      <div data-testid="campaign-list" className="grid grid-cols-1 gap-5 md:grid-cols-2">
         {campaigns.map((c) => (
           <CampaignCard key={c.id} campaign={c} />
         ))}
