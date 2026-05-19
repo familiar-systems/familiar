@@ -3,19 +3,12 @@
 Provisions:
   - k3s cluster on Hetzner (production + preview)
   - Scaleway Container Registry + Secrets Manager
+  - Hetzner Object Storage (S3-compatible)
 
+Kubernetes resources are managed by Kustomize (infra/k8s/), not Pulumi.
 See cloud.py for shared Hetzner + Scaleway resources.
 See k3s_cluster.py for the K3sCluster ComponentResource.
 See config.py for shared constants.
-
-The k8s Provider authenticates with a static long-lived ServiceAccount
-bearer token built from three byte-stable inputs (floating IP, cluster CA,
-SA token), all sourced from Scaleway SM. The Provider's kubeconfig string
-is therefore stable across `pulumi up` runs, which prevents the cascade
-that would otherwise replace every k8s resource on credential change.
-The SA, RoleBinding, and token-Secret are bootstrapped via cloud-init for
-fresh clusters and via `scripts/bootstrap-pulumi-admin.sh` for existing
-clusters.
 """
 
 import pulumi
@@ -24,7 +17,6 @@ import cloud as fs_cloud
 import config as fs_config
 import object_storage as fs_object_storage
 from k3s_cluster import K3sCluster
-from k8s import create_k8s_resources
 
 # ---------------------------------------------------------------------------
 # k3s cluster
@@ -41,43 +33,6 @@ k3s = K3sCluster(
 )
 
 # ---------------------------------------------------------------------------
-# k8s Provider kubeconfig (built from SM inputs, byte-stable forever)
-# ---------------------------------------------------------------------------
-# All three inputs are read at deploy time and never change unless an operator
-# deliberately rotates them, so Pulumi's diff sees the same string on every
-# run and the Provider is never replaced.
-_pulumi_admin_token = fs_config.read_secret("k3s-pulumi-admin-token")
-_cluster_ca_b64 = fs_config.read_secret("k3s-cluster-ca")
-
-_static_kubeconfig: pulumi.Output[str] = pulumi.Output.all(
-    floating_ip=fs_cloud.floating_ip.ip_address,
-    ca=_cluster_ca_b64,
-    token=_pulumi_admin_token,
-).apply(
-    lambda args: _build_token_kubeconfig(
-        floating_ip=str(args["floating_ip"]),  # pyright: ignore[reportAny]
-        ca_b64=str(args["ca"]),  # pyright: ignore[reportAny]
-        token=str(args["token"]),  # pyright: ignore[reportAny]
-    )
-)
-
-# ---------------------------------------------------------------------------
-# Kubernetes resources on the k3s cluster
-# ---------------------------------------------------------------------------
-create_k8s_resources(
-    kubeconfig=_static_kubeconfig,
-    node_name=k3s.node_name,
-    registry=fs_cloud.registry,
-    bunny_api_key=fs_config.read_secret("bunny-api-key"),
-    registry_pull_key=fs_cloud.registry_pull_api_key.secret_key,
-    acme_email=fs_config.config.require("acme-email"),
-    # Operator-managed via `scw secret version create`; Pulumi reads
-    # revision="latest" at apply time. See infra/pulumi-cloud/CLAUDE.md
-    # "Rotation: internal-bearer-prod".
-    internal_bearer_primary=fs_config.read_secret("internal-bearer-prod"),
-)
-
-# ---------------------------------------------------------------------------
 # Exports
 # ---------------------------------------------------------------------------
 # Scaleway
@@ -91,8 +46,6 @@ pulumi.export("k3s_floating_ip", fs_cloud.floating_ip.ip_address)
 pulumi.export("k3s_server_ip", k3s.server_ip)
 
 # Object Storage (Hetzner Object Storage in hel1, S3-compatible).
-# Bucket names are static; access-key IDs come from the SM-bootstrapped
-# credentials and are non-sensitive (public half of the pair).
 pulumi.export("object_storage_endpoint", fs_object_storage.OBJECT_STORAGE_ENDPOINT)
 pulumi.export("object_storage_prod_bucket", fs_object_storage.PROD_BUCKET_NAME)
 pulumi.export("object_storage_preview_bucket", fs_object_storage.PREVIEW_BUCKET_NAME)
@@ -100,26 +53,3 @@ pulumi.export("object_storage_prod_access_key_id", fs_object_storage.prod_access
 pulumi.export("object_storage_preview_access_key_id", fs_object_storage.preview_access_key_id)
 pulumi.export("object_storage_preview_seed_access_key_id", fs_object_storage.seed_access_key_id)
 pulumi.export("object_storage_operator_access_key_id", fs_object_storage.operator_access_key_id)
-
-
-def _build_token_kubeconfig(*, floating_ip: str, ca_b64: str, token: str) -> str:
-    """Build a token-based kubeconfig YAML string from byte-stable inputs."""
-    return f"""\
-apiVersion: v1
-kind: Config
-clusters:
-  - name: k3s-loreweaver
-    cluster:
-      server: https://{floating_ip}:6443
-      certificate-authority-data: {ca_b64}
-contexts:
-  - name: default
-    context:
-      cluster: k3s-loreweaver
-      user: pulumi-admin
-current-context: default
-users:
-  - name: pulumi-admin
-    user:
-      token: {token}
-"""

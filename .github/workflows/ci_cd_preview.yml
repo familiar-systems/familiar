@@ -91,7 +91,9 @@ jobs:
             package.json
             pnpm-lock.yaml
             pnpm-workspace.yaml
-            infra/k8s/preview/**
+            infra/k8s/base/**
+            infra/k8s/overlays/preview/**
+            infra/k8s/scripts/**
             .github/actions/**
             .github/workflows/ci_cd_preview.yml
 
@@ -199,6 +201,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install_args: kubectl
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+
       - uses: ./.github/actions/setup-scw
         with:
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
@@ -230,27 +237,14 @@ jobs:
 
           SHA="${GITHUB_SHA:0:7}"
 
-          # Template variables consumed by envsubst in infra/k8s/preview/*.yaml.
-          # Every PR shares two apex hosts - preview.familiar.systems (marketing)
-          # and app.preview.familiar.systems (SPA + API + campaign). The PR
-          # number appears only in the path prefix, not in the host. Ingress
-          # manifests reference ${PR_NUMBER} to build path + StripPrefix values.
           export NAMESPACE="preview-pr-${PR_NUMBER}"
           export PR_NUMBER="${PR_NUMBER}"
 
-          # Image tags - deterministic from PR number + short SHA
           export SITE_IMAGE="${REGISTRY}/site:pr-${PR_NUMBER}-${SHA}"
           export WEB_IMAGE="${REGISTRY}/web:pr-${PR_NUMBER}-${SHA}"
           export PLATFORM_IMAGE="${REGISTRY}/platform:pr-${PR_NUMBER}-${SHA}"
           export CAMPAIGN_IMAGE="${REGISTRY}/campaign:pr-${PR_NUMBER}-${SHA}"
 
-          # Docker registry auth for imagePullSecret (scaleway-registry).
-          # Each derived value is masked because it embeds SCW_SECRET_KEY
-          # (DOCKER_AUTH = base64(nologin:KEY)). GitHub auto-masks raw
-          # secrets.* values; anything we compute from a secret in shell
-          # must be marked explicitly or it surfaces in logs on script
-          # failure. Removed entirely once PR-Sec-6 lands and the
-          # cluster-wide pull secret replaces this path.
           DOCKER_AUTH=$(printf 'nologin:%s' "$SCW_SECRET_KEY" | base64 -w0)
           echo "::add-mask::$DOCKER_AUTH"
           DOCKERCONFIG_JSON=$(printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$DOCKER_AUTH")
@@ -259,38 +253,14 @@ jobs:
           echo "::add-mask::$DOCKERCONFIG_B64"
           export DOCKERCONFIG_B64
 
-          # Same masking discipline applies to the bearer: fetch-scw-secret
-          # returns the decoded value, but k8s Secret manifests carry data:
-          # base64-encoded, so we re-encode here. INTERNAL_BEARER_VALUE is
-          # already masked by the fetch action.
           INTERNAL_BEARER_PRIMARY_B64=$(printf '%s' "$INTERNAL_BEARER_VALUE" | base64 -w0)
           echo "::add-mask::$INTERNAL_BEARER_PRIMARY_B64"
           export INTERNAL_BEARER_PRIMARY_B64
 
-          # sha256 of the bearer, used by the pod-template checksum
-          # annotation in {platform,campaign}-deployment.yaml. Changing the
-          # bearer in SM (via `pulumi up --target-replace`) changes this
-          # hash, which changes the annotation, which forces a Deployment
-          # roll so pods pick up the new envFrom value. The hash itself
-          # leaks no information about the bearer (sha256 of a high-entropy
-          # random string), so no ::add-mask:: is needed; leaving it
-          # visible in logs aids debugging of rollouts.
           INTERNAL_BEARER_CHECKSUM=$(printf '%s' "$INTERNAL_BEARER_VALUE" | sha256sum | awk '{print $1}')
           export INTERNAL_BEARER_CHECKSUM
 
-          # Apply order: namespace and shared Secrets first; PVs/PVCs and
-          # NetworkPolicies before the pods that need them; then
-          # Deployments + their Services and Ingresses.
-          for manifest in namespace registry-pull-secret internal-bearer-secret \
-                          platform-pv platform-pvc \
-                          campaign-pv campaign-pvc \
-                          platform-networkpolicy campaign-networkpolicy \
-                          site-deployment site-service site-ingress \
-                          web-deployment web-service web-ingress \
-                          platform-deployment platform-service platform-ingress \
-                          campaign-deployment campaign-service campaign-ingress; do
-            envsubst < "infra/k8s/preview/${manifest}.yaml" | kubectl apply -f -
-          done
+          infra/k8s/scripts/apply-preview.sh
 
           kubectl -n "$NAMESPACE" rollout status deployment/site --timeout=180s
           kubectl -n "$NAMESPACE" rollout status deployment/web --timeout=180s

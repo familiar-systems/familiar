@@ -32,9 +32,16 @@ jobs:
         with:
           sparse-checkout: |
             .github/actions
-            infra/k8s/preview
+            infra/k8s/overlays/preview/cleanup
+            mise.toml
+            mise.lock
           sparse-checkout-cone-mode: false
           persist-credentials: false
+
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install_args: kubectl
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
 
       - uses: ./.github/actions/setup-scw
         with:
@@ -66,7 +73,7 @@ jobs:
           # PV on stale data. See platform-hostpath-cleanup-job.yaml for the
           # Job manifest + reasoning.
           export PR_NUMBER
-          JOB_NAME="$(envsubst < infra/k8s/preview/platform-hostpath-cleanup-job.yaml \
+          JOB_NAME="$(envsubst < infra/k8s/overlays/preview/cleanup/platform-hostpath-cleanup-job.yaml \
             | kubectl create -f - -o jsonpath='{.metadata.name}')"
           echo "Created hostpath-cleanup Job ${JOB_NAME}; waiting for completion..."
           kubectl wait --for=condition=complete --timeout=120s \

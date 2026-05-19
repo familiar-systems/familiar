@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site
+spec:
+  template:
+    spec:
+      containers:
+        - name: site
+          image: ${SITE_IMAGE}
+          imagePullPolicy: Always
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      containers:
+        - name: web
+          image: ${WEB_IMAGE}
+          imagePullPolicy: Always
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform
+spec:
+  template:
+    metadata:
+      annotations:
+        checksum/internal-bearer: ${INTERNAL_BEARER_CHECKSUM}
+    spec:
+      containers:
+        - name: platform
+          image: ${PLATFORM_IMAGE}
+          imagePullPolicy: Always
+          env:
+            - name: HANKO_API_URL
+              value: ${HANKO_API_URL_DEV}
+            - name: CORS_ORIGINS
+              value: https://app.preview.familiar.systems
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: campaign
+spec:
+  template:
+    metadata:
+      annotations:
+        checksum/internal-bearer: ${INTERNAL_BEARER_CHECKSUM}
+    spec:
+      containers:
+        - name: campaign
+          image: ${CAMPAIGN_IMAGE}
+          imagePullPolicy: Always

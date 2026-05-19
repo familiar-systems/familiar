@@ -1,0 +1,5 @@
+groupName: com.bunny.webhook
+bunny:
+  apiKeySecretRef:
+    name: bunny-api-key
+    key: api-key

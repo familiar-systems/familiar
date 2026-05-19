@@ -11,6 +11,7 @@ rust = { version = "latest", profile = 'default', components = "rust-analyzer,ru
 python = "3.14"
 uv = "latest"
 actionlint = "latest"
+kubectl = "latest"
 kubeconform = "latest"
 caddy = "latest"
 zizmor = "latest"
@@ -314,16 +315,49 @@ sources = [
 ]
 
 [tasks."lint:k8s"]
-description = "Validate Kubernetes YAML manifests against schemas with kubeconform"
-# Core K8s schemas come from the default location. CRD schemas (e.g. Traefik's
-# Middleware) come from the datreeio/CRDs-catalog, the community-maintained
-# JSON-schema mirror. The `{% raw %}` block keeps mise's tera templater away
-# from kubeconform's own `{{.Group}}`-style placeholders in the URL.
+description = "Build and validate Kustomize overlays (prod + preview) against Kubernetes schemas"
+# Validates the *assembled* output, not raw files. Base manifests are
+# intentionally incomplete (patches add required fields), and preview
+# templates contain ${VAR} placeholders that aren't valid YAML values.
+# Building first catches kustomization errors; piping to kubeconform
+# catches schema violations in the final output.
+#
+# Preview is validated by envsubst-ing dummy values, building the
+# overlay, and running the same kubeconform pipeline. No real secrets
+# are involved; the dummy values are structurally valid base64/sha256.
+#
+# CRD schemas (cert-manager, Traefik Middleware) come from the
+# datreeio/CRDs-catalog. The `{% raw %}` block keeps mise's tera
+# templater away from kubeconform's `{{.Group}}`-style placeholders.
 run = """
-{% raw %}kubeconform -strict -summary \
+{% raw %}KUBECONFORM_ARGS="-strict -summary \
   -schema-location default \
-  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-  infra/k8s/{% endraw %}
+  -schema-location https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
+
+echo "==> Validating prod overlay..."
+kubectl kustomize infra/k8s/overlays/prod | kubeconform $KUBECONFORM_ARGS
+
+echo "==> Validating preview overlay (dummy values)..."
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
+cp -r infra/k8s/base infra/k8s/overlays "$WORK_DIR/"
+
+export NAMESPACE=preview-pr-0
+export PR_NUMBER=0
+export SITE_IMAGE=registry/site:test
+export WEB_IMAGE=registry/web:test
+export PLATFORM_IMAGE=registry/platform:test
+export CAMPAIGN_IMAGE=registry/campaign:test
+export DOCKERCONFIG_B64=dGVzdA==
+export INTERNAL_BEARER_PRIMARY_B64=dGVzdA==
+export INTERNAL_BEARER_CHECKSUM=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+export HANKO_API_URL_DEV=https://auth.test.example.com
+
+for f in $(find "$WORK_DIR/overlays/preview" -name '*.yaml'); do
+  envsubst < "$f" > "${f}.tmp" && mv "${f}.tmp" "$f"
+done
+
+kubectl kustomize "$WORK_DIR/overlays/preview" | kubeconform $KUBECONFORM_ARGS{% endraw %}
 """
 
 # --- format ---
