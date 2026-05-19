@@ -5,16 +5,16 @@ description = "familiar.systems cloud infrastructure"
 requires-python = ">=3.12"
 dependencies = [
   "click>=8",
-  "pydantic>=2",
-  "pulumi>=3",
-  "pulumi-hcloud>=1",
+  "pydantic>=2.13.4",
+  "pulumi>=3.237.0",
+  "pulumi-hcloud>=1.34.0",
   "pulumi-command>=1",
-  "pulumiverse-scaleway>=1",
+  "pulumiverse-scaleway>=1.48.1",
   "pulumi-minio>=0.16,<1",
 ]
 
 [dependency-groups]
-dev = ["ruff>=0.11", "basedpyright>=1"]
+dev = ["ruff>=0.11", "basedpyright>=1.39.4"]
 
 [build-system]
 requires = ["hatchling"]
