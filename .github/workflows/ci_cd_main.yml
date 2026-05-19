@@ -185,8 +185,10 @@ jobs:
         if: steps.changes.outputs.any_changed != 'true'
         run: |
           docker buildx imagetools create \
-            -t "${{ env.REGISTRY }}/${{ matrix.target }}:${{ env.DEPLOY_SHA }}" \
-            "${{ env.REGISTRY }}/${{ matrix.target }}:latest"
+            -t "${REGISTRY}/${TARGET}:${DEPLOY_SHA}" \
+            "${REGISTRY}/${TARGET}:latest"
+        env:
+          TARGET: ${{ matrix.target }}
 
       - name: Clean up old images
         if: steps.changes.outputs.any_changed == 'true'
