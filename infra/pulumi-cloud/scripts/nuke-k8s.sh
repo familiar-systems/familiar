@@ -113,74 +113,78 @@ fi
 # ---------------------------------------------------------------------------
 # Phase 2: Remove k8s resources from Pulumi state
 # ---------------------------------------------------------------------------
-echo "==> Exporting Pulumi state..."
-STATE=$(pulumi stack export) || {
-    echo "ERROR: Failed to export Pulumi state." >&2
-    exit 1
+
+collect_k8s_urns() {
+    local state
+    state=$(pulumi stack export) || {
+        echo "ERROR: Failed to export Pulumi state." >&2
+        exit 1
+    }
+    echo "${state}" | jq -r '
+        .deployment.resources[]
+        | select(
+            (.type | startswith("kubernetes:"))
+            or (.type == "pulumi:providers:kubernetes")
+            or (.type == "command:remote:Command" and (.urn | contains("kubeconfig")))
+            or (.urn | contains("kubeconfig-version"))
+        )
+        | .urn
+    '
 }
 
-# Collect URNs in deletion order:
-#   1. k8s resources (workloads, secrets, namespaces, CRDs, Helm releases)
-#   2. k8s provider
-#   3. kubeconfig command + Scaleway secret version (so both get recreated)
-K8S_URNS=$(echo "${STATE}" | jq -r '
-    .deployment.resources[]
-    | select(.type | startswith("kubernetes:"))
-    | .urn
-')
+echo "==> Scanning Pulumi state for k8s resources..."
+INITIAL_URNS=$(collect_k8s_urns)
 
-PROVIDER_URNS=$(echo "${STATE}" | jq -r '
-    .deployment.resources[]
-    | select(.type == "pulumi:providers:kubernetes")
-    | .urn
-')
-
-KUBECONFIG_URNS=$(echo "${STATE}" | jq -r '
-    .deployment.resources[]
-    | select(
-        (.type == "command:remote:Command" and (.urn | contains("kubeconfig")))
-        or (.urn | contains("kubeconfig-version"))
-    )
-    | .urn
-')
-
-# Merge into ordered array
-ALL_URNS=()
-while IFS= read -r urn; do [[ -n "${urn}" ]] && ALL_URNS+=("${urn}"); done <<< "${K8S_URNS}"
-while IFS= read -r urn; do [[ -n "${urn}" ]] && ALL_URNS+=("${urn}"); done <<< "${PROVIDER_URNS}"
-while IFS= read -r urn; do [[ -n "${urn}" ]] && ALL_URNS+=("${urn}"); done <<< "${KUBECONFIG_URNS}"
-
-if [[ ${#ALL_URNS[@]} -eq 0 ]]; then
+if [[ -z "${INITIAL_URNS}" ]]; then
     echo "No k8s resources found in Pulumi state. Nothing to do."
     exit 0
 fi
 
-echo "==> Found ${#ALL_URNS[@]} resources to remove from state:"
-for urn in "${ALL_URNS[@]}"; do
-    # Print just the resource name (last segment of URN)
+echo "==> Found resources to remove:"
+while IFS= read -r urn; do
     echo "    ${urn##*::}"
-done
+done <<< "${INITIAL_URNS}"
 
-echo ""
-read -rp "Proceed with state cleanup? [y/N] " confirm
-if [[ "${confirm}" != [yY] ]]; then
-    echo "Aborted."
-    exit 1
+if [[ -t 0 ]]; then
+    echo ""
+    read -rp "Proceed with state cleanup? [y/N] " confirm
+    if [[ "${confirm}" != [yY] ]]; then
+        echo "Aborted."
+        exit 1
+    fi
+else
+    echo ""
+    echo "Non-interactive mode, proceeding..."
 fi
 
-FAILED=0
-for urn in "${ALL_URNS[@]}"; do
-    name="${urn##*::}"
-    if pulumi state delete --force -y "${urn}" 2>/dev/null; then
-        echo "  Removed: ${name}"
-    else
-        echo "  Skipped: ${name} (not found or already removed)"
-        ((FAILED++)) || true
+# Loop until no k8s resources remain. Each pass re-exports fresh state
+# because deleting a resource can invalidate URNs from the prior snapshot
+# (parent-child relationships, Helm release children, provider dependencies).
+TOTAL_REMOVED=0
+PASS=0
+while true; do
+    URNS=$(collect_k8s_urns)
+    if [[ -z "${URNS}" ]]; then
+        break
     fi
+
+    ((PASS++)) || true
+    if [[ ${PASS} -gt 5 ]]; then
+        echo "ERROR: Still have k8s resources after 5 passes. Remaining:" >&2
+        echo "${URNS}" | while IFS= read -r urn; do echo "    ${urn##*::}"; done >&2
+        exit 1
+    fi
+
+    [[ ${PASS} -gt 1 ]] && echo "==> Pass ${PASS} (re-scanning after state changes)..."
+
+    while IFS= read -r urn; do
+        name="${urn##*::}"
+        if pulumi state delete --force --target-dependents -y "${urn}"; then
+            echo "  Removed: ${name}"
+            ((TOTAL_REMOVED++)) || true
+        fi
+    done <<< "${URNS}"
 done
 
 echo ""
-echo "==> Done. Removed $((${#ALL_URNS[@]} - FAILED))/${#ALL_URNS[@]} resources."
-echo ""
-echo "Next step:"
-echo "  pulumi up    # Recreates k8s provider, kubeconfig, and all k8s resources"
+echo "==> Done. Removed ${TOTAL_REMOVED} resources in ${PASS} pass(es)."

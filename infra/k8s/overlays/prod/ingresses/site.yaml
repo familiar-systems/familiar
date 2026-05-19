@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v1.31.0/ingress-networking-v1.json
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: site
+  namespace: default
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  tls:
+    - hosts:
+        - loreweaver.no
+      secretName: preview-wildcard-tls
+    - hosts:
+        - familiar.systems
+      secretName: preview-wildcard-tls
+    - hosts:
+        - preview.loreweaver.no
+      secretName: preview-wildcard-tls
+    - hosts:
+        - preview.familiar.systems
+      secretName: preview-wildcard-tls
+  rules:
+    - host: loreweaver.no
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: site
+                port:
+                  number: 80
+    - host: familiar.systems
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: site
+                port:
+                  number: 80
+    - host: preview.loreweaver.no
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: site
+                port:
+                  number: 80
+    - host: preview.familiar.systems
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: site
+                port:
+                  number: 80

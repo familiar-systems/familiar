@@ -173,5 +173,6 @@ runcmd:
     curl -sfL https://get.k3s.io |
     INSTALL_K3S_EXEC="{tls_sans}
     --data-dir /data/k3s
-    --node-external-ip {fip}" sh -
+    --node-external-ip {fip}
+    --node-label node-role.familiar.systems/role=platform" sh -
 """

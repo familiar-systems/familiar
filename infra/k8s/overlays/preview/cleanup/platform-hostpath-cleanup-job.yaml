@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: platform-hostpath-cleanup-pr-${PR_NUMBER}-
+  namespace: default
+  labels:
+    app: platform-hostpath-cleanup
+    pr: "${PR_NUMBER}"
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: platform-hostpath-cleanup
+        pr: "${PR_NUMBER}"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: rm
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - rm -rf "/host-data/preview-pr-${PR_NUMBER}"
+          volumeMounts:
+            - name: host
+              mountPath: /host-data
+      volumes:
+        - name: host
+          hostPath:
+            path: /data/preview
+            type: DirectoryOrCreate

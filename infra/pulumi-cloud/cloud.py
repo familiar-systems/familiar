@@ -2,7 +2,7 @@
 
 Shared infrastructure: SSH keys, firewall, Scaleway Container Registry,
 and Scaleway Secrets Manager entries. The k3s cluster (k3s_cluster.py)
-and Kubernetes resources (k8s.py) build on these.
+builds on these. Kubernetes resources are managed by Kustomize (infra/k8s/).
 """
 
 import pulumi

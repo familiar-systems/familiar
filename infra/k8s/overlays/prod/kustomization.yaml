@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization.json
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: default
+
+resources:
+  - ../../base
+  # cert-manager CRDs (requires cert-manager Helm release pre-installed)
+  - cert/cluster-issuer-prod.yaml
+  - cert/cluster-issuer-staging.yaml
+  - cert/certificate.yaml
+  # Traefik middleware
+  - middleware/strip-api-prefix.yaml
+  # Persistent storage (HostPath on Hetzner Volume)
+  - storage/platform-pv.yaml
+  - storage/platform-pvc.yaml
+  - storage/campaign-pv.yaml
+  - storage/campaign-pvc.yaml
+  # Ingress rules (prod domains)
+  - ingresses/site.yaml
+  - ingresses/web.yaml
+  - ingresses/platform.yaml
+  - ingresses/campaign.yaml
+
+patches:
+  - path: patches/deployments.yaml

@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.familiar.systems/role: platform
+      containers:
+        - name: site
+          imagePullPolicy: IfNotPresent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.familiar.systems/role: platform
+      containers:
+        - name: web
+          imagePullPolicy: IfNotPresent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.familiar.systems/role: platform
+      containers:
+        - name: platform
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: HANKO_API_URL
+              value: https://auth.familiar.systems
+            - name: CORS_ORIGINS
+              value: https://app.familiar.systems
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: campaign
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.familiar.systems/role: platform
+      containers:
+        - name: campaign
+          imagePullPolicy: IfNotPresent

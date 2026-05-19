@@ -108,7 +108,7 @@ jobs:
 
       - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
-          install_args: "npm:pnpm"
+          install_args: "npm:pnpm kubectl"
           # Production release path opts out of GHA cache because the cache
           # is cross-branch readable and a poisoned PR cache could seed a
           # main build. Preview builds keep caching for speed.
@@ -125,20 +125,22 @@ jobs:
         with:
           files: ${{ matrix.paths }}
 
-      - name: Wait for Infrastructure workflow
+      - name: Wait for Infrastructure workflows
         if: steps.changes.outputs.any_changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RUN_ID=$(gh run list --workflow=infra.yml --commit="$DEPLOY_SHA" --json databaseId --jq '.[0].databaseId // empty')
+          for workflow in infra.yml k8s.yml; do
+            RUN_ID=$(gh run list --workflow="$workflow" --commit="$DEPLOY_SHA" --json databaseId --jq '.[0].databaseId // empty')
 
-          if [ -z "$RUN_ID" ]; then
-            echo "No Infrastructure run for this SHA, proceeding"
-            exit 0
-          fi
+            if [ -z "$RUN_ID" ]; then
+              echo "No ${workflow} run for this SHA, proceeding"
+              continue
+            fi
 
-          echo "Waiting for Infrastructure run $RUN_ID..."
-          gh run watch "$RUN_ID" --exit-status
+            echo "Waiting for ${workflow} run $RUN_ID..."
+            gh run watch "$RUN_ID" --exit-status
+          done
 
       - uses: ./.github/actions/setup-scw
         if: steps.changes.outputs.any_changed == 'true'
