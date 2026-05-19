@@ -1,13 +1,17 @@
 name: CI + Deploy
 
-# Push-to-main pipeline: runs CI (via the reusable _ci.yml), then deploys
-# if CI passed. The `needs: ci` dependency on `build-and-deploy` is the
-# entire CI-gating mechanism - no `workflow_run`, no inter-workflow
-# coordination, just standard job-level ordering within one workflow.
+# Push-to-main pipeline: CI -> build images -> apply k8s manifests.
+#
+# Three sequential phases, all in one workflow:
+#   1. ci        - reusable _ci.yml (lint, test, typecheck, k8s validation)
+#   2. build     - per-target image build+push (path-filtered matrix)
+#   3. apply-k8s - resolve image tags, sync secrets, kustomize apply
+#
+# The single-workflow design eliminates the race condition between image
+# builds and manifest applies that existed when k8s.yml was separate.
 #
 # Counterpart: ci_cd_preview.yml runs the same CI on PRs and deploys to
-# the preview environment. Each PR commit and each main commit is the
-# entry point to one consolidated lifecycle, not two parallel workflows.
+# the preview environment.
 
 on:
   push:
@@ -51,7 +55,7 @@ jobs:
   ci:
     uses: ./.github/workflows/_ci.yml
 
-  build-and-deploy:
+  build:
     needs: ci
     runs-on: ubuntu-latest
     env:
@@ -108,7 +112,7 @@ jobs:
 
       - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
-          install_args: "npm:pnpm kubectl"
+          install_args: "npm:pnpm"
           # Production release path opts out of GHA cache because the cache
           # is cross-branch readable and a poisoned PR cache could seed a
           # main build. Preview builds keep caching for speed.
@@ -124,23 +128,6 @@ jobs:
         uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
         with:
           files: ${{ matrix.paths }}
-
-      - name: Wait for Infrastructure workflows
-        if: steps.changes.outputs.any_changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for workflow in infra.yml k8s.yml; do
-            RUN_ID=$(gh run list --workflow="$workflow" --commit="$DEPLOY_SHA" --json databaseId --jq '.[0].databaseId // empty')
-
-            if [ -z "$RUN_ID" ]; then
-              echo "No ${workflow} run for this SHA, proceeding"
-              continue
-            fi
-
-            echo "Waiting for ${workflow} run $RUN_ID..."
-            gh run watch "$RUN_ID" --exit-status
-          done
 
       - uses: ./.github/actions/setup-scw
         if: steps.changes.outputs.any_changed == 'true'
@@ -198,37 +185,6 @@ jobs:
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           gha-cache: "false"
 
-      - uses: ./.github/actions/fetch-scw-secret
-        if: steps.changes.outputs.any_changed == 'true'
-        id: kubeconfig
-        with:
-          secret-name: k3s-kubeconfig
-
-      - name: Deploy to cluster
-        if: steps.changes.outputs.any_changed == 'true'
-        # The Deployment-exists guard lets brand-new targets (campaign,
-        # today) land their image before the Pulumi PR that creates the
-        # Deployment resource. Benign for site/web/platform: their
-        # Deployments exist, the if-branch always takes the true path.
-        run: |
-          echo "${STEPS_KUBECONFIG_OUTPUTS_VALUE}" > /tmp/kubeconfig.yaml
-          if kubectl get deployment/${{ matrix.target }} \
-               --kubeconfig /tmp/kubeconfig.yaml --namespace default >/dev/null 2>&1; then
-            kubectl set image deployment/${{ matrix.target }} \
-              "${{ matrix.target }}=${{ env.REGISTRY }}/${{ matrix.target }}:$DEPLOY_SHA" \
-              --kubeconfig /tmp/kubeconfig.yaml \
-              --namespace default
-            kubectl rollout status deployment/${{ matrix.target }} \
-              --kubeconfig /tmp/kubeconfig.yaml \
-              --namespace default \
-              --timeout=120s
-          else
-            echo "Deployment/${{ matrix.target }} not yet provisioned. Image built and pushed; rollout skipped."
-          fi
-          rm /tmp/kubeconfig.yaml
-        env:
-          STEPS_KUBECONFIG_OUTPUTS_VALUE: ${{ steps.kubeconfig.outputs.value }}
-
       - name: Clean up old images
         if: steps.changes.outputs.any_changed == 'true'
         run: |
@@ -247,3 +203,119 @@ jobs:
               echo "Deleting old tag $TAG_ID"
               scw registry tag delete "$TAG_ID"
             done
+
+  # ── Declarative k8s apply ─────────────────────────────
+  # Runs after CI and image builds. Resolves the correct image tag per
+  # target (SHA if we built one, currently-deployed tag if we didn't),
+  # then applies the full kustomize overlay in one shot. This replaces
+  # the old kubectl-set-image approach and the separate k8s.yml workflow,
+  # eliminating the race between manifest apply and image update.
+  apply-k8s:
+    needs: [ci, build]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: apply-k8s-prod
+      cancel-in-progress: false
+    env:
+      DEPLOY_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install_args: kubectl
+          cache: false
+
+      - uses: ./.github/actions/setup-scw
+        with:
+          access-key: ${{ secrets.SCW_ACCESS_KEY }}
+          secret-key: ${{ secrets.SCW_SECRET_KEY }}
+          default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+          registry-login: true
+
+      - uses: ./.github/actions/fetch-scw-secret
+        id: kubeconfig
+        with:
+          secret-name: k3s-kubeconfig
+
+      - name: Resolve image tags
+        id: tags
+        env:
+          KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
+        run: |
+          echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
+
+          resolve_tag() {
+            local target="$1"
+            if docker manifest inspect "$REGISTRY/$target:$DEPLOY_SHA" >/dev/null 2>&1; then
+              echo "$DEPLOY_SHA"
+            else
+              local current
+              current=$(kubectl get deployment/"$target" \
+                --kubeconfig /tmp/kubeconfig.yaml --namespace default \
+                -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+              local tag="${current##*:}"
+              if [ -z "$tag" ] || [ "$tag" = "$current" ]; then
+                echo "latest"
+              else
+                echo "$tag"
+              fi
+            fi
+          }
+
+          for target in site web platform campaign; do
+            TAG=$(resolve_tag "$target")
+            echo "${target}_tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "$target -> $TAG"
+          done
+
+      - name: Sync secrets and apply manifests
+        env:
+          KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
+          SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          SITE_TAG: ${{ steps.tags.outputs.site_tag }}
+          WEB_TAG: ${{ steps.tags.outputs.web_tag }}
+          PLATFORM_TAG: ${{ steps.tags.outputs.platform_tag }}
+          CAMPAIGN_TAG: ${{ steps.tags.outputs.campaign_tag }}
+        run: |
+          echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
+          export KUBECONFIG=/tmp/kubeconfig.yaml
+
+          infra/k8s/scripts/sync-prod-secrets.sh
+
+          cat >> infra/k8s/overlays/prod/kustomization.yaml <<EOF
+
+          images:
+            - name: rg.fr-par.scw.cloud/loreweaver/site
+              newTag: "${SITE_TAG}"
+            - name: rg.fr-par.scw.cloud/loreweaver/web
+              newTag: "${WEB_TAG}"
+            - name: rg.fr-par.scw.cloud/loreweaver/platform
+              newTag: "${PLATFORM_TAG}"
+            - name: rg.fr-par.scw.cloud/loreweaver/campaign
+              newTag: "${CAMPAIGN_TAG}"
+          EOF
+
+          echo "==> Kustomize overlay with image overrides:"
+          cat infra/k8s/overlays/prod/kustomization.yaml
+
+          echo "==> Dry run..."
+          kubectl kustomize infra/k8s/overlays/prod \
+            | kubectl apply --server-side --force-conflicts --dry-run=server -f -
+
+          echo "==> Applying..."
+          kubectl kustomize infra/k8s/overlays/prod \
+            | kubectl apply --server-side --force-conflicts -f -
+
+          for deploy in site web platform campaign; do
+            if kubectl get "deployment/${deploy}" --namespace default >/dev/null 2>&1; then
+              kubectl rollout status "deployment/${deploy}" --namespace default --timeout=120s
+            else
+              echo "Deployment/${deploy} not yet provisioned, skipping rollout wait"
+            fi
+          done
+
+          rm /tmp/kubeconfig.yaml
