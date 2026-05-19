@@ -2,13 +2,10 @@ name: CI + Deploy
 
 # Push-to-main pipeline: CI -> build images -> apply k8s manifests.
 #
-# Three sequential phases, all in one workflow:
+# Three sequential phases:
 #   1. ci        - reusable _ci.yml (lint, test, typecheck, k8s validation)
 #   2. build     - per-target image build+push (path-filtered matrix)
-#   3. apply-k8s - resolve image tags, sync secrets, kustomize apply
-#
-# The single-workflow design eliminates the race condition between image
-# builds and manifest applies that existed when k8s.yml was separate.
+#   3. apply-k8s - sync secrets, kustomize apply with SHA-tagged images
 #
 # Counterpart: ci_cd_preview.yml runs the same CI on PRs and deploys to
 # the preview environment.
@@ -130,7 +127,6 @@ jobs:
           files: ${{ matrix.paths }}
 
       - uses: ./.github/actions/setup-scw
-        if: steps.changes.outputs.any_changed == 'true'
         with:
           access-key: ${{ secrets.SCW_ACCESS_KEY }}
           secret-key: ${{ secrets.SCW_SECRET_KEY }}
@@ -185,6 +181,13 @@ jobs:
             ${{ env.REGISTRY }}/${{ matrix.target }}:latest
           gha-cache: "false"
 
+      - name: Ensure SHA tag exists
+        if: steps.changes.outputs.any_changed != 'true'
+        run: |
+          docker buildx imagetools create \
+            -t "${{ env.REGISTRY }}/${{ matrix.target }}:${{ env.DEPLOY_SHA }}" \
+            "${{ env.REGISTRY }}/${{ matrix.target }}:latest"
+
       - name: Clean up old images
         if: steps.changes.outputs.any_changed == 'true'
         run: |
@@ -205,11 +208,6 @@ jobs:
             done
 
   # ── Declarative k8s apply ─────────────────────────────
-  # Runs after CI and image builds. Resolves the correct image tag per
-  # target (SHA if we built one, currently-deployed tag if we didn't),
-  # then applies the full kustomize overlay in one shot. This replaces
-  # the old kubectl-set-image approach and the separate k8s.yml workflow,
-  # eliminating the race between manifest apply and image update.
   apply-k8s:
     needs: [ci, build]
     runs-on: ubuntu-latest
@@ -234,52 +232,16 @@ jobs:
           secret-key: ${{ secrets.SCW_SECRET_KEY }}
           default-project-id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
           default-organization-id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
-          registry-login: true
 
       - uses: ./.github/actions/fetch-scw-secret
         id: kubeconfig
         with:
           secret-name: k3s-kubeconfig
 
-      - name: Resolve image tags
-        id: tags
-        env:
-          KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
-        run: |
-          echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
-
-          resolve_tag() {
-            local target="$1"
-            if docker manifest inspect "$REGISTRY/$target:$DEPLOY_SHA" >/dev/null 2>&1; then
-              echo "$DEPLOY_SHA"
-            else
-              local current
-              current=$(kubectl get deployment/"$target" \
-                --kubeconfig /tmp/kubeconfig.yaml --namespace default \
-                -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
-              local tag="${current##*:}"
-              if [ -z "$tag" ] || [ "$tag" = "$current" ]; then
-                echo "latest"
-              else
-                echo "$tag"
-              fi
-            fi
-          }
-
-          for target in site web platform campaign; do
-            TAG=$(resolve_tag "$target")
-            echo "${target}_tag=$TAG" >> "$GITHUB_OUTPUT"
-            echo "$target -> $TAG"
-          done
-
       - name: Sync secrets and apply manifests
         env:
           KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
           SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
-          SITE_TAG: ${{ steps.tags.outputs.site_tag }}
-          WEB_TAG: ${{ steps.tags.outputs.web_tag }}
-          PLATFORM_TAG: ${{ steps.tags.outputs.platform_tag }}
-          CAMPAIGN_TAG: ${{ steps.tags.outputs.campaign_tag }}
         run: |
           echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
           export KUBECONFIG=/tmp/kubeconfig.yaml
@@ -290,13 +252,13 @@ jobs:
 
           images:
             - name: rg.fr-par.scw.cloud/loreweaver/site
-              newTag: "${SITE_TAG}"
+              newTag: "${DEPLOY_SHA}"
             - name: rg.fr-par.scw.cloud/loreweaver/web
-              newTag: "${WEB_TAG}"
+              newTag: "${DEPLOY_SHA}"
             - name: rg.fr-par.scw.cloud/loreweaver/platform
-              newTag: "${PLATFORM_TAG}"
+              newTag: "${DEPLOY_SHA}"
             - name: rg.fr-par.scw.cloud/loreweaver/campaign
-              newTag: "${CAMPAIGN_TAG}"
+              newTag: "${DEPLOY_SHA}"
           EOF
 
           echo "==> Kustomize overlay with image overrides:"
