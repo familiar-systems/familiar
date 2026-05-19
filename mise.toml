@@ -11,6 +11,7 @@ rust = { version = "latest", profile = 'default', components = "rust-analyzer,ru
 python = "3.14"
 uv = "latest"
 actionlint = "latest"
+helm = "latest"
 kubectl = "latest"
 kubeconform = "latest"
 caddy = "latest"
