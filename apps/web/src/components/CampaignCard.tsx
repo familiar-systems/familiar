@@ -85,7 +85,7 @@ function GraphPaperCard({ state, campaignId }: GraphPaperCardProps): React.React
         </p>
         <p className="max-w-65 font-display text-[15px] text-muted-foreground italic">
           {isDraft
-            ? "Campaign still on the drafting table."
+            ? "An empty sheet lays at the desk. Your mind swims with possibilities."
             : "Something went wrong. Click to retry."}
         </p>
       </div>
