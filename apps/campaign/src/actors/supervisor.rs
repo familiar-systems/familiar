@@ -13,15 +13,17 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use familiar_systems_app_shared::id::CampaignId;
+use familiar_systems_app_shared::id::{CampaignId, UserId};
 use kameo::actor::{ActorRef, WeakActorRef};
 use kameo::error::ActorStopReason;
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
 
 use crate::actors::database_writer::{
-    InitializeCampaignError, InitializeCampaignResult, InitializeCampaignSetup,
+    GetMetadata, InitializeCampaignError, InitializeCampaignResult, InitializeCampaignSetup,
+    MetadataError,
 };
+use crate::entities::campaign_metadata;
 use crate::error::InitError;
 use crate::persistence::{CampaignDatabase, CampaignStore};
 
@@ -68,6 +70,7 @@ impl Message<SetStopCause> for CampaignSupervisor {
 
 pub struct CampaignSupervisorArgs {
     pub campaign_id: CampaignId,
+    pub owner_user_id: UserId,
     pub store: Arc<dyn CampaignStore>,
     pub idle_timeout: Duration,
     pub eviction_check_interval: Duration,
@@ -81,7 +84,9 @@ impl Actor for CampaignSupervisor {
         let span = tracing::info_span!("campaign_supervisor", campaign_id = %args.campaign_id.0);
         let _guard = span.enter();
 
-        let db = CampaignDatabase::checkout(args.store.as_ref(), &args.campaign_id).await?;
+        let db =
+            CampaignDatabase::checkout(args.store.as_ref(), &args.campaign_id, &args.owner_user_id)
+                .await?;
 
         tracing::info!("campaign ready");
 
@@ -220,6 +225,34 @@ impl Message<InitializeCampaign> for CampaignSupervisor {
 }
 
 // ---------------------------------------------------------------------------
+// GetMetadata
+// ---------------------------------------------------------------------------
+
+impl Message<GetMetadata> for CampaignSupervisor {
+    type Reply = Result<campaign_metadata::Model, MetadataError>;
+
+    async fn handle(
+        &mut self,
+        _: GetMetadata,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        let db = self
+            .db
+            .as_ref()
+            .expect("db must be Some while actor is running");
+        match db.writer().ask(GetMetadata).await {
+            Ok(model) => Ok(model),
+            Err(kameo::error::SendError::HandlerError(e)) => Err(e),
+            Err(e) => {
+                tracing::error!(error = %e, "database actor unavailable for metadata read");
+                Err(MetadataError::ActorUnavailable)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Ping (health check / test)
 // ---------------------------------------------------------------------------
 
@@ -279,6 +312,7 @@ mod tests {
     ) -> CampaignSupervisorArgs {
         CampaignSupervisorArgs {
             campaign_id,
+            owner_user_id: UserId::generate(),
             store,
             idle_timeout: Duration::from_millis(idle_ms),
             eviction_check_interval: Duration::from_millis(check_ms),

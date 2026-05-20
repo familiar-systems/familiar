@@ -1,3 +1,4 @@
+use familiar_systems_app_shared::auth::HankoSessionValidator;
 use familiar_systems_campaign::{
     actors::registry::{BeginDrain, CampaignRegistry},
     clients::platform_internal::PlatformInternalClient,
@@ -20,6 +21,7 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 async fn main() -> Result<(), StartupError> {
     init_tracing();
     let config = Arc::new(Config::from_env());
+    let validator = Arc::new(HankoSessionValidator::new(config.hanko_api_url.clone()));
     let catalog = Arc::new(Catalog::load_from_embedded().map_err(StartupError::Catalog)?);
     let platform_internal =
         PlatformInternalClient::new(config.platform_url.clone(), &config.internal_bearer_primary);
@@ -38,6 +40,7 @@ async fn main() -> Result<(), StartupError> {
 
     let state = AppState {
         config: config.clone(),
+        validator,
         catalog,
         platform_internal,
         registry: registry.clone(),

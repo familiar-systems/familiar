@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use chrono::Utc;
-use familiar_systems_app_shared::id::CampaignId;
+use familiar_systems_app_shared::id::{CampaignId, UserId};
 use kameo::actor::{ActorRef, Spawn};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use sea_orm_migration::MigratorTrait;
@@ -27,6 +27,7 @@ impl CampaignDatabase {
     pub async fn checkout(
         store: &dyn CampaignStore,
         campaign_id: &CampaignId,
+        owner_user_id: &UserId,
     ) -> Result<Self, InitError> {
         let started = Instant::now();
         tracing::info!("checking out campaign database");
@@ -61,6 +62,7 @@ impl CampaignDatabase {
             campaign_metadata::ActiveModel {
                 id: Set(1),
                 campaign_id: Set(campaign_id.clone().into()),
+                owner_user_id: Set(owner_user_id.0.to_string()),
                 name: Set("Untitled".into()),
                 tagline: Set(None),
                 game_system: Set(None),

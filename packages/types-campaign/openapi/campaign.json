@@ -10,6 +10,50 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/campaign/{id}": {
+      "get": {
+        "tags": ["campaign"],
+        "operationId": "get_campaign",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Campaign metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignMetadataResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Not the campaign owner"
+          },
+          "404": {
+            "description": "Campaign not on this shard"
+          },
+          "500": {
+            "description": "Internal error"
+          },
+          "503": {
+            "description": "Server restarting"
+          }
+        }
+      }
+    },
     "/campaign/{id}/initialize": {
       "post": {
         "tags": ["campaign"],
@@ -38,6 +82,12 @@
         "responses": {
           "200": {
             "description": "Campaign initialized"
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Not the campaign owner"
           },
           "409": {
             "description": "Already initialized"
@@ -116,6 +166,37 @@
               "$ref": "#/components/schemas/TemplateRef"
             },
             "description": "Default template bundle when BYO is selected. The BYO card's\ndisplay copy (title, body, empty-input fallback, swatch color)\nlives in the wizard frontend alongside the rest of the wizard's\nUI strings; only the bundle is catalog-maintainer configuration,\nso only the bundle ships through this struct."
+          }
+        }
+      },
+      "CampaignMetadataResponse": {
+        "type": "object",
+        "required": ["campaign_id", "name", "created_at", "updated_at"],
+        "properties": {
+          "campaign_id": {
+            "type": "string"
+          },
+          "content_locale": {
+            "type": ["string", "null"]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "game_system": {
+            "type": ["string", "null"]
+          },
+          "name": {
+            "type": "string"
+          },
+          "tagline": {
+            "type": ["string", "null"]
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "wizard_completed_at": {
+            "type": ["string", "null"],
+            "description": "ISO 8601 timestamp, present once the wizard has been completed."
           }
         }
       },

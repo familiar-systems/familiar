@@ -128,7 +128,29 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     return route.fallback();
   });
 
-  // Campaign tier: catalog + initialize.
+  // Campaign tier: metadata, catalog, initialize.
+  await page.route(`**/campaign/${CAMPAIGN_ID}`, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const row = state.campaigns.find((c) => c.id === CAMPAIGN_ID);
+    if (!row) {
+      return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        campaign_id: row.id,
+        name: row.name ?? "",
+        tagline: row.tagline,
+        game_system: row.game_system,
+        content_locale: row.content_locale,
+        wizard_completed_at: row.wizard_completed_at,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      }),
+    });
+  });
+
   await page.route("**/catalog/systems**", async (route) => {
     return route.fulfill({
       status: 200,
@@ -156,6 +178,57 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 }
+
+test("wizard success transitions to initialized campaign view", async ({ page }) => {
+  const state: MockState = { campaigns: [] };
+  await installMocks(page, state);
+
+  // Override the initialize route to succeed and mirror metadata to mock state.
+  await page.route(`**/campaign/${CAMPAIGN_ID}/initialize`, async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}") as {
+      name?: string;
+      tagline?: string | null;
+      game_system?: string;
+      content_locale?: string;
+    };
+    const row = state.campaigns.find((c) => c.id === CAMPAIGN_ID);
+    if (row) {
+      row.wizard_completed_at = new Date().toISOString();
+      row.name = body.name ?? null;
+      row.tagline = body.tagline ?? null;
+      row.game_system = body.game_system ?? null;
+      row.content_locale = body.content_locale ?? null;
+      row.updated_at = new Date().toISOString();
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("start-first-campaign").click();
+  await expect(page).toHaveURL(`/c/${CAMPAIGN_ID}`);
+  await expect(page.getByTestId("campaign-wizard")).toBeVisible();
+
+  // Step 1: name + tagline.
+  await page.getByTestId("wizard-name-input").fill("Embergrove Saga");
+  await page.getByTestId("wizard-tagline-input").fill("An autumn court, a debt come due.");
+  await page.getByTestId("wizard-next").click();
+
+  // Step 2: pick Blades.
+  await page.getByTestId("system-search-input").fill("blades");
+  await page.getByTestId("system-card-blades-in-the-dark").click();
+  await page.getByTestId("wizard-next").click();
+
+  // Step 3: privacy.
+  await page.getByTestId("audio-opt-out").click();
+  await page.getByTestId("evals-off").click();
+  await page.getByTestId("wizard-next").click();
+
+  // Step 4: seal. Should stay on the campaign, not bounce to hub.
+  await page.getByTestId("wax-seal").click();
+  await expect(page.getByTestId("campaign-placeholder")).toBeVisible();
+  await expect(page).toHaveURL(`/c/${CAMPAIGN_ID}`);
+  await expect(page.getByText("Embergrove Saga")).toBeVisible();
+});
 
 test("wizard walks through every step, fails on initialize, hub shows the badge", async ({
   page,
@@ -213,5 +286,8 @@ test("wizard walks through every step, fails on initialize, hub shows the badge"
   await page.getByRole("link", { name: "familiar.systems hub" }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByTestId(`campaign-card-${CAMPAIGN_ID}`)).toBeVisible();
-  await expect(page.getByTestId("failed-init-badge")).toBeVisible();
+  await expect(page.getByTestId(`campaign-card-${CAMPAIGN_ID}`)).toHaveAttribute(
+    "data-state",
+    "init-failed",
+  );
 });

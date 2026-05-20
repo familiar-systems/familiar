@@ -85,6 +85,7 @@ mod tests {
         campaign_metadata::ActiveModel {
             id: Set(id),
             campaign_id: Set(CampaignId::generate().into()),
+            owner_user_id: Set(String::new()),
             name: Set("Curse of Strahd".into()),
             tagline: Set(Some("Gothic horror in Barovia".into())),
             game_system: Set(None),

@@ -168,6 +168,7 @@ impl Message<EnsureCampaign> for CampaignRegistry {
 
         let supervisor = CampaignSupervisor::spawn(CampaignSupervisorArgs {
             campaign_id: msg.campaign_id.clone(),
+            owner_user_id: msg.owner_user_id.clone(),
             store: self.store.clone(),
             idle_timeout: self.idle_timeout,
             eviction_check_interval: self.eviction_check_interval,

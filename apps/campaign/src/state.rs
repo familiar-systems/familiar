@@ -2,6 +2,7 @@ use crate::{
     actors::registry::CampaignRegistry, clients::platform_internal::PlatformInternalClient,
     config::Config, starter_content::catalog::RawCatalog,
 };
+use familiar_systems_app_shared::auth::HankoSessionValidator;
 use kameo::actor::ActorRef;
 use std::sync::Arc;
 
@@ -10,6 +11,8 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
+    /// Hanko JWT validator, shared across all handlers.
+    pub validator: Arc<HankoSessionValidator>,
     /// Locale-unresolved catalog, parsed once at startup.
     pub catalog: Arc<RawCatalog>,
     /// Bearer-attached client for platform `/internal/platform/*` callbacks.

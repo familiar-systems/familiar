@@ -9,7 +9,18 @@
 
 import createClient from "openapi-fetch";
 import type { CampaignPaths } from "@familiar-systems/types-campaign";
+import { hanko } from "./hanko";
 
 const base = import.meta.env.BASE_URL;
 
 export const campaignClient = createClient<CampaignPaths>({ baseUrl: base });
+
+campaignClient.use({
+  async onRequest({ request }) {
+    const token = hanko.getSessionToken();
+    if (token) {
+      request.headers.set("Authorization", `Bearer ${token}`);
+    }
+    return request;
+  },
+});

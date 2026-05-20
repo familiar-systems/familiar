@@ -20,10 +20,12 @@
 
 mod api;
 mod domain;
+pub mod extractor;
 mod wire;
 
 pub use api::MeResponse;
 pub use domain::HankoClaims;
+pub use extractor::AuthenticatedUser;
 use std::time::Duration;
 use wire::{ValidatePayloadWire, ValidateResponseWire};
 

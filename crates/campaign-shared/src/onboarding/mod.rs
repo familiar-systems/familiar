@@ -7,3 +7,4 @@
 
 pub mod catalog;
 pub mod initialize;
+pub mod metadata;

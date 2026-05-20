@@ -4,9 +4,10 @@
 //! and sets `wizard_completed_at`. Template instantiation is deferred to
 //! a follow-up slice; the `template_slugs` field is accepted but ignored.
 
-use crate::actors::database_writer::InitializeCampaignError;
+use crate::actors::database_writer::{GetMetadata, InitializeCampaignError};
 use crate::actors::registry::GetCampaign;
 use crate::actors::supervisor::InitializeCampaign;
+use crate::middleware::auth::AuthenticatedUser;
 use crate::state::AppState;
 use axum::{
     Json,
@@ -31,11 +32,14 @@ use fs_id::Nanoid;
     request_body = InitializeRequest,
     responses(
         (status = OK, description = "Campaign initialized"),
+        (status = UNAUTHORIZED, description = "Missing or invalid session"),
+        (status = FORBIDDEN, description = "Not the campaign owner"),
         (status = 409, description = "Already initialized"),
         (status = 500, description = "Initialization failed", body = InitializeErrorResponse),
     ),
 )]
 pub async fn initialize(
+    user: AuthenticatedUser,
     State(state): State<AppState>,
     Path(campaign_id): Path<String>,
     Json(req): Json<InitializeRequest>,
@@ -79,6 +83,23 @@ pub async fn initialize(
                 .into_response();
         }
     };
+
+    match supervisor.ask(GetMetadata).await {
+        Ok(model) if model.owner_user_id != user.id.to_string() => {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+        Err(kameo::error::SendError::HandlerError(_)) | Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(InitializeErrorResponse {
+                    error: "Campaign initialization failed.".to_string(),
+                    campaign_id,
+                }),
+            )
+                .into_response();
+        }
+        Ok(_) => {}
+    }
 
     let result = match supervisor
         .ask(InitializeCampaign {

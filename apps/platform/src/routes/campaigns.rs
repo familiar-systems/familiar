@@ -7,7 +7,7 @@ use crate::{
     clients::campaign_internal::CampaignInternalError,
     entities::{campaigns, create_attempts},
     error::AppError,
-    middleware::auth::AuthenticatedUser,
+    middleware::auth::PlatformUser,
     state::AppState,
 };
 use axum::{Json, extract::State};
@@ -41,7 +41,7 @@ use sea_orm::{
     security(("bearerAuth" = [])),
 )]
 pub async fn create_campaign(
-    user: AuthenticatedUser,
+    user: PlatformUser,
     State(state): State<AppState>,
     Json(body): Json<CreateCampaignRequest>,
 ) -> Result<Json<CreateCampaignResponse>, AppError> {
@@ -143,7 +143,7 @@ pub async fn create_campaign(
     security(("bearerAuth" = [])),
 )]
 pub async fn list_campaigns(
-    user: AuthenticatedUser,
+    user: PlatformUser,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<Campaign>>, AppError> {
     let rows = campaigns::Entity::find()

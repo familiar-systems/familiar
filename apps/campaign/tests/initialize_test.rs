@@ -1,6 +1,6 @@
 mod common;
 
-use familiar_systems_app_shared::id::{CampaignId, UserId};
+use familiar_systems_app_shared::id::CampaignId;
 use familiar_systems_campaign::actors::registry::EnsureCampaign;
 use serde_json::json;
 use wiremock::{
@@ -27,7 +27,7 @@ async fn ensure_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
         .registry
         .ask(EnsureCampaign {
             campaign_id: campaign_id.clone(),
-            owner_user_id: UserId::generate(),
+            owner_user_id: common::test_user_id(),
         })
         .await
         .expect("ensure campaign");
@@ -58,6 +58,7 @@ async fn initialize_writes_metadata_and_mirrors_to_platform() {
             "{}/campaign/{}/initialize",
             app.base_url, campaign_id.0
         ))
+        .header("authorization", app.auth_header())
         .json(&valid_payload())
         .send()
         .await
@@ -85,6 +86,7 @@ async fn double_initialize_returns_409() {
 
     let first = client
         .post(&url)
+        .header("authorization", app.auth_header())
         .json(&valid_payload())
         .send()
         .await
@@ -93,6 +95,7 @@ async fn double_initialize_returns_409() {
 
     let second = client
         .post(&url)
+        .header("authorization", app.auth_header())
         .json(&valid_payload())
         .send()
         .await
@@ -109,6 +112,7 @@ async fn initialize_unknown_campaign_returns_404() {
             "{}/campaign/nonexistent-id/initialize",
             app.base_url
         ))
+        .header("authorization", app.auth_header())
         .json(&valid_payload())
         .send()
         .await
@@ -121,6 +125,7 @@ async fn initialize_rejects_malformed_body_with_4xx() {
     let app = common::spawn_app().await;
     let resp = reqwest::Client::new()
         .post(format!("{}/campaign/test-id/initialize", app.base_url))
+        .header("authorization", app.auth_header())
         .json(&json!({ "not": "valid" }))
         .send()
         .await
@@ -130,4 +135,22 @@ async fn initialize_rejects_malformed_body_with_4xx() {
         "expected 4xx for malformed body, got {}",
         resp.status()
     );
+}
+
+#[tokio::test]
+async fn initialize_without_auth_returns_401() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    ensure_campaign(&app, &campaign_id).await;
+
+    let resp = reqwest::Client::new()
+        .post(format!(
+            "{}/campaign/{}/initialize",
+            app.base_url, campaign_id.0
+        ))
+        .json(&valid_payload())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
 }

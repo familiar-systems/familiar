@@ -11,6 +11,7 @@ pub enum StorageBackend {
 pub struct Config {
     pub storage_backend: StorageBackend,
     pub port: u16,
+    pub hanko_api_url: String,
     pub campaign_data_dir: PathBuf,
     /// Shared bearer for `/internal/*` traffic. Same value used by every
     /// peer; rotation contract documented in `infra/pulumi-cloud/CLAUDE.md`.
@@ -58,6 +59,10 @@ impl Config {
                 panic!("CAMPAIGN_STORAGE_BACKEND must be \"local\" or \"s3\", got \"{other}\"")
             }
         };
+        let hanko_api_url = std::env::var("HANKO_API_URL").expect(
+            "HANKO_API_URL is required. \
+             Set it in mise.toml [tasks.\"dev:campaign\"].env or in the deployment manifest.",
+        );
         let port: u16 = std::env::var("PORT")
             .expect(
                 "PORT is required. Set it in mise.toml [tasks.\"dev:campaign\"].env or in the deployment manifest.",
@@ -95,6 +100,7 @@ impl Config {
         Self {
             storage_backend,
             port,
+            hanko_api_url,
             campaign_data_dir,
             internal_bearer_primary,
             internal_bearer_secondary,
@@ -128,6 +134,7 @@ mod tests {
         vec![
             ("CAMPAIGN_STORAGE_BACKEND", "local"),
             ("PORT", "3001"),
+            ("HANKO_API_URL", "https://x.hanko.io"),
             ("CAMPAIGN_DATA_DIR", "data/dev-campaigns"),
             ("INTERNAL_BEARER_PRIMARY", "primary"),
             ("PLATFORM_URL", "http://localhost:3000"),
@@ -142,6 +149,7 @@ mod tests {
         with_env(&full_env(), || {
             let c = Config::from_env();
             assert_eq!(c.storage_backend, StorageBackend::Local);
+            assert_eq!(c.hanko_api_url, "https://x.hanko.io");
             assert_eq!(c.port, 3001);
             assert_eq!(c.campaign_data_dir, PathBuf::from("data/dev-campaigns"));
             assert_eq!(c.internal_bearer_primary, "primary");
@@ -198,6 +206,18 @@ mod tests {
         let mut env = with_partial_env("CAMPAIGN_STORAGE_BACKEND");
         env.push(("CAMPAIGN_STORAGE_BACKEND", "gcs"));
         with_env(&env, || {
+            let _ = Config::from_env();
+        });
+    }
+
+    #[test]
+    #[serial]
+    #[should_panic(expected = "HANKO_API_URL is required")]
+    fn panics_on_missing_hanko_api_url() {
+        unsafe {
+            std::env::remove_var("HANKO_API_URL");
+        }
+        with_env(&with_partial_env("HANKO_API_URL"), || {
             let _ = Config::from_env();
         });
     }

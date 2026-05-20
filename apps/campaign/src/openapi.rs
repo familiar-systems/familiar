@@ -14,6 +14,7 @@
 use crate::routes::catalog::*;
 use crate::routes::health::*;
 use crate::routes::initialize::*;
+use crate::routes::metadata::*;
 use crate::state::AppState;
 use familiar_systems_campaign_shared::onboarding::catalog::{
     ByoEntry, CatalogResponse, SystemEntry, TemplateRef,
@@ -21,6 +22,7 @@ use familiar_systems_campaign_shared::onboarding::catalog::{
 use familiar_systems_campaign_shared::onboarding::initialize::{
     AudioMode, InitializeErrorResponse, InitializeRequest,
 };
+use familiar_systems_campaign_shared::onboarding::metadata::CampaignMetadataResponse;
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -40,6 +42,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
         InitializeRequest,
         InitializeErrorResponse,
         AudioMode,
+        CampaignMetadataResponse,
     ))
 )]
 pub struct ApiDoc;
@@ -49,4 +52,5 @@ pub fn api_router() -> OpenApiRouter<AppState> {
         .routes(routes!(health))
         .routes(routes!(list_systems))
         .routes(routes!(initialize))
+        .routes(routes!(get_campaign))
 }

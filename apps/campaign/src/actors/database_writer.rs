@@ -123,6 +123,8 @@ pub enum MetadataError {
     NoMetadataRow,
     #[error("database error: {0}")]
     Db(#[from] sea_orm::DbErr),
+    #[error("database actor unavailable")]
+    ActorUnavailable,
 }
 
 impl Message<GetMetadata> for DatabaseActor {
@@ -179,6 +181,7 @@ mod tests {
         campaign_metadata::ActiveModel {
             id: Set(1),
             campaign_id: Set(campaign_id.clone().into()),
+            owner_user_id: Set(String::new()),
             name: Set("Untitled".into()),
             tagline: Set(None),
             game_system: Set(None),

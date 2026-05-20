@@ -19,6 +19,7 @@ export type { TemplateRef } from "./generated/onboarding/TemplateRef";
 export type { InitializeRequest } from "./generated/onboarding/InitializeRequest";
 export type { InitializeErrorResponse } from "./generated/onboarding/InitializeErrorResponse";
 export type { AudioMode } from "./generated/onboarding/AudioMode";
+export type { CampaignMetadataResponse } from "./generated/onboarding/CampaignMetadataResponse";
 
 // `paths` describes every route the campaign server exposes. Generated
 // from utoipa's OpenAPI spec; component schemas resolve back to the

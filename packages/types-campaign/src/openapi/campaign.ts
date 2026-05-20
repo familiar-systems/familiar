@@ -5,6 +5,7 @@
 import type {
   AudioMode,
   ByoEntry,
+  CampaignMetadataResponse,
   CatalogResponse,
   InitializeErrorResponse,
   InitializeRequest,
@@ -12,6 +13,22 @@ import type {
   TemplateRef,
 } from "@familiar-systems/types-campaign";
 export interface paths {
+  "/campaign/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["get_campaign"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/campaign/{id}/initialize": {
     parameters: {
       query?: never;
@@ -84,6 +101,7 @@ export interface components {
      */
     AudioMode: AudioMode;
     ByoEntry: ByoEntry;
+    CampaignMetadataResponse: CampaignMetadataResponse;
     CatalogResponse: CatalogResponse;
     /**
      * @description Returned on the deliberate failure path of v0. The FE renders `error`
@@ -103,6 +121,64 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  get_campaign: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Campaign metadata */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CampaignMetadataResponse"];
+        };
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not the campaign owner */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not on this shard */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   initialize: {
     parameters: {
       query?: never;
@@ -121,6 +197,20 @@ export interface operations {
     responses: {
       /** @description Campaign initialized */
       200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not the campaign owner */
+      403: {
         headers: {
           [name: string]: unknown;
         };
