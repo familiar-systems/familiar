@@ -17,8 +17,8 @@ use sea_orm::{ActiveValue::Set, EntityTrait};
 
 /// `POST /internal/platform/campaigns/<id>/metadata`: mirror campaign
 /// metadata from the campaign tier onto the platform's routing row. Called
-/// after a successful wizard seal so the hub list can render campaign names
-/// without per-shard fan-out.
+/// after a successful campaign initialization so the hub list can render
+/// campaign names without per-shard fan-out.
 pub async fn report_metadata(
     State(state): State<AppState>,
     Path(campaign_id): Path<String>,

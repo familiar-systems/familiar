@@ -1,6 +1,6 @@
 // Campaign route. v0 thin slice: only shows the wizard. Once the wizard
-// seals (or fails), the user navigates back to the hub via the wizard's
-// own "Back to hub" affordance.
+// initializes (or fails), the user navigates back to the hub via the
+// wizard's own "Back to hub" affordance.
 
 import { campaignIdSchema, type Campaign } from "@familiar-systems/types-app";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -62,7 +62,7 @@ function CampaignPage(): React.ReactElement {
   }
 
   if (load.campaign.wizard_completed_at !== null) {
-    // Sealed campaigns get a placeholder view; the next slice replaces
+    // Initialized campaigns get a placeholder view; the next slice replaces
     // this with the real campaign editor.
     return (
       <section
@@ -73,7 +73,7 @@ function CampaignPage(): React.ReactElement {
           {load.campaign.name ?? "Untitled campaign"}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Sealed at {load.campaign.wizard_completed_at}. The campaign editor lands in the next
+          Initialized at {load.campaign.wizard_completed_at}. The campaign editor lands in the next
           slice.
         </p>
       </section>

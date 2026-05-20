@@ -1,12 +1,12 @@
-//! `POST /campaign/<id>/initialize` -- wizard Seal handler.
+//! `POST /campaign/<id>/initialize` -- campaign initialization handler.
 //!
 //! Writes campaign metadata (name, tagline, game_system, content_locale)
 //! and sets `wizard_completed_at`. Template instantiation is deferred to
 //! a follow-up slice; the `template_slugs` field is accepted but ignored.
 
-use crate::actors::database_writer::SealError;
+use crate::actors::database_writer::InitializeCampaignError;
 use crate::actors::registry::GetCampaign;
-use crate::actors::supervisor::SealCampaign;
+use crate::actors::supervisor::InitializeCampaign;
 use crate::state::AppState;
 use axum::{
     Json,
@@ -81,7 +81,7 @@ pub async fn initialize(
     };
 
     let result = match supervisor
-        .ask(SealCampaign {
+        .ask(InitializeCampaign {
             name: req.name.clone(),
             tagline: req.tagline.clone(),
             game_system: req.game_system.clone(),
@@ -90,7 +90,7 @@ pub async fn initialize(
         .await
     {
         Ok(result) => result,
-        Err(kameo::error::SendError::HandlerError(SealError::AlreadySealed)) => {
+        Err(kameo::error::SendError::HandlerError(InitializeCampaignError::AlreadyInitialized)) => {
             return (
                 StatusCode::CONFLICT,
                 Json(InitializeErrorResponse {
@@ -101,7 +101,7 @@ pub async fn initialize(
                 .into_response();
         }
         Err(kameo::error::SendError::HandlerError(e)) => {
-            tracing::error!(error = %e, "seal failed");
+            tracing::error!(error = %e, "initialization failed");
             report_failure(&state, &campaign_id, &e.to_string()).await;
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -113,7 +113,7 @@ pub async fn initialize(
                 .into_response();
         }
         Err(e) => {
-            tracing::error!(error = %e, "supervisor unreachable during seal");
+            tracing::error!(error = %e, "supervisor unreachable during initialization");
             report_failure(&state, &campaign_id, "supervisor_unreachable").await;
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -141,7 +141,7 @@ pub async fn initialize(
         tracing::warn!(
             campaign_id = %campaign_id,
             error = %e,
-            "platform metadata mirror callback failed; seal succeeded anyway"
+            "platform metadata mirror callback failed; initialization succeeded anyway"
         );
     }
 

@@ -47,7 +47,7 @@ impl PlatformInternalClient {
     }
 
     /// `POST /internal/platform/campaigns/<id>/metadata`: mirrors campaign
-    /// metadata onto the platform's routing row after a successful wizard seal.
+    /// metadata onto the platform's routing row after a successful campaign initialization.
     pub async fn report_metadata(
         &self,
         campaign_id: &str,

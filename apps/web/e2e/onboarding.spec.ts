@@ -4,7 +4,7 @@ import { type Page, expect, test } from "@playwright/test";
 //
 // The platform mints a campaign id, the SPA navigates into the campaign,
 // the wizard fetches the catalog, the user walks through the four steps,
-// and pressing Seal triggers the campaign tier's deliberate 500. The
+// and pressing the seal triggers the campaign tier's deliberate 500. The
 // post-failure hub renders the campaign with an "init failed" badge.
 //
 // All network calls are stubbed: this test does not need a running
@@ -157,7 +157,9 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
   });
 }
 
-test("wizard walks through every step, fails on seal, hub shows the badge", async ({ page }) => {
+test("wizard walks through every step, fails on initialize, hub shows the badge", async ({
+  page,
+}) => {
   const state: MockState = { campaigns: [] };
   await installMocks(page, state);
 
@@ -193,7 +195,7 @@ test("wizard walks through every step, fails on seal, hub shows the badge", asyn
   await expect(page.getByTestId("wizard-next")).toBeEnabled();
   await page.getByTestId("wizard-next").click();
 
-  // Step 4: review + seal.
+  // Step 4: review + initialize.
   await expect(page.getByTestId("review-summary")).toBeVisible();
   await expect(page.getByTestId("wax-seal")).toHaveAttribute("data-state", "idle");
 

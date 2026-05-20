@@ -1,9 +1,10 @@
 // Orchestrating component for the new-campaign wizard.
 //
-// State is entirely client-side until the user presses the seal. On Seal
-// we fire one `POST /campaign/<id>/initialize`. In v0 the campaign tier
-// deliberately fails this call; the FE renders that failure inline and
-// leaves the wizard mounted so the user can navigate back to the hub.
+// State is entirely client-side until the user initializes the campaign.
+// On initialize we fire one `POST /campaign/<id>/initialize`. In v0 the
+// campaign tier deliberately fails this call; the FE renders that failure
+// inline and leaves the wizard mounted so the user can navigate back to
+// the hub.
 
 import type {
   AudioMode,
@@ -118,10 +119,10 @@ export function CampaignWizard({
     }
   }, [pick]);
 
-  const onSeal = async (): Promise<void> => {
+  const onInitializeCampaign = async (): Promise<void> => {
     if (systemDisplay === null || audio === null || evalsEnabled === null) {
-      // Should be unreachable since canAdvance gates the seal step, but
-      // guard so we never POST a partial payload.
+      // Should be unreachable since canAdvance gates the initialization step,
+      // but guard so we never POST a partial payload.
       setErrorMessage("Wizard payload incomplete; please review each step.");
       return;
     }
@@ -141,7 +142,7 @@ export function CampaignWizard({
       body,
     });
     if (error) {
-      setErrorMessage(error.error ?? "Seal failed; please try again.");
+      setErrorMessage(error.error ?? "Initialization failed; please try again.");
       setSealState("cracked");
       return;
     }
@@ -198,8 +199,8 @@ export function CampaignWizard({
             sealState={sealState}
             errorMessage={errorMessage}
             locale={locale}
-            onSeal={() => {
-              void onSeal();
+            onInitializeCampaign={() => {
+              void onInitializeCampaign();
             }}
             onBack={() => {
               setSealState("idle");

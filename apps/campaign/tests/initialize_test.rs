@@ -34,7 +34,7 @@ async fn ensure_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
 }
 
 #[tokio::test]
-async fn seal_writes_metadata_and_mirrors_to_platform() {
+async fn initialize_writes_metadata_and_mirrors_to_platform() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
     ensure_campaign(&app, &campaign_id).await;
@@ -66,7 +66,7 @@ async fn seal_writes_metadata_and_mirrors_to_platform() {
 }
 
 #[tokio::test]
-async fn double_seal_returns_409() {
+async fn double_initialize_returns_409() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
     ensure_campaign(&app, &campaign_id).await;

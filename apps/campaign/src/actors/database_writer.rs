@@ -49,11 +49,11 @@ impl Actor for DatabaseActor {
 }
 
 // ---------------------------------------------------------------------------
-// SealWizard
+// InitializeCampaignSetup
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-pub struct SealWizard {
+pub struct InitializeCampaignSetup {
     pub name: String,
     pub tagline: Option<String>,
     pub game_system: String,
@@ -61,9 +61,9 @@ pub struct SealWizard {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum SealError {
+pub enum InitializeCampaignError {
     #[error("wizard already completed")]
-    AlreadySealed,
+    AlreadyInitialized,
     #[error("campaign metadata row missing")]
     NoMetadataRow,
     #[error("database error: {0}")]
@@ -73,25 +73,25 @@ pub enum SealError {
 }
 
 #[derive(Debug, Clone, kameo::Reply)]
-pub struct SealResult {
+pub struct InitializeCampaignResult {
     pub wizard_completed_at: DateTime<Utc>,
 }
 
-impl Message<SealWizard> for DatabaseActor {
-    type Reply = Result<SealResult, SealError>;
+impl Message<InitializeCampaignSetup> for DatabaseActor {
+    type Reply = Result<InitializeCampaignResult, InitializeCampaignError>;
 
     async fn handle(
         &mut self,
-        msg: SealWizard,
+        msg: InitializeCampaignSetup,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         let existing = campaign_metadata::Entity::find_by_id(1)
             .one(&self.conn)
             .await?
-            .ok_or(SealError::NoMetadataRow)?;
+            .ok_or(InitializeCampaignError::NoMetadataRow)?;
 
         if existing.wizard_completed_at.is_some() {
-            return Err(SealError::AlreadySealed);
+            return Err(InitializeCampaignError::AlreadyInitialized);
         }
 
         let now = Utc::now();
@@ -104,7 +104,7 @@ impl Message<SealWizard> for DatabaseActor {
         am.updated_at = Set(now);
         am.update(&self.conn).await?;
 
-        Ok(SealResult {
+        Ok(InitializeCampaignResult {
             wizard_completed_at: now,
         })
     }
@@ -206,17 +206,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn seal_wizard_writes_metadata() {
+    async fn initialize_campaign_writes_metadata() {
         let (actor, _) = spawn_with_migrations().await;
         let result = actor
-            .ask(SealWizard {
+            .ask(InitializeCampaignSetup {
                 name: "Curse of Strahd".into(),
                 tagline: Some("Gothic horror in Barovia".into()),
                 game_system: "D&D 5e".into(),
                 content_locale: "en".into(),
             })
             .await
-            .expect("seal should succeed");
+            .expect("initialize should succeed");
 
         assert!(result.wizard_completed_at <= Utc::now());
 
@@ -229,34 +229,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn seal_wizard_rejects_double_seal() {
+    async fn initialize_campaign_rejects_double_init() {
         let (actor, _) = spawn_with_migrations().await;
         actor
-            .ask(SealWizard {
+            .ask(InitializeCampaignSetup {
                 name: "First".into(),
                 tagline: None,
                 game_system: "PF2e".into(),
                 content_locale: "en".into(),
             })
             .await
-            .expect("first seal");
+            .expect("first initialize");
 
         let err = actor
-            .ask(SealWizard {
+            .ask(InitializeCampaignSetup {
                 name: "Second".into(),
                 tagline: None,
                 game_system: "Blades".into(),
                 content_locale: "en".into(),
             })
             .await
-            .expect_err("second seal should be rejected");
+            .expect_err("second initialize should be rejected");
 
         assert!(
             matches!(
                 err,
-                kameo::error::SendError::HandlerError(SealError::AlreadySealed)
+                kameo::error::SendError::HandlerError(InitializeCampaignError::AlreadyInitialized)
             ),
-            "expected AlreadySealed, got {err:?}"
+            "expected AlreadyInitialized, got {err:?}"
         );
     }
 

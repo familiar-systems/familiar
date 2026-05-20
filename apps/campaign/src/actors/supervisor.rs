@@ -19,7 +19,9 @@ use kameo::error::ActorStopReason;
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
 
-use crate::actors::database_writer::{SealError, SealResult, SealWizard};
+use crate::actors::database_writer::{
+    InitializeCampaignError, InitializeCampaignResult, InitializeCampaignSetup,
+};
 use crate::error::InitError;
 use crate::persistence::{CampaignDatabase, CampaignStore};
 
@@ -173,23 +175,23 @@ impl Message<IdleCheck> for CampaignSupervisor {
 }
 
 // ---------------------------------------------------------------------------
-// SealCampaign
+// InitializeCampaign
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-pub struct SealCampaign {
+pub struct InitializeCampaign {
     pub name: String,
     pub tagline: Option<String>,
     pub game_system: String,
     pub content_locale: String,
 }
 
-impl Message<SealCampaign> for CampaignSupervisor {
-    type Reply = Result<SealResult, SealError>;
+impl Message<InitializeCampaign> for CampaignSupervisor {
+    type Reply = Result<InitializeCampaignResult, InitializeCampaignError>;
 
     async fn handle(
         &mut self,
-        msg: SealCampaign,
+        msg: InitializeCampaign,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.last_activity = Instant::now();
@@ -199,7 +201,7 @@ impl Message<SealCampaign> for CampaignSupervisor {
             .expect("db must be Some while actor is running");
         match db
             .writer()
-            .ask(SealWizard {
+            .ask(InitializeCampaignSetup {
                 name: msg.name,
                 tagline: msg.tagline,
                 game_system: msg.game_system,
@@ -210,8 +212,8 @@ impl Message<SealCampaign> for CampaignSupervisor {
             Ok(result) => Ok(result),
             Err(kameo::error::SendError::HandlerError(e)) => Err(e),
             Err(e) => {
-                tracing::error!(error = %e, "database actor unavailable during seal");
-                Err(SealError::ActorUnavailable)
+                tracing::error!(error = %e, "database actor unavailable during initialization");
+                Err(InitializeCampaignError::ActorUnavailable)
             }
         }
     }

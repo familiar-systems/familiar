@@ -10,7 +10,7 @@ Covers `apps/campaign/` only: the `familiar-systems-campaign` Axum + kameo binar
 
 - `GET /health`: 200 `ready` when the registry is in `Phase::Ready`, 503 `draining` once drain has begun. Wired to the k8s readiness probe.
 - `GET /catalog/systems`: locale-resolved catalog of game systems and bundled template metadata. Honors `?locale=` then `Accept-Language`, falls back to `en`.
-- `POST /campaign/{id}/initialize`: wizard Seal handler. **Deliberate 500 in the thin slice.** Validates payload shape, fires `init-failed` to the platform, returns a structured error body. Real init transaction lands in a later slice.
+- `POST /campaign/{id}/initialize`: campaign initialization handler. **Deliberate 500 in the thin slice.** Validates payload shape, fires `init-failed` to the platform, returns a structured error body. Real init transaction lands in a later slice.
 - `POST /internal/campaign/init`: bearer-protected. Asks `CampaignRegistry` to ensure a supervisor exists; idempotent on `campaign_id`. Returns 200 on success, 503 during drain, 500 on init failure.
 
 CRDT room actors (Thing, ToC, AgentConversation), the WebSocket layer, the real wizard transaction, template instantiation, and object-storage checkin/checkout do not exist yet. See "Design docs" below for where each is specified.
@@ -27,7 +27,7 @@ main.rs
             └─ (future: ThingActor, TocActor, AgentConversationActor, ...)
 ```
 
-**Single-writer invariant.** The actor system owns the only `DatabaseConnection` for a given campaign. HTTP handlers reach the database by `ask`ing the registry for a supervisor, then sending messages; no handler holds a connection directly. `DatabaseActor` currently accepts only a test `Ping`; the wizard seal will land write commands here.
+**Single-writer invariant.** The actor system owns the only `DatabaseConnection` for a given campaign. HTTP handlers reach the database by `ask`ing the registry for a supervisor, then sending messages; no handler holds a connection directly. `DatabaseActor` currently accepts only a test `Ping`; initialization will land write commands here.
 
 **Lifecycle.** The registry is the only path to spawn supervisors, so storage init (create dir, open pool, run migrations) is serialized through one mailbox. Spawned supervisors are `link`ed to the registry so `on_link_died` is the authoritative removal path (covers idle eviction, crash, link death). Per-supervisor idle timer self-stops the supervisor when `last_activity` exceeds `idle_timeout`; eviction drops the supervisor from RAM and leaves the `.db` on disk (no object-storage path yet).
 
@@ -45,7 +45,7 @@ Read rustdoc at each site for detail; this table is a where-to-go index.
 | route registration, bearer-protected vs public split, full-path routes | `src/routes/mod.rs` |
 | `/internal/campaign/init` handler and status mapping | `src/routes/internal.rs` |
 | `/systems` catalog (locale resolution) | `src/routes/catalog.rs` |
-| wizard Seal handler (currently deliberate 500) | `src/routes/initialize.rs` |
+| campaign initialization handler (currently deliberate 500) | `src/routes/initialize.rs` |
 | bearer middleware | `src/middleware/internal_auth.rs` |
 | outbound campaign → platform `/internal/platform/*` client | `src/clients/platform_internal.rs` |
 | typed startup/init/ensure errors | `src/error.rs` |
@@ -112,7 +112,7 @@ The campaign tier is being built in slices. These docs spec what comes next; rea
 
 - [`docs/plans/2026-05-04-campaign-actor-domain-design.md`](../../docs/plans/2026-05-04-campaign-actor-domain-design.md): canonical actor topology, CRDT room model, supervisor phase machine including the `Restoring` phase that returns when room actors land.
 - [`docs/plans/2026-03-25-campaign-collaboration-architecture.md`](../../docs/plans/2026-03-25-campaign-collaboration-architecture.md): WebSocket protocol, checkout/checkin, scaling model.
-- [`docs/plans/2026-05-11-new-campaign-onboarding.md`](../../docs/plans/2026-05-11-new-campaign-onboarding.md): catalog, template compiler, wizard seal handler, mirror callback to the platform.
+- [`docs/plans/2026-05-11-new-campaign-onboarding.md`](../../docs/plans/2026-05-11-new-campaign-onboarding.md): catalog, template compiler, initialization handler, mirror callback to the platform.
 - [`docs/plans/2026-04-10-entity-relationship-temporal-model.md`](../../docs/plans/2026-04-10-entity-relationship-temporal-model.md): relationship schema, sessions-as-knowledge-time, retcon/supersede lifecycle.
 - [`docs/plans/2026-03-25-ai-serialization-format-v2.md`](../../docs/plans/2026-03-25-ai-serialization-format-v2.md): serialization compiler, AI tool surface.
 - [`docs/plans/2026-03-30-deployment-architecture.md`](../../docs/plans/2026-03-30-deployment-architecture.md): graceful restart, preview environments, shard topology.
