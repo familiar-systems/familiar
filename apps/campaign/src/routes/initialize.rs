@@ -72,7 +72,7 @@ pub async fn initialize(
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(InitializeErrorResponse {
-                    error: "Server is shutting down.".to_string(),
+                    error: "Server is restarting.".to_string(),
                     campaign_id,
                 }),
             )

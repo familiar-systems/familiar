@@ -68,6 +68,8 @@ pub enum SealError {
     NoMetadataRow,
     #[error("database error: {0}")]
     Db(#[from] sea_orm::DbErr),
+    #[error("database actor unavailable")]
+    ActorUnavailable,
 }
 
 #[derive(Debug, Clone, kameo::Reply)]

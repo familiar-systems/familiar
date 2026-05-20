@@ -209,7 +209,10 @@ impl Message<SealCampaign> for CampaignSupervisor {
         {
             Ok(result) => Ok(result),
             Err(kameo::error::SendError::HandlerError(e)) => Err(e),
-            Err(_) => Err(SealError::AlreadySealed),
+            Err(e) => {
+                tracing::error!(error = %e, "database actor unavailable during seal");
+                Err(SealError::ActorUnavailable)
+            }
         }
     }
 }
