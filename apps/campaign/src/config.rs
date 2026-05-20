@@ -1,8 +1,15 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StorageBackend {
+    Local,
+    S3,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub storage_backend: StorageBackend,
     pub port: u16,
     pub campaign_data_dir: PathBuf,
     /// Shared bearer for `/internal/*` traffic. Same value used by every
@@ -38,6 +45,19 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Self {
+        let storage_backend = match std::env::var("CAMPAIGN_STORAGE_BACKEND")
+            .expect(
+                "CAMPAIGN_STORAGE_BACKEND is required (\"local\" or \"s3\"). \
+                 Set it in mise.toml [tasks.\"dev:campaign\"].env or in the deployment manifest.",
+            )
+            .as_str()
+        {
+            "local" => StorageBackend::Local,
+            "s3" => StorageBackend::S3,
+            other => panic!(
+                "CAMPAIGN_STORAGE_BACKEND must be \"local\" or \"s3\", got \"{other}\""
+            ),
+        };
         let port: u16 = std::env::var("PORT")
             .expect(
                 "PORT is required. Set it in mise.toml [tasks.\"dev:campaign\"].env or in the deployment manifest.",
@@ -73,6 +93,7 @@ impl Config {
             .parse()
             .expect("CAMPAIGN_EVICTION_CHECK_INTERVAL_SECS must be a non-negative integer (seconds)");
         Self {
+            storage_backend,
             port,
             campaign_data_dir,
             internal_bearer_primary,
@@ -105,6 +126,7 @@ mod tests {
 
     fn full_env() -> Vec<(&'static str, &'static str)> {
         vec![
+            ("CAMPAIGN_STORAGE_BACKEND", "local"),
             ("PORT", "3001"),
             ("CAMPAIGN_DATA_DIR", "data/dev-campaigns"),
             ("INTERNAL_BEARER_PRIMARY", "primary"),
@@ -119,6 +141,7 @@ mod tests {
     fn reads_required_env() {
         with_env(&full_env(), || {
             let c = Config::from_env();
+            assert_eq!(c.storage_backend, StorageBackend::Local);
             assert_eq!(c.port, 3001);
             assert_eq!(c.campaign_data_dir, PathBuf::from("data/dev-campaigns"));
             assert_eq!(c.internal_bearer_primary, "primary");
@@ -142,6 +165,41 @@ mod tests {
 
     fn with_partial_env(skip: &str) -> Vec<(&'static str, &'static str)> {
         full_env().into_iter().filter(|(k, _)| *k != skip).collect()
+    }
+
+    #[test]
+    #[serial]
+    fn s3_backend_is_parsed() {
+        let mut env = full_env();
+        env.retain(|(k, _)| *k != "CAMPAIGN_STORAGE_BACKEND");
+        env.push(("CAMPAIGN_STORAGE_BACKEND", "s3"));
+        with_env(&env, || {
+            let c = Config::from_env();
+            assert_eq!(c.storage_backend, StorageBackend::S3);
+        });
+    }
+
+    #[test]
+    #[serial]
+    #[should_panic(expected = "CAMPAIGN_STORAGE_BACKEND is required")]
+    fn panics_on_missing_storage_backend() {
+        unsafe {
+            std::env::remove_var("CAMPAIGN_STORAGE_BACKEND");
+        }
+        with_env(&with_partial_env("CAMPAIGN_STORAGE_BACKEND"), || {
+            let _ = Config::from_env();
+        });
+    }
+
+    #[test]
+    #[serial]
+    #[should_panic(expected = "must be \"local\" or \"s3\"")]
+    fn panics_on_invalid_storage_backend() {
+        let mut env = with_partial_env("CAMPAIGN_STORAGE_BACKEND");
+        env.push(("CAMPAIGN_STORAGE_BACKEND", "gcs"));
+        with_env(&env, || {
+            let _ = Config::from_env();
+        });
     }
 
     #[test]

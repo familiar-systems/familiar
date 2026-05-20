@@ -1,6 +1,11 @@
 use familiar_systems_campaign::{
-    actors::registry::CampaignRegistry, clients::platform_internal::PlatformInternalClient,
-    config::Config, db::register_sqlite_vec, router::serve_router, starter_content::Catalog,
+    actors::registry::CampaignRegistry,
+    clients::platform_internal::PlatformInternalClient,
+    config::{Config, StorageBackend},
+    db::register_sqlite_vec,
+    persistence::LocalCampaignStore,
+    router::serve_router,
+    starter_content::Catalog,
     state::AppState,
 };
 use kameo::actor::{ActorRef, Spawn};
@@ -15,37 +20,32 @@ pub struct TestApp {
     pub platform: MockServer,
     pub bearer: String,
     pub data_dir: TempDir,
-    /// Live registry handle so tests can drive lifecycle (e.g. begin
-    /// drain to assert the internal routes flip to 503).
     pub registry: ActorRef<CampaignRegistry>,
 }
 
 #[allow(dead_code)]
 pub async fn spawn_app() -> TestApp {
-    // sqlite-vec registration is global and idempotent; safe to call
-    // once per test run even if multiple TestApps spawn.
     register_sqlite_vec();
-    // The campaign tier calls the platform on the deliberate-fail path, so
-    // tests need a stand-in platform to assert the callback lands. wiremock
-    // gives one with verifiable expectations per test.
     let platform = MockServer::start().await;
     let bearer = "test-internal-bearer".to_string();
     let data_dir = TempDir::new().expect("create tempdir for campaign data");
     let config = Arc::new(Config {
+        storage_backend: StorageBackend::Local,
         port: 0,
         campaign_data_dir: data_dir.path().to_path_buf(),
         internal_bearer_primary: bearer.clone(),
         internal_bearer_secondary: None,
         platform_url: platform.uri(),
-        // Long idle timeout so the supervisor doesn't evict mid-test.
         idle_timeout: Duration::from_secs(300),
         eviction_check_interval: Duration::from_secs(60),
     });
     let catalog =
         Arc::new(Catalog::load_from_embedded().expect("embedded catalog should parse in tests"));
     let platform_internal = PlatformInternalClient::new(platform.uri(), &bearer);
+    let store: Arc<dyn familiar_systems_campaign::persistence::CampaignStore> =
+        Arc::new(LocalCampaignStore::new(data_dir.path().to_path_buf()));
     let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-        config.campaign_data_dir.clone(),
+        store,
         config.idle_timeout,
         config.eviction_check_interval,
     ));

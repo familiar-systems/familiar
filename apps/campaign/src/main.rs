@@ -4,6 +4,7 @@ use familiar_systems_campaign::{
     config::Config,
     db::register_sqlite_vec,
     error::StartupError,
+    persistence,
     router::serve_router,
     starter_content::catalog::Catalog,
     state::AppState,
@@ -28,8 +29,9 @@ async fn main() -> Result<(), StartupError> {
     // automatically.
     register_sqlite_vec();
 
+    let store = persistence::store_from_config(&config);
     let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-        config.campaign_data_dir.clone(),
+        store,
         config.idle_timeout,
         config.eviction_check_interval,
     ));

@@ -7,4 +7,4 @@ import type { ThingId } from "../id/ThingId";
  * Used by CampaignVocabulary, ToC, RelationshipGraph, and anywhere
  * that needs to reference a Thing without loading its full document.
  */
-export type ThingHandle = { id: ThingId; name: string };
+export type ThingHandle = { id: ThingId, name: string, };

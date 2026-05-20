@@ -56,6 +56,10 @@ fn make_request_span(req: &Request) -> Span {
 pub fn internal_router(state: AppState) -> Router {
     Router::new()
         .route(
+            "/internal/platform/campaigns/{id}/metadata",
+            post(internal_campaigns::report_metadata),
+        )
+        .route(
             "/internal/platform/campaigns/{id}/init-failed",
             post(internal_campaigns::report_init_failed),
         )

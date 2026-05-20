@@ -8,6 +8,10 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use familiar_systems_app_shared::id::CampaignId;
+
+use crate::persistence::StoreError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum StartupError {
     /// `Catalog::load_from_embedded` returns `Result<_, String>` (parsed
@@ -44,6 +48,18 @@ pub enum InitError {
     },
     #[error("migration failed: {0}")]
     Migration(#[source] sea_orm::DbErr),
+    #[error("failed to check out campaign {campaign_id} from storage: {source}")]
+    Checkout {
+        campaign_id: CampaignId,
+        #[source]
+        source: StoreError,
+    },
+    #[error("failed to release campaign {campaign_id} to storage: {source}")]
+    Release {
+        campaign_id: CampaignId,
+        #[source]
+        source: StoreError,
+    },
 }
 
 /// Error returned by `CampaignRegistry::EnsureCampaign` to HTTP handlers.

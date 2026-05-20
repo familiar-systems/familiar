@@ -13,14 +13,4 @@ import type { CampaignId } from "../id/CampaignId";
  * attempt fails. Distinct from "no init attempt yet" (`wizard_completed_at IS NULL`
  * AND `last_init_error IS NULL`).
  */
-export type Campaign = {
-  id: CampaignId;
-  name: string | null;
-  tagline: string | null;
-  game_system: string | null;
-  content_locale: string | null;
-  last_init_error: string | null;
-  wizard_completed_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
+export type Campaign = { id: CampaignId, name: string | null, tagline: string | null, game_system: string | null, content_locale: string | null, last_init_error: string | null, wizard_completed_at: string | null, created_at: string, updated_at: string, };

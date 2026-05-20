@@ -1,12 +1,12 @@
-//! `POST /campaign/<id>/initialize` - wizard's Seal handler.
+//! `POST /campaign/<id>/initialize` -- wizard Seal handler.
 //!
-//! v0 thin slice: validates the payload shape, fires a callback to the
-//! platform's `init-failed` endpoint (exercising the bidirectional
-//! internal-API plumbing), and returns 500 with a structured body the SPA
-//! renders inline. The next slice replaces the deliberate-fail block with
-//! the real init transaction; the failure path stays as the
-//! "init-actually-broke" channel.
+//! Writes campaign metadata (name, tagline, game_system, content_locale)
+//! and sets `wizard_completed_at`. Template instantiation is deferred to
+//! a follow-up slice; the `template_slugs` field is accepted but ignored.
 
+use crate::actors::database::SealError;
+use crate::actors::registry::GetCampaign;
+use crate::actors::supervisor::SealCampaign;
 use crate::state::AppState;
 use axum::{
     Json,
@@ -14,13 +14,12 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
+use familiar_systems_app_shared::campaigns::internal::MetadataMirrorRequest;
+use familiar_systems_app_shared::id::CampaignId;
+use fs_id::Nanoid;
 use familiar_systems_campaign_shared::onboarding::initialize::{
     InitializeErrorResponse, InitializeRequest,
 };
-
-const FAILURE_REASON: &str = "deliberate_thin_slice_failure";
-const PUBLIC_ERROR: &str = "Campaign initialization is not yet wired up. \
-                            This is a known thin-slice failure.";
 
 #[utoipa::path(
     post,
@@ -32,6 +31,7 @@ const PUBLIC_ERROR: &str = "Campaign initialization is not yet wired up. \
     request_body = InitializeRequest,
     responses(
         (status = OK, description = "Campaign initialized"),
+        (status = 409, description = "Already initialized"),
         (status = 500, description = "Initialization failed", body = InitializeErrorResponse),
     ),
 )]
@@ -40,10 +40,6 @@ pub async fn initialize(
     Path(campaign_id): Path<String>,
     Json(req): Json<InitializeRequest>,
 ) -> impl IntoResponse {
-    // Light validation: empty name or unknown game_system would surface as
-    // 400 in the next slice's real handler. Today we just log so the dev
-    // logs show that the request was structurally well-formed before we
-    // deliberately fail.
     tracing::info!(
         campaign_id = %campaign_id,
         game_system = %req.game_system,
@@ -51,29 +47,115 @@ pub async fn initialize(
         template_count = req.template_slugs.len(),
         audio = ?req.audio,
         evals_enabled = req.evals_enabled,
-        "deliberate thin-slice failure on initialize"
+        "initializing campaign"
     );
 
-    // Fire the platform callback. Awaited so the platform records the
-    // failure before the SPA learns of it; if the callback itself fails,
-    // log at warn but still return the deliberate failure to the SPA.
-    // Masking the FE-visible failure with a different one defeats the
-    // point of this thin slice.
+    let supervisor = match state
+        .registry
+        .ask(GetCampaign(CampaignId::from(Nanoid::from(campaign_id.clone()))))
+        .await
+    {
+        Ok(Some(sup)) => sup,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(InitializeErrorResponse {
+                    error: "Campaign not checked out on this shard.".to_string(),
+                    campaign_id,
+                }),
+            )
+                .into_response();
+        }
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(InitializeErrorResponse {
+                    error: "Server is shutting down.".to_string(),
+                    campaign_id,
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let result = match supervisor
+        .ask(SealCampaign {
+            name: req.name.clone(),
+            tagline: req.tagline.clone(),
+            game_system: req.game_system.clone(),
+            content_locale: req.content_locale.clone(),
+        })
+        .await
+    {
+        Ok(result) => result,
+        Err(kameo::error::SendError::HandlerError(SealError::AlreadySealed)) => {
+            return (
+                StatusCode::CONFLICT,
+                Json(InitializeErrorResponse {
+                    error: "Campaign already initialized.".to_string(),
+                    campaign_id,
+                }),
+            )
+                .into_response();
+        }
+        Err(kameo::error::SendError::HandlerError(e)) => {
+            tracing::error!(error = %e, "seal failed");
+            report_failure(&state, &campaign_id, &e.to_string()).await;
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(InitializeErrorResponse {
+                    error: "Campaign initialization failed.".to_string(),
+                    campaign_id,
+                }),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "supervisor unreachable during seal");
+            report_failure(&state, &campaign_id, "supervisor_unreachable").await;
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(InitializeErrorResponse {
+                    error: "Campaign initialization failed.".to_string(),
+                    campaign_id,
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let mirror = MetadataMirrorRequest {
+        name: req.name,
+        tagline: req.tagline,
+        game_system: req.game_system,
+        content_locale: req.content_locale,
+        wizard_completed_at: result.wizard_completed_at,
+    };
     if let Err(e) = state
         .platform_internal
-        .report_init_failed(&campaign_id, FAILURE_REASON)
+        .report_metadata(&campaign_id, &mirror)
         .await
     {
         tracing::warn!(
             campaign_id = %campaign_id,
             error = %e,
-            "platform init-failed callback failed; returning thin-slice 500 anyway"
+            "platform metadata mirror callback failed; seal succeeded anyway"
         );
     }
 
-    let body = InitializeErrorResponse {
-        error: PUBLIC_ERROR.to_string(),
-        campaign_id,
-    };
-    (StatusCode::INTERNAL_SERVER_ERROR, Json(body))
+    StatusCode::OK.into_response()
+}
+
+async fn report_failure(state: &AppState, campaign_id: &str, reason: &str) {
+    if let Err(e) = state
+        .platform_internal
+        .report_init_failed(campaign_id, reason)
+        .await
+    {
+        tracing::warn!(
+            campaign_id = %campaign_id,
+            error = %e,
+            "platform init-failed callback also failed"
+        );
+    }
 }

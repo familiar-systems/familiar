@@ -86,7 +86,10 @@ mod tests {
             id: Set(id),
             campaign_id: Set(CampaignId::generate().into()),
             name: Set("Curse of Strahd".into()),
-            description: Set(Some("Gothic horror in Barovia".into())),
+            tagline: Set(Some("Gothic horror in Barovia".into())),
+            game_system: Set(None),
+            content_locale: Set(None),
+            wizard_completed_at: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -98,7 +101,7 @@ mod tests {
         let written = row(1);
         let written_campaign_id = written.campaign_id.clone().unwrap();
         let written_name = written.name.clone().unwrap();
-        let written_description = written.description.clone().unwrap();
+        let written_tagline = written.tagline.clone().unwrap();
         let written_created = written.created_at.clone().unwrap();
         let written_updated = written.updated_at.clone().unwrap();
 
@@ -113,7 +116,7 @@ mod tests {
         assert_eq!(read.id, 1);
         assert_eq!(read.campaign_id, written_campaign_id);
         assert_eq!(read.name, written_name);
-        assert_eq!(read.description, written_description);
+        assert_eq!(read.tagline, written_tagline);
         assert_eq!(read.created_at, written_created);
         assert_eq!(read.updated_at, written_updated);
     }

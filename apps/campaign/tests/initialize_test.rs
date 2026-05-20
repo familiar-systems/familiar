@@ -1,12 +1,12 @@
 mod common;
 
+use familiar_systems_app_shared::id::{CampaignId, UserId};
+use familiar_systems_campaign::actors::registry::EnsureCampaign;
 use serde_json::json;
 use wiremock::{
     Mock, ResponseTemplate,
-    matchers::{body_partial_json, header, method, path},
+    matchers::{header, method, path},
 };
-
-const CAMPAIGN_ID: &str = "test-campaign-1";
 
 fn valid_payload() -> serde_json::Value {
     json!({
@@ -20,21 +20,31 @@ fn valid_payload() -> serde_json::Value {
     })
 }
 
-#[tokio::test]
-async fn initialize_fires_platform_callback_and_returns_500() {
-    let app = common::spawn_app().await;
+async fn ensure_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
+    let _: kameo::actor::ActorRef<familiar_systems_campaign::actors::supervisor::CampaignSupervisor> = app
+        .registry
+        .ask(EnsureCampaign {
+            campaign_id: campaign_id.clone(),
+            owner_user_id: UserId::generate(),
+        })
+        .await
+        .expect("ensure campaign");
+}
 
-    // The platform receives the init-failed callback with the bearer attached.
+#[tokio::test]
+async fn seal_writes_metadata_and_mirrors_to_platform() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    ensure_campaign(&app, &campaign_id).await;
+
     Mock::given(method("POST"))
         .and(path(format!(
-            "/internal/platform/campaigns/{CAMPAIGN_ID}/init-failed"
+            "/internal/platform/campaigns/{}/metadata",
+            campaign_id.0
         )))
         .and(header(
             "authorization",
             format!("Bearer {}", app.bearer).as_str(),
-        ))
-        .and(body_partial_json(
-            json!({"reason": "deliberate_thin_slice_failure"}),
         ))
         .respond_with(ResponseTemplate::new(200))
         .expect(1)
@@ -44,60 +54,66 @@ async fn initialize_fires_platform_callback_and_returns_500() {
     let resp = reqwest::Client::new()
         .post(format!(
             "{}/campaign/{}/initialize",
-            app.base_url, CAMPAIGN_ID
+            app.base_url, campaign_id.0
         ))
         .json(&valid_payload())
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 500);
-
-    let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["campaign_id"], CAMPAIGN_ID);
-    assert!(
-        body["error"].as_str().unwrap().contains("not yet wired up"),
-        "expected deliberate-failure copy, got {}",
-        body["error"]
-    );
+    assert_eq!(resp.status().as_u16(), 200);
 }
 
 #[tokio::test]
-async fn initialize_still_returns_500_when_platform_callback_itself_errors() {
-    // If the platform's init-failed handler is down, the campaign tier still
-    // returns the deliberate 500 to the SPA so the FE-visible failure stays
-    // stable. The dropped callback gets logged at warn (not asserted here).
+async fn double_seal_returns_409() {
     let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    ensure_campaign(&app, &campaign_id).await;
 
     Mock::given(method("POST"))
         .and(path(format!(
-            "/internal/platform/campaigns/{CAMPAIGN_ID}/init-failed"
+            "/internal/platform/campaigns/{}/metadata",
+            campaign_id.0
         )))
-        .respond_with(ResponseTemplate::new(500))
+        .respond_with(ResponseTemplate::new(200))
         .mount(&app.platform)
         .await;
 
+    let client = reqwest::Client::new();
+    let url = format!(
+        "{}/campaign/{}/initialize",
+        app.base_url, campaign_id.0
+    );
+
+    let first = client.post(&url).json(&valid_payload()).send().await.unwrap();
+    assert_eq!(first.status().as_u16(), 200);
+
+    let second = client.post(&url).json(&valid_payload()).send().await.unwrap();
+    assert_eq!(second.status().as_u16(), 409);
+}
+
+#[tokio::test]
+async fn initialize_unknown_campaign_returns_404() {
+    let app = common::spawn_app().await;
+
     let resp = reqwest::Client::new()
         .post(format!(
-            "{}/campaign/{}/initialize",
-            app.base_url, CAMPAIGN_ID
+            "{}/campaign/nonexistent-id/initialize",
+            app.base_url
         ))
         .json(&valid_payload())
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 500);
+    assert_eq!(resp.status().as_u16(), 404);
 }
 
 #[tokio::test]
 async fn initialize_rejects_malformed_body_with_4xx() {
-    // axum's Json extractor 422s on parse errors; the test pins behaviour so
-    // the FE knows what to expect when its zod schema generates the wrong
-    // shape.
     let app = common::spawn_app().await;
     let resp = reqwest::Client::new()
         .post(format!(
-            "{}/campaign/{}/initialize",
-            app.base_url, CAMPAIGN_ID
+            "{}/campaign/test-id/initialize",
+            app.base_url
         ))
         .json(&json!({ "not": "valid" }))
         .send()

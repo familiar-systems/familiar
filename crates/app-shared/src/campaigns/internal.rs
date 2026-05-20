@@ -22,6 +22,21 @@ pub struct InternalInitRequest {
     pub owner_user_id: UserId,
 }
 
+/// Body for `POST /internal/platform/campaigns/<id>/metadata`.
+///
+/// **Owner: platform tier.** Called by the campaign tier after a
+/// successful wizard seal. The platform mirrors these fields onto its
+/// `campaigns` row so the hub list can render campaign metadata without
+/// a per-shard fan-out.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataMirrorRequest {
+    pub name: String,
+    pub tagline: Option<String>,
+    pub game_system: String,
+    pub content_locale: String,
+    pub wizard_completed_at: chrono::DateTime<chrono::Utc>,
+}
+
 /// Body for `POST /internal/platform/campaigns/<id>/init-failed`.
 ///
 /// **Owner: platform tier.** Called by the campaign tier when an

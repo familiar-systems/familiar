@@ -10,4 +10,4 @@ import type { UserId } from "../id/UserId";
  * `id` is the Hanko subject (= `users.id`); see
  * `apps/platform/src/entities/users.rs`.
  */
-export type MeResponse = { id: UserId; email: string };
+export type MeResponse = { id: UserId, email: string, };

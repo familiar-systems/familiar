@@ -3,7 +3,7 @@
 //! Mirror of `apps/platform/src/clients/campaign_internal.rs`. Bearer is
 //! pre-installed as a default header so call sites don't have to remember it.
 
-use familiar_systems_app_shared::campaigns::internal::InitFailedRequest;
+use familiar_systems_app_shared::campaigns::internal::{InitFailedRequest, MetadataMirrorRequest};
 use reqwest::{Client, header};
 use std::sync::Arc;
 
@@ -43,6 +43,27 @@ impl PlatformInternalClient {
                 http,
                 base_url: base_url.into(),
             }),
+        }
+    }
+
+    /// `POST /internal/platform/campaigns/<id>/metadata`: mirrors campaign
+    /// metadata onto the platform's routing row after a successful wizard seal.
+    pub async fn report_metadata(
+        &self,
+        campaign_id: &str,
+        body: &MetadataMirrorRequest,
+    ) -> Result<(), PlatformInternalError> {
+        let url = format!(
+            "{}/internal/platform/campaigns/{}/metadata",
+            self.inner.base_url, campaign_id
+        );
+        let resp = self.inner.http.post(&url).json(body).send().await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(PlatformInternalError::Status {
+                status: resp.status(),
+            })
         }
     }
 

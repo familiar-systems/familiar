@@ -36,7 +36,12 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub name: String,
     #[sea_orm(column_type = "Text", nullable)]
-    pub description: Option<String>,
+    pub tagline: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub game_system: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub content_locale: Option<String>,
+    pub wizard_completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

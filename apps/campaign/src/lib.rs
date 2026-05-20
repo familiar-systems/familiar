@@ -7,6 +7,7 @@ pub mod embeddings;
 pub mod entities;
 pub mod error;
 pub mod loro;
+pub mod persistence;
 pub mod middleware;
 pub mod migrations;
 pub mod openapi;
