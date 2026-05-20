@@ -12,6 +12,6 @@
 //! relationship graph, vocabulary) attach under the supervisor. At the
 //! time of writing none of them exist yet.
 
-pub mod database;
+pub mod database_writer;
 pub mod registry;
 pub mod supervisor;

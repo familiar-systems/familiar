@@ -19,7 +19,7 @@ use kameo::error::ActorStopReason;
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
 
-use crate::actors::database::{SealError, SealResult, SealWizard};
+use crate::actors::database_writer::{SealError, SealResult, SealWizard};
 use crate::error::InitError;
 use crate::persistence::{CampaignDatabase, CampaignStore};
 

@@ -8,7 +8,7 @@ use kameo::actor::{ActorRef, Spawn};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use sea_orm_migration::MigratorTrait;
 
-use crate::actors::database::{DatabaseActor, DatabaseActorArgs};
+use crate::actors::database_writer::{DatabaseActor, DatabaseActorArgs};
 use crate::config::{Config, StorageBackend};
 use crate::db;
 use crate::entities::campaign_metadata;

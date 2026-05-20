@@ -4,7 +4,7 @@
 //! and sets `wizard_completed_at`. Template instantiation is deferred to
 //! a follow-up slice; the `template_slugs` field is accepted but ignored.
 
-use crate::actors::database::SealError;
+use crate::actors::database_writer::SealError;
 use crate::actors::registry::GetCampaign;
 use crate::actors::supervisor::SealCampaign;
 use crate::state::AppState;
