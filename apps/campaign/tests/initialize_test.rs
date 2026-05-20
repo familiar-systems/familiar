@@ -21,7 +21,9 @@ fn valid_payload() -> serde_json::Value {
 }
 
 async fn ensure_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
-    let _: kameo::actor::ActorRef<familiar_systems_campaign::actors::supervisor::CampaignSupervisor> = app
+    let _: kameo::actor::ActorRef<
+        familiar_systems_campaign::actors::supervisor::CampaignSupervisor,
+    > = app
         .registry
         .ask(EnsureCampaign {
             campaign_id: campaign_id.clone(),
@@ -79,15 +81,22 @@ async fn double_seal_returns_409() {
         .await;
 
     let client = reqwest::Client::new();
-    let url = format!(
-        "{}/campaign/{}/initialize",
-        app.base_url, campaign_id.0
-    );
+    let url = format!("{}/campaign/{}/initialize", app.base_url, campaign_id.0);
 
-    let first = client.post(&url).json(&valid_payload()).send().await.unwrap();
+    let first = client
+        .post(&url)
+        .json(&valid_payload())
+        .send()
+        .await
+        .unwrap();
     assert_eq!(first.status().as_u16(), 200);
 
-    let second = client.post(&url).json(&valid_payload()).send().await.unwrap();
+    let second = client
+        .post(&url)
+        .json(&valid_payload())
+        .send()
+        .await
+        .unwrap();
     assert_eq!(second.status().as_u16(), 409);
 }
 
@@ -111,10 +120,7 @@ async fn initialize_unknown_campaign_returns_404() {
 async fn initialize_rejects_malformed_body_with_4xx() {
     let app = common::spawn_app().await;
     let resp = reqwest::Client::new()
-        .post(format!(
-            "{}/campaign/test-id/initialize",
-            app.base_url
-        ))
+        .post(format!("{}/campaign/test-id/initialize", app.base_url))
         .json(&json!({ "not": "valid" }))
         .send()
         .await

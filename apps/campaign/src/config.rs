@@ -54,9 +54,9 @@ impl Config {
         {
             "local" => StorageBackend::Local,
             "s3" => StorageBackend::S3,
-            other => panic!(
-                "CAMPAIGN_STORAGE_BACKEND must be \"local\" or \"s3\", got \"{other}\""
-            ),
+            other => {
+                panic!("CAMPAIGN_STORAGE_BACKEND must be \"local\" or \"s3\", got \"{other}\"")
+            }
         };
         let port: u16 = std::env::var("PORT")
             .expect(

@@ -5,4 +5,4 @@
  * inline and surfaces `campaign_id` so the user can find their (broken)
  * campaign back in the hub.
  */
-export type InitializeErrorResponse = { error: string, campaign_id: string, };
+export type InitializeErrorResponse = { error: string; campaign_id: string };

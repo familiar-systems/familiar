@@ -39,6 +39,9 @@
           "200": {
             "description": "Campaign initialized"
           },
+          "409": {
+            "description": "Already initialized"
+          },
           "500": {
             "description": "Initialization failed",
             "content": {

@@ -2,10 +2,12 @@
 import type { ByoEntry } from "./ByoEntry";
 import type { SystemEntry } from "./SystemEntry";
 
-export type CatalogResponse = { systems: Array<SystemEntry>, 
-/**
- * The "bring your own" affordance: a single always-visible card
- * rendered below the catalog list. Not a system itself; the wizard
- * resolves its display copy and default template bundle from this.
- */
-byo: ByoEntry, };
+export type CatalogResponse = {
+  systems: Array<SystemEntry>;
+  /**
+   * The "bring your own" affordance: a single always-visible card
+   * rendered below the catalog list. Not a system itself; the wizard
+   * resolves its display copy and default template bundle from this.
+   */
+  byo: ByoEntry;
+};

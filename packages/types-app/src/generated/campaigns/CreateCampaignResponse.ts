@@ -4,4 +4,4 @@ import type { CampaignId } from "../id/CampaignId";
 /**
  * Response body for `POST /api/campaigns`.
  */
-export type CreateCampaignResponse = { campaign_id: CampaignId, };
+export type CreateCampaignResponse = { campaign_id: CampaignId };

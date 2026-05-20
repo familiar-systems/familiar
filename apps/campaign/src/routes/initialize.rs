@@ -16,10 +16,10 @@ use axum::{
 };
 use familiar_systems_app_shared::campaigns::internal::MetadataMirrorRequest;
 use familiar_systems_app_shared::id::CampaignId;
-use fs_id::Nanoid;
 use familiar_systems_campaign_shared::onboarding::initialize::{
     InitializeErrorResponse, InitializeRequest,
 };
+use fs_id::Nanoid;
 
 #[utoipa::path(
     post,
@@ -52,7 +52,9 @@ pub async fn initialize(
 
     let supervisor = match state
         .registry
-        .ask(GetCampaign(CampaignId::from(Nanoid::from(campaign_id.clone()))))
+        .ask(GetCampaign(CampaignId::from(Nanoid::from(
+            campaign_id.clone(),
+        ))))
         .await
     {
         Ok(Some(sup)) => sup,

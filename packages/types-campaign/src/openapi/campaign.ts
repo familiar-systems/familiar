@@ -126,6 +126,13 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Already initialized */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       /** @description Initialization failed */
       500: {
         headers: {

@@ -193,7 +193,10 @@ impl Message<SealCampaign> for CampaignSupervisor {
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.last_activity = Instant::now();
-        let db = self.db.as_ref().expect("db must be Some while actor is running");
+        let db = self
+            .db
+            .as_ref()
+            .expect("db must be Some while actor is running");
         match db
             .writer()
             .ask(SealWizard {
