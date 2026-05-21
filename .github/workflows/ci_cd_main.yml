@@ -240,15 +240,12 @@ jobs:
         with:
           secret-name: k3s-kubeconfig
 
-      - name: Sync secrets and apply manifests
+      - name: Apply manifests
         env:
           KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
-          SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
         run: |
           echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
           export KUBECONFIG=/tmp/kubeconfig.yaml
-
-          infra/k8s/scripts/sync-prod-secrets.sh
 
           cat >> infra/k8s/overlays/prod/kustomization.yaml <<EOF
 
@@ -273,6 +270,12 @@ jobs:
           echo "==> Applying..."
           kubectl kustomize infra/k8s/overlays/prod \
             | kubectl apply --server-side --force-conflicts -f -
+
+          echo "==> Waiting for ESO to sync secrets..."
+          for es in internal-bearer scaleway-registry; do
+            kubectl wait --for=condition=Ready \
+              "externalsecret/${es}" --namespace default --timeout=120s
+          done
 
           for deploy in site web platform campaign; do
             if kubectl get "deployment/${deploy}" --namespace default >/dev/null 2>&1; then

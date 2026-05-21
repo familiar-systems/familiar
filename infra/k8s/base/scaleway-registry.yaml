@@ -1,0 +1,28 @@
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaleway-registry
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: scaleway-sm
+    kind: ClusterSecretStore
+  target:
+    name: scaleway-registry
+    creationPolicy: Owner
+    template:
+      type: kubernetes.io/dockerconfigjson
+      data:
+        .dockerconfigjson: |
+          {"auths":{"rg.fr-par.scw.cloud/loreweaver":{"username":"{{ .username }}","password":"{{ .password }}","auth":"{{ printf "%s:%s" .username .password | b64enc }}"}}}
+  data:
+    - secretKey: username
+      remoteRef:
+        key: name:registry-pull-credential
+        property: access_key
+        version: latest_enabled
+    - secretKey: password
+      remoteRef:
+        key: name:registry-pull-credential
+        property: secret_key
+        version: latest_enabled
