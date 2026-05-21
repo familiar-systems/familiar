@@ -324,10 +324,11 @@ description = "Build and validate Kustomize overlays (prod + preview) against Ku
 # catches schema violations in the final output.
 #
 # Preview is validated by envsubst-ing dummy values, building the
-# overlay, and running the same kubeconform pipeline. No real secrets
-# are involved; the dummy values are structurally valid base64/sha256.
+# overlay, and running the same kubeconform pipeline. ExternalSecret
+# CRDs are static YAML (no placeholders); only deployment patches and
+# ingresses still use envsubst for per-PR values.
 #
-# CRD schemas (cert-manager, Traefik Middleware) come from the
+# CRD schemas (cert-manager, Traefik Middleware, ESO) come from the
 # datreeio/CRDs-catalog. The `{% raw %}` block keeps mise's tera
 # templater away from kubeconform's `{{.Group}}`-style placeholders.
 run = """
@@ -349,9 +350,6 @@ export SITE_IMAGE=registry/site:test
 export WEB_IMAGE=registry/web:test
 export PLATFORM_IMAGE=registry/platform:test
 export CAMPAIGN_IMAGE=registry/campaign:test
-export DOCKERCONFIG_B64=dGVzdA==
-export INTERNAL_BEARER_PRIMARY_B64=dGVzdA==
-export INTERNAL_BEARER_CHECKSUM=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
 export HANKO_API_URL_DEV=https://auth.test.example.com
 
 for f in $(find "$WORK_DIR/overlays/preview" -name '*.yaml'); do

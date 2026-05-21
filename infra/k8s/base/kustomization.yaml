@@ -7,3 +7,4 @@ resources:
   - web
   - platform
   - campaign
+  - scaleway-registry.yaml

@@ -5,6 +5,8 @@ and Scaleway Secrets Manager entries. The k3s cluster (k3s_cluster.py)
 builds on these. Kubernetes resources are managed by Kustomize (infra/k8s/).
 """
 
+import json
+
 import pulumi
 import pulumi_hcloud as hcloud
 import pulumiverse_scaleway as scaleway
@@ -110,17 +112,11 @@ registry = scaleway.registry.Namespace(
 # ---------------------------------------------------------------------------
 # Scaleway IAM: dedicated pull-scoped principal for cluster image pulls
 # ---------------------------------------------------------------------------
-# The cluster's imagePullSecret needs a Scaleway API key. Baking the admin
-# SCW_SECRET_KEY into the k8s Secret would couple the state graph to a
-# rotatable, per-operator credential (every operator writes their own key,
-# every `pulumi up` shows drift). Having Pulumi own a dedicated application
-# + scoped policy + api key instead makes rotation a `pulumi up` away, zero
-# console toil, and limits blast radius to read-only on the loreweaver
-# container registry project.
-#
-# Safe here (and NOT for the kubeconfig) because the consumed field is
-# k8s.core.v1.Secret.string_data -- an in-place PATCH, not replaceOnChanges.
-# See feedback_iac_credential_decoupling.md for the full rule.
+# The cluster's imagePullSecret needs a Scaleway API key. Pulumi owns a
+# dedicated application + scoped policy + api key, limiting blast radius to
+# read-only on the loreweaver container registry project. The credential is
+# written to SM as `registry-pull-credential`; ESO reads it and constructs
+# the kubernetes.io/dockerconfigjson Secret in-cluster.
 registry_pull_app = scaleway.iam.Application(
     "registry-pull-app",
     name="k3s-registry-puller",
@@ -152,6 +148,39 @@ registry_pull_api_key = scaleway.iam.ApiKey(
 )
 
 # ---------------------------------------------------------------------------
+# Scaleway IAM: dedicated SM-read principal for External Secrets Operator
+# ---------------------------------------------------------------------------
+# ESO runs in-cluster and syncs secrets from Scaleway SM into k8s Secrets.
+# Same pattern as the registry pull app above: dedicated application with
+# least-privilege policy, API key written to SM so bootstrap-helm.sh can
+# seed the initial k8s Secret that ESO authenticates with.
+eso_app = scaleway.iam.Application(
+    "eso-app",
+    name="k3s-external-secrets",
+    description="ESO principal (read-only Secrets Manager access)",
+)
+
+eso_policy = scaleway.iam.Policy(
+    "eso-policy",
+    name="k3s-external-secrets",
+    description="Read-only access to Scaleway Secrets Manager",
+    application_id=eso_app.id,
+    rules=[
+        scaleway.iam.PolicyRuleArgs(
+            permission_set_names=["SecretManagerReadOnly"],
+            project_ids=[registry.project_id],
+        ),
+    ],
+)
+
+eso_api_key = scaleway.iam.ApiKey(
+    "eso-api-key",
+    application_id=eso_app.id,
+    description="ESO cluster credential (managed by Pulumi)",
+    opts=pulumi.ResourceOptions(depends_on=[eso_policy]),
+)
+
+# ---------------------------------------------------------------------------
 # Scaleway Secrets (empty containers -- filled manually or by GHA)
 # ---------------------------------------------------------------------------
 deploy_ssh_secret = scaleway.secrets.Secret(
@@ -177,20 +206,16 @@ k3s_kubeconfig_secret = scaleway.secrets.Secret(
 )
 
 # Internal-bearer SM containers, Pulumi-owned, operator-filled.
-#
-# The bearer values were minted into SM by `pulumi_random.RandomPassword`
-# + `scaleway.secrets.Version` on a previous apply (with retain_on_delete=
-# True so the SM versions persisted when those resources were dropped from
-# the program). Pulumi now reads `revision="latest"` from SM at apply time
-# via `config.read_secret`; rotation is operator-driven:
+# Rotation is operator-driven:
 #
 #   openssl rand -base64 32 | scw secret version create internal-bearer-prod \
 #       data=- region=fr-par
-#   pulumi up
 #
-# The `scw secret version create` writes a new version; consumers always
-# read latest; `pulumi up` flips the prod k8s Secret's data and the
-# campaign pod template's checksum annotation rolls the Deployment.
+# ESO picks up the new SM version on its refreshInterval (1h) or
+# on-demand via: kubectl annotate externalsecret internal-bearer \
+#   force-sync=$(date +%s) --overwrite
+# Then restart consuming pods: kubectl rollout restart deployment/platform
+#   deployment/campaign
 internal_bearer_prod_secret = scaleway.secrets.Secret(
     "internal-bearer-prod-secret",
     name="internal-bearer-prod",
@@ -203,5 +228,56 @@ internal_bearer_preview_secret = scaleway.secrets.Secret(
     "internal-bearer-preview-secret",
     name="internal-bearer-preview",
     description="Shared bearer for preview platform <-> campaign /internal/* (shared across PRs)",
+    region="fr-par",
+)
+
+# ---------------------------------------------------------------------------
+# Scaleway Secrets: Pulumi-written credentials for ESO
+# ---------------------------------------------------------------------------
+# ESO's own authentication credential, written to SM so bootstrap-helm.sh
+# can read it and create the initial k8s Secret.
+eso_credential_secret = scaleway.secrets.Secret(
+    "eso-credential-secret",
+    name="eso-scaleway-credential",
+    description="ESO's Scaleway API key for SM access (access_key + secret_key JSON)",
+    region="fr-par",
+)
+
+eso_credential_version = scaleway.secrets.Version(
+    "eso-credential-version",
+    secret_id=eso_credential_secret.id,
+    data=pulumi.Output.all(
+        access_key=eso_api_key.access_key,
+        secret_key=eso_api_key.secret_key,
+    ).apply(
+        lambda args: json.dumps(
+            {"access_key": args["access_key"], "secret_key": args["secret_key"]}
+        )
+    ),
+    region="fr-par",
+)
+
+# Registry pull credential written to SM so ESO can construct the
+# kubernetes.io/dockerconfigjson Secret in-cluster. Uses the existing
+# registry_pull_api_key (ContainerRegistryReadOnly scope) rather than
+# the admin SCW_SECRET_KEY.
+registry_pull_credential_secret = scaleway.secrets.Secret(
+    "registry-pull-credential-secret",
+    name="registry-pull-credential",
+    description="Scaleway registry pull credential (access_key + secret_key JSON)",
+    region="fr-par",
+)
+
+registry_pull_credential_version = scaleway.secrets.Version(
+    "registry-pull-credential-version",
+    secret_id=registry_pull_credential_secret.id,
+    data=pulumi.Output.all(
+        access_key=registry_pull_api_key.access_key,
+        secret_key=registry_pull_api_key.secret_key,
+    ).apply(
+        lambda args: json.dumps(
+            {"access_key": args["access_key"], "secret_key": args["secret_key"]}
+        )
+    ),
     region="fr-par",
 )
