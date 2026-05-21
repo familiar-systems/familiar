@@ -22,7 +22,7 @@ for pkg in "${TYPE_PACKAGES[@]}"; do
     barrel="${dir}index.ts"
     printf '// AUTO-GENERATED barrel. Run \x60mise run generate-types\x60 to refresh.\n' > "$barrel"
     printf '// Do not edit by hand.\n' >> "$barrel"
-    for f in "${dir}"*.ts; do
+    for f in $(printf '%s\n' "${dir}"*.ts | LC_ALL=C sort); do
       name="$(basename "$f" .ts)"
       [ "$name" = "index" ] && continue
       printf 'export * from "./%s";\n' "$name" >> "$barrel"
