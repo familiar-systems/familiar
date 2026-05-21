@@ -38,6 +38,7 @@ use tokio::task::JoinSet;
 use crate::actors::supervisor::{
     CampaignSupervisor, CampaignSupervisorArgs, SetStopCause, StopCause,
 };
+use crate::clients::platform_internal::PlatformInternalClient;
 use crate::error::EnsureError;
 use crate::persistence::CampaignStore;
 
@@ -55,6 +56,7 @@ pub struct CampaignRegistry {
     store: Arc<dyn CampaignStore>,
     idle_timeout: Duration,
     eviction_check_interval: Duration,
+    platform_client: Option<PlatformInternalClient>,
 }
 
 impl CampaignRegistry {
@@ -62,6 +64,7 @@ impl CampaignRegistry {
         store: Arc<dyn CampaignStore>,
         idle_timeout: Duration,
         eviction_check_interval: Duration,
+        platform_client: Option<PlatformInternalClient>,
     ) -> Self {
         Self {
             supervisors: HashMap::new(),
@@ -69,6 +72,7 @@ impl CampaignRegistry {
             store,
             idle_timeout,
             eviction_check_interval,
+            platform_client,
         }
     }
 }
@@ -172,6 +176,49 @@ impl Message<EnsureCampaign> for CampaignRegistry {
     }
 }
 
+/// Release a specific campaign from this shard. If the campaign is not
+/// loaded, this is a no-op. If loaded, tags it with `PlatformRelease` and
+/// stops it gracefully. The `on_link_died` handler removes the map entry
+/// once the supervisor finishes shutting down.
+#[derive(Debug, Clone)]
+pub struct ReleaseCampaign {
+    pub campaign_id: CampaignId,
+}
+
+impl Message<ReleaseCampaign> for CampaignRegistry {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: ReleaseCampaign,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let Some(supervisor) = self.supervisors.get(&msg.campaign_id) else {
+            tracing::debug!(
+                campaign_id = %msg.campaign_id.0,
+                "release requested for unloaded campaign; no-op"
+            );
+            return;
+        };
+
+        tracing::info!(
+            campaign_id = %msg.campaign_id.0,
+            "releasing campaign (platform-initiated)"
+        );
+
+        let _ = supervisor
+            .tell(SetStopCause(StopCause::PlatformRelease))
+            .await;
+        if let Err(e) = supervisor.stop_gracefully().await {
+            tracing::warn!(
+                campaign_id = %msg.campaign_id.0,
+                error = ?e,
+                "supervisor already stopping during release"
+            );
+        }
+    }
+}
+
 impl CampaignRegistry {
     async fn ensure_supervisor(
         &mut self,
@@ -208,6 +255,7 @@ impl CampaignRegistry {
             store: self.store.clone(),
             idle_timeout: self.idle_timeout,
             eviction_check_interval: self.eviction_check_interval,
+            platform_client: self.platform_client.clone(),
         });
 
         registry_ref.link(&supervisor).await;
@@ -259,6 +307,26 @@ impl Message<GetCampaign> for CampaignRegistry {
             return None;
         }
         self.supervisors.get(&id).cloned()
+    }
+}
+
+/// Returns the IDs of all campaigns currently loaded in the registry.
+/// Empty during drain (campaigns are being stopped, not available).
+#[derive(Debug, Clone, Copy)]
+pub struct ListLoaded;
+
+impl Message<ListLoaded> for CampaignRegistry {
+    type Reply = Vec<CampaignId>;
+
+    async fn handle(
+        &mut self,
+        _: ListLoaded,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        if matches!(self.phase, Phase::Draining) {
+            return Vec::new();
+        }
+        self.supervisors.keys().cloned().collect()
     }
 }
 
@@ -389,6 +457,7 @@ mod tests {
             store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
 
         let campaign_id = CampaignId::generate();
@@ -424,6 +493,7 @@ mod tests {
             store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
         let id = CampaignId::generate();
         assert!(
@@ -457,6 +527,7 @@ mod tests {
             store_in(tmp.path()),
             Duration::from_millis(50),
             Duration::from_millis(20),
+            None,
         ));
 
         let id = CampaignId::generate();
@@ -485,6 +556,7 @@ mod tests {
             store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
 
         let id_a = CampaignId::generate();
@@ -538,6 +610,7 @@ mod tests {
             store_in(&unusable_data_dir),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
 
         let id = CampaignId::generate();
@@ -567,6 +640,7 @@ mod tests {
             store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
         let supervisor = registry
             .ask(CreateCampaign {
@@ -591,6 +665,7 @@ mod tests {
             store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
         let supervisor = registry
             .ask(CreateCampaign {
@@ -612,6 +687,7 @@ mod tests {
             store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
 
         registry
@@ -638,5 +714,126 @@ mod tests {
             ),
             "expected ShuttingDown, got {err:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn release_campaign_stops_supervisor() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let registry = CampaignRegistry::spawn(CampaignRegistry::new(
+            store_in(tmp.path()),
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+            None,
+        ));
+
+        let id = CampaignId::generate();
+        let sup = registry
+            .ask(CreateCampaign {
+                campaign_id: id.clone(),
+                owner_user_id: user_id(),
+            })
+            .await
+            .unwrap();
+        sup.ask(SupPing).await.unwrap();
+
+        registry
+            .ask(ReleaseCampaign {
+                campaign_id: id.clone(),
+            })
+            .await
+            .unwrap();
+
+        sup.wait_for_shutdown_with_result(|_| ()).await;
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            registry
+                .ask(GetCampaign(id.clone()))
+                .await
+                .unwrap()
+                .is_none(),
+            "released supervisor should be removed from registry"
+        );
+    }
+
+    #[tokio::test]
+    async fn release_unknown_campaign_is_noop() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let registry = CampaignRegistry::spawn(CampaignRegistry::new(
+            store_in(tmp.path()),
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+            None,
+        ));
+
+        registry
+            .ask(ReleaseCampaign {
+                campaign_id: CampaignId::generate(),
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_loaded_returns_campaign_ids() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let registry = CampaignRegistry::spawn(CampaignRegistry::new(
+            store_in(tmp.path()),
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+            None,
+        ));
+
+        let id_a = CampaignId::generate();
+        let id_b = CampaignId::generate();
+        registry
+            .ask(CreateCampaign {
+                campaign_id: id_a.clone(),
+                owner_user_id: user_id(),
+            })
+            .await
+            .unwrap();
+        registry
+            .ask(CreateCampaign {
+                campaign_id: id_b.clone(),
+                owner_user_id: user_id(),
+            })
+            .await
+            .unwrap();
+
+        let mut loaded = registry.ask(ListLoaded).await.unwrap();
+        loaded.sort_by(|a, b| a.0.0.cmp(&b.0.0));
+        assert_eq!(loaded.len(), 2);
+        let mut expected = vec![id_a, id_b];
+        expected.sort_by(|a, b| a.0.0.cmp(&b.0.0));
+        assert_eq!(loaded, expected);
+    }
+
+    #[tokio::test]
+    async fn list_loaded_returns_empty_during_drain() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let registry = CampaignRegistry::spawn(CampaignRegistry::new(
+            store_in(tmp.path()),
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+            None,
+        ));
+
+        registry
+            .ask(CreateCampaign {
+                campaign_id: CampaignId::generate(),
+                owner_user_id: user_id(),
+            })
+            .await
+            .unwrap();
+
+        begin_drain(&registry).await;
+
+        let loaded = registry.ask(ListLoaded).await.unwrap();
+        assert!(loaded.is_empty(), "should return empty during drain");
     }
 }

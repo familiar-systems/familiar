@@ -73,4 +73,5 @@ pub fn api_router() -> OpenApiRouter<AppState> {
         .routes(routes!(health))
         .routes(routes!(me))
         .routes(routes!(create_campaign, list_campaigns))
+        .routes(routes!(get_campaign))
 }

@@ -8,7 +8,7 @@ use crate::openapi::api_router;
 use crate::state::AppState;
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, Method};
-use axum::routing::{patch, post};
+use axum::routing::{delete, patch, post};
 use axum::{Json, Router, middleware, routing::get};
 use std::sync::Arc;
 use tower_http::{
@@ -62,6 +62,14 @@ pub fn internal_router(state: AppState) -> Router {
         .route(
             "/internal/platform/campaign/{id}/init-failed",
             post(internal_campaigns::report_init_failed),
+        )
+        .route(
+            "/internal/platform/campaign/{id}/lease",
+            delete(internal_campaigns::release_lease),
+        )
+        .route(
+            "/internal/platform/heartbeat",
+            post(internal_campaigns::heartbeat),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),

@@ -47,6 +47,7 @@ pub struct Campaign {
     pub game_system: Option<String>,
     pub content_locale: Option<String>,
     pub last_init_error: Option<String>,
+    pub loaded: bool,
     #[ts(type = "string | null")]
     pub wizard_completed_at: Option<DateTime<Utc>>,
     #[ts(type = "string")]

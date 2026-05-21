@@ -99,6 +99,25 @@ impl CampaignInternalClient {
             })
         }
     }
+    /// `DELETE /internal/campaign/{id}/lease`: tell the shard to release
+    /// a specific campaign. Used for planned eviction or migration.
+    pub async fn release_lease(
+        &self,
+        campaign_id: &CampaignId,
+    ) -> Result<(), CampaignInternalError> {
+        let url = format!(
+            "{}/internal/campaign/{}/lease",
+            self.inner.base_url, campaign_id.0
+        );
+        let resp = self.inner.http.delete(&url).send().await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(CampaignInternalError::Status {
+                status: resp.status(),
+            })
+        }
+    }
 }
 
 #[cfg(test)]
@@ -170,5 +189,39 @@ mod tests {
 
         let client = CampaignInternalClient::new(server.uri(), "secret");
         client.acquire_lease(&campaign_id()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn release_lease_sends_delete_with_bearer() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/internal/campaign/test-id/lease"))
+            .and(header("authorization", "Bearer secret"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = CampaignInternalClient::new(server.uri(), "secret");
+        client.release_lease(&campaign_id()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn release_lease_returns_status_error_on_5xx() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/internal/campaign/test-id/lease"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let client = CampaignInternalClient::new(server.uri(), "secret");
+        let err = client.release_lease(&campaign_id()).await.unwrap_err();
+        match err {
+            CampaignInternalError::Status { status } => {
+                assert_eq!(status, reqwest::StatusCode::INTERNAL_SERVER_ERROR);
+            }
+            other => panic!("expected Status error, got {other:?}"),
+        }
     }
 }

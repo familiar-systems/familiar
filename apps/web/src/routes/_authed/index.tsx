@@ -91,7 +91,7 @@ function PopulatedHub({ campaigns }: PopulatedHubProps): React.ReactElement {
       </header>
       <div data-testid="campaign-list" className="grid grid-cols-1 gap-5 md:grid-cols-2">
         {campaigns.map((c) => (
-          <CampaignCard key={c.id} campaign={c} />
+          <CampaignCard key={c.id} campaign={c} loaded={c.loaded} />
         ))}
       </div>
     </section>

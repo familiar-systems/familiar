@@ -116,14 +116,14 @@ Subdomains outside either apex (Hanko tenants at `auth.*`, plus any future docs/
 
 #### Bookmarked links and cold checkout
 
-When a user hits a bookmarked link like `app.familiar.systems/campaigns/123/page/456` (or `app.preview.familiar.systems/pr-42/campaigns/123/page/456` in preview):
+When a user hits a bookmarked link like `app.familiar.systems/c/abc123/page/456` (or `app.preview.familiar.systems/pr-42/c/abc123/page/456` in preview):
 
 1. **Reverse proxy routes the request to the web service on the app apex**, which serves `index.html` for every subpath (SPA fallback). The SPA boots.
-2. **SPA calls checkout.** `POST /api/campaigns/123/checkout` - same-origin fetch on the app apex, no CORS preflight. The reverse proxy routes `/api/*` to the platform. The platform consults the routing table.
-3. **If the campaign is already checked out:** the platform returns `{ws_url: "wss://{app-apex}/campaign/123/ws", ...}`. The SPA opens the WebSocket.
-4. **If the campaign is not checked out (cold start):** the platform picks the least-loaded shard, instructs it to check out campaign 123 (shard downloads the libSQL file from object storage, spawns CampaignSupervisor + actors), writes the routing-table entry, and returns the same URL shape. The SPA shows a loading skeleton during checkout; when actors are ready the WebSocket upgrade succeeds, the SPA subscribes to the room for `page/456`, hydrates the TipTap doc, and scrolls.
+2. **SPA reads the campaign from the platform.** `GET /api/campaigns/abc123` is a same-origin fetch on the app apex, no CORS preflight. The reverse proxy routes `/api/*` to the platform. The platform verifies auth and ownership, then ensures the campaign's lease is active on the appropriate shard (calling `PUT /internal/campaign/{id}/lease` pod-to-pod). The lease is an internal concern; the SPA sees a standard resource read.
+3. **If the campaign is already loaded on the shard:** the internal lease call is a no-op. The platform returns the `Campaign` resource immediately.
+4. **If the campaign is not loaded (cold start):** the platform picks the least-loaded shard, instructs it to load campaign abc123 (shard opens the SQLite file from disk or downloads it from object storage, spawns CampaignSupervisor + actors), and returns the `Campaign` resource. The SPA shows a loading state during this; once the platform responds, the SPA talks directly to the campaign server for metadata, and (when WebSocket support lands) opens the WebSocket, subscribes to the room for `page/456`, hydrates the TipTap doc, and scrolls.
 
-The cold-checkout flow is the same async protocol described in the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md). Only the URL format changed (path vs subdomain); the protocol is unchanged.
+The cold-start flow is the same async protocol described in the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md). The lease lifecycle is fully internal: the SPA never touches a lease endpoint. When a campaign shard idle-evicts a campaign, it notifies the platform via `DELETE /internal/platform/campaign/{id}/lease` (fire-and-forget). The platform can also proactively evict a campaign via `DELETE /internal/campaign/{id}/lease`.
 
 ---
 

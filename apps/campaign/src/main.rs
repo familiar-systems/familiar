@@ -1,6 +1,6 @@
 use familiar_systems_app_shared::auth::HankoSessionValidator;
 use familiar_systems_campaign::{
-    actors::registry::{BeginDrain, CampaignRegistry},
+    actors::registry::{BeginDrain, CampaignRegistry, ListLoaded},
     clients::platform_internal::PlatformInternalClient,
     config::Config,
     db::register_sqlite_vec,
@@ -36,6 +36,7 @@ async fn main() -> Result<(), StartupError> {
         store,
         config.idle_timeout,
         config.eviction_check_interval,
+        Some(platform_internal.clone()),
     ));
 
     let state = AppState {
@@ -54,8 +55,15 @@ async fn main() -> Result<(), StartupError> {
         port = config.port,
         data_dir = %config.campaign_data_dir.display(),
         idle_timeout_secs = config.idle_timeout.as_secs(),
+        heartbeat_interval_secs = config.heartbeat_interval.as_secs(),
         "campaign server starting"
     );
+
+    tokio::spawn(heartbeat_loop(
+        registry.clone(),
+        state.platform_internal.clone(),
+        config.heartbeat_interval,
+    ));
 
     axum::serve(listener, serve_router(state))
         .with_graceful_shutdown(shutdown_signal())
@@ -103,6 +111,29 @@ fn init_tracing() {
                 .with_span_list(false),
         )
         .init();
+}
+
+async fn heartbeat_loop(
+    registry: kameo::actor::ActorRef<CampaignRegistry>,
+    client: PlatformInternalClient,
+    interval: std::time::Duration,
+) {
+    let mut tick = tokio::time::interval(interval);
+    tick.tick().await;
+    loop {
+        tick.tick().await;
+        match registry.ask(ListLoaded).await {
+            Ok(campaigns) => {
+                if let Err(e) = client.heartbeat(&campaigns).await {
+                    tracing::warn!(error = %e, "heartbeat to platform failed");
+                }
+            }
+            Err(e) => {
+                tracing::debug!(error = ?e, "registry unavailable for heartbeat (shutting down?)");
+                break;
+            }
+        }
+    }
 }
 
 /// Wait for SIGINT or SIGTERM (Unix). Kubernetes sends SIGTERM during

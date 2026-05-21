@@ -42,6 +42,11 @@ pub struct Config {
     /// `CAMPAIGN_EVICTION_CHECK_INTERVAL_SECS`. Tests pin this small
     /// (tens of milliseconds) to exercise eviction quickly.
     pub eviction_check_interval: Duration,
+    /// How often the shard sends a heartbeat to the platform with the list
+    /// of currently loaded campaign IDs. The platform uses this to
+    /// reconcile its in-memory loaded cache. Tunable via
+    /// `CAMPAIGN_HEARTBEAT_INTERVAL_SECS`.
+    pub heartbeat_interval: Duration,
 }
 
 impl Config {
@@ -97,6 +102,10 @@ impl Config {
             )
             .parse()
             .expect("CAMPAIGN_EVICTION_CHECK_INTERVAL_SECS must be a non-negative integer (seconds)");
+        let heartbeat_interval_secs: u64 = std::env::var("CAMPAIGN_HEARTBEAT_INTERVAL_SECS")
+            .unwrap_or_else(|_| "30".to_string())
+            .parse()
+            .expect("CAMPAIGN_HEARTBEAT_INTERVAL_SECS must be a non-negative integer (seconds)");
         Self {
             storage_backend,
             port,
@@ -107,6 +116,7 @@ impl Config {
             platform_url,
             idle_timeout: Duration::from_secs(idle_timeout_secs),
             eviction_check_interval: Duration::from_secs(eviction_check_interval_secs),
+            heartbeat_interval: Duration::from_secs(heartbeat_interval_secs),
         }
     }
 }

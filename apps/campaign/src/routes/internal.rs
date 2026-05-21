@@ -7,7 +7,7 @@
 //! - `PUT  /internal/campaign/{id}/lease`: ensure an existing campaign is
 //!   checked out (loaded from disk / object storage).
 
-use crate::actors::registry::{CreateCampaign, EnsureCampaign};
+use crate::actors::registry::{CreateCampaign, EnsureCampaign, ReleaseCampaign};
 use crate::error::EnsureError;
 use crate::state::AppState;
 use axum::{
@@ -98,6 +98,32 @@ pub async fn acquire_lease(
                 campaign_id = %campaign_id,
                 error = ?transport_err,
                 "registry unreachable"
+            );
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+    }
+}
+
+/// `DELETE /internal/campaign/{id}/lease`: release a campaign from this
+/// shard. The platform calls this to proactively evict a campaign. If the
+/// campaign is not loaded, returns 200 (idempotent).
+pub async fn release_lease(
+    State(state): State<AppState>,
+    Path(campaign_id): Path<String>,
+) -> StatusCode {
+    match state
+        .registry
+        .ask(ReleaseCampaign {
+            campaign_id: CampaignId::from(Nanoid::from(campaign_id.clone())),
+        })
+        .await
+    {
+        Ok(()) => StatusCode::OK,
+        Err(transport_err) => {
+            tracing::error!(
+                campaign_id = %campaign_id,
+                error = ?transport_err,
+                "registry unreachable during release"
             );
             StatusCode::SERVICE_UNAVAILABLE
         }

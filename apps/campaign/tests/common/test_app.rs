@@ -76,6 +76,7 @@ pub async fn spawn_app() -> TestApp {
         platform_url: platform.uri(),
         idle_timeout: Duration::from_secs(300),
         eviction_check_interval: Duration::from_secs(60),
+        heartbeat_interval: Duration::from_secs(300),
     });
     let validator = Arc::new(HankoSessionValidator::new(&config.hanko_api_url));
     let catalog =
@@ -87,6 +88,7 @@ pub async fn spawn_app() -> TestApp {
         store,
         config.idle_timeout,
         config.eviction_check_interval,
+        Some(platform_internal.clone()),
     ));
     let state = AppState {
         config,

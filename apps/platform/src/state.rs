@@ -1,7 +1,11 @@
 use crate::{clients::campaign_internal::CampaignInternalClient, config::Config};
 use familiar_systems_app_shared::auth::HankoSessionValidator;
+use familiar_systems_app_shared::id::CampaignId;
 use sea_orm::DatabaseConnection;
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, RwLock};
+
+pub type LoadedCache = Arc<RwLock<HashSet<CampaignId>>>;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -15,4 +19,9 @@ pub struct AppState {
     /// Client for `POST /internal/campaign/init` and (later) the metadata
     /// mirror endpoint. Holds an internal `Arc` already; cloning is cheap.
     pub campaign_internal: CampaignInternalClient,
+    /// In-memory cache of campaign IDs currently loaded on a shard. Populated
+    /// by periodic heartbeats from the campaign shard and optimistic inserts
+    /// from `get_campaign`/`create_campaign`. No database column; loaded
+    /// state is transient runtime state.
+    pub loaded_cache: LoadedCache,
 }

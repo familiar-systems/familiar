@@ -20,6 +20,7 @@ export type Campaign = {
   game_system: string | null;
   content_locale: string | null;
   last_init_error: string | null;
+  loaded: boolean;
   wizard_completed_at: string | null;
   created_at: string;
   updated_at: string;

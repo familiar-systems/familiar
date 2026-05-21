@@ -276,3 +276,300 @@ async fn init_failed_with_wrong_bearer_returns_401() {
         .unwrap();
     assert_eq!(resp.status().as_u16(), 401);
 }
+
+// ---------------------------------------------------------------------------
+// GET /campaigns/{id} (with implicit lease)
+// ---------------------------------------------------------------------------
+
+async fn create_campaign_for(app: &common::TestApp, sub: &str, email: &str) -> String {
+    common::mock_hanko_user(app, sub, email).await;
+    mock_campaign_create_and_lease_ok(app).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{}/campaigns", app.base_url))
+        .header("authorization", "Bearer test-token")
+        .json(&json!({ "idempotency_token": format!("tok-{}", sub) }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    resp.json::<serde_json::Value>().await.unwrap()["campaign_id"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[tokio::test]
+async fn get_campaign_returns_campaign_for_owner() {
+    let app = common::spawn_app().await;
+    let campaign_id = create_campaign_for(&app, SUB, "get@ex.com").await;
+
+    let resp = reqwest::Client::new()
+        .get(format!("{}/campaigns/{}", app.base_url, campaign_id))
+        .header("authorization", "Bearer test-token")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["id"].as_str().unwrap(), campaign_id);
+}
+
+#[tokio::test]
+async fn get_campaign_returns_404_for_nonexistent() {
+    let app = common::spawn_app().await;
+    common::mock_hanko_user(&app, SUB, "nocamp@ex.com").await;
+
+    let resp = reqwest::Client::new()
+        .get(format!("{}/campaigns/{}", app.base_url, "does-not-exist"))
+        .header("authorization", "Bearer test-token")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+}
+
+#[tokio::test]
+async fn get_campaign_returns_404_for_other_users_campaign() {
+    let app = common::spawn_app().await;
+    let owner_sub = "0195b4a0-0000-7000-8000-000000000020";
+    let campaign_id = create_campaign_for(&app, owner_sub, "owner@ex.com").await;
+
+    let other_sub = "0195b4a0-0000-7000-8000-000000000021";
+    app.hanko.reset().await;
+    common::mock_hanko_user(&app, other_sub, "other@ex.com").await;
+
+    let resp = reqwest::Client::new()
+        .get(format!("{}/campaigns/{}", app.base_url, campaign_id))
+        .header("authorization", "Bearer test-token")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status().as_u16(),
+        404,
+        "non-owner should get 404 (not 403) to prevent ID enumeration"
+    );
+}
+
+#[tokio::test]
+async fn get_campaign_returns_500_when_shard_fails() {
+    let app = common::spawn_app().await;
+    common::mock_hanko_user(&app, SUB, "shardfail@ex.com").await;
+    mock_campaign_create_and_lease_ok(&app).await;
+
+    let client = reqwest::Client::new();
+    let campaign_id = client
+        .post(format!("{}/campaigns", app.base_url))
+        .header("authorization", "Bearer test-token")
+        .json(&json!({ "idempotency_token": "tok-shard-fail" }))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()["campaign_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    app.campaign.reset().await;
+    Mock::given(method("PUT"))
+        .and(path_regex(r"/internal/campaign/.+/lease"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&app.campaign)
+        .await;
+
+    let resp = client
+        .get(format!("{}/campaigns/{}", app.base_url, campaign_id))
+        .header("authorization", "Bearer test-token")
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        resp.status().is_server_error(),
+        "expected 5xx when shard lease fails, got {}",
+        resp.status()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /internal/platform/campaign/{id}/lease (release notification)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn release_lease_returns_200_with_bearer() {
+    let app = common::spawn_app().await;
+    let resp = reqwest::Client::new()
+        .delete(format!(
+            "{}/internal/platform/campaign/abc/lease",
+            app.base_url
+        ))
+        .header("authorization", format!("Bearer {}", app.bearer))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn release_lease_without_bearer_returns_401() {
+    let app = common::spawn_app().await;
+    let resp = reqwest::Client::new()
+        .delete(format!(
+            "{}/internal/platform/campaign/abc/lease",
+            app.base_url
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+}
+
+// ---------------------------------------------------------------------------
+// Loaded cache (heartbeat + optimistic updates)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn list_campaigns_shows_loaded_after_get() {
+    let app = common::spawn_app().await;
+    let campaign_id = create_campaign_for(&app, SUB, "loaded@ex.com").await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{}/campaigns/{}", app.base_url, campaign_id))
+        .header("authorization", "Bearer test-token")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["loaded"], true,
+        "get_campaign should return loaded: true"
+    );
+
+    let list = client
+        .get(format!("{}/campaigns", app.base_url))
+        .header("authorization", "Bearer test-token")
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap();
+    let arr = list.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(
+        arr[0]["loaded"], true,
+        "list should show loaded: true after GET"
+    );
+}
+
+#[tokio::test]
+async fn heartbeat_replaces_loaded_cache() {
+    let app = common::spawn_app().await;
+    common::mock_hanko_user(&app, SUB, "hb@ex.com").await;
+    mock_campaign_create_and_lease_ok(&app).await;
+
+    let client = reqwest::Client::new();
+    let id_a = client
+        .post(format!("{}/campaigns", app.base_url))
+        .header("authorization", "Bearer test-token")
+        .json(&json!({ "idempotency_token": "tok-hb-a" }))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()["campaign_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let id_b = client
+        .post(format!("{}/campaigns", app.base_url))
+        .header("authorization", "Bearer test-token")
+        .json(&json!({ "idempotency_token": "tok-hb-b" }))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()["campaign_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let resp = client
+        .post(format!("{}/internal/platform/heartbeat", app.base_url))
+        .header("authorization", format!("Bearer {}", app.bearer))
+        .json(&json!({ "campaigns": [id_a] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let list = client
+        .get(format!("{}/campaigns", app.base_url))
+        .header("authorization", "Bearer test-token")
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap();
+    let arr = list.as_array().unwrap();
+    let a_loaded = arr
+        .iter()
+        .find(|c| c["id"].as_str().unwrap() == id_a)
+        .unwrap()["loaded"]
+        .as_bool()
+        .unwrap();
+    let b_loaded = arr
+        .iter()
+        .find(|c| c["id"].as_str().unwrap() == id_b)
+        .unwrap()["loaded"]
+        .as_bool()
+        .unwrap();
+    assert!(a_loaded, "campaign A should be loaded (in heartbeat)");
+    assert!(
+        !b_loaded,
+        "campaign B should not be loaded (not in heartbeat)"
+    );
+}
+
+#[tokio::test]
+async fn release_lease_removes_from_loaded_cache() {
+    let app = common::spawn_app().await;
+    let campaign_id = create_campaign_for(&app, SUB, "release@ex.com").await;
+
+    let client = reqwest::Client::new();
+    client
+        .get(format!("{}/campaigns/{}", app.base_url, campaign_id))
+        .header("authorization", "Bearer test-token")
+        .send()
+        .await
+        .unwrap();
+
+    client
+        .delete(format!(
+            "{}/internal/platform/campaign/{}/lease",
+            app.base_url, campaign_id
+        ))
+        .header("authorization", format!("Bearer {}", app.bearer))
+        .send()
+        .await
+        .unwrap();
+
+    let list = client
+        .get(format!("{}/campaigns", app.base_url))
+        .header("authorization", "Bearer test-token")
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap();
+    let arr = list.as_array().unwrap();
+    assert_eq!(arr[0]["loaded"], false, "should be unloaded after release");
+}

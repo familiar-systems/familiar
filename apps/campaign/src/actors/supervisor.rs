@@ -25,6 +25,7 @@ use crate::actors::database_writer::{
     GetMetadata, MetadataError, PatchCampaignError, PatchCampaignMetadata as DbPatchCampaign,
     PatchCampaignResult,
 };
+use crate::clients::platform_internal::PlatformInternalClient;
 use crate::entities::campaign_metadata;
 use crate::error::InitError;
 use crate::persistence::{CampaignDatabase, CampaignStore};
@@ -41,6 +42,7 @@ pub struct CampaignSupervisor {
     last_activity: Instant,
     idle_timeout: Duration,
     stop_cause: Option<StopCause>,
+    platform_client: Option<PlatformInternalClient>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +50,7 @@ pub enum StopCause {
     Idle,
     Drain,
     RegistryFallback,
+    PlatformRelease,
 }
 
 impl StopCause {
@@ -56,6 +59,7 @@ impl StopCause {
             StopCause::Idle => "idle",
             StopCause::Drain => "drain",
             StopCause::RegistryFallback => "registry_fallback",
+            StopCause::PlatformRelease => "platform_release",
         }
     }
 }
@@ -81,6 +85,7 @@ pub struct CampaignSupervisorArgs {
     pub store: Arc<dyn CampaignStore>,
     pub idle_timeout: Duration,
     pub eviction_check_interval: Duration,
+    pub platform_client: Option<PlatformInternalClient>,
 }
 
 impl Actor for CampaignSupervisor {
@@ -126,6 +131,7 @@ impl Actor for CampaignSupervisor {
             last_activity: Instant::now(),
             idle_timeout: args.idle_timeout,
             stop_cause: None,
+            platform_client: args.platform_client,
         })
     }
 
@@ -156,6 +162,22 @@ impl Actor for CampaignSupervisor {
                 error = %e,
                 "storage release failed; campaign data may not be fully persisted"
             );
+        }
+
+        if matches!(self.stop_cause, Some(StopCause::Idle))
+            && let Some(ref client) = self.platform_client
+        {
+            let campaign_id = self.campaign_id.0.0.clone();
+            let client = client.clone();
+            tokio::spawn(async move {
+                if let Err(e) = client.release_lease(&campaign_id).await {
+                    tracing::warn!(
+                        campaign_id = %campaign_id,
+                        error = %e,
+                        "failed to notify platform of idle release"
+                    );
+                }
+            });
         }
 
         tracing::info!(
@@ -330,6 +352,7 @@ mod tests {
             store,
             idle_timeout: Duration::from_millis(idle_ms),
             eviction_check_interval: Duration::from_millis(check_ms),
+            platform_client: None,
         }
     }
 

@@ -14,6 +14,7 @@ Covers `apps/campaign/` only: the `familiar-systems-campaign` Axum + kameo binar
 - `PATCH /campaign/{id}`: partial metadata update. All fields optional. When `wizard_complete: true`, validates required fields, sets `wizard_completed_at`, and mirrors to platform. Without the flag, updates only the provided fields.
 - `POST /internal/campaign`: bearer-protected. Creates a new campaign on this shard with the given owner. Idempotent on `campaign_id`.
 - `PUT /internal/campaign/{id}/lease`: bearer-protected. Ensures an existing campaign is checked out on this shard. Idempotent.
+- `DELETE /internal/campaign/{id}/lease`: bearer-protected. Releases a campaign from this shard (platform-initiated eviction). Idempotent; returns 200 even if the campaign is not loaded.
 
 CRDT room actors (Thing, ToC, AgentConversation), the WebSocket layer, the real wizard transaction, template instantiation, and object-storage checkin/checkout do not exist yet. See "Design docs" below for where each is specified.
 

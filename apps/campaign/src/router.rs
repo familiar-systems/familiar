@@ -16,7 +16,8 @@ fn internal_router(state: AppState) -> Router {
         )
         .route(
             "/internal/campaign/{id}/lease",
-            put(crate::routes::internal::acquire_lease),
+            put(crate::routes::internal::acquire_lease)
+                .delete(crate::routes::internal::release_lease),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),

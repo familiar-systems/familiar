@@ -52,3 +52,14 @@ pub struct PatchCampaignMirror {
 pub struct InitFailedRequest {
     pub reason: String,
 }
+
+/// Body for `POST /internal/platform/heartbeat`.
+///
+/// **Owner: platform tier.** Sent periodically by the campaign shard
+/// with the list of currently loaded campaign IDs. The platform replaces
+/// its in-memory loaded cache wholesale on each heartbeat, reconciling
+/// any drift from missed release notifications or restarts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeartbeatRequest {
+    pub campaigns: Vec<CampaignId>,
+}

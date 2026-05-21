@@ -138,3 +138,57 @@ async fn acquire_lease_without_bearer_returns_401() {
         .unwrap();
     assert_eq!(resp.status().as_u16(), 401);
 }
+
+#[tokio::test]
+async fn release_lease_returns_200_for_loaded_campaign() {
+    let app = common::spawn_app().await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(format!("{}/internal/campaign", app.base_url))
+        .header("authorization", format!("Bearer {}", app.bearer))
+        .json(&create_payload())
+        .send()
+        .await
+        .unwrap();
+
+    let resp = client
+        .delete(format!(
+            "{}/internal/campaign/{}/lease",
+            app.base_url, CAMPAIGN_ID
+        ))
+        .header("authorization", format!("Bearer {}", app.bearer))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn release_lease_returns_200_for_unknown_campaign() {
+    let app = common::spawn_app().await;
+    let resp = reqwest::Client::new()
+        .delete(format!(
+            "{}/internal/campaign/{}/lease",
+            app.base_url, "never-created"
+        ))
+        .header("authorization", format!("Bearer {}", app.bearer))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn release_lease_without_bearer_returns_401() {
+    let app = common::spawn_app().await;
+    let resp = reqwest::Client::new()
+        .delete(format!(
+            "{}/internal/campaign/{}/lease",
+            app.base_url, CAMPAIGN_ID
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+}

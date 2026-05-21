@@ -12,7 +12,11 @@ use axum::{
     http::StatusCode,
 };
 use chrono::Utc;
-use familiar_systems_app_shared::campaigns::internal::{InitFailedRequest, PatchCampaignMirror};
+use familiar_systems_app_shared::campaigns::internal::{
+    HeartbeatRequest, InitFailedRequest, PatchCampaignMirror,
+};
+use familiar_systems_app_shared::id::CampaignId;
+use fs_id::Nanoid;
 use sea_orm::{ActiveValue::Set, EntityTrait};
 
 /// `PATCH /internal/platform/campaign/{id}`: mirror changed campaign
@@ -57,6 +61,40 @@ pub async fn patch_campaign(
     campaigns::Entity::update(am).exec(&state.db).await?;
 
     Ok(StatusCode::OK)
+}
+
+/// `DELETE /internal/platform/campaign/{id}/lease`: the campaign shard
+/// notifies the platform that it released a campaign (idle eviction).
+/// Removes the campaign from the in-memory loaded cache.
+pub async fn release_lease(
+    State(state): State<AppState>,
+    Path(campaign_id): Path<String>,
+) -> StatusCode {
+    let cid = CampaignId::new(Nanoid(campaign_id.clone()));
+    if let Ok(mut cache) = state.loaded_cache.write() {
+        cache.remove(&cid);
+    }
+    tracing::info!(
+        campaign_id = %campaign_id,
+        "shard reported campaign lease released"
+    );
+    StatusCode::OK
+}
+
+/// `POST /internal/platform/heartbeat`: the campaign shard sends the list
+/// of currently loaded campaign IDs. Replaces the loaded cache wholesale,
+/// reconciling any drift from missed release notifications or restarts.
+pub async fn heartbeat(
+    State(state): State<AppState>,
+    Json(body): Json<HeartbeatRequest>,
+) -> StatusCode {
+    let count = body.campaigns.len();
+    if let Ok(mut cache) = state.loaded_cache.write() {
+        cache.clear();
+        cache.extend(body.campaigns);
+    }
+    tracing::debug!(loaded_count = count, "heartbeat received");
+    StatusCode::OK
 }
 
 /// `POST /internal/platform/campaign/{id}/init-failed`: record that the

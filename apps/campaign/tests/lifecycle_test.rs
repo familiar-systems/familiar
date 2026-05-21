@@ -31,6 +31,7 @@ async fn ensure_drain_and_reopen_three_campaigns() {
         store,
         Duration::from_secs(300),
         Duration::from_secs(60),
+        None,
     ));
 
     let ids: Vec<CampaignId> = (0..3).map(|_| CampaignId::generate()).collect();

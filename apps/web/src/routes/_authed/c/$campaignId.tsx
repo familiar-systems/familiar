@@ -8,6 +8,7 @@ import type { CampaignMetadataResponse } from "@familiar-systems/types-campaign"
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { CampaignWizard } from "../../../features/onboarding/CampaignWizard";
+import { client } from "../../../lib/api";
 import { campaignClient } from "../../../lib/campaigns-api";
 
 interface LoadState {
@@ -23,6 +24,15 @@ function CampaignPage(): React.ReactElement {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      const { response: leaseResp } = await client.GET("/campaigns/{id}", {
+        params: { path: { id: campaignId as string } },
+      });
+      if (cancelled) return;
+      if (!leaseResp.ok) {
+        setLoad({ campaign: null, error: `Failed to load campaign (${leaseResp.status})` });
+        return;
+      }
+
       const { data, response } = await campaignClient.GET("/campaign/{id}", {
         params: { path: { id: campaignId as string } },
       });

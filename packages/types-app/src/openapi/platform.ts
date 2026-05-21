@@ -40,6 +40,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/campaigns/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * `GET /api/campaigns/{id}`: fetch a single campaign and ensure it is
+     *     loaded on its shard. The SPA calls this before talking to the campaign
+     *     server; the implicit lease acquisition is invisible to the caller.
+     * @description Returns 404 for both "not found" and "not owned by this user" to
+     *     prevent campaign-ID enumeration.
+     */
+    get: operations["get_campaign"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/health": {
     parameters: {
       query?: never;
@@ -185,6 +208,50 @@ export interface operations {
         content?: never;
       };
       /** @description Shard or DB failure */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_campaign: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Campaign details */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Campaign"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not found or not owned */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Shard failure */
       500: {
         headers: {
           [name: string]: unknown;
