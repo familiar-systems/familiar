@@ -93,6 +93,22 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
+  // Platform: single-campaign fetch (lease + metadata).
+  await page.route(`**/api/campaigns/${CAMPAIGN_ID}`, async (route) => {
+    if (route.request().method() === "GET") {
+      const row = state.campaigns.find((c) => c.id === CAMPAIGN_ID);
+      if (!row) {
+        return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(row),
+      });
+    }
+    return route.fallback();
+  });
+
   // Platform: list + create campaigns.
   await page.route("**/api/campaigns", async (route) => {
     const req = route.request();
