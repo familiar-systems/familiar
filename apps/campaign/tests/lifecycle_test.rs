@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use familiar_systems_campaign::{
-    actors::registry::{BeginDrain, CampaignRegistry, EnsureCampaign},
+    actors::registry::{BeginDrain, CampaignRegistry, CreateCampaign},
     db::{connect, register_sqlite_vec},
     persistence::LocalCampaignStore,
 };
@@ -36,7 +36,7 @@ async fn ensure_drain_and_reopen_three_campaigns() {
     let ids: Vec<CampaignId> = (0..3).map(|_| CampaignId::generate()).collect();
     for id in &ids {
         registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id.clone(),
                 owner_user_id: UserId::generate(),
             })

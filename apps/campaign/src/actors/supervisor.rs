@@ -19,14 +19,21 @@ use kameo::error::ActorStopReason;
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
 
+use sea_orm::EntityTrait;
+
 use crate::actors::database_writer::{
-    GetMetadata, InitializeCampaignError, InitializeCampaignResult, InitializeCampaignSetup,
-    MetadataError,
+    GetMetadata, MetadataError, PatchCampaignError, PatchCampaignMetadata as DbPatchCampaign,
+    PatchCampaignResult,
 };
 use crate::entities::campaign_metadata;
 use crate::error::InitError;
 use crate::persistence::{CampaignDatabase, CampaignStore};
 
+// TODO: replace `Option<CampaignDatabase>` with a `SupervisorState` enum
+// (Starting / Restoring / Ready / Draining) per the actor domain design doc.
+// The current Option works while checkout is synchronous and there are no
+// room actors, but the state machine is needed for heartbeat phase reporting
+// and room-join gating once WebSocket support lands.
 pub struct CampaignSupervisor {
     campaign_id: CampaignId,
     store: Arc<dyn CampaignStore>,
@@ -70,7 +77,7 @@ impl Message<SetStopCause> for CampaignSupervisor {
 
 pub struct CampaignSupervisorArgs {
     pub campaign_id: CampaignId,
-    pub owner_user_id: UserId,
+    pub owner_user_id: Option<UserId>,
     pub store: Arc<dyn CampaignStore>,
     pub idle_timeout: Duration,
     pub eviction_check_interval: Duration,
@@ -80,13 +87,22 @@ impl Actor for CampaignSupervisor {
     type Args = CampaignSupervisorArgs;
     type Error = InitError;
 
+    // TODO: move checkout to a background task per the actor domain design
+    // doc's startup lifecycle. Synchronous on_start blocks the supervisor's
+    // mailbox during checkout, which is fine for LocalCampaignStore (sub-ms)
+    // but will block for seconds once S3 checkout downloads the .db file.
+    // The design doc's pattern: spawn checkout as a tokio task, transition
+    // through Starting -> Restoring -> Ready via completion messages.
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, InitError> {
         let span = tracing::info_span!("campaign_supervisor", campaign_id = %args.campaign_id.0);
         let _guard = span.enter();
 
-        let db =
-            CampaignDatabase::checkout(args.store.as_ref(), &args.campaign_id, &args.owner_user_id)
-                .await?;
+        let db = CampaignDatabase::checkout(
+            args.store.as_ref(),
+            &args.campaign_id,
+            args.owner_user_id.as_ref(),
+        )
+        .await?;
 
         tracing::info!("campaign ready");
 
@@ -180,23 +196,24 @@ impl Message<IdleCheck> for CampaignSupervisor {
 }
 
 // ---------------------------------------------------------------------------
-// InitializeCampaign
+// PatchCampaignMetadata
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-pub struct InitializeCampaign {
-    pub name: String,
+pub struct PatchCampaignMetadata {
+    pub name: Option<String>,
     pub tagline: Option<String>,
-    pub game_system: String,
-    pub content_locale: String,
+    pub game_system: Option<String>,
+    pub content_locale: Option<String>,
+    pub complete_wizard: bool,
 }
 
-impl Message<InitializeCampaign> for CampaignSupervisor {
-    type Reply = Result<InitializeCampaignResult, InitializeCampaignError>;
+impl Message<PatchCampaignMetadata> for CampaignSupervisor {
+    type Reply = Result<PatchCampaignResult, PatchCampaignError>;
 
     async fn handle(
         &mut self,
-        msg: InitializeCampaign,
+        msg: PatchCampaignMetadata,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.last_activity = Instant::now();
@@ -206,19 +223,20 @@ impl Message<InitializeCampaign> for CampaignSupervisor {
             .expect("db must be Some while actor is running");
         match db
             .writer()
-            .ask(InitializeCampaignSetup {
+            .ask(DbPatchCampaign {
                 name: msg.name,
                 tagline: msg.tagline,
                 game_system: msg.game_system,
                 content_locale: msg.content_locale,
+                complete_wizard: msg.complete_wizard,
             })
             .await
         {
             Ok(result) => Ok(result),
             Err(kameo::error::SendError::HandlerError(e)) => Err(e),
             Err(e) => {
-                tracing::error!(error = %e, "database actor unavailable during initialization");
-                Err(InitializeCampaignError::ActorUnavailable)
+                tracing::error!(error = %e, "database actor unavailable during patch");
+                Err(PatchCampaignError::ActorUnavailable)
             }
         }
     }
@@ -241,14 +259,10 @@ impl Message<GetMetadata> for CampaignSupervisor {
             .db
             .as_ref()
             .expect("db must be Some while actor is running");
-        match db.writer().ask(GetMetadata).await {
-            Ok(model) => Ok(model),
-            Err(kameo::error::SendError::HandlerError(e)) => Err(e),
-            Err(e) => {
-                tracing::error!(error = %e, "database actor unavailable for metadata read");
-                Err(MetadataError::ActorUnavailable)
-            }
-        }
+        campaign_metadata::Entity::find_by_id(campaign_metadata::METADATA_ROW_ID)
+            .one(db.reader())
+            .await?
+            .ok_or(MetadataError::NoMetadataRow)
     }
 }
 
@@ -312,7 +326,7 @@ mod tests {
     ) -> CampaignSupervisorArgs {
         CampaignSupervisorArgs {
             campaign_id,
-            owner_user_id: UserId::generate(),
+            owner_user_id: Some(UserId::generate()),
             store,
             idle_timeout: Duration::from_millis(idle_ms),
             eviction_check_interval: Duration::from_millis(check_ms),

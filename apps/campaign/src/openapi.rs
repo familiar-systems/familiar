@@ -13,14 +13,13 @@
 
 use crate::routes::catalog::*;
 use crate::routes::health::*;
-use crate::routes::initialize::*;
 use crate::routes::metadata::*;
 use crate::state::AppState;
 use familiar_systems_campaign_shared::onboarding::catalog::{
     ByoEntry, CatalogResponse, SystemEntry, TemplateRef,
 };
 use familiar_systems_campaign_shared::onboarding::initialize::{
-    AudioMode, InitializeErrorResponse, InitializeRequest,
+    AudioMode, CampaignErrorResponse, PatchCampaignRequest,
 };
 use familiar_systems_campaign_shared::onboarding::metadata::CampaignMetadataResponse;
 use utoipa::OpenApi;
@@ -30,7 +29,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 #[openapi(
     info(
         title = "familiar.systems campaign API",
-        description = "Campaign-scoped endpoints: catalog, initialization, and (future) CRDT room bootstrapping.",
+        description = "Campaign-scoped endpoints: catalog, metadata, and (future) CRDT room bootstrapping.",
         version = "0.1.0",
         license(name = "AGPL-3.0-or-later", identifier = "AGPL-3.0-or-later"),
     ),
@@ -39,8 +38,8 @@ use utoipa_axum::{router::OpenApiRouter, routes};
         SystemEntry,
         ByoEntry,
         TemplateRef,
-        InitializeRequest,
-        InitializeErrorResponse,
+        PatchCampaignRequest,
+        CampaignErrorResponse,
         AudioMode,
         CampaignMetadataResponse,
     ))
@@ -51,6 +50,5 @@ pub fn api_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(health))
         .routes(routes!(list_systems))
-        .routes(routes!(initialize))
-        .routes(routes!(get_campaign))
+        .routes(routes!(get_campaign, patch_campaign))
 }

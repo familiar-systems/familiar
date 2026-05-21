@@ -38,9 +38,10 @@ pub async fn spawn_app() -> TestApp {
     init_tracing_for_tests();
     let hanko = MockServer::start().await;
     // Standalone wiremock server so route tests can assert that the platform
-    // dispatched the expected `POST /internal/campaign/init` to the campaign
-    // tier. Tests that don't care can ignore it; an unmounted endpoint
-    // returns 404, which exercises the failure path naturally.
+    // dispatched the expected `POST /internal/campaign` and
+    // `PUT /internal/campaign/{id}/lease` to the campaign tier. Tests that
+    // don't care can ignore it; an unmounted endpoint returns 404, which
+    // exercises the failure path naturally.
     let campaign = MockServer::start().await;
     let db = Database::connect("sqlite::memory:").await.unwrap();
     Migrator::up(&db, None).await.unwrap();

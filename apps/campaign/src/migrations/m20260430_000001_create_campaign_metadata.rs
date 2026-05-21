@@ -99,7 +99,7 @@ mod tests {
     #[tokio::test]
     async fn id_one_round_trips_every_column() {
         let db = setup().await;
-        let written = row(1);
+        let written = row(campaign_metadata::METADATA_ROW_ID);
         let written_campaign_id = written.campaign_id.clone().unwrap();
         let written_name = written.name.clone().unwrap();
         let written_tagline = written.tagline.clone().unwrap();
@@ -108,13 +108,13 @@ mod tests {
 
         written.insert(&db).await.expect("id=1 should insert");
 
-        let read = campaign_metadata::Entity::find_by_id(1)
+        let read = campaign_metadata::Entity::find_by_id(campaign_metadata::METADATA_ROW_ID)
             .one(&db)
             .await
             .expect("find_by_id")
             .expect("row exists");
 
-        assert_eq!(read.id, 1);
+        assert_eq!(read.id, campaign_metadata::METADATA_ROW_ID);
         assert_eq!(read.campaign_id, written_campaign_id);
         assert_eq!(read.name, written_name);
         assert_eq!(read.tagline, written_tagline);

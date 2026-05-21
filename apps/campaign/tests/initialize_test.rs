@@ -1,14 +1,15 @@
 mod common;
 
 use familiar_systems_app_shared::id::CampaignId;
-use familiar_systems_campaign::actors::registry::EnsureCampaign;
+use familiar_systems_campaign::actors::registry::CreateCampaign;
+use familiar_systems_campaign_shared::onboarding::metadata::CampaignMetadataResponse;
 use serde_json::json;
 use wiremock::{
     Mock, ResponseTemplate,
     matchers::{header, method, path},
 };
 
-fn valid_payload() -> serde_json::Value {
+fn wizard_payload() -> serde_json::Value {
     json!({
         "game_system": "dnd-5e",
         "content_locale": "en",
@@ -16,32 +17,33 @@ fn valid_payload() -> serde_json::Value {
         "tagline": null,
         "template_slugs": ["common/npc", "common/player"],
         "audio": "opt-out",
-        "evals_enabled": false
+        "evals_enabled": false,
+        "wizard_complete": true
     })
 }
 
-async fn ensure_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
+async fn create_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
     let _: kameo::actor::ActorRef<
         familiar_systems_campaign::actors::supervisor::CampaignSupervisor,
     > = app
         .registry
-        .ask(EnsureCampaign {
+        .ask(CreateCampaign {
             campaign_id: campaign_id.clone(),
             owner_user_id: common::test_user_id(),
         })
         .await
-        .expect("ensure campaign");
+        .expect("create campaign");
 }
 
 #[tokio::test]
-async fn initialize_writes_metadata_and_mirrors_to_platform() {
+async fn patch_with_wizard_complete_writes_metadata_and_mirrors() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
-    ensure_campaign(&app, &campaign_id).await;
+    create_campaign(&app, &campaign_id).await;
 
-    Mock::given(method("POST"))
+    Mock::given(method("PATCH"))
         .and(path(format!(
-            "/internal/platform/campaigns/{}/metadata",
+            "/internal/platform/campaign/{}",
             campaign_id.0
         )))
         .and(header(
@@ -54,27 +56,28 @@ async fn initialize_writes_metadata_and_mirrors_to_platform() {
         .await;
 
     let resp = reqwest::Client::new()
-        .post(format!(
-            "{}/campaign/{}/initialize",
-            app.base_url, campaign_id.0
-        ))
+        .patch(format!("{}/campaign/{}", app.base_url, campaign_id.0))
         .header("authorization", app.auth_header())
-        .json(&valid_payload())
+        .json(&wizard_payload())
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status().as_u16(), 200);
+
+    let body: CampaignMetadataResponse = resp.json().await.unwrap();
+    assert_eq!(body.name, "Embergrove Saga");
+    assert!(body.wizard_completed_at.is_some());
 }
 
 #[tokio::test]
-async fn double_initialize_returns_409() {
+async fn double_wizard_complete_returns_409() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
-    ensure_campaign(&app, &campaign_id).await;
+    create_campaign(&app, &campaign_id).await;
 
-    Mock::given(method("POST"))
+    Mock::given(method("PATCH"))
         .and(path(format!(
-            "/internal/platform/campaigns/{}/metadata",
+            "/internal/platform/campaign/{}",
             campaign_id.0
         )))
         .respond_with(ResponseTemplate::new(200))
@@ -82,21 +85,21 @@ async fn double_initialize_returns_409() {
         .await;
 
     let client = reqwest::Client::new();
-    let url = format!("{}/campaign/{}/initialize", app.base_url, campaign_id.0);
+    let url = format!("{}/campaign/{}", app.base_url, campaign_id.0);
 
     let first = client
-        .post(&url)
+        .patch(&url)
         .header("authorization", app.auth_header())
-        .json(&valid_payload())
+        .json(&wizard_payload())
         .send()
         .await
         .unwrap();
     assert_eq!(first.status().as_u16(), 200);
 
     let second = client
-        .post(&url)
+        .patch(&url)
         .header("authorization", app.auth_header())
-        .json(&valid_payload())
+        .json(&wizard_payload())
         .send()
         .await
         .unwrap();
@@ -104,16 +107,13 @@ async fn double_initialize_returns_409() {
 }
 
 #[tokio::test]
-async fn initialize_unknown_campaign_returns_404() {
+async fn patch_unknown_campaign_returns_404() {
     let app = common::spawn_app().await;
 
     let resp = reqwest::Client::new()
-        .post(format!(
-            "{}/campaign/nonexistent-id/initialize",
-            app.base_url
-        ))
+        .patch(format!("{}/campaign/nonexistent-id", app.base_url))
         .header("authorization", app.auth_header())
-        .json(&valid_payload())
+        .json(&wizard_payload())
         .send()
         .await
         .unwrap();
@@ -121,10 +121,10 @@ async fn initialize_unknown_campaign_returns_404() {
 }
 
 #[tokio::test]
-async fn initialize_rejects_malformed_body_with_4xx() {
+async fn patch_rejects_malformed_body_with_4xx() {
     let app = common::spawn_app().await;
     let resp = reqwest::Client::new()
-        .post(format!("{}/campaign/test-id/initialize", app.base_url))
+        .patch(format!("{}/campaign/test-id", app.base_url))
         .header("authorization", app.auth_header())
         .json(&json!({ "not": "valid" }))
         .send()
@@ -138,19 +138,48 @@ async fn initialize_rejects_malformed_body_with_4xx() {
 }
 
 #[tokio::test]
-async fn initialize_without_auth_returns_401() {
+async fn patch_without_auth_returns_401() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
-    ensure_campaign(&app, &campaign_id).await;
+    create_campaign(&app, &campaign_id).await;
 
     let resp = reqwest::Client::new()
-        .post(format!(
-            "{}/campaign/{}/initialize",
-            app.base_url, campaign_id.0
-        ))
-        .json(&valid_payload())
+        .patch(format!("{}/campaign/{}", app.base_url, campaign_id.0))
+        .json(&wizard_payload())
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn patch_without_wizard_complete_updates_name_only() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
+
+    Mock::given(method("PATCH"))
+        .and(path(format!(
+            "/internal/platform/campaign/{}",
+            campaign_id.0
+        )))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&app.platform)
+        .await;
+
+    let resp = reqwest::Client::new()
+        .patch(format!("{}/campaign/{}", app.base_url, campaign_id.0))
+        .header("authorization", app.auth_header())
+        .json(&json!({ "name": "Renamed Campaign" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: CampaignMetadataResponse = resp.json().await.unwrap();
+    assert_eq!(body.name, "Renamed Campaign");
+    assert!(
+        body.wizard_completed_at.is_none(),
+        "wizard should not be completed"
+    );
 }

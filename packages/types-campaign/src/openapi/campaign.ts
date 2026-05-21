@@ -5,10 +5,10 @@
 import type {
   AudioMode,
   ByoEntry,
+  CampaignErrorResponse,
   CampaignMetadataResponse,
   CatalogResponse,
-  InitializeErrorResponse,
-  InitializeRequest,
+  PatchCampaignRequest,
   SystemEntry,
   TemplateRef,
 } from "@familiar-systems/types-campaign";
@@ -26,23 +26,7 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/campaign/{id}/initialize": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post: operations["initialize"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
+    patch: operations["patch_campaign"];
     trace?: never;
   };
   "/catalog/systems": {
@@ -101,15 +85,10 @@ export interface components {
      */
     AudioMode: AudioMode;
     ByoEntry: ByoEntry;
+    CampaignErrorResponse: CampaignErrorResponse;
     CampaignMetadataResponse: CampaignMetadataResponse;
     CatalogResponse: CatalogResponse;
-    /**
-     * @description Returned on the deliberate failure path of v0. The FE renders `error`
-     *     inline and surfaces `campaign_id` so the user can find their (broken)
-     *     campaign back in the hub.
-     */
-    InitializeErrorResponse: InitializeErrorResponse;
-    InitializeRequest: InitializeRequest;
+    PatchCampaignRequest: PatchCampaignRequest;
     SystemEntry: SystemEntry;
     TemplateRef: TemplateRef;
   };
@@ -179,7 +158,7 @@ export interface operations {
       };
     };
   };
-  initialize: {
+  patch_campaign: {
     parameters: {
       query?: never;
       header?: never;
@@ -191,16 +170,18 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["InitializeRequest"];
+        "application/json": components["schemas"]["PatchCampaignRequest"];
       };
     };
     responses: {
-      /** @description Campaign initialized */
+      /** @description Campaign updated */
       200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["CampaignMetadataResponse"];
+        };
       };
       /** @description Missing or invalid session */
       401: {
@@ -216,20 +197,34 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Already initialized */
+      /** @description Campaign not on this shard */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Wizard already completed */
       409: {
         headers: {
           [name: string]: unknown;
         };
         content?: never;
       };
-      /** @description Initialization failed */
+      /** @description Required fields missing for wizard completion */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Update failed */
       500: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["InitializeErrorResponse"];
+          "application/json": components["schemas"]["CampaignErrorResponse"];
         };
       };
     };

@@ -53,3 +53,23 @@ pub async fn connect(database_url: &str) -> Result<DatabaseConnection, sqlx::Err
 
     Ok(SqlxSqliteConnector::from_sqlx_sqlite_pool(pool))
 }
+
+/// Open a read-only connection pool against an existing database file.
+///
+/// WAL mode allows concurrent readers alongside the single writer owned
+/// by [`DatabaseActor`]. The pool is `Clone + Send + Sync` so it can be
+/// handed to every actor that needs read access at spawn time.
+pub async fn connect_readonly(path: &std::path::Path) -> Result<DatabaseConnection, sqlx::Error> {
+    let opts = SqliteConnectOptions::new()
+        .filename(path)
+        .read_only(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .foreign_keys(true);
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect_with(opts)
+        .await?;
+
+    Ok(SqlxSqliteConnector::from_sqlx_sqlite_pool(pool))
+}

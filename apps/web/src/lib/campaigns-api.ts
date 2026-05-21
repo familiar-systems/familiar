@@ -2,10 +2,10 @@
 // platform server), but against the campaign server's OpenAPI spec.
 //
 // The campaign server's routes use full service-prefixed paths
-// (/catalog/systems, /campaign/{id}/initialize). The proxy (Caddy in dev,
-// Traefik in prod) forwards these paths intact, so the base URL is just
-// BASE_URL (e.g. "/" or "/pr-42/"). The service prefix is baked into the
-// OpenAPI path keys, not the base URL.
+// (/catalog/systems, /campaign/{id}). The proxy (Caddy in dev, Traefik in
+// prod) forwards these paths intact, so the base URL is just BASE_URL
+// (e.g. "/" or "/pr-42/"). The service prefix is baked into the OpenAPI
+// path keys, not the base URL.
 
 import createClient from "openapi-fetch";
 import type { CampaignPaths } from "@familiar-systems/types-campaign";

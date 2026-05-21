@@ -185,31 +185,7 @@ sources = [
   "packages/**/vitest.config.*",
 ]
 
-[tasks."test:rust"]
-description = "Run Rust tests (cargo test triggers ts-rs codegen as a side effect)"
-# ts-rs's `#[ts(export)]` derive expands into a `#[cfg(test)]
-# export_bindings_<TypeName>()` test that writes the .ts file when the
-# suite runs - so `cargo test` is what produces the ts-rs side of
-# packages/*/src/generated/. The OpenAPI half is owned by `generate-types`
-# and runs on top of this task via `depends`.
-run = """
-cargo test --workspace
-pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
-"""
-sources = [
-  "apps/platform/**/*.rs",
-  "apps/campaign/**/*.rs",
-  "crates/**/*.rs",
-  "Cargo.toml",
-  "Cargo.lock",
-  "apps/platform/Cargo.toml",
-  "apps/campaign/Cargo.toml",
-  "crates/**/Cargo.toml",
-]
-outputs = [
-  "packages/types-app/src/generated/**/*.ts",
-  "packages/types-campaign/src/generated/**/*.ts",
-]
+# test:rust lives in .mise/tasks/test/rust (file task, shellcheck-able).
 
 [tasks."test:python"]
 dir = "workers/whisperx"

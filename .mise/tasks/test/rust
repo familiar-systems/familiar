@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+#MISE description="Run Rust tests (cargo test triggers ts-rs codegen as a side effect)"
+#MISE sources=["apps/platform/**/*.rs", "apps/campaign/**/*.rs", "crates/**/*.rs", "Cargo.toml", "Cargo.lock", "apps/platform/Cargo.toml", "apps/campaign/Cargo.toml", "crates/**/Cargo.toml"]
+#MISE outputs=["packages/types-app/src/generated/**/*.ts", "packages/types-campaign/src/generated/**/*.ts"]
+set -euo pipefail
+
+# ts-rs's #[ts(export)] derive expands into a #[cfg(test)] test that writes
+# .ts files when the suite runs. Cleaning first ensures renamed/deleted
+# Rust types don't leave stale .ts artifacts.
+
+readonly TYPE_PACKAGES=(packages/types-app packages/types-campaign)
+
+# 1. Clean stale ts-rs output so renames don't leave ghosts.
+for pkg in "${TYPE_PACKAGES[@]}"; do
+  rm -rf "${pkg}/src/generated"
+done
+
+# 2. Run the full Rust test suite (ts-rs writes files as a side effect).
+cargo test --workspace
+
+# 3. Generate per-directory barrel files (index.ts with `export *`).
+#    The top-level index.ts in each package does `export * from "./generated/<dir>"`
+#    so it never needs updating when individual types are renamed.
+for pkg in "${TYPE_PACKAGES[@]}"; do
+  for dir in "${pkg}"/src/generated/*/; do
+    [ -d "$dir" ] || continue
+    barrel="${dir}index.ts"
+    printf '// AUTO-GENERATED barrel. Run \x60mise run generate-types\x60 to refresh.\n' > "$barrel"
+    printf '// Do not edit by hand.\n' >> "$barrel"
+    for f in "${dir}"*.ts; do
+      name="$(basename "$f" .ts)"
+      [ "$name" = "index" ] && continue
+      printf 'export * from "./%s";\n' "$name" >> "$barrel"
+    done
+  done
+done
+
+# 4. Format the generated output.
+pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated

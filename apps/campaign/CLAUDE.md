@@ -10,8 +10,10 @@ Covers `apps/campaign/` only: the `familiar-systems-campaign` Axum + kameo binar
 
 - `GET /health`: 200 `ready` when the registry is in `Phase::Ready`, 503 `draining` once drain has begun. Wired to the k8s readiness probe.
 - `GET /catalog/systems`: locale-resolved catalog of game systems and bundled template metadata. Honors `?locale=` then `Accept-Language`, falls back to `en`.
-- `POST /campaign/{id}/initialize`: campaign initialization handler. **Deliberate 500 in the thin slice.** Validates payload shape, fires `init-failed` to the platform, returns a structured error body. Real init transaction lands in a later slice.
-- `POST /internal/campaign/init`: bearer-protected. Asks `CampaignRegistry` to ensure a supervisor exists; idempotent on `campaign_id`. Returns 200 on success, 503 during drain, 500 on init failure.
+- `GET /campaign/{id}`: returns campaign metadata (name, tagline, game_system, content_locale, timestamps).
+- `PATCH /campaign/{id}`: partial metadata update. All fields optional. When `wizard_complete: true`, validates required fields, sets `wizard_completed_at`, and mirrors to platform. Without the flag, updates only the provided fields.
+- `POST /internal/campaign`: bearer-protected. Creates a new campaign on this shard with the given owner. Idempotent on `campaign_id`.
+- `PUT /internal/campaign/{id}/lease`: bearer-protected. Ensures an existing campaign is checked out on this shard. Idempotent.
 
 CRDT room actors (Thing, ToC, AgentConversation), the WebSocket layer, the real wizard transaction, template instantiation, and object-storage checkin/checkout do not exist yet. See "Design docs" below for where each is specified.
 
@@ -43,11 +45,11 @@ Read rustdoc at each site for detail; this table is a where-to-go index.
 | --- | --- |
 | actor topology, registry/supervisor/database lifecycle, drain workflow | `src/actors/mod.rs`, `src/actors/registry.rs`, `src/actors/supervisor.rs`, `src/actors/database.rs` |
 | route registration, bearer-protected vs public split, full-path routes | `src/routes/mod.rs` |
-| `/internal/campaign/init` handler and status mapping | `src/routes/internal.rs` |
+| `POST /internal/campaign` and `PUT /internal/campaign/{id}/lease` | `src/routes/internal.rs` |
 | `/systems` catalog (locale resolution) | `src/routes/catalog.rs` |
-| campaign initialization handler (currently deliberate 500) | `src/routes/initialize.rs` |
+| `GET` and `PATCH /campaign/{id}` metadata handlers | `src/routes/metadata.rs` |
 | bearer middleware | `src/middleware/internal_auth.rs` |
-| outbound campaign → platform `/internal/platform/*` client | `src/clients/platform_internal.rs` |
+| outbound campaign -> platform `/internal/platform/*` client | `src/clients/platform_internal.rs` |
 | typed startup/init/ensure errors | `src/error.rs` |
 | required env vars (panics on missing) | `src/config.rs` |
 | `AppState` shape (what handlers see) | `src/state.rs` |
@@ -83,7 +85,7 @@ cargo test -p familiar-systems-campaign --test internal_init_test init_during_dr
 
 ## Cross-file facts
 
-- **Routes use full service-prefixed paths.** Public routes are registered as `/catalog/systems`, `/campaign/{id}/initialize`, etc. Reverse proxies strip only the per-environment prefix (nothing in local dev, `/pr-N` in preview) and forward the service prefix intact. `/internal/*` is pod-to-pod only and is never registered in any Ingress.
+- **Routes use full service-prefixed paths.** Public routes are registered as `/catalog/systems`, `/campaign/{id}`, etc. Reverse proxies strip only the per-environment prefix (nothing in local dev, `/pr-N` in preview) and forward the service prefix intact. `/internal/*` is pod-to-pod only and is never registered in any Ingress.
 - **`register_sqlite_vec()` must run before any sea-orm pool opens.** Migrations include a `vec0` virtual table. `main.rs` calls it once at startup; tests must call it too (it's `Once`-guarded so spamming is fine).
 - **CampaignId is a Nanoid** minted by the platform tier, not validated here on the wire. `<data_dir>/<campaign_id>.db` is the on-disk shape; no path-traversal concern because Nanoid is URL-safe.
 - **`SetStopCause` is first-writer-wins.** A supervisor that self-tags `Idle` does not get clobbered by a later drain-side `SetStopCause(Drain)`. See the rustdoc on `SetStopCause`.

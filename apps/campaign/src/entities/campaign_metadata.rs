@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
-use familiar_systems_app_shared::id::CampaignId;
+use familiar_systems_app_shared::id::{CampaignId, UserId};
+use fs_id::Uuid;
 use sea_orm::entity::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, DeriveValueType)]
@@ -18,16 +19,16 @@ impl From<CampaignIdCol> for CampaignId {
     }
 }
 
+pub const METADATA_ROW_ID: i32 = 1;
+
 /// Campaign metadata is a per-campaign summary of everything about that campaign.
 /// At time of writing, it's mostly used for display purposes.
 /// In the future, this would be an excellent place for things like feature flags.
 #[derive(Debug, Clone, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "campaign_metadata")]
 pub struct Model {
-    /// Always 1. This is a singleton table; the migration enforces a
-    /// `CHECK (id = 1)` constraint at the DB level. (`extra = "..."` is not a
-    /// recognized sea-orm attribute in 1.1, so the constraint cannot be
-    /// declared here - the migration is the source of truth.)
+    /// Always [`METADATA_ROW_ID`]. Singleton table; the migration enforces
+    /// `CHECK (id = 1)` at the DB level.
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: i32,
 
@@ -47,6 +48,14 @@ pub struct Model {
     pub wizard_completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl Model {
+    pub fn is_owned_by(&self, user: &UserId) -> bool {
+        Uuid::parse_str(&self.owner_user_id)
+            .map(|stored| stored == user.0)
+            .unwrap_or(false)
+    }
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

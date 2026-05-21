@@ -1,9 +1,9 @@
-//! Outbound HTTP client: campaign → platform tier `/internal/platform/*`.
+//! Outbound HTTP client: campaign -> platform tier `/internal/platform/*`.
 //!
 //! Mirror of `apps/platform/src/clients/campaign_internal.rs`. Bearer is
 //! pre-installed as a default header so call sites don't have to remember it.
 
-use familiar_systems_app_shared::campaigns::internal::{InitFailedRequest, MetadataMirrorRequest};
+use familiar_systems_app_shared::campaigns::internal::{InitFailedRequest, PatchCampaignMirror};
 use reqwest::{Client, header};
 use std::sync::Arc;
 
@@ -46,18 +46,19 @@ impl PlatformInternalClient {
         }
     }
 
-    /// `POST /internal/platform/campaigns/<id>/metadata`: mirrors campaign
-    /// metadata onto the platform's routing row after a successful campaign initialization.
-    pub async fn report_metadata(
+    /// `PATCH /internal/platform/campaign/{id}`: mirrors changed campaign
+    /// metadata onto the platform's routing row. Fires after every
+    /// successful PATCH on the public API.
+    pub async fn patch_campaign(
         &self,
         campaign_id: &str,
-        body: &MetadataMirrorRequest,
+        body: &PatchCampaignMirror,
     ) -> Result<(), PlatformInternalError> {
         let url = format!(
-            "{}/internal/platform/campaigns/{}/metadata",
+            "{}/internal/platform/campaign/{}",
             self.inner.base_url, campaign_id
         );
-        let resp = self.inner.http.post(&url).json(body).send().await?;
+        let resp = self.inner.http.patch(&url).json(body).send().await?;
         if resp.status().is_success() {
             Ok(())
         } else {
@@ -67,16 +68,16 @@ impl PlatformInternalClient {
         }
     }
 
-    /// `POST /internal/platform/campaigns/<id>/init-failed`: tells the
-    /// platform "I tried to initialize this campaign and failed."  The
-    /// platform persists `reason` onto `campaigns.last_init_error`.
+    /// `POST /internal/platform/campaign/{id}/init-failed`: tells the
+    /// platform "I tried to complete the wizard and failed." The platform
+    /// persists `reason` onto `campaigns.last_init_error`.
     pub async fn report_init_failed(
         &self,
         campaign_id: &str,
         reason: &str,
     ) -> Result<(), PlatformInternalError> {
         let url = format!(
-            "{}/internal/platform/campaigns/{}/init-failed",
+            "{}/internal/platform/campaign/{}/init-failed",
             self.inner.base_url, campaign_id
         );
         let body = InitFailedRequest {
@@ -103,7 +104,7 @@ mod tests {
     async fn report_init_failed_sends_bearer_and_reason() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/internal/platform/campaigns/abc/init-failed"))
+            .and(path("/internal/platform/campaign/abc/init-failed"))
             .and(header("authorization", "Bearer secret"))
             .respond_with(ResponseTemplate::new(200))
             .expect(1)
@@ -121,7 +122,7 @@ mod tests {
     async fn report_init_failed_returns_status_error_on_5xx() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/internal/platform/campaigns/abc/init-failed"))
+            .and(path("/internal/platform/campaign/abc/init-failed"))
             .respond_with(ResponseTemplate::new(500))
             .mount(&server)
             .await;
@@ -134,5 +135,27 @@ mod tests {
             }
             other => panic!("expected Status error, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn patch_campaign_sends_bearer_and_uses_patch() {
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .and(path("/internal/platform/campaign/abc"))
+            .and(header("authorization", "Bearer secret"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = PlatformInternalClient::new(server.uri(), "secret");
+        let mirror = PatchCampaignMirror {
+            name: Some("Test Campaign".into()),
+            tagline: None,
+            game_system: None,
+            content_locale: None,
+            wizard_completed_at: None,
+        };
+        client.patch_campaign("abc", &mirror).await.unwrap();
     }
 }

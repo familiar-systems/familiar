@@ -128,10 +128,34 @@ impl Actor for CampaignRegistry {
     }
 }
 
+/// Create a new campaign on this shard with the given owner. Idempotent
+/// on `campaign_id`: if the supervisor already exists, returns it.
+#[derive(Debug, Clone)]
+pub struct CreateCampaign {
+    pub campaign_id: CampaignId,
+    pub owner_user_id: UserId,
+}
+
+impl Message<CreateCampaign> for CampaignRegistry {
+    type Reply = Result<ActorRef<CampaignSupervisor>, EnsureError>;
+
+    async fn handle(
+        &mut self,
+        msg: CreateCampaign,
+        ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let registry_ref = ctx.actor_ref().clone();
+        self.ensure_supervisor(registry_ref, msg.campaign_id, Some(msg.owner_user_id))
+            .await
+    }
+}
+
+/// Ensure a campaign is checked out on this shard. For cold checkouts of
+/// existing campaigns (the DB already exists on disk or in object storage).
+/// Does not set an owner; the campaign must already have one.
 #[derive(Debug, Clone)]
 pub struct EnsureCampaign {
     pub campaign_id: CampaignId,
-    pub owner_user_id: UserId,
 }
 
 impl Message<EnsureCampaign> for CampaignRegistry {
@@ -142,54 +166,66 @@ impl Message<EnsureCampaign> for CampaignRegistry {
         msg: EnsureCampaign,
         ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
+        let registry_ref = ctx.actor_ref().clone();
+        self.ensure_supervisor(registry_ref, msg.campaign_id, None)
+            .await
+    }
+}
+
+impl CampaignRegistry {
+    async fn ensure_supervisor(
+        &mut self,
+        registry_ref: ActorRef<Self>,
+        campaign_id: CampaignId,
+        owner_user_id: Option<UserId>,
+    ) -> Result<ActorRef<CampaignSupervisor>, EnsureError> {
         if matches!(self.phase, Phase::Draining) {
             tracing::debug!(
-                campaign_id = %msg.campaign_id.0,
+                campaign_id = %campaign_id.0,
                 "rejecting ensure during drain"
             );
             return Err(EnsureError::ShuttingDown);
         }
 
-        if let Some(existing) = self.supervisors.get(&msg.campaign_id) {
+        if let Some(existing) = self.supervisors.get(&campaign_id) {
             tracing::debug!(
-                campaign_id = %msg.campaign_id.0,
+                campaign_id = %campaign_id.0,
                 "supervisor already running"
             );
             return Ok(existing.clone());
         }
 
         tracing::info!(
-            campaign_id = %msg.campaign_id.0,
-            owner_user_id = %msg.owner_user_id.0,
+            campaign_id = %campaign_id.0,
             "spawning campaign supervisor"
         );
 
         let started = Instant::now();
 
         let supervisor = CampaignSupervisor::spawn(CampaignSupervisorArgs {
-            campaign_id: msg.campaign_id.clone(),
-            owner_user_id: msg.owner_user_id.clone(),
+            campaign_id: campaign_id.clone(),
+            owner_user_id,
             store: self.store.clone(),
             idle_timeout: self.idle_timeout,
             eviction_check_interval: self.eviction_check_interval,
         });
 
-        ctx.actor_ref().link(&supervisor).await;
+        registry_ref.link(&supervisor).await;
 
         supervisor.wait_for_startup().await;
         if !supervisor.is_alive() {
             tracing::warn!(
-                campaign_id = %msg.campaign_id.0,
+                campaign_id = %campaign_id.0,
                 "supervisor died during startup"
             );
             return Err(EnsureError::SupervisorDied);
         }
 
         self.supervisors
-            .insert(msg.campaign_id.clone(), supervisor.clone());
+            .insert(campaign_id.clone(), supervisor.clone());
 
         tracing::info!(
-            campaign_id = %msg.campaign_id.0,
+            campaign_id = %campaign_id.0,
             init_total_elapsed_ms = started.elapsed().as_millis() as u64,
             "campaign ensured"
         );
@@ -317,6 +353,7 @@ async fn run_drain(
 
 #[cfg(test)]
 mod tests {
+    use super::CreateCampaign;
     use super::*;
     use crate::actors::supervisor::Ping as SupPing;
     use crate::db::register_sqlite_vec;
@@ -356,7 +393,7 @@ mod tests {
 
         let campaign_id = CampaignId::generate();
         let first = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: campaign_id.clone(),
                 owner_user_id: user_id(),
             })
@@ -364,7 +401,7 @@ mod tests {
             .unwrap();
 
         let second = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: campaign_id.clone(),
                 owner_user_id: user_id(),
             })
@@ -397,7 +434,7 @@ mod tests {
                 .is_none()
         );
         registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id.clone(),
                 owner_user_id: user_id(),
             })
@@ -424,7 +461,7 @@ mod tests {
 
         let id = CampaignId::generate();
         registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id.clone(),
                 owner_user_id: user_id(),
             })
@@ -453,14 +490,14 @@ mod tests {
         let id_a = CampaignId::generate();
         let id_b = CampaignId::generate();
         let sup_a = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id_a.clone(),
                 owner_user_id: user_id(),
             })
             .await
             .unwrap();
         let sup_b = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id_b.clone(),
                 owner_user_id: user_id(),
             })
@@ -505,12 +542,12 @@ mod tests {
 
         let id = CampaignId::generate();
         let err = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id.clone(),
                 owner_user_id: user_id(),
             })
             .await;
-        assert!(err.is_err(), "ensure should fail when data_dir is unusable");
+        assert!(err.is_err(), "create should fail when data_dir is unusable");
 
         assert!(
             registry
@@ -532,7 +569,7 @@ mod tests {
             Duration::from_secs(60),
         ));
         let supervisor = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: CampaignId::generate(),
                 owner_user_id: user_id(),
             })
@@ -556,7 +593,7 @@ mod tests {
             Duration::from_secs(60),
         ));
         let supervisor = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: CampaignId::generate(),
                 owner_user_id: user_id(),
             })
@@ -578,7 +615,7 @@ mod tests {
         ));
 
         registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: CampaignId::generate(),
                 owner_user_id: user_id(),
             })
@@ -588,12 +625,12 @@ mod tests {
         begin_drain(&registry).await;
 
         let err = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: CampaignId::generate(),
                 owner_user_id: user_id(),
             })
             .await
-            .expect_err("ensure during drain must error");
+            .expect_err("create during drain must error");
         assert!(
             matches!(
                 err,

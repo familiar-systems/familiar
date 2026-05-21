@@ -8,7 +8,7 @@ use crate::openapi::api_router;
 use crate::state::AppState;
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, Method};
-use axum::routing::post;
+use axum::routing::{patch, post};
 use axum::{Json, Router, middleware, routing::get};
 use std::sync::Arc;
 use tower_http::{
@@ -56,11 +56,11 @@ fn make_request_span(req: &Request) -> Span {
 pub fn internal_router(state: AppState) -> Router {
     Router::new()
         .route(
-            "/internal/platform/campaigns/{id}/metadata",
-            post(internal_campaigns::report_metadata),
+            "/internal/platform/campaign/{id}",
+            patch(internal_campaigns::patch_campaign),
         )
         .route(
-            "/internal/platform/campaigns/{id}/init-failed",
+            "/internal/platform/campaign/{id}/init-failed",
             post(internal_campaigns::report_init_failed),
         )
         .layer(middleware::from_fn_with_state(

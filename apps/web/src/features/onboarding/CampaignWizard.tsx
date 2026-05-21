@@ -1,15 +1,12 @@
 // Orchestrating component for the new-campaign wizard.
 //
-// State is entirely client-side until the user initializes the campaign.
-// On initialize we fire one `POST /campaign/<id>/initialize`. In v0 the
-// campaign tier deliberately fails this call; the FE renders that failure
-// inline and leaves the wizard mounted so the user can navigate back to
-// the hub.
+// State is entirely client-side until the user seals the campaign.
+// On seal we fire one `PATCH /campaign/{id}` with `wizard_complete: true`.
 
 import type {
   AudioMode,
   CatalogResponse,
-  InitializeRequest,
+  PatchCampaignRequest,
   SystemEntry,
 } from "@familiar-systems/types-campaign";
 import { useEffect, useMemo, useState } from "react";
@@ -128,7 +125,7 @@ export function CampaignWizard({
     }
     setSealState("sealing");
     setErrorMessage(null);
-    const body: InitializeRequest = {
+    const body: PatchCampaignRequest = {
       game_system: systemDisplay.name,
       content_locale: locale,
       name: name.trim(),
@@ -136,13 +133,14 @@ export function CampaignWizard({
       template_slugs: Array.from(templateSlugs),
       audio,
       evals_enabled: evalsEnabled,
+      wizard_complete: true,
     };
-    const { error } = await campaignClient.POST("/campaign/{id}/initialize", {
+    const { error } = await campaignClient.PATCH("/campaign/{id}", {
       params: { path: { id: campaignId } },
       body,
     });
     if (error) {
-      setErrorMessage(error.error ?? "Initialization failed; please try again.");
+      setErrorMessage(error.error ?? "Something went wrong; please try again.");
       setSealState("cracked");
       return;
     }

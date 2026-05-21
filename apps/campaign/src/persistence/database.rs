@@ -5,7 +5,7 @@ use std::time::Instant;
 use chrono::Utc;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use kameo::actor::{ActorRef, Spawn};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 use sea_orm_migration::MigratorTrait;
 
 use crate::actors::database_writer::{DatabaseActor, DatabaseActorArgs};
@@ -19,6 +19,7 @@ use super::store::CampaignStore;
 use super::store_local::LocalCampaignStore;
 
 pub struct CampaignDatabase {
+    reader: DatabaseConnection,
     writer: ActorRef<DatabaseActor>,
     path: PathBuf,
 }
@@ -27,7 +28,7 @@ impl CampaignDatabase {
     pub async fn checkout(
         store: &dyn CampaignStore,
         campaign_id: &CampaignId,
-        owner_user_id: &UserId,
+        owner_user_id: Option<&UserId>,
     ) -> Result<Self, InitError> {
         let started = Instant::now();
         tracing::info!("checking out campaign database");
@@ -52,7 +53,7 @@ impl CampaignDatabase {
             .await
             .map_err(InitError::Migration)?;
 
-        let existing = campaign_metadata::Entity::find_by_id(1)
+        let existing = campaign_metadata::Entity::find_by_id(campaign_metadata::METADATA_ROW_ID)
             .one(&conn)
             .await
             .map_err(InitError::Migration)?;
@@ -60,9 +61,9 @@ impl CampaignDatabase {
         if existing.is_none() {
             let now = Utc::now();
             campaign_metadata::ActiveModel {
-                id: Set(1),
+                id: Set(campaign_metadata::METADATA_ROW_ID),
                 campaign_id: Set(campaign_id.clone().into()),
-                owner_user_id: Set(owner_user_id.0.to_string()),
+                owner_user_id: Set(owner_user_id.map(|u| u.0.to_string()).unwrap_or_default()),
                 name: Set("Untitled".into()),
                 tagline: Set(None),
                 game_system: Set(None),
@@ -76,6 +77,14 @@ impl CampaignDatabase {
             .map_err(InitError::Migration)?;
         }
 
+        let reader =
+            db::connect_readonly(&path)
+                .await
+                .map_err(|source| InitError::OpenDatabase {
+                    path: path.clone(),
+                    source,
+                })?;
+
         let writer = DatabaseActor::spawn(DatabaseActorArgs {
             campaign_id: campaign_id.clone(),
             conn,
@@ -86,7 +95,15 @@ impl CampaignDatabase {
             "campaign database ready"
         );
 
-        Ok(Self { writer, path })
+        Ok(Self {
+            reader,
+            writer,
+            path,
+        })
+    }
+
+    pub fn reader(&self) -> &DatabaseConnection {
+        &self.reader
     }
 
     pub fn writer(&self) -> &ActorRef<DatabaseActor> {

@@ -1,7 +1,7 @@
 mod common;
 
 use familiar_systems_app_shared::id::{CampaignId, UserId};
-use familiar_systems_campaign::actors::registry::EnsureCampaign;
+use familiar_systems_campaign::actors::registry::CreateCampaign;
 use familiar_systems_campaign_shared::onboarding::metadata::CampaignMetadataResponse;
 use serde_json::json;
 use wiremock::{
@@ -9,20 +9,20 @@ use wiremock::{
     matchers::{method, path},
 };
 
-async fn ensure_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
+async fn create_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
     let _: kameo::actor::ActorRef<
         familiar_systems_campaign::actors::supervisor::CampaignSupervisor,
     > = app
         .registry
-        .ask(EnsureCampaign {
+        .ask(CreateCampaign {
             campaign_id: campaign_id.clone(),
             owner_user_id: common::test_user_id(),
         })
         .await
-        .expect("ensure campaign");
+        .expect("create campaign");
 }
 
-fn valid_payload() -> serde_json::Value {
+fn wizard_payload() -> serde_json::Value {
     json!({
         "game_system": "dnd-5e",
         "content_locale": "en",
@@ -30,19 +30,20 @@ fn valid_payload() -> serde_json::Value {
         "tagline": "An autumn court, a debt come due.",
         "template_slugs": ["common/npc", "common/player"],
         "audio": "opt-out",
-        "evals_enabled": false
+        "evals_enabled": false,
+        "wizard_complete": true
     })
 }
 
 #[tokio::test]
-async fn get_campaign_returns_metadata_after_initialize() {
+async fn get_campaign_returns_metadata_after_patch() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
-    ensure_campaign(&app, &campaign_id).await;
+    create_campaign(&app, &campaign_id).await;
 
-    Mock::given(method("POST"))
+    Mock::given(method("PATCH"))
         .and(path(format!(
-            "/internal/platform/campaigns/{}/metadata",
+            "/internal/platform/campaign/{}",
             campaign_id.0
         )))
         .respond_with(ResponseTemplate::new(200))
@@ -50,17 +51,14 @@ async fn get_campaign_returns_metadata_after_initialize() {
         .await;
 
     let client = reqwest::Client::new();
-    let init_resp = client
-        .post(format!(
-            "{}/campaign/{}/initialize",
-            app.base_url, campaign_id.0
-        ))
+    let patch_resp = client
+        .patch(format!("{}/campaign/{}", app.base_url, campaign_id.0))
         .header("authorization", app.auth_header())
-        .json(&valid_payload())
+        .json(&wizard_payload())
         .send()
         .await
         .unwrap();
-    assert_eq!(init_resp.status().as_u16(), 200);
+    assert_eq!(patch_resp.status().as_u16(), 200);
 
     let get_resp = client
         .get(format!("{}/campaign/{}", app.base_url, campaign_id.0))
@@ -83,10 +81,10 @@ async fn get_campaign_returns_metadata_after_initialize() {
 }
 
 #[tokio::test]
-async fn get_campaign_returns_draft_before_initialize() {
+async fn get_campaign_returns_draft_before_patch() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
-    ensure_campaign(&app, &campaign_id).await;
+    create_campaign(&app, &campaign_id).await;
 
     let resp = reqwest::Client::new()
         .get(format!("{}/campaign/{}", app.base_url, campaign_id.0))
@@ -118,7 +116,7 @@ async fn get_unknown_campaign_returns_404() {
 async fn get_campaign_without_auth_returns_401() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
-    ensure_campaign(&app, &campaign_id).await;
+    create_campaign(&app, &campaign_id).await;
 
     let resp = reqwest::Client::new()
         .get(format!("{}/campaign/{}", app.base_url, campaign_id.0))
@@ -133,17 +131,16 @@ async fn get_campaign_by_different_user_returns_403() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
 
-    // Create the campaign owned by a different user.
     let _: kameo::actor::ActorRef<
         familiar_systems_campaign::actors::supervisor::CampaignSupervisor,
     > = app
         .registry
-        .ask(EnsureCampaign {
+        .ask(CreateCampaign {
             campaign_id: campaign_id.clone(),
             owner_user_id: UserId::generate(),
         })
         .await
-        .expect("ensure campaign");
+        .expect("create campaign");
 
     let resp = reqwest::Client::new()
         .get(format!("{}/campaign/{}", app.base_url, campaign_id.0))

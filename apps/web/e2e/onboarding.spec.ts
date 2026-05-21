@@ -1,11 +1,12 @@
 import { type Page, expect, test } from "@playwright/test";
 
-// End-to-end exercise of the new-campaign wizard's failure path.
+// End-to-end exercise of the new-campaign wizard.
 //
 // The platform mints a campaign id, the SPA navigates into the campaign,
 // the wizard fetches the catalog, the user walks through the four steps,
-// and pressing the seal triggers the campaign tier's deliberate 500. The
-// post-failure hub renders the campaign with an "init failed" badge.
+// and pressing the seal fires `PATCH /campaign/{id}` with
+// `wizard_complete: true`. Two tests: success (transitions to the
+// initialized view) and failure (hub shows the init-failed badge).
 //
 // All network calls are stubbed: this test does not need a running
 // platform, campaign, or Hanko backend. The shape of each stub mirrors
@@ -128,27 +129,48 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     return route.fallback();
   });
 
-  // Campaign tier: metadata, catalog, initialize.
+  // Campaign tier: GET + PATCH /campaign/{id}, catalog.
   await page.route(`**/campaign/${CAMPAIGN_ID}`, async (route) => {
-    if (route.request().method() !== "GET") return route.fallback();
+    const method = route.request().method();
     const row = state.campaigns.find((c) => c.id === CAMPAIGN_ID);
-    if (!row) {
-      return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+
+    if (method === "GET") {
+      if (!row) {
+        return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          campaign_id: row.id,
+          name: row.name ?? "",
+          tagline: row.tagline,
+          game_system: row.game_system,
+          content_locale: row.content_locale,
+          wizard_completed_at: row.wizard_completed_at,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        }),
+      });
     }
-    return route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        campaign_id: row.id,
-        name: row.name ?? "",
-        tagline: row.tagline,
-        game_system: row.game_system,
-        content_locale: row.content_locale,
-        wizard_completed_at: row.wizard_completed_at,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-      }),
-    });
+
+    if (method === "PATCH") {
+      // Default: deliberate failure so the hub shows the badge.
+      if (row) {
+        row.last_init_error = "deliberate_thin_slice_failure";
+        row.updated_at = new Date().toISOString();
+      }
+      return route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Campaign initialization is not yet wired up. This is a known thin-slice failure.",
+          campaign_id: CAMPAIGN_ID,
+        }),
+      });
+    }
+
+    return route.fallback();
   });
 
   await page.route("**/catalog/systems**", async (route) => {
@@ -158,49 +180,45 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
       body: JSON.stringify(MOCK_SYSTEMS),
     });
   });
-
-  await page.route(`**/campaign/${CAMPAIGN_ID}/initialize`, async (route) => {
-    // Mimic the campaign tier's deliberate failure: 500 + structured body,
-    // and mark the campaign as failed in the mock state so the next GET
-    // /campaigns reflects the badge.
-    const row = state.campaigns.find((c) => c.id === CAMPAIGN_ID);
-    if (row) {
-      row.last_init_error = "deliberate_thin_slice_failure";
-      row.updated_at = new Date().toISOString();
-    }
-    return route.fulfill({
-      status: 500,
-      contentType: "application/json",
-      body: JSON.stringify({
-        error: "Campaign initialization is not yet wired up. This is a known thin-slice failure.",
-        campaign_id: CAMPAIGN_ID,
-      }),
-    });
-  });
 }
 
 test("wizard success transitions to initialized campaign view", async ({ page }) => {
   const state: MockState = { campaigns: [] };
   await installMocks(page, state);
 
-  // Override the initialize route to succeed and mirror metadata to mock state.
-  await page.route(`**/campaign/${CAMPAIGN_ID}/initialize`, async (route) => {
+  // Override the PATCH handler on /campaign/{id} to succeed and mirror metadata.
+  await page.route(`**/campaign/${CAMPAIGN_ID}`, async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
     const body = JSON.parse(route.request().postData() ?? "{}") as {
       name?: string;
       tagline?: string | null;
       game_system?: string;
       content_locale?: string;
+      wizard_complete?: boolean;
     };
     const row = state.campaigns.find((c) => c.id === CAMPAIGN_ID);
     if (row) {
-      row.wizard_completed_at = new Date().toISOString();
-      row.name = body.name ?? null;
-      row.tagline = body.tagline ?? null;
-      row.game_system = body.game_system ?? null;
-      row.content_locale = body.content_locale ?? null;
+      if (body.wizard_complete) row.wizard_completed_at = new Date().toISOString();
+      if (body.name !== undefined) row.name = body.name;
+      if (body.tagline !== undefined) row.tagline = body.tagline;
+      if (body.game_system !== undefined) row.game_system = body.game_system;
+      if (body.content_locale !== undefined) row.content_locale = body.content_locale;
       row.updated_at = new Date().toISOString();
     }
-    return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        campaign_id: CAMPAIGN_ID,
+        name: row?.name ?? "",
+        tagline: row?.tagline ?? null,
+        game_system: row?.game_system ?? null,
+        content_locale: row?.content_locale ?? null,
+        wizard_completed_at: row?.wizard_completed_at ?? null,
+        created_at: row?.created_at ?? new Date().toISOString(),
+        updated_at: row?.updated_at ?? new Date().toISOString(),
+      }),
+    });
   });
 
   await page.goto("/");

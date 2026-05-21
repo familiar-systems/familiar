@@ -1,33 +1,35 @@
-//! `POST /internal/campaign/init`: bearer-protected create-side hook.
+//! Internal routes (`/internal/campaign/*`): bearer-protected hooks called
+//! by the platform tier.
 //!
-//! Asks the [`CampaignRegistry`] to ensure a supervisor exists for the
-//! incoming `campaign_id`. The registry serializes ensure calls in its
-//! mailbox, so concurrent calls for the same id collapse to one
-//! supervisor + one SQLite file. Idempotent: a repeat call with the
-//! same id returns 200 against the already-running supervisor.
+//! Two endpoints:
+//!
+//! - `POST /internal/campaign`: create a new campaign on this shard.
+//! - `PUT  /internal/campaign/{id}/lease`: ensure an existing campaign is
+//!   checked out (loaded from disk / object storage).
 
-use crate::actors::registry::EnsureCampaign;
+use crate::actors::registry::{CreateCampaign, EnsureCampaign};
 use crate::error::EnsureError;
 use crate::state::AppState;
-use axum::{Json, extract::State, http::StatusCode};
-use familiar_systems_app_shared::campaigns::internal::InternalInitRequest;
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+};
+use familiar_systems_app_shared::campaigns::internal::CreateCampaignRequest;
+use familiar_systems_app_shared::id::CampaignId;
+use fs_id::Nanoid;
 use kameo::error::SendError;
 
-pub async fn init(
+/// `POST /internal/campaign`: create a new campaign with the given owner.
+/// Idempotent on `campaign_id`.
+pub async fn create_campaign(
     State(state): State<AppState>,
-    Json(req): Json<InternalInitRequest>,
+    Json(req): Json<CreateCampaignRequest>,
 ) -> StatusCode {
     let campaign_id_display = req.campaign_id.0.clone();
-    // kameo folds the handler's `Result<_, EnsureError>` reply into
-    // `SendError::HandlerError(EnsureError)`, so the `ask` future
-    // resolves to `Result<ActorRef<_>, SendError<EnsureCampaign,
-    // EnsureError>>`. Map each variant to the status the platform's
-    // retry logic expects: 503 means "wrong shard, try another"
-    // (ShuttingDown, transport failure); 500 means "this campaign
-    // genuinely failed to initialize" (Init, SupervisorDied).
     match state
         .registry
-        .ask(EnsureCampaign {
+        .ask(CreateCampaign {
             campaign_id: req.campaign_id,
             owner_user_id: req.owner_user_id,
         })
@@ -37,7 +39,7 @@ pub async fn init(
         Err(SendError::HandlerError(EnsureError::ShuttingDown)) => {
             tracing::info!(
                 campaign_id = %campaign_id_display,
-                "rejecting init: registry shutting down"
+                "rejecting create: registry shutting down"
             );
             StatusCode::SERVICE_UNAVAILABLE
         }
@@ -45,13 +47,55 @@ pub async fn init(
             tracing::error!(
                 campaign_id = %campaign_id_display,
                 error = %handler_err,
-                "campaign init failed"
+                "campaign create failed"
             );
             StatusCode::INTERNAL_SERVER_ERROR
         }
         Err(transport_err) => {
             tracing::error!(
                 campaign_id = %campaign_id_display,
+                error = ?transport_err,
+                "registry unreachable"
+            );
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+    }
+}
+
+/// `PUT /internal/campaign/{id}/lease`: ensure an existing campaign is
+/// checked out on this shard. No body needed; the campaign must already
+/// exist (created via `POST /internal/campaign` or present in object
+/// storage). Idempotent.
+pub async fn acquire_lease(
+    State(state): State<AppState>,
+    Path(campaign_id): Path<String>,
+) -> StatusCode {
+    match state
+        .registry
+        .ask(EnsureCampaign {
+            campaign_id: CampaignId::from(Nanoid::from(campaign_id.clone())),
+        })
+        .await
+    {
+        Ok(_supervisor_ref) => StatusCode::OK,
+        Err(SendError::HandlerError(EnsureError::ShuttingDown)) => {
+            tracing::info!(
+                campaign_id = %campaign_id,
+                "rejecting lease: registry shutting down"
+            );
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+        Err(SendError::HandlerError(handler_err)) => {
+            tracing::error!(
+                campaign_id = %campaign_id,
+                error = %handler_err,
+                "lease acquisition failed"
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+        Err(transport_err) => {
+            tracing::error!(
+                campaign_id = %campaign_id,
                 error = ?transport_err,
                 "registry unreachable"
             );

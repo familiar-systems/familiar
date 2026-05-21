@@ -150,7 +150,7 @@ trait RoutingTable {
 }
 ```
 
-`RemoteRoutingTable`: HTTP calls to `POST /internal/leases/acquire`, `POST /internal/leases/release`, `POST /internal/leases/heartbeat`. The platform handles atomicity - concurrent lease acquisitions resolve via `INSERT ... WHERE NOT EXISTS`, loser gets 409.
+`RemoteRoutingTable`: HTTP calls to `PUT /internal/campaign/{id}/lease` (acquire), `DELETE /internal/campaign/{id}/lease` (release), `POST /internal/heartbeat` (heartbeat). The platform handles atomicity for lease acquisition via `INSERT ... WHERE NOT EXISTS`; loser gets 409.
 
 #### Future marketplace traits (illustrative only)
 

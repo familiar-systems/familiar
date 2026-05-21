@@ -86,18 +86,33 @@ pub async fn create_campaign(
         .ok_or_else(|| AppError::Internal("idempotency record vanished after upsert".into()))?;
     let resolved_campaign_id = CampaignId::new(Nanoid(resolved.campaign_id));
 
-    // Step 4: shard init. Idempotent on the campaign tier's side, so a retry
-    // (whether ours or someone else's) re-runs cleanly.
+    // Step 4a: create the campaign on the shard. Idempotent on campaign_id.
     state
         .campaign_internal
-        .init(&resolved_campaign_id, &user_id)
+        .create_campaign(&resolved_campaign_id, &user_id)
         .await
         .map_err(|e| match e {
             CampaignInternalError::Transport(err) => {
-                AppError::Internal(format!("campaign init transport: {err}"))
+                AppError::Internal(format!("campaign create transport: {err}"))
             }
             CampaignInternalError::Status { status } => {
-                AppError::Internal(format!("campaign init status: {status}"))
+                AppError::Internal(format!("campaign create status: {status}"))
+            }
+        })?;
+
+    // Step 4b: acquire the lease (ensure it's checked out). For a just-created
+    // campaign this is already true; the call is here for uniformity with the
+    // cold-checkout flow.
+    state
+        .campaign_internal
+        .acquire_lease(&resolved_campaign_id)
+        .await
+        .map_err(|e| match e {
+            CampaignInternalError::Transport(err) => {
+                AppError::Internal(format!("lease acquire transport: {err}"))
+            }
+            CampaignInternalError::Status { status } => {
+                AppError::Internal(format!("lease acquire status: {status}"))
             }
         })?;
 

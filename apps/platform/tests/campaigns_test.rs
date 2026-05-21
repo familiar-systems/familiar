@@ -5,18 +5,27 @@ use sea_orm::EntityTrait;
 use serde_json::json;
 use wiremock::{
     Mock, ResponseTemplate,
-    matchers::{header, method, path},
+    matchers::{header, method, path, path_regex},
 };
 
 const SUB: &str = "0195b4a0-0000-7000-8000-000000000010";
 const TOKEN: &str = "idem-token-001";
 
-/// Mounts a `POST /internal/campaign/init` handler on the campaign mock that
-/// responds 200. Returns the mock guard for tests that want to assert the
-/// expected call count.
-async fn mock_campaign_init_ok(app: &common::TestApp) {
+/// Mounts `POST /internal/campaign` and `PUT /internal/campaign/{id}/lease`
+/// handlers on the campaign mock that respond 200.
+async fn mock_campaign_create_and_lease_ok(app: &common::TestApp) {
     Mock::given(method("POST"))
-        .and(path("/internal/campaign/init"))
+        .and(path("/internal/campaign"))
+        .and(header(
+            "authorization",
+            format!("Bearer {}", app.bearer).as_str(),
+        ))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&app.campaign)
+        .await;
+
+    Mock::given(method("PUT"))
+        .and(path_regex(r"/internal/campaign/.+/lease"))
         .and(header(
             "authorization",
             format!("Bearer {}", app.bearer).as_str(),
@@ -30,7 +39,7 @@ async fn mock_campaign_init_ok(app: &common::TestApp) {
 async fn create_campaign_mints_id_and_persists_routing_row() {
     let app = common::spawn_app().await;
     common::mock_hanko_user(&app, SUB, "create@ex.com").await;
-    mock_campaign_init_ok(&app).await;
+    mock_campaign_create_and_lease_ok(&app).await;
 
     let client = reqwest::Client::new();
     let resp = client
@@ -77,7 +86,7 @@ async fn create_campaign_mints_id_and_persists_routing_row() {
 async fn retry_with_same_token_returns_same_campaign_id() {
     let app = common::spawn_app().await;
     common::mock_hanko_user(&app, SUB, "retry@ex.com").await;
-    mock_campaign_init_ok(&app).await;
+    mock_campaign_create_and_lease_ok(&app).await;
 
     let client = reqwest::Client::new();
     let body = json!({ "idempotency_token": TOKEN });
@@ -119,7 +128,7 @@ async fn shard_failure_returns_5xx_and_writes_no_routing_row() {
     let app = common::spawn_app().await;
     common::mock_hanko_user(&app, SUB, "fail@ex.com").await;
     Mock::given(method("POST"))
-        .and(path("/internal/campaign/init"))
+        .and(path("/internal/campaign"))
         .respond_with(ResponseTemplate::new(500))
         .mount(&app.campaign)
         .await;
@@ -134,7 +143,7 @@ async fn shard_failure_returns_5xx_and_writes_no_routing_row() {
         .unwrap();
     assert!(
         resp.status().is_server_error(),
-        "expected 5xx when shard init fails, got {}",
+        "expected 5xx when shard create fails, got {}",
         resp.status()
     );
     // Routing row was never written.
@@ -158,7 +167,7 @@ async fn no_token_returns_401() {
 async fn list_campaigns_returns_owners_rows_only() {
     let app = common::spawn_app().await;
     common::mock_hanko_user(&app, SUB, "list@ex.com").await;
-    mock_campaign_init_ok(&app).await;
+    mock_campaign_create_and_lease_ok(&app).await;
 
     let client = reqwest::Client::new();
     // Create two campaigns under the authenticated user.
@@ -195,7 +204,7 @@ async fn list_campaigns_returns_owners_rows_only() {
 async fn init_failed_writes_last_init_error_with_correct_bearer() {
     let app = common::spawn_app().await;
     common::mock_hanko_user(&app, SUB, "ifail@ex.com").await;
-    mock_campaign_init_ok(&app).await;
+    mock_campaign_create_and_lease_ok(&app).await;
 
     // Create a campaign so we have an id to target.
     let client = reqwest::Client::new();
@@ -214,7 +223,7 @@ async fn init_failed_writes_last_init_error_with_correct_bearer() {
     // Hit the platform's internal callback as the campaign tier would.
     let resp = client
         .post(format!(
-            "{}/internal/platform/campaigns/{}/init-failed",
+            "{}/internal/platform/campaign/{}/init-failed",
             app.base_url, id
         ))
         .header("authorization", format!("Bearer {}", app.bearer))
@@ -241,7 +250,7 @@ async fn init_failed_without_bearer_returns_401() {
 
     let resp = reqwest::Client::new()
         .post(format!(
-            "{}/internal/platform/campaigns/abc/init-failed",
+            "{}/internal/platform/campaign/abc/init-failed",
             app.base_url
         ))
         .json(&json!({ "reason": "no auth" }))
@@ -257,7 +266,7 @@ async fn init_failed_with_wrong_bearer_returns_401() {
 
     let resp = reqwest::Client::new()
         .post(format!(
-            "{}/internal/platform/campaigns/abc/init-failed",
+            "{}/internal/platform/campaign/abc/init-failed",
             app.base_url
         ))
         .header("authorization", "Bearer wrong-token")

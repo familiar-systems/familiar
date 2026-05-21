@@ -3,7 +3,7 @@
 //!
 //! Every write to the campaign DB flows through this actor's mailbox.
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use familiar_systems_app_shared::id::CampaignId;
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
@@ -49,19 +49,20 @@ impl Actor for DatabaseActor {
 }
 
 // ---------------------------------------------------------------------------
-// InitializeCampaignSetup
+// PatchCampaignMetadata
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-pub struct InitializeCampaignSetup {
-    pub name: String,
+pub struct PatchCampaignMetadata {
+    pub name: Option<String>,
     pub tagline: Option<String>,
-    pub game_system: String,
-    pub content_locale: String,
+    pub game_system: Option<String>,
+    pub content_locale: Option<String>,
+    pub complete_wizard: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum InitializeCampaignError {
+pub enum PatchCampaignError {
     #[error("wizard already completed")]
     AlreadyInitialized,
     #[error("campaign metadata row missing")]
@@ -73,39 +74,56 @@ pub enum InitializeCampaignError {
 }
 
 #[derive(Debug, Clone, kameo::Reply)]
-pub struct InitializeCampaignResult {
-    pub wizard_completed_at: DateTime<Utc>,
+pub struct PatchCampaignResult {
+    pub model: campaign_metadata::Model,
+    pub wizard_just_completed: bool,
 }
 
-impl Message<InitializeCampaignSetup> for DatabaseActor {
-    type Reply = Result<InitializeCampaignResult, InitializeCampaignError>;
+impl Message<PatchCampaignMetadata> for DatabaseActor {
+    type Reply = Result<PatchCampaignResult, PatchCampaignError>;
 
     async fn handle(
         &mut self,
-        msg: InitializeCampaignSetup,
+        msg: PatchCampaignMetadata,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        let existing = campaign_metadata::Entity::find_by_id(1)
+        let existing = campaign_metadata::Entity::find_by_id(campaign_metadata::METADATA_ROW_ID)
             .one(&self.conn)
             .await?
-            .ok_or(InitializeCampaignError::NoMetadataRow)?;
+            .ok_or(PatchCampaignError::NoMetadataRow)?;
 
-        if existing.wizard_completed_at.is_some() {
-            return Err(InitializeCampaignError::AlreadyInitialized);
+        let already_completed = existing.wizard_completed_at.is_some();
+        if msg.complete_wizard && already_completed {
+            return Err(PatchCampaignError::AlreadyInitialized);
         }
 
         let now = Utc::now();
         let mut am: campaign_metadata::ActiveModel = existing.into();
-        am.name = Set(msg.name);
-        am.tagline = Set(msg.tagline);
-        am.game_system = Set(Some(msg.game_system));
-        am.content_locale = Set(Some(msg.content_locale));
-        am.wizard_completed_at = Set(Some(now));
-        am.updated_at = Set(now);
-        am.update(&self.conn).await?;
 
-        Ok(InitializeCampaignResult {
-            wizard_completed_at: now,
+        if let Some(name) = msg.name {
+            am.name = Set(name);
+        }
+        if let Some(tagline) = msg.tagline {
+            am.tagline = Set(Some(tagline));
+        }
+        if let Some(game_system) = msg.game_system {
+            am.game_system = Set(Some(game_system));
+        }
+        if let Some(content_locale) = msg.content_locale {
+            am.content_locale = Set(Some(content_locale));
+        }
+
+        let wizard_just_completed = msg.complete_wizard && !already_completed;
+        if wizard_just_completed {
+            am.wizard_completed_at = Set(Some(now));
+        }
+
+        am.updated_at = Set(now);
+        let model = am.update(&self.conn).await?;
+
+        Ok(PatchCampaignResult {
+            model,
+            wizard_just_completed,
         })
     }
 }
@@ -135,7 +153,7 @@ impl Message<GetMetadata> for DatabaseActor {
         _: GetMetadata,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        campaign_metadata::Entity::find_by_id(1)
+        campaign_metadata::Entity::find_by_id(campaign_metadata::METADATA_ROW_ID)
             .one(&self.conn)
             .await?
             .ok_or(MetadataError::NoMetadataRow)
@@ -179,7 +197,7 @@ mod tests {
 
         let now = Utc::now();
         campaign_metadata::ActiveModel {
-            id: Set(1),
+            id: Set(campaign_metadata::METADATA_ROW_ID),
             campaign_id: Set(campaign_id.clone().into()),
             owner_user_id: Set(String::new()),
             name: Set("Untitled".into()),
@@ -209,55 +227,78 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn initialize_campaign_writes_metadata() {
+    async fn patch_with_wizard_complete_writes_metadata() {
         let (actor, _) = spawn_with_migrations().await;
         let result = actor
-            .ask(InitializeCampaignSetup {
-                name: "Curse of Strahd".into(),
+            .ask(PatchCampaignMetadata {
+                name: Some("Curse of Strahd".into()),
                 tagline: Some("Gothic horror in Barovia".into()),
-                game_system: "D&D 5e".into(),
-                content_locale: "en".into(),
+                game_system: Some("D&D 5e".into()),
+                content_locale: Some("en".into()),
+                complete_wizard: true,
             })
             .await
-            .expect("initialize should succeed");
+            .expect("patch should succeed");
 
-        assert!(result.wizard_completed_at <= Utc::now());
-
-        let meta = actor.ask(GetMetadata).await.expect("metadata should exist");
-        assert_eq!(meta.name, "Curse of Strahd");
-        assert_eq!(meta.tagline.as_deref(), Some("Gothic horror in Barovia"));
-        assert_eq!(meta.game_system.as_deref(), Some("D&D 5e"));
-        assert_eq!(meta.content_locale.as_deref(), Some("en"));
-        assert!(meta.wizard_completed_at.is_some());
+        assert!(result.wizard_just_completed);
+        assert!(result.model.wizard_completed_at.is_some());
+        assert_eq!(result.model.name, "Curse of Strahd");
+        assert_eq!(
+            result.model.tagline.as_deref(),
+            Some("Gothic horror in Barovia")
+        );
+        assert_eq!(result.model.game_system.as_deref(), Some("D&D 5e"));
+        assert_eq!(result.model.content_locale.as_deref(), Some("en"));
     }
 
     #[tokio::test]
-    async fn initialize_campaign_rejects_double_init() {
+    async fn patch_without_wizard_complete_updates_fields_only() {
+        let (actor, _) = spawn_with_migrations().await;
+        let result = actor
+            .ask(PatchCampaignMetadata {
+                name: Some("Renamed Campaign".into()),
+                tagline: None,
+                game_system: None,
+                content_locale: None,
+                complete_wizard: false,
+            })
+            .await
+            .expect("patch should succeed");
+
+        assert!(!result.wizard_just_completed);
+        assert!(result.model.wizard_completed_at.is_none());
+        assert_eq!(result.model.name, "Renamed Campaign");
+    }
+
+    #[tokio::test]
+    async fn double_wizard_complete_returns_already_initialized() {
         let (actor, _) = spawn_with_migrations().await;
         actor
-            .ask(InitializeCampaignSetup {
-                name: "First".into(),
+            .ask(PatchCampaignMetadata {
+                name: Some("First".into()),
                 tagline: None,
-                game_system: "PF2e".into(),
-                content_locale: "en".into(),
+                game_system: Some("PF2e".into()),
+                content_locale: Some("en".into()),
+                complete_wizard: true,
             })
             .await
-            .expect("first initialize");
+            .expect("first patch");
 
         let err = actor
-            .ask(InitializeCampaignSetup {
-                name: "Second".into(),
+            .ask(PatchCampaignMetadata {
+                name: Some("Second".into()),
                 tagline: None,
-                game_system: "Blades".into(),
-                content_locale: "en".into(),
+                game_system: Some("Blades".into()),
+                content_locale: Some("en".into()),
+                complete_wizard: true,
             })
             .await
-            .expect_err("second initialize should be rejected");
+            .expect_err("second wizard_complete should be rejected");
 
         assert!(
             matches!(
                 err,
-                kameo::error::SendError::HandlerError(InitializeCampaignError::AlreadyInitialized)
+                kameo::error::SendError::HandlerError(PatchCampaignError::AlreadyInitialized)
             ),
             "expected AlreadyInitialized, got {err:?}"
         );
@@ -267,7 +308,7 @@ mod tests {
     async fn get_metadata_returns_row() {
         let (actor, _) = spawn_with_migrations().await;
         let meta = actor.ask(GetMetadata).await.expect("metadata should exist");
-        assert_eq!(meta.id, 1);
+        assert_eq!(meta.id, campaign_metadata::METADATA_ROW_ID);
         assert_eq!(meta.name, "Untitled");
     }
 
