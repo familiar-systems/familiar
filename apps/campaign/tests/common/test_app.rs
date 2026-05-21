@@ -68,6 +68,7 @@ pub async fn spawn_app() -> TestApp {
     let data_dir = TempDir::new().expect("create tempdir for campaign data");
     let config = Arc::new(Config {
         storage_backend: StorageBackend::Local,
+        s3: None,
         port: 0,
         hanko_api_url: hanko.uri(),
         campaign_data_dir: data_dir.path().to_path_buf(),

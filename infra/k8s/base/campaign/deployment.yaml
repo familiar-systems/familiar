@@ -32,6 +32,10 @@ spec:
           env:
             - name: PORT
               value: "3000"
+            - name: CAMPAIGN_STORAGE_BACKEND
+              value: "s3"
+            - name: S3_ENDPOINT
+              value: https://hel1.your-objectstorage.com
             - name: CAMPAIGN_DATA_DIR
               value: /data/campaigns
             - name: PLATFORM_URL
@@ -45,6 +49,8 @@ spec:
           envFrom:
             - secretRef:
                 name: internal-bearer
+            - secretRef:
+                name: hetzner-s3
           volumeMounts:
             - name: campaign-data
               mountPath: /data/campaigns

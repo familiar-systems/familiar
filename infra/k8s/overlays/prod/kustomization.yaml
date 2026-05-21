@@ -6,6 +6,8 @@ namespace: default
 
 resources:
   - ../../base
+  # External Secrets (ESO syncs from Scaleway SM)
+  - secrets/hetzner-s3.yaml
   # cert-manager CRDs (requires cert-manager Helm release pre-installed)
   - cert/cluster-issuer-prod.yaml
   - cert/cluster-issuer-staging.yaml

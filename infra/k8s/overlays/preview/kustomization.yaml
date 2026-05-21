@@ -9,6 +9,7 @@ resources:
   # Secrets (data injected via envsubst)
   - secrets/registry-pull-secret.yaml
   - secrets/internal-bearer-secret.yaml
+  - secrets/hetzner-s3.yaml
   # Persistent storage (per-PR hostPaths)
   - storage/platform-pv.yaml
   - storage/platform-pvc.yaml

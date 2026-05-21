@@ -8,8 +8,17 @@ pub enum StorageBackend {
 }
 
 #[derive(Debug, Clone)]
+pub struct S3Config {
+    pub endpoint: String,
+    pub bucket: String,
+    pub access_key_id: String,
+    pub secret_access_key: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct Config {
     pub storage_backend: StorageBackend,
+    pub s3: Option<S3Config>,
     pub port: u16,
     pub hanko_api_url: String,
     pub campaign_data_dir: PathBuf,
@@ -106,8 +115,30 @@ impl Config {
             .unwrap_or_else(|_| "30".to_string())
             .parse()
             .expect("CAMPAIGN_HEARTBEAT_INTERVAL_SECS must be a non-negative integer (seconds)");
+        let s3 = match storage_backend {
+            StorageBackend::S3 => Some(S3Config {
+                endpoint: std::env::var("S3_ENDPOINT").expect(
+                    "S3_ENDPOINT is required when CAMPAIGN_STORAGE_BACKEND=s3. \
+                     Set it in mise.toml [tasks.\"dev:campaign\"].env or in the deployment manifest.",
+                ),
+                bucket: std::env::var("S3_BUCKET").expect(
+                    "S3_BUCKET is required when CAMPAIGN_STORAGE_BACKEND=s3. \
+                     Set it in mise.toml [tasks.\"dev:campaign\"].env or in the deployment manifest.",
+                ),
+                access_key_id: std::env::var("S3_ACCESS_KEY_ID").expect(
+                    "S3_ACCESS_KEY_ID is required when CAMPAIGN_STORAGE_BACKEND=s3. \
+                     Sourced from Scaleway SM via ESO in deployed envs.",
+                ),
+                secret_access_key: std::env::var("S3_SECRET_ACCESS_KEY").expect(
+                    "S3_SECRET_ACCESS_KEY is required when CAMPAIGN_STORAGE_BACKEND=s3. \
+                     Sourced from Scaleway SM via ESO in deployed envs.",
+                ),
+            }),
+            StorageBackend::Local => None,
+        };
         Self {
             storage_backend,
+            s3,
             port,
             hanko_api_url,
             campaign_data_dir,
@@ -159,6 +190,7 @@ mod tests {
         with_env(&full_env(), || {
             let c = Config::from_env();
             assert_eq!(c.storage_backend, StorageBackend::Local);
+            assert!(c.s3.is_none());
             assert_eq!(c.hanko_api_url, "https://x.hanko.io");
             assert_eq!(c.port, 3001);
             assert_eq!(c.campaign_data_dir, PathBuf::from("data/dev-campaigns"));
@@ -185,15 +217,41 @@ mod tests {
         full_env().into_iter().filter(|(k, _)| *k != skip).collect()
     }
 
-    #[test]
-    #[serial]
-    fn s3_backend_is_parsed() {
+    fn full_s3_env() -> Vec<(&'static str, &'static str)> {
         let mut env = full_env();
         env.retain(|(k, _)| *k != "CAMPAIGN_STORAGE_BACKEND");
         env.push(("CAMPAIGN_STORAGE_BACKEND", "s3"));
-        with_env(&env, || {
+        env.push(("S3_ENDPOINT", "https://s3.example.com"));
+        env.push(("S3_BUCKET", "test-bucket"));
+        env.push(("S3_ACCESS_KEY_ID", "test-key-id"));
+        env.push(("S3_SECRET_ACCESS_KEY", "test-secret-key"));
+        env
+    }
+
+    #[test]
+    #[serial]
+    fn s3_backend_is_parsed() {
+        with_env(&full_s3_env(), || {
             let c = Config::from_env();
             assert_eq!(c.storage_backend, StorageBackend::S3);
+            let s3 = c.s3.unwrap();
+            assert_eq!(s3.endpoint, "https://s3.example.com");
+            assert_eq!(s3.bucket, "test-bucket");
+            assert_eq!(s3.access_key_id, "test-key-id");
+            assert_eq!(s3.secret_access_key, "test-secret-key");
+        });
+    }
+
+    #[test]
+    #[serial]
+    #[should_panic(expected = "S3_ENDPOINT is required")]
+    fn panics_on_s3_without_endpoint() {
+        let env: Vec<_> = full_s3_env()
+            .into_iter()
+            .filter(|(k, _)| *k != "S3_ENDPOINT")
+            .collect();
+        with_env(&env, || {
+            let _ = Config::from_env();
         });
     }
 

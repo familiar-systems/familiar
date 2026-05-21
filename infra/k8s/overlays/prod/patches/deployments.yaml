@@ -54,3 +54,8 @@ spec:
       containers:
         - name: campaign
           imagePullPolicy: IfNotPresent
+          env:
+            - name: HANKO_API_URL
+              value: https://auth.familiar.systems
+            - name: S3_BUCKET
+              value: familiar-systems-prod

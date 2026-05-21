@@ -17,6 +17,7 @@ use crate::migrations::Migrator;
 
 use super::store::CampaignStore;
 use super::store_local::LocalCampaignStore;
+use super::store_s3::S3CampaignStore;
 
 pub struct CampaignDatabase {
     reader: DatabaseConnection,
@@ -146,7 +147,14 @@ pub fn store_from_config(config: &Config) -> Arc<dyn CampaignStore> {
             Arc::new(LocalCampaignStore::new(config.campaign_data_dir.clone()))
         }
         StorageBackend::S3 => {
-            todo!("S3 store implementation lands in a follow-up")
+            let s3_config = config
+                .s3
+                .as_ref()
+                .expect("S3 config required when CAMPAIGN_STORAGE_BACKEND=s3");
+            Arc::new(S3CampaignStore::new(
+                s3_config,
+                config.campaign_data_dir.clone(),
+            ))
         }
     }
 }
