@@ -105,11 +105,20 @@ scw secret version access "${KUBECONFIG_SECRET_ID}" revision=latest region="${RE
     | base64 -d > "${CURRENT_KUBECONFIG}"
 chmod 600 "${CURRENT_KUBECONFIG}"
 
-if ! KUBECONFIG="${CURRENT_KUBECONFIG}" kubectl get nodes >/dev/null 2>&1; then
-    echo "ERROR: Current kubeconfig from SM does not work. Cluster unreachable." >&2
-    exit 1
+if KUBECONFIG="${CURRENT_KUBECONFIG}" kubectl get nodes >/dev/null 2>&1; then
+    echo "    Current kubeconfig works."
+else
+    echo "    SM kubeconfig is stale (expected after nuke-k8s.sh --wipe-k3s)."
+    echo "    Falling back to SSH + k3s local kubeconfig..."
+    ssh -o StrictHostKeyChecking=accept-new "root@${FLOATING_IP}" cat /etc/rancher/k3s/k3s.yaml \
+        | sed "s|127.0.0.1|${FLOATING_IP}|g" > "${CURRENT_KUBECONFIG}"
+    chmod 600 "${CURRENT_KUBECONFIG}"
+    if ! KUBECONFIG="${CURRENT_KUBECONFIG}" kubectl get nodes >/dev/null 2>&1; then
+        echo "ERROR: SSH fallback kubeconfig also failed. Cluster unreachable." >&2
+        exit 1
+    fi
+    echo "    SSH fallback kubeconfig works."
 fi
-echo "    Current kubeconfig works."
 
 # ---------------------------------------------------------------------------
 # Apply the SA + ClusterRoleBinding + token Secret manifest

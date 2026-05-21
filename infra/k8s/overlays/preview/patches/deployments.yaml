@@ -28,9 +28,6 @@ metadata:
   name: platform
 spec:
   template:
-    metadata:
-      annotations:
-        checksum/internal-bearer: ${INTERNAL_BEARER_CHECKSUM}
     spec:
       containers:
         - name: platform
@@ -48,9 +45,6 @@ metadata:
   name: campaign
 spec:
   template:
-    metadata:
-      annotations:
-        checksum/internal-bearer: ${INTERNAL_BEARER_CHECKSUM}
     spec:
       containers:
         - name: campaign

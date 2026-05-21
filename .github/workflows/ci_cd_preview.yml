@@ -218,18 +218,11 @@ jobs:
         with:
           secret-name: k3s-kubeconfig
 
-      - uses: ./.github/actions/fetch-scw-secret
-        id: internal-bearer
-        with:
-          secret-name: internal-bearer-preview
-
       - name: Deploy PR preview
         env:
           KUBECONFIG_CONTENT: ${{ steps.kubeconfig.outputs.value }}
-          INTERNAL_BEARER_VALUE: ${{ steps.internal-bearer.outputs.value }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REGISTRY: ${{ env.REGISTRY }}
-          SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
           HANKO_API_URL_DEV: ${{ env.HANKO_API_URL_DEV }}
         run: |
           echo "$KUBECONFIG_CONTENT" > /tmp/kubeconfig.yaml
@@ -244,21 +237,6 @@ jobs:
           export WEB_IMAGE="${REGISTRY}/web:pr-${PR_NUMBER}-${SHA}"
           export PLATFORM_IMAGE="${REGISTRY}/platform:pr-${PR_NUMBER}-${SHA}"
           export CAMPAIGN_IMAGE="${REGISTRY}/campaign:pr-${PR_NUMBER}-${SHA}"
-
-          DOCKER_AUTH=$(printf 'nologin:%s' "$SCW_SECRET_KEY" | base64 -w0)
-          echo "::add-mask::$DOCKER_AUTH"
-          DOCKERCONFIG_JSON=$(printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$DOCKER_AUTH")
-          echo "::add-mask::$DOCKERCONFIG_JSON"
-          DOCKERCONFIG_B64=$(printf '%s' "$DOCKERCONFIG_JSON" | base64 -w0)
-          echo "::add-mask::$DOCKERCONFIG_B64"
-          export DOCKERCONFIG_B64
-
-          INTERNAL_BEARER_PRIMARY_B64=$(printf '%s' "$INTERNAL_BEARER_VALUE" | base64 -w0)
-          echo "::add-mask::$INTERNAL_BEARER_PRIMARY_B64"
-          export INTERNAL_BEARER_PRIMARY_B64
-
-          INTERNAL_BEARER_CHECKSUM=$(printf '%s' "$INTERNAL_BEARER_VALUE" | sha256sum | awk '{print $1}')
-          export INTERNAL_BEARER_CHECKSUM
 
           infra/k8s/scripts/apply-preview.sh
 
