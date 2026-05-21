@@ -163,11 +163,14 @@ eso_app = scaleway.iam.Application(
 eso_policy = scaleway.iam.Policy(
     "eso-policy",
     name="k3s-external-secrets",
-    description="Read-only access to Scaleway Secrets Manager",
+    description="Read-only access to Scaleway Secrets Manager (list + read payloads)",
     application_id=eso_app.id,
     rules=[
         scaleway.iam.PolicyRuleArgs(
-            permission_set_names=["SecretManagerReadOnly"],
+            permission_set_names=[
+                "SecretManagerReadOnly",
+                "SecretManagerSecretAccess",
+            ],
             project_ids=[registry.project_id],
         ),
     ],

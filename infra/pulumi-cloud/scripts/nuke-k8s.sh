@@ -97,9 +97,17 @@ if [[ "${WIPE_K3S}" == true ]]; then
         rm -rf /data/k3s
         mkdir -p /data/k3s
 
+        echo "  Restoring kubelet config..."
+        mkdir -p /etc/rancher/k3s
+        cat > /etc/rancher/k3s/config.yaml <<'K3SCONF'
+kubelet-arg:
+  - "container-log-max-files=10"
+  - "container-log-max-size=50Mi"
+K3SCONF
+
         echo "  Reinstalling k3s..."
         curl -sfL https://get.k3s.io | \
-            INSTALL_K3S_EXEC="--tls-san ${FIP} --data-dir /data/k3s --node-external-ip ${FIP}" sh -
+            INSTALL_K3S_EXEC="--tls-san ${FIP} --data-dir /data/k3s --node-external-ip ${FIP} --node-label node-role.familiar.systems/role=platform" sh -
 
         echo "  Waiting for k3s API..."
         timeout 120 bash -c 'until kubectl get nodes >/dev/null 2>&1; do sleep 2; done'

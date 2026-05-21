@@ -85,7 +85,7 @@ kubectl create secret generic eso-scaleway-credentials \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "==> Applying ClusterSecretStore..."
-SCW_PROJECT_ID=$(scw config dump | jq -r '.default_project_id')
+SCW_PROJECT_ID=$(scw config get default-project-id)
 export SCW_PROJECT_ID
 envsubst < "${ESO_DIR}/cluster-secret-store.yaml" | kubectl apply -f -
 
