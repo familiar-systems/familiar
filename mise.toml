@@ -237,7 +237,7 @@ sources = [
 ]
 
 [tasks."lint:rust"]
-description = "Clippy + cargo-machete (fails on warnings or unused Cargo dependencies)"
+description = "Clippy + rustdoc + cargo-machete (fails on warnings, broken doc links, or unused deps)"
 # --all-targets includes integration tests, examples, and benches (not just
 # lib+bin). Without it, `tests/` is never compiled and unused-import warnings
 # in test helpers go unnoticed until CI.
@@ -245,7 +245,7 @@ description = "Clippy + cargo-machete (fails on warnings or unused Cargo depende
 # Chained with && so machete doesn't bury clippy errors with dep-hygiene noise.
 # cargo-machete reads every workspace Cargo.toml and greps every .rs file, so
 # its trigger set is identical to clippy's - the same `sources` covers both.
-run = "cargo clippy --workspace --all-targets --locked -- -D warnings && cargo machete"
+run = "cargo clippy --workspace --all-targets --locked -- -D warnings && RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked && cargo machete"
 sources = [
   "apps/platform/**/*.rs",
   "apps/campaign/**/*.rs",

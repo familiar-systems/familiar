@@ -1,3 +1,9 @@
+//! Environment-driven configuration for the campaign server binary.
+//!
+//! All required values panic on missing (fail-fast at startup, not a silent default at
+//! request time). See `mise.toml` for development defaults and `infra/pulumi-cloud/` for
+//! deployment values. Each field is documented on [`Config`].
+
 use std::path::PathBuf;
 use std::time::Duration;
 

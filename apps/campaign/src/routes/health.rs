@@ -16,7 +16,7 @@ use axum::{extract::State, http::StatusCode, response::IntoResponse};
     tag = "health",
     responses(
         (status = OK, description = "Ready"),
-        (status = 503, description = "Draining or unavailable"),
+        (status = SERVICE_UNAVAILABLE, description = "Draining or unavailable"),
     ),
 )]
 pub async fn health(State(state): State<AppState>) -> impl IntoResponse {

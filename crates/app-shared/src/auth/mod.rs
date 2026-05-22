@@ -4,19 +4,19 @@
 //! Each lives in its own submodule so the boundary is structural, not just a
 //! comment convention:
 //!
-//! 1. **External wire format (Hanko)** - [`wire`]. The shape Hanko sends us
+//! 1. **External wire format (Hanko)** - `wire`. The shape Hanko sends us
 //!    over HTTP. We don't control it. Private to this module; never leaks.
-//! 2. **Domain types** - [`domain`]. Our invariant-enforcing view of a
+//! 2. **Domain types** - `domain`. Our invariant-enforcing view of a
 //!    session. [`HankoClaims`] is constructed via `TryFrom<HankoClaimsWire>`,
 //!    which rejects sessions that don't satisfy our invariants (one verified
 //!    email).
-//! 3. **API wire format (ours)** - [`api`]. Shapes we emit to our own clients.
+//! 3. **API wire format (ours)** - `api`. Shapes we emit to our own clients.
 //!    [`MeResponse`] is exported to TypeScript via ts-rs; changes are
 //!    breaking changes to the frontend.
 //!
-//! The parse-don't-validate boundary lives at
-//! [`domain::HankoClaims::try_from`]. [`HankoSessionValidator::validate`] is
-//! the single production entry point that crosses from (1) to (2).
+//! The parse-don't-validate boundary lives at `HankoClaims::try_from`.
+//! [`HankoSessionValidator::validate`] is the single production entry point
+//! that crosses from (1) to (2).
 
 mod api;
 mod domain;

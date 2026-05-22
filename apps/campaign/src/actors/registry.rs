@@ -13,7 +13,7 @@
 //! Shutdown is decoupled from the registry's mailbox. [`BeginDrain`]
 //! sets the registry's [`Phase`] to `Draining`, snapshots the live
 //! supervisors, and spawns the drain workflow on the tokio runtime via
-//! [`run_drain`]. The handler returns immediately, so the registry can
+//! `run_drain`. The handler returns immediately, so the registry can
 //! keep replying to incoming queries with `ShuttingDown` instead of
 //! blocking its mailbox on supervisor `wait_for_shutdown` futures. The
 //! drain task runs all supervisor stops in parallel via [`JoinSet`], so

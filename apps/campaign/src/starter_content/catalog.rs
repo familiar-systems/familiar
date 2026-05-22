@@ -1,6 +1,6 @@
 //! Catalog parsing: `content/systems.yaml` and the templates each system bundles.
 //!
-//! The `content/` directory is embedded at build time via [`include_dir`]:
+//! The `content/` directory is embedded at build time via [`include_dir!`]:
 //! a missing template referenced by `systems.yaml` fails the test that
 //! constructs the catalog (see [`Catalog::load_from_embedded`]); a
 //! malformed YAML fails likewise. There is no runtime path that returns

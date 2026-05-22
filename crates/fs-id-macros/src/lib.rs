@@ -9,15 +9,15 @@ use syn::{
 };
 
 /// Attach to a tuple struct with a single field whose type is one of the
-/// allow-listed inner types ([`Nanoid`], [`Uuid`], [`Ulid`], `u64`, `u32`,
+/// allow-listed inner types (`Nanoid`, `Uuid`, `Ulid`, `u64`, `u32`,
 /// `i64`, `i32`).
 ///
 /// Emits a branded ID type with serde, ts-rs, utoipa, `Display`,
 /// `From<Inner>`, and constructors:
 /// - `pub const fn new(value: Inner) -> Self` (always emitted; wraps a
 ///   value, used for hydration / numeric IDs).
-/// - `pub fn generate() -> Self` (emitted only for [`Nanoid`] / [`Uuid`] /
-///   [`Ulid`]; mints a fresh ID).
+/// - `pub fn generate() -> Self` (emitted only for `Nanoid` / `Uuid` /
+///   `Ulid`; mints a fresh ID).
 ///
 /// The brand string is constructed at macro expansion time from the
 /// struct's own ident, so it cannot drift.

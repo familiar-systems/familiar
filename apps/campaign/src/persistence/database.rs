@@ -1,3 +1,9 @@
+//! Campaign database lifecycle: checkout, active use, and release.
+//!
+//! [`CampaignDatabase`] composes [`CampaignStore`] (file-level lifecycle) with sea-orm
+//! connections and the [`DatabaseActor`] (serialized writes). The
+//! [`CampaignSupervisor`](crate::actors::supervisor::CampaignSupervisor) holds one per campaign.
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -19,6 +25,11 @@ use super::store::CampaignStore;
 use super::store_local::LocalCampaignStore;
 use super::store_s3::S3CampaignStore;
 
+/// A campaign's active database session.
+///
+/// Holds a read-only sea-orm connection pool (WAL mode allows concurrent readers), an
+/// [`ActorRef`] to the [`DatabaseActor`] that serializes writes through a kameo mailbox,
+/// and the local file path (retained for the release call).
 pub struct CampaignDatabase {
     reader: DatabaseConnection,
     writer: ActorRef<DatabaseActor>,
@@ -26,6 +37,9 @@ pub struct CampaignDatabase {
 }
 
 impl CampaignDatabase {
+    /// Downloads the campaign file (via [`CampaignStore::checkout`]), opens read-write and
+    /// read-only connections, runs schema migrations, seeds campaign metadata if absent,
+    /// and spawns the write actor. Returns when the database is ready.
     pub async fn checkout(
         store: &dyn CampaignStore,
         campaign_id: &CampaignId,
@@ -103,18 +117,24 @@ impl CampaignDatabase {
         })
     }
 
+    /// Read-only sea-orm connection pool (WAL mode).
     pub fn reader(&self) -> &DatabaseConnection {
         &self.reader
     }
 
+    /// Handle to the [`DatabaseActor`] that serializes writes through a kameo mailbox.
     pub fn writer(&self) -> &ActorRef<DatabaseActor> {
         &self.writer
     }
 
+    /// Local filesystem path to the campaign's SQLite file.
     pub fn path(&self) -> &PathBuf {
         &self.path
     }
 
+    /// Stops the write actor gracefully (drains pending writes), then calls
+    /// [`CampaignStore::release`] for final writeback and cache cleanup. Consumes `self`
+    /// so the compiler prevents use-after-release.
     pub async fn release(
         self,
         store: &dyn CampaignStore,
@@ -141,6 +161,8 @@ impl CampaignDatabase {
     }
 }
 
+/// Reads [`Config::storage_backend`](crate::config::Config) and returns the appropriate
+/// [`CampaignStore`] implementation.
 pub fn store_from_config(config: &Config) -> Arc<dyn CampaignStore> {
     match config.storage_backend {
         StorageBackend::Local => {

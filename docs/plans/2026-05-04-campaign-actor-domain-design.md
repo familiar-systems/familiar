@@ -78,11 +78,15 @@ This is the third pass at the campaign architecture (Hocuspocus/Yjs, then a Loro
 - `crates/campaign-shared/src/loro/` holds only ts-rs-exported domain types (`ThingHandle`, `TocEntry`, `TocEntryKind`) and Loro container/key constants. No traits, no wrappers. The trait/wrapper layer is consumed only by the campaign server.
 - Schema migrations under `apps/campaign/src/migrations/` and entities under `apps/campaign/src/entities/` (sea-orm).
 - A typed `DocError` enum on the trait surface (replaces the spike's `String` errors).
+- `apps/campaign/src/wire/` houses the loro-protocol wire utilities: `BatchAssembler`, `BatchFragmenter`, and the reassembly timeout pattern.
+- `apps/campaign/src/actors/` houses `CampaignRegistry`, `CampaignSupervisor`, and `DatabaseActor` (basic version with `PatchCampaignMetadata` and `GetMetadata` messages, not yet the full `PersistenceCommand` vocabulary).
+- `apps/campaign/src/persistence/` houses `CampaignStore` (trait), `LocalCampaignStore`, `S3CampaignStore`, and `CampaignDatabase` (checkout/release lifecycle with migration and metadata seeding). The `CampaignReader` trait is not yet built; the supervisor currently holds a `CampaignDatabase` directly rather than passing reader/writer handles to child actors.
 
 **Designed in this doc but not yet built:**
-- `CampaignSupervisor`, `CampaignVocabulary`, `RelationshipGraph`, `UserSession`, `AgentConversation` actors.
-- `CampaignDatabase` module facade (reader/writer split with `CampaignStore` lifecycle).
-- The `Persistent` and `Evictable` pattern traits and the `DatabaseActor`'s command vocabulary.
+- `CampaignVocabulary`, `RelationshipGraph`, `UserSession`, `AgentConversation` actors. Room-level actors (`ThingActor`, `TocActor`) that implement `CrdtRoom`.
+- The full `CampaignReader` trait (domain-typed read algebra) and `PersistenceCommand` vocabulary.
+- The `Persistent` and `Evictable` pattern traits.
+- The supervisor state machine (`SupervisorState` enum with Starting/Restoring/Ready/Draining); the current supervisor uses `Option<CampaignDatabase>`.
 - WebSocket per-connection routing table and the read/write task pair.
 - Suggestion-mark plumbing for the production editor (the spike has it; the production editor package needs it).
 - Permission enforcement (write validation server-side, render filtering client-side; see Permission Model below).
@@ -263,7 +267,7 @@ No recovery path requires special ceremony. The mention's truth is always the Th
 
 ### CampaignDatabase Module
 
-The campaign database is encapsulated as a module, not exposed as raw connections. The `CampaignDatabase` struct is the module's public face - the CampaignSupervisor holds it and passes its read and write handles to child actors. No actor outside the module ever sees a connection, a query, or a row.
+The campaign database is encapsulated as a module, not exposed as raw connections. The `CampaignDatabase` struct is the module's public face - the CampaignSupervisor holds it and passes its read and write handles to child actors. No actor outside the module ever sees a connection, a query, or a row. The current implementation lives at [`apps/campaign/src/persistence/database.rs`](../../apps/campaign/src/persistence/database.rs); the `CampaignReader` trait and the full `PersistenceCommand` vocabulary described below are designed but not yet built.
 
 ```rust
 /// The module's public face. The supervisor holds this.
@@ -314,7 +318,7 @@ This is where all SELECT queries live. Adding a new actor type means adding one 
 
 #### Write Actor
 
-Writes are domain-typed commands sent to a `DatabaseActor` that owns the single read-write connection. The actor's mailbox serializes writes - one message processed at a time - but this is a convenience for clean shutdown draining, not a correctness requirement. SQLite in WAL mode with `busy_timeout = 5000` already serializes writers at the database level. The actor prevents the CampaignSupervisor from blocking on IO during debounce writebacks.
+Writes are domain-typed commands sent to a `DatabaseActor` (current basic version at [`apps/campaign/src/actors/database_writer.rs`](../../apps/campaign/src/actors/database_writer.rs)) that owns the single read-write connection. The actor's mailbox serializes writes - one message processed at a time - but this is a convenience for clean shutdown draining, not a correctness requirement. SQLite in WAL mode with `busy_timeout = 5000` already serializes writers at the database level. The actor prevents the CampaignSupervisor from blocking on IO during debounce writebacks.
 
 Snapshot types carry their own identity and convert into persistence commands:
 
@@ -404,22 +408,24 @@ async fn persist(&mut self) {
 
 #### Storage Backend
 
-Where the SQLite file physically lives - local filesystem vs. object storage - is a separate concern from what gets written to it. A `CampaignStore` algebra abstracts the storage lifecycle:
+Where the SQLite file physically lives - local filesystem vs. object storage - is a separate concern from what gets written to it. A `CampaignStore` algebra abstracts the storage lifecycle (see [`apps/campaign/src/persistence/store.rs`](../../apps/campaign/src/persistence/store.rs)):
 
 ```rust
 trait CampaignStore: Send + Sync + 'static {
-    async fn checkout(&self, campaign_id: &CampaignId) -> Result<PathBuf>;
-    async fn writeback(&self, campaign_id: &CampaignId, path: &Path) -> Result<()>;
-    async fn release(&self, campaign_id: &CampaignId, path: &Path) -> Result<()>;
+    async fn checkout(&self, campaign_id: &CampaignId) -> Result<PathBuf, StoreError>;
+    async fn writeback(&self, campaign_id: &CampaignId, path: &Path) -> Result<(), StoreError>;
+    async fn release(&self, campaign_id: &CampaignId, path: &Path) -> Result<(), StoreError>;
 }
 ```
 
-- **Local (self-hosted):** `checkout` returns the path on disk. `writeback` and `release` are no-ops. The file is already where it needs to be.
-- **Hosted:** `checkout` downloads from Hetzner Object Storage to the local Hetzner Volume. `writeback` uploads the current file for durability (called on a periodic timer - ~30 seconds). `release` does a final upload and deletes the local copy.
+- **Local (self-hosted):** `checkout` returns the path on disk. `writeback` and `release` are no-ops. The file is already where it needs to be. See [`LocalCampaignStore`](../../apps/campaign/src/persistence/store_local.rs).
+- **Hosted:** `checkout` downloads from Hetzner Object Storage to the local Hetzner Volume. `writeback` uploads the current file for durability (called on a periodic timer - ~30 seconds). `release` does a final upload and deletes the local copy. See [`S3CampaignStore`](../../apps/campaign/src/persistence/store_s3.rs).
 
 The CampaignSupervisor owns the `CampaignStore`. The `CampaignDatabase` module consumes it during checkout and release but does not hold a reference to it - the storage lifecycle is the supervisor's responsibility, the connection lifecycle is the module's.
 
 #### Module Lifecycle
+
+The current implementation at [`apps/campaign/src/persistence/database.rs`](../../apps/campaign/src/persistence/database.rs) follows this shape, with additional steps for migration and metadata seeding. The `CampaignReaderImpl` and `open_read_pool`/`open_write_connection` shown here are simplified; the actual code uses sea-orm's `DatabaseConnection`.
 
 ```rust
 impl CampaignDatabase {
@@ -519,6 +525,8 @@ kameo actors process one message at a time. The `handle` method is async, but aw
 The startup is interrupt-driven: the supervisor spawns checkout as a background task, returns immediately, and receives a completion message when the database is ready. A separate timeout races against the completion.
 
 #### Supervisor State Machine
+
+At the time of writing, the supervisor at [`apps/campaign/src/actors/supervisor.rs`](../../apps/campaign/src/actors/supervisor.rs) uses `Option<CampaignDatabase>` as a simpler stand-in; the full state machine below lands with WebSocket support and background checkout.
 
 ```rust
 enum SupervisorState {

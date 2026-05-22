@@ -27,24 +27,25 @@ Extracting a service boundary after launch means performing infrastructure surge
 
 ### Three services, one workspace
 
-The Rust server splits into two services: the **platform** and the **campaign server**. Python **ML workers** are the third. All Rust code lives in one Cargo workspace with shared crates that define the interfaces between services.
+The Rust server splits into two services: the **platform** and the **campaign server**. Python **ML workers** are the third. All Rust code lives in one Cargo workspace. See [Project Structure](./2026-03-26-project-structure-design.md) for the full layout; the deployment-relevant parts:
 
 ```
 apps/
-  platform/      # Platform service binary
-  campaign/      # Campaign service binary, takes platform URL as config
+  platform/          # Platform service binary (auth, CRUD, routing table)
+  campaign/          # Campaign service binary (actors, collab, AI, compiler)
 
 crates/
-  shared/        # Types, interface traits, auth (JWT validation), libSQL helpers
-  platform/      # Axum routes: auth, campaign CRUD, discover, lease management
-  campaign/      # Axum + kameo + loro: actor hierarchy, WebSocket, compiler
+  app-shared/        # Types both binaries need: branded IDs, auth (JWT validation)
+  campaign-shared/   # Campaign-only types: Loro schema constants, ts-rs exports
+  fs-id/             # Type-safe ID branding (#[fs_id] macro)
+  fs-id-macros/      # Proc-macro crate for fs-id
 ```
 
-Both binaries compile from the same workspace. The crate boundaries enforce separation at the compiler level.
+Each binary owns its routes and domain logic under `apps/`. The shared crates hold types and identity primitives, not business logic or persistence. The cross-service boundary is enforced by HTTP, not by shared trait crates (see [Interface boundaries](#interface-boundaries) below).
 
 ### One topology everywhere
 
-There is no standalone "all-in-one" binary. Local development, preview environments, and production all run the same split topology: platform and campaign server as separate processes communicating over HTTP, fronted by a reverse proxy that enforces the path-based URL contract. The `Remote*` trait implementation (HTTP calls to the platform) is the only implementation; it's always tested because it's always used. No `Local*` implementations, no "does standalone exercise the same paths as split?" invariant to maintain.
+There is no standalone "all-in-one" binary. Local development, preview environments, and production all run the same split topology: platform and campaign server as separate processes communicating over HTTP, fronted by a reverse proxy that enforces the path-based URL contract. The HTTP boundary is always exercised because it's always used. No in-process shortcuts, no "does standalone exercise the same paths as split?" invariant to maintain.
 
 **Local dev** runs via `mise run dev`, which launches five processes in parallel:
 
@@ -69,19 +70,19 @@ Contributors open `http://localhost:8080` for marketing and `http://app.localhos
 The platform owns everything that exists before a campaign is checked out and independent of which server a campaign lives on:
 
 - **Authentication.** Hanko JWT verification. Token validation happens on both sides of the boundary (the platform verifies tokens for its own routes; the campaign server verifies tokens on WebSocket upgrade), but user identity, profiles, and session management live on the platform.
-- **Campaign CRUD.** Create, list, delete, transfer ownership. Campaign metadata lives in platform.db. The campaign's libSQL data file lives in object storage - the platform never opens it.
+- **Campaign CRUD.** Create, list, delete, transfer ownership. Campaign metadata lives in platform.db. The campaign's SQLite data file lives in object storage - the platform never opens it.
 - **The routing table.** Maps campaign ID → campaign server address. Lease-based: each checkout is a lease with a heartbeat. The platform is the single source of truth for "which server owns which campaign."
-- **The checkout endpoint.** `POST /api/campaigns/:id/checkout` → `{ ws_url: "wss://{app-apex}/campaign/:id/ws", api_base: "https://{app-apex}/campaign/:id", token: "..." }`. The SPA calls this to acquire access to a campaign. If the campaign isn't checked out, the platform assigns it to the least-loaded campaign server, instructs that server to check out the campaign, and records the assignment in the routing table. The returned URLs are **shard-agnostic** - they carry `campaign_id` but never a `shard_id`, because shard selection is an ingress-layer concern (see §URL routing). At N=1 shard the Ingress routes `/campaign/*` straight to the single shard; at N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the routing table. The SPA never observes shard identity.
+- **Campaign access flow.** The SPA requests a campaign from the platform (e.g. `GET /api/campaigns/:id`). The platform verifies auth and ownership, then ensures the campaign is loaded on a shard by calling `PUT /internal/campaign/{id}/lease` on the campaign server (see [Interface boundaries](#interface-boundaries)). If the campaign isn't checked out, the platform assigns it to the least-loaded shard and instructs that server to load it. Once the lease is confirmed, the SPA talks directly to the campaign server for metadata and (when WebSocket support lands) opens a WebSocket at `/campaign/{id}/ws`. The lease is an internal concern; the SPA never touches a lease endpoint. Campaign URLs are **shard-agnostic**: they carry `campaign_id` but never a `shard_id`, because shard selection is an ingress-layer concern (see §URL routing). At N=1 shard the Ingress routes `/campaign/*` straight to the single shard; at N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the routing table. The SPA never observes shard identity.
 - **Campaign server health monitoring.** Receives heartbeats from campaign servers, tracks load, detects failed leases.
 - **Future: community marketplace.** Starter packs, community templates, contributor profiles, content curation. This is cross-campaign, stateless, CDN-cacheable - a completely different traffic pattern from the campaign server's long-lived WebSocket connections.
 
-The platform's data store is platform.db - a single libSQL file holding users, campaigns, subscriptions, the routing table, and (eventually) marketplace content. Its traffic pattern is bursty, short-lived HTTP requests. It scales horizontally trivially if needed (multiple instances behind a load balancer, Turso Database for shared state).
+The platform's data store is platform.db, a SQLite file (via sea-orm + sqlx-sqlite) holding users, campaigns, subscriptions, the routing table, and (eventually) marketplace content. Its traffic pattern is bursty, short-lived HTTP requests. It scales horizontally trivially if needed (multiple instances behind a load balancer, Turso Database for shared state).
 
 ### The campaign server
 
 The campaign server owns everything that happens after a campaign is checked out. Its internal architecture is defined in the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) and [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md). From a deployment perspective, the relevant properties are:
 
-- **Stateful.** Holds WebSocket connections, in-memory LoroDocs in actor trees, and the local libSQL cache of campaign files.
+- **Stateful.** Holds WebSocket connections, in-memory LoroDocs in actor trees, and the local SQLite cache of campaign files.
 - **Campaign-pinned.** All traffic for a given campaign routes to the same server. No cross-instance state.
 - **Long-lived connections.** A GM's editing session may last hours. Restarting the server disconnects all sessions.
 - **Independently scalable.** Add servers, update the routing table, new campaigns go to the new server. Rebalancing is "writeback to object storage, update routing table, re-checkout on the new server."
@@ -129,54 +130,39 @@ The cold-start flow is the same async protocol described in the [Campaign Collab
 
 ### Interface boundaries
 
-The cross-service interface is defined by traits in `crates/shared/`. Each trait has one implementation: `Remote*` (HTTP client calling the platform's internal API). The campaign server code takes `impl Trait`.
+The cross-service boundary is enforced by HTTP. There is no shared trait crate defining the interface; the HTTP contract is the interface. Both directions are bearer-protected via `INTERNAL_BEARER_PRIMARY` (with optional `_SECONDARY` for rotation).
 
-#### RoutingTable
+#### Campaign server endpoints (platform calls campaign)
 
-```rust
-trait RoutingTable {
-    async fn acquire_lease(
-        &self, campaign_id: CampaignId, server_id: ServerId,
-    ) -> Result<LeaseGrant, LeaseConflict>;
-    async fn release_lease(
-        &self, campaign_id: CampaignId,
-    ) -> Result<(), Error>;
-    async fn heartbeat(
-        &self, server_id: ServerId, campaigns: &[CampaignId], load: f32,
-    ) -> Result<(), Error>;
-    async fn discover(
-        &self, campaign_id: CampaignId,
-    ) -> Result<CampaignLocation, Error>;
-}
-```
+The platform drives campaign lifecycle by calling the campaign server's internal API (see [`apps/campaign/src/routes/internal.rs`](../../apps/campaign/src/routes/internal.rs)):
 
-`RemoteRoutingTable`: HTTP calls to `PUT /internal/campaign/{id}/lease` (acquire), `DELETE /internal/campaign/{id}/lease` (release), `POST /internal/heartbeat` (heartbeat). The platform handles atomicity for lease acquisition via `INSERT ... WHERE NOT EXISTS`; loser gets 409.
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/internal/campaign` | Create a new campaign on this shard (idempotent on campaign_id) |
+| `PUT` | `/internal/campaign/{id}/lease` | Ensure a campaign is checked out on this shard (idempotent) |
+| `DELETE` | `/internal/campaign/{id}/lease` | Release a campaign from this shard (platform-initiated eviction) |
 
-#### Future marketplace traits (illustrative only)
+#### Campaign server callbacks (campaign calls platform)
 
-No real design work has been done on the marketplace. The trait sketches below are included only to show that the service boundary accommodates future cross-campaign features. They should not be considered API designs.
+The campaign server makes outbound callbacks to the platform via [`PlatformInternalClient`](../../apps/campaign/src/clients/platform_internal.rs):
 
-```rust
-// Illustrative - not designed, not implemented
-trait ContentCatalog {
-    async fn list_packs(&self, filter: PackFilter) -> Result<Vec<PackSummary>, Error>;
-    async fn get_pack(&self, pack_id: PackId) -> Result<PackManifest, Error>;
-    async fn download_pack_data(&self, pack_id: PackId) -> Result<PackBundle, Error>;
-}
+| Method | Path | Purpose |
+|--------|------|---------|
+| `PATCH` | `/internal/platform/campaign/{id}` | Mirror campaign metadata updates to the platform |
+| `POST` | `/internal/platform/campaign/{id}/init-failed` | Report initialization failure |
+| `POST` | `/internal/platform/heartbeat` | Periodic heartbeat with loaded campaign list |
 
-// Reverse direction: user shares content from their campaign
-trait PackPublisher {
-    async fn publish_pack(
-        &self, contributor: UserId, bundle: PackBundle, metadata: PackMetadata,
-    ) -> Result<PackId, Error>;
-}
-```
+The platform handles atomicity for lease acquisition via `INSERT ... WHERE NOT EXISTS`; loser gets 409.
+
+#### Future marketplace interfaces (illustrative only)
+
+No real design work has been done on the marketplace. The sketches below are included only to show that the service boundary accommodates future cross-campaign features. They should not be considered API designs. A marketplace would add endpoints to the platform (listing, browsing, purchasing content packs) and callbacks from the campaign server (publishing user-created content).
 
 ---
 
 ### Graceful restart protocol
 
-The campaign server holds stateful WebSocket connections and in-memory CRDTs. Restarting it is not transparent. The restart protocol minimizes disruption and data loss.
+The campaign server holds stateful WebSocket connections and in-memory CRDTs. Restarting it is not transparent. The restart protocol minimizes disruption and data loss. The drain workflow is implemented in [`CampaignRegistry::BeginDrain`](../../apps/campaign/src/actors/registry.rs); shutdown signal handling is in [`main.rs`](../../apps/campaign/src/main.rs).
 
 #### Shutdown sequence (SIGTERM handler)
 
@@ -187,7 +173,7 @@ The shutdown is per-campaign, not a global sequence. Each campaign drains indepe
 **Per campaign (concurrent across all checked-out campaigns):**
 
 1. **Notify connected clients.** Send `server_restarting` over the campaign's WebSocket connections. The SPA drops to its loading skeleton.
-2. **Snapshot and writeback.** The CampaignSupervisor tells its actors to snapshot. Each actor writes its LoroDoc to relational data in the campaign's libSQL file. The campaign file flushes to object storage.
+2. **Snapshot and writeback.** The CampaignSupervisor tells its actors to snapshot. Each actor writes its LoroDoc to relational data in the campaign's SQLite file. The campaign file flushes to object storage.
 3. **Release the lease.** Only after the writeback to object storage is confirmed does the campaign server release the lease for this campaign via the platform's API. Until the lease is released, no other server can check out this campaign. This ordering prevents split-brain: there is no window where the campaign file is being written to object storage while another server is checking it out.
 4. **Campaign done.** This campaign's actors are terminated, its resources freed.
 
@@ -198,7 +184,7 @@ The `terminationGracePeriodSeconds` on the k8s pod provides the time budget. 30 
 #### Reconnection sequence (new binary starts)
 
 1. The new binary starts and registers with the platform.
-2. Clients reconnect via the SPA's standard reconnection logic. The SPA calls the checkout endpoint, gets the (same or new) shard-agnostic URL, opens a new WebSocket.
+2. Clients reconnect via the SPA's standard reconnection logic. The SPA requests the campaign from the platform, which ensures the lease on the (same or new) shard, then the SPA opens a new WebSocket.
 3. Campaign files are still on the local Hetzner Volume - they survived the restart. Checkout from local disk is "open the file" - sub-millisecond. The expensive object storage download only happens on cold start (a campaign not previously on this server).
 4. Actors reconstruct LoroDocs from relational data via `restore()`. Clients sync via the loro-dev/protocol's rejoin flow.
 
@@ -306,7 +292,7 @@ Per-PR manifests are Kustomize overlays with `${VAR}` placeholders for non-secre
 
 #### Why real data, not fixtures
 
-Campaign files are self-contained libSQL databases. Copying them is a file operation. Building a fixture generator that produces realistic campaigns - interconnected entities, relationship graphs, session journals, suggestion histories, blocks with marks - would be harder than copying real files, and the output would be less useful for testing because it wouldn't exercise the edge cases that real campaigns accumulate.
+Campaign files are self-contained SQLite databases. Copying them is a file operation. Building a fixture generator that produces realistic campaigns - interconnected entities, relationship graphs, session journals, suggestion histories, blocks with marks - would be harder than copying real files, and the output would be less useful for testing because it wouldn't exercise the edge cases that real campaigns accumulate.
 
 ---
 
@@ -319,7 +305,7 @@ Campaign files are self-contained libSQL databases. Copying them is a file opera
 - **One topology everywhere.** Native `mise run dev` locally (with Caddy as the front-door reverse proxy on :8080 serving both the marketing and app host matchers), k3s in preview and prod - but always the same two binaries communicating over HTTP behind a reverse proxy that enforces the two-apex URL contract. No standalone binary, no `Local*` implementations, no "does dev match prod?" uncertainty. What you run on your laptop is URL-shaped identically to what runs in production.
 - **Self-hosting on a clear path.** The planned `docker compose up` self-hosting story reuses the same split + path-based shape; the Caddy config in dev is the same kind of reverse-proxy config a self-hoster would run. Not yet shipped.
 - **Preview environments that test reality.** Every PR exercises the same service topology, data setup, migration path, and auth flow as production. Infra surprises are absorbed at zero cost, not under load.
-- **Clear contributor boundaries.** A contributor working on marketplace features touches `crates/platform/` and never needs to understand the actor hierarchy. A contributor working on the collaboration layer touches `crates/campaign/` and never needs to understand marketplace routing. The Cargo workspace enforces compilation boundaries.
+- **Clear contributor boundaries.** A contributor working on marketplace features touches `apps/platform/` and never needs to understand the actor hierarchy. A contributor working on the collaboration layer touches `apps/campaign/` and never needs to understand marketplace routing. The Cargo workspace enforces compilation boundaries.
 - **Graceful restarts are cheap.** A few seconds of "reconnecting..." per deploy, bounded by the per-campaign writeback time (small SQLite files to local disk, then object storage). No data loss beyond in-flight LLM tokens. No split-brain because lease release happens only after writeback confirms.
 
 ### What this architecture costs us
@@ -338,7 +324,7 @@ Campaign files are self-contained libSQL databases. Copying them is a file opera
 - **Lease release happens only after writeback.** During shutdown, each campaign's lease is released only after its data has been confirmed written to object storage. The heartbeat continues throughout the drain - it is the first thing to start on boot and the last thing to stop before exit - preventing the platform from expiring leases during writeback.
 - **One topology everywhere.** Local dev (`mise run dev` + Caddy on :8080), preview (k3s preview namespace + Traefik), production (k3s default namespace + Traefik), and future self-hosting (`docker compose up` + containerized reverse proxy) all run the same split binaries communicating over HTTP behind a two-apex path-based reverse proxy. No standalone-only code paths.
 - **Preview environments always use split mode.** PR previews deploy both binaries as separate pods to test the real service topology, internal API, and lease protocol on every PR.
-- **All cross-service interfaces are defined as traits in `crates/shared/`.** No implicit dependencies between platform and campaign server. If it's not in a trait, it doesn't cross the boundary.
+- **Cross-service communication uses bearer-protected HTTP endpoints.** The platform drives campaign lifecycle via `POST/PUT/DELETE /internal/campaign/*` on the campaign server ([`apps/campaign/src/routes/internal.rs`](../../apps/campaign/src/routes/internal.rs)). The campaign server makes callbacks via [`PlatformInternalClient`](../../apps/campaign/src/clients/platform_internal.rs). No implicit dependencies; if it's not an HTTP endpoint, it doesn't cross the boundary.
 
 ---
 
@@ -365,19 +351,19 @@ Campaign files are self-contained libSQL databases. Copying them is a file opera
 
 Two drain modes based on whether the restart is same-server or cross-server:
 
-- **Same-server restart (k8s rolling update, same Volume):** snapshot actors to local libSQL files → release lease → exit. The new pod opens the local files directly and writes back to object storage in the background at its normal ~30-second cadence. Total handoff gap: sub-second (container start + Rust binary boot).
+- **Same-server restart (k8s rolling update, same Volume):** snapshot actors to local SQLite files → release lease → exit. The new pod opens the local files directly and writes back to object storage in the background at its normal ~30-second cadence. Total handoff gap: sub-second (container start + Rust binary boot).
 - **Cross-server drain (rebalancing, multi-server rolling restart):** the current design - snapshot → writeback to object storage → release lease → exit. The other server needs the file in object storage because it doesn't have the local copy.
 
 **k8s mechanics to validate:**
 
 - Deployment rolling update with `maxSurge: 1`, `maxUnavailable: 0`. New pod starts alongside old pod. Both mount the same PVC.
 - Readiness probe gates on "leases acquired, actors restored" so Traefik doesn't route to the new pod prematurely.
-- Verify that the lease model serializes access correctly: old pod closes file handles and releases lease _before_ new pod acquires lease and opens the same files. No concurrent libSQL access.
+- Verify that the lease model serializes access correctly: old pod closes file handles and releases lease _before_ new pod acquires lease and opens the same files. No concurrent SQLite access.
 
 **What could go wrong:**
 
 - If the old pod crashes (OOMKilled, node failure) instead of gracefully shutting down, local files may be up to ~30 seconds stale (last debounce writeback). This is the existing crash recovery story - it doesn't get worse. The fast path only applies to graceful restarts.
-- If both pods try to open the same libSQL file simultaneously, corruption. The lease is the serialization point - validate that it's airtight under all timing conditions.
+- If both pods try to open the same SQLite file simultaneously, corruption. The lease is the serialization point - validate that it's airtight under all timing conditions.
 
 **The invariant change:** "Lease release only after object storage writeback" becomes "lease release only after local snapshot confirms (same-server) or after object storage writeback confirms (cross-server)." The drain mode is knowable at shutdown time.
 

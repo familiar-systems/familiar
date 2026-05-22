@@ -35,7 +35,11 @@ pub fn register_sqlite_vec() {
     });
 }
 
-/// Open a sqlx sqlite pool and wrap it as a sea-orm `DatabaseConnection`.
+/// Open a read-write sqlx sqlite pool and wrap it as a sea-orm `DatabaseConnection`.
+///
+/// Used by the [`DatabaseActor`](crate::actors::database_writer::DatabaseActor), which
+/// serializes writes through its kameo mailbox. A small pool (2 connections) is sufficient
+/// since concurrent writes are mailbox-serialized.
 ///
 /// Does **not** register sqlite-vec; that's `register_sqlite_vec`'s job.
 /// If you want vec0 available in this connection, the caller registers it
@@ -47,7 +51,7 @@ pub async fn connect(database_url: &str) -> Result<DatabaseConnection, sqlx::Err
         .foreign_keys(true);
 
     let pool = SqlitePoolOptions::new()
-        .max_connections(4)
+        .max_connections(2)
         .connect_with(opts)
         .await?;
 
@@ -57,8 +61,13 @@ pub async fn connect(database_url: &str) -> Result<DatabaseConnection, sqlx::Err
 /// Open a read-only connection pool against an existing database file.
 ///
 /// WAL mode allows concurrent readers alongside the single writer owned
-/// by [`DatabaseActor`]. The pool is `Clone + Send + Sync` so it can be
-/// handed to every actor that needs read access at spawn time.
+/// by the [`DatabaseActor`](crate::actors::database_writer::DatabaseActor). The pool is
+/// `Clone + Send + Sync` so it can be handed to every actor that needs read access.
+///
+/// The pool is sized for campaign-scale concurrency: dozens of room actors restoring
+/// or querying simultaneously during startup fan-out and AI context-building passes.
+/// SQLite WAL readers are cheap (shared read lock, no blocking), so the pool limit
+/// governs how many sqlx connections are held open, not how many reads can proceed.
 pub async fn connect_readonly(path: &std::path::Path) -> Result<DatabaseConnection, sqlx::Error> {
     let opts = SqliteConnectOptions::new()
         .filename(path)
@@ -67,7 +76,7 @@ pub async fn connect_readonly(path: &std::path::Path) -> Result<DatabaseConnecti
         .foreign_keys(true);
 
     let pool = SqlitePoolOptions::new()
-        .max_connections(4)
+        .max_connections(16)
         .connect_with(opts)
         .await?;
 

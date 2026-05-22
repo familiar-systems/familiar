@@ -1,3 +1,13 @@
+//! S3-compatible object storage [`CampaignStore`] implementation.
+//!
+//! Used in hosted/managed deployments. Object storage is the source of truth; local disk
+//! under `local_cache_dir` is a working cache. The remote path convention is
+//! `campaigns/{campaign_id}/campaign.db`.
+//!
+//! During active use the supervisor calls [`writeback`](CampaignStore::writeback) periodically
+//! (~30s) so that crash recovery loses at most one interval of edits. On shutdown or idle
+//! eviction, [`release`](CampaignStore::release) does a final upload and deletes the local copy.
+
 use std::path::{Path, PathBuf};
 
 use familiar_systems_app_shared::id::CampaignId;
@@ -8,6 +18,7 @@ use crate::config::S3Config;
 
 use super::store::{CampaignStore, StoreError};
 
+/// Holds an S3 client and a local cache directory for downloaded campaign files.
 pub struct S3CampaignStore {
     store: Box<dyn ObjectStore>,
     local_cache_dir: PathBuf,
@@ -49,6 +60,9 @@ impl S3CampaignStore {
 
 #[async_trait::async_trait]
 impl CampaignStore for S3CampaignStore {
+    /// Downloads the remote file to the local cache directory. If no remote file exists
+    /// (new campaign), returns the local path without error so the database layer can
+    /// create the file.
     async fn checkout(&self, campaign_id: &CampaignId) -> Result<PathBuf, StoreError> {
         tokio::fs::create_dir_all(&self.local_cache_dir).await?;
         let local = self.local_path(campaign_id);
@@ -76,6 +90,7 @@ impl CampaignStore for S3CampaignStore {
         Ok(local)
     }
 
+    /// Reads the local file and uploads it to the remote path for durability.
     async fn writeback(&self, campaign_id: &CampaignId, path: &Path) -> Result<(), StoreError> {
         let bytes = tokio::fs::read(path).await?;
         let len = bytes.len();
@@ -92,6 +107,7 @@ impl CampaignStore for S3CampaignStore {
         Ok(())
     }
 
+    /// Uploads the file to object storage, then deletes the local cache copy.
     async fn release(&self, campaign_id: &CampaignId, path: &Path) -> Result<(), StoreError> {
         self.writeback(campaign_id, path).await?;
         tokio::fs::remove_file(path).await?;
