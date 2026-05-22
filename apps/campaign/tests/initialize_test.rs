@@ -1,14 +1,15 @@
 mod common;
 
+use familiar_systems_app_shared::id::CampaignId;
+use familiar_systems_campaign::actors::registry::CreateCampaign;
+use familiar_systems_campaign_shared::onboarding::metadata::CampaignMetadataResponse;
 use serde_json::json;
 use wiremock::{
     Mock, ResponseTemplate,
-    matchers::{body_partial_json, header, method, path},
+    matchers::{header, method, path},
 };
 
-const CAMPAIGN_ID: &str = "test-campaign-1";
-
-fn valid_payload() -> serde_json::Value {
+fn wizard_payload() -> serde_json::Value {
     json!({
         "game_system": "dnd-5e",
         "content_locale": "en",
@@ -16,25 +17,38 @@ fn valid_payload() -> serde_json::Value {
         "tagline": null,
         "template_slugs": ["common/npc", "common/player"],
         "audio": "opt-out",
-        "evals_enabled": false
+        "evals_enabled": false,
+        "wizard_complete": true
     })
 }
 
-#[tokio::test]
-async fn initialize_fires_platform_callback_and_returns_500() {
-    let app = common::spawn_app().await;
+async fn create_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
+    let _: kameo::actor::ActorRef<
+        familiar_systems_campaign::actors::supervisor::CampaignSupervisor,
+    > = app
+        .registry
+        .ask(CreateCampaign {
+            campaign_id: campaign_id.clone(),
+            owner_user_id: common::test_user_id(),
+        })
+        .await
+        .expect("create campaign");
+}
 
-    // The platform receives the init-failed callback with the bearer attached.
-    Mock::given(method("POST"))
+#[tokio::test]
+async fn patch_with_wizard_complete_writes_metadata_and_mirrors() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
+
+    Mock::given(method("PATCH"))
         .and(path(format!(
-            "/internal/platform/campaigns/{CAMPAIGN_ID}/init-failed"
+            "/internal/platform/campaign/{}",
+            campaign_id.0
         )))
         .and(header(
             "authorization",
             format!("Bearer {}", app.bearer).as_str(),
-        ))
-        .and(body_partial_json(
-            json!({"reason": "deliberate_thin_slice_failure"}),
         ))
         .respond_with(ResponseTemplate::new(200))
         .expect(1)
@@ -42,63 +56,76 @@ async fn initialize_fires_platform_callback_and_returns_500() {
         .await;
 
     let resp = reqwest::Client::new()
-        .post(format!(
-            "{}/campaign/{}/initialize",
-            app.base_url, CAMPAIGN_ID
-        ))
-        .json(&valid_payload())
+        .patch(format!("{}/campaign/{}", app.base_url, campaign_id.0))
+        .header("authorization", app.auth_header())
+        .json(&wizard_payload())
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 500);
+    assert_eq!(resp.status().as_u16(), 200);
 
-    let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["campaign_id"], CAMPAIGN_ID);
-    assert!(
-        body["error"].as_str().unwrap().contains("not yet wired up"),
-        "expected deliberate-failure copy, got {}",
-        body["error"]
-    );
+    let body: CampaignMetadataResponse = resp.json().await.unwrap();
+    assert_eq!(body.name, "Embergrove Saga");
+    assert!(body.wizard_completed_at.is_some());
 }
 
 #[tokio::test]
-async fn initialize_still_returns_500_when_platform_callback_itself_errors() {
-    // If the platform's init-failed handler is down, the campaign tier still
-    // returns the deliberate 500 to the SPA so the FE-visible failure stays
-    // stable. The dropped callback gets logged at warn (not asserted here).
+async fn double_wizard_complete_returns_409() {
     let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
 
-    Mock::given(method("POST"))
+    Mock::given(method("PATCH"))
         .and(path(format!(
-            "/internal/platform/campaigns/{CAMPAIGN_ID}/init-failed"
+            "/internal/platform/campaign/{}",
+            campaign_id.0
         )))
-        .respond_with(ResponseTemplate::new(500))
+        .respond_with(ResponseTemplate::new(200))
         .mount(&app.platform)
         .await;
 
-    let resp = reqwest::Client::new()
-        .post(format!(
-            "{}/campaign/{}/initialize",
-            app.base_url, CAMPAIGN_ID
-        ))
-        .json(&valid_payload())
+    let client = reqwest::Client::new();
+    let url = format!("{}/campaign/{}", app.base_url, campaign_id.0);
+
+    let first = client
+        .patch(&url)
+        .header("authorization", app.auth_header())
+        .json(&wizard_payload())
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 500);
+    assert_eq!(first.status().as_u16(), 200);
+
+    let second = client
+        .patch(&url)
+        .header("authorization", app.auth_header())
+        .json(&wizard_payload())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second.status().as_u16(), 409);
 }
 
 #[tokio::test]
-async fn initialize_rejects_malformed_body_with_4xx() {
-    // axum's Json extractor 422s on parse errors; the test pins behaviour so
-    // the FE knows what to expect when its zod schema generates the wrong
-    // shape.
+async fn patch_unknown_campaign_returns_404() {
+    let app = common::spawn_app().await;
+
+    let resp = reqwest::Client::new()
+        .patch(format!("{}/campaign/nonexistent-id", app.base_url))
+        .header("authorization", app.auth_header())
+        .json(&wizard_payload())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 404);
+}
+
+#[tokio::test]
+async fn patch_rejects_malformed_body_with_4xx() {
     let app = common::spawn_app().await;
     let resp = reqwest::Client::new()
-        .post(format!(
-            "{}/campaign/{}/initialize",
-            app.base_url, CAMPAIGN_ID
-        ))
+        .patch(format!("{}/campaign/test-id", app.base_url))
+        .header("authorization", app.auth_header())
         .json(&json!({ "not": "valid" }))
         .send()
         .await
@@ -107,5 +134,52 @@ async fn initialize_rejects_malformed_body_with_4xx() {
         resp.status().is_client_error(),
         "expected 4xx for malformed body, got {}",
         resp.status()
+    );
+}
+
+#[tokio::test]
+async fn patch_without_auth_returns_401() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
+
+    let resp = reqwest::Client::new()
+        .patch(format!("{}/campaign/{}", app.base_url, campaign_id.0))
+        .json(&wizard_payload())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn patch_without_wizard_complete_updates_name_only() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
+
+    Mock::given(method("PATCH"))
+        .and(path(format!(
+            "/internal/platform/campaign/{}",
+            campaign_id.0
+        )))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&app.platform)
+        .await;
+
+    let resp = reqwest::Client::new()
+        .patch(format!("{}/campaign/{}", app.base_url, campaign_id.0))
+        .header("authorization", app.auth_header())
+        .json(&json!({ "name": "Renamed Campaign" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    let body: CampaignMetadataResponse = resp.json().await.unwrap();
+    assert_eq!(body.name, "Renamed Campaign");
+    assert!(
+        body.wizard_completed_at.is_none(),
+        "wizard should not be completed"
     );
 }

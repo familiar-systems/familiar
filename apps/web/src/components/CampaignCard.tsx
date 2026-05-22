@@ -3,12 +3,12 @@ import { Link } from "@tanstack/react-router";
 import { Clock, Pencil, XCircle } from "lucide-react";
 import { relativeTime } from "../lib/relative-time";
 
-type CardState = "draft" | "init-failed" | "sealed";
+type CardState = "draft" | "init-failed" | "initialized";
 
 function deriveState(campaign: Campaign): CardState {
   if (campaign.last_init_error !== null) return "init-failed";
   if (campaign.wizard_completed_at === null) return "draft";
-  return "sealed";
+  return "initialized";
 }
 
 interface CampaignCardProps {
@@ -18,8 +18,8 @@ interface CampaignCardProps {
 
 export function CampaignCard({ campaign, loaded = false }: CampaignCardProps): React.ReactElement {
   const state = deriveState(campaign);
-  if (state === "sealed") {
-    return <SealedCard campaign={campaign} loaded={loaded} />;
+  if (state === "initialized") {
+    return <InitializedCard campaign={campaign} loaded={loaded} />;
   }
   return <GraphPaperCard state={state} campaignId={campaign.id} />;
 }
@@ -94,7 +94,7 @@ function GraphPaperCard({ state, campaignId }: GraphPaperCardProps): React.React
 }
 
 // ---------------------------------------------------------------------------
-// Sealed Banner Card (loaded / ready-to-load)
+// Initialized Banner Card (loaded / ready-to-load)
 // ---------------------------------------------------------------------------
 
 const CROSSHATCH_LIGHT =
@@ -109,12 +109,12 @@ const PLUM_BANNER =
 const GOLD_GLOW =
   "radial-gradient(circle at 80% 0%, color-mix(in srgb, var(--color-gold), transparent 70%), transparent 55%)";
 
-interface SealedCardProps {
+interface InitializedCardProps {
   campaign: Campaign;
   loaded: boolean;
 }
 
-function SealedCard({ campaign, loaded }: SealedCardProps): React.ReactElement {
+function InitializedCard({ campaign, loaded }: InitializedCardProps): React.ReactElement {
   const display = campaign.name ?? "Untitled campaign";
   const hasTagline = campaign.tagline !== null && campaign.tagline !== "";
 

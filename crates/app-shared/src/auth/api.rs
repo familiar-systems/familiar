@@ -12,11 +12,7 @@ use utoipa::ToSchema;
 
 /// Response body for `GET /me`.
 ///
-/// **Wire format we own (API contract with the SPA).** Exported to TypeScript
-/// as `MeResponse` via ts-rs. Changes are breaking changes to the frontend.
-///
-/// `id` is the Hanko subject (= `users.id`); see
-/// `apps/platform/src/entities/users.rs`.
+/// `id` is the Hanko subject (= `users.id`).
 #[derive(Debug, Clone, Serialize, TS, ToSchema)]
 #[ts(export, export_to = "types-app/src/generated/auth/")]
 pub struct MeResponse {

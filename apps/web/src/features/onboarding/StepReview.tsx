@@ -1,4 +1,4 @@
-// Step 4: review and seal. Final summary plus the wax seal.
+// Step 4: review and initialize. Final summary plus the wax seal.
 
 import type { AudioMode } from "@familiar-systems/types-campaign";
 import { type SealState, WaxSeal } from "./WaxSeal";
@@ -20,7 +20,7 @@ interface StepReviewProps {
   errorMessage: string | null;
   /** BCP-47; routed to WaxSeal so script-aware monogram derivation honors locale. */
   locale: string;
-  onSeal: () => void;
+  onInitializeCampaign: () => void;
   onBack: () => void;
 }
 
@@ -34,7 +34,7 @@ export function StepReview({
   sealState,
   errorMessage,
   locale,
-  onSeal,
+  onInitializeCampaign,
   onBack,
 }: StepReviewProps): React.ReactElement {
   const cracked = sealState === "cracked";
@@ -122,7 +122,7 @@ export function StepReview({
           state={sealState}
           campaignName={name}
           locale={locale}
-          onClick={onSeal}
+          onClick={onInitializeCampaign}
           disabled={cracked}
         />
         <div className="flex items-center gap-2">

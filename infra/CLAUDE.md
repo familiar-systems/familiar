@@ -1,10 +1,10 @@
-# CLAUDE.md -- infra/pulumi-cloud
+# CLAUDE.md -- infra
 
 ## What This Is
 
-Pulumi Python project for familiar.systems cloud infrastructure on Hetzner Cloud + Scaleway Container Registry + Scaleway Secrets Manager. State is stored in Scaleway Object Storage, secrets are encrypted with a passphrase from Scaleway Secrets Manager.
+Infrastructure for familiar.systems: Pulumi Python project (`pulumi-cloud/`), Kustomize overlays (`k8s/`), and CI workflows. Targets Hetzner Cloud + Scaleway Container Registry + Scaleway Secrets Manager. Pulumi state is stored in Scaleway Object Storage.
 
-Single deployment target: **k3s cluster** serving `familiar.systems` + `app.familiar.systems` (production) and `preview.familiar.systems` + `app.preview.familiar.systems` (PR previews), plus the legacy `loreweaver.no` apex set until it retires. The two-apex layout (marketing vs app) is documented in [Deployment Architecture §URL routing](../../docs/plans/2026-03-30-deployment-architecture.md#url-routing).
+Single deployment target: **k3s cluster** serving `familiar.systems` + `app.familiar.systems` (production) and `preview.familiar.systems` + `app.preview.familiar.systems` (PR previews), plus the legacy `loreweaver.no` apex set until it retires. The two-apex layout (marketing vs app) is documented in [Deployment Architecture §URL routing](../docs/plans/2026-03-30-deployment-architecture.md#url-routing).
 
 ## Key Files
 
@@ -359,4 +359,4 @@ Kubelet log retention is configured in cloud-init (`k3s_cluster.py`): 10 files x
 - Never commit `.env`, `.envrc`, or any file containing raw credentials.
 - All application secrets live in Scaleway Secrets Manager. Only provider credentials (e.g. `hcloud:token`) belong in Pulumi config.
 - The `encryptionsalt` in `Pulumi.prod.yaml` is safe to commit -- it's not a secret.
-- **Lint/format/check command**: `uv run ruff check --fix . && uv run ruff format . && uv run basedpyright` (fix + format + typecheck in one pass).
+- **Lint/format/check**: `mise run lint:infra && mise run format:infra && mise run typecheck:infra`.

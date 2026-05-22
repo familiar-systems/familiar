@@ -75,6 +75,7 @@ run = "uv sync"
 
 [tasks."setup:e2e"]
 description = "Install Playwright's browser binary (chromium) for apps/web e2e tests"
+depends = ["setup:ts"]
 # Playwright pins exact browser revisions per @playwright/test version, so
 # we let Playwright manage the install itself instead of mise tracking the
 # browser as a tool. Cached at ~/.cache/ms-playwright; idempotent.
@@ -134,7 +135,7 @@ description = "Campaign server (port 3001)"
 # binary writes into it. Local-dev uses 3001 to avoid colliding with
 # dev:platform's 3000; the container default (Dockerfile + cluster) is 3000.
 run = ["mkdir -p data/dev-campaigns", "cargo run -p familiar-systems-campaign"]
-env = { PORT = "3001", CAMPAIGN_DATA_DIR = "data/dev-campaigns", PLATFORM_URL = "http://localhost:3000", CAMPAIGN_IDLE_TIMEOUT_SECS = "1800", CAMPAIGN_EVICTION_CHECK_INTERVAL_SECS = "180", RUST_LOG = "info,familiar_systems_campaign=debug" }
+env = { CAMPAIGN_STORAGE_BACKEND = "local", PORT = "3001", HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", CAMPAIGN_DATA_DIR = "data/dev-campaigns", PLATFORM_URL = "http://localhost:3000", CAMPAIGN_IDLE_TIMEOUT_SECS = "60", CAMPAIGN_EVICTION_CHECK_INTERVAL_SECS = "15", RUST_LOG = "info,familiar_systems_campaign=debug" }
 
 [tasks."dev:proxy"]
 description = "Caddy reverse proxy on :8080 unifying site + SPA + platform + campaign under one origin"
@@ -184,31 +185,7 @@ sources = [
   "packages/**/vitest.config.*",
 ]
 
-[tasks."test:rust"]
-description = "Run Rust tests (cargo test triggers ts-rs codegen as a side effect)"
-# ts-rs's `#[ts(export)]` derive expands into a `#[cfg(test)]
-# export_bindings_<TypeName>()` test that writes the .ts file when the
-# suite runs - so `cargo test` is what produces the ts-rs side of
-# packages/*/src/generated/. The OpenAPI half is owned by `generate-types`
-# and runs on top of this task via `depends`.
-run = """
-cargo test --workspace
-pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
-"""
-sources = [
-  "apps/platform/**/*.rs",
-  "apps/campaign/**/*.rs",
-  "crates/**/*.rs",
-  "Cargo.toml",
-  "Cargo.lock",
-  "apps/platform/Cargo.toml",
-  "apps/campaign/Cargo.toml",
-  "crates/**/Cargo.toml",
-]
-outputs = [
-  "packages/types-app/src/generated/**/*.ts",
-  "packages/types-campaign/src/generated/**/*.ts",
-]
+# test:rust lives in .mise/tasks/test/rust (file task, shellcheck-able).
 
 [tasks."test:python"]
 dir = "workers/whisperx"
@@ -260,11 +237,15 @@ sources = [
 ]
 
 [tasks."lint:rust"]
-description = "Clippy + cargo-machete (fails on warnings or unused Cargo dependencies)"
+description = "Clippy + rustdoc + cargo-machete (fails on warnings, broken doc links, or unused deps)"
+# --all-targets includes integration tests, examples, and benches (not just
+# lib+bin). Without it, `tests/` is never compiled and unused-import warnings
+# in test helpers go unnoticed until CI.
+# --locked fails if Cargo.lock is stale, catching accidental dep drift locally.
 # Chained with && so machete doesn't bury clippy errors with dep-hygiene noise.
 # cargo-machete reads every workspace Cargo.toml and greps every .rs file, so
 # its trigger set is identical to clippy's - the same `sources` covers both.
-run = "cargo clippy --workspace -- -D warnings && cargo machete"
+run = "cargo clippy --workspace --all-targets --locked -- -D warnings && RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked && cargo machete"
 sources = [
   "apps/platform/**/*.rs",
   "apps/campaign/**/*.rs",
@@ -468,40 +449,6 @@ sources = [
 ]
 
 # --- generate ---
-
-[tasks.generate-types]
-description = "Regenerate all TS bindings from Rust: ts-rs (via test:rust) + OpenAPI spec + typed paths interface"
-# `depends = ["test:rust"]` runs cargo test first, which emits ts-rs
-# bindings as a side effect of its export_bindings_* tests. After that
-# completes, this task layers the OpenAPI pipeline on top: emit the spec
-# from utoipa, run openapi-codegen to produce a typed `paths` interface
-# that imports its component schemas from the ts-rs output, then format.
-depends = ["test:rust"]
-run = """
-mkdir -p packages/types-app/openapi packages/types-campaign/openapi
-cargo run -p familiar-systems-platform --bin emit-openapi > packages/types-app/openapi/platform.json
-cargo run -p familiar-systems-campaign --bin emit-openapi-campaign > packages/types-campaign/openapi/campaign.json
-pnpm --filter @familiar-systems/openapi-codegen run generate:platform
-pnpm --filter @familiar-systems/openapi-codegen run generate:campaign
-pnpm exec oxfmt packages/types-app/openapi packages/types-app/src/openapi packages/types-campaign/openapi packages/types-campaign/src/openapi
-"""
-sources = [
-  "apps/platform/**/*.rs",
-  "apps/campaign/**/*.rs",
-  "crates/**/*.rs",
-  "Cargo.toml",
-  "Cargo.lock",
-  "apps/platform/Cargo.toml",
-  "apps/campaign/Cargo.toml",
-  "crates/**/Cargo.toml",
-  "tooling/openapi-codegen/generate.ts",
-]
-outputs = [
-  "packages/types-app/openapi/platform.json",
-  "packages/types-app/src/openapi/platform.ts",
-  "packages/types-campaign/openapi/campaign.json",
-  "packages/types-campaign/src/openapi/campaign.ts",
-]
 
 # --- clean ---
 

@@ -1,4 +1,4 @@
-use crate::middleware::auth::AuthenticatedUser;
+use crate::middleware::auth::PlatformUser;
 use axum::Json;
 use familiar_systems_app_shared::{auth::MeResponse, id::UserId};
 
@@ -12,7 +12,7 @@ use familiar_systems_app_shared::{auth::MeResponse, id::UserId};
     ),
     security(("bearerAuth" = [])),
 )]
-pub async fn me(user: AuthenticatedUser) -> Json<MeResponse> {
+pub async fn me(user: PlatformUser) -> Json<MeResponse> {
     Json(MeResponse {
         id: UserId(user.id),
         email: user.email,

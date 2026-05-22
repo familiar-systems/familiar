@@ -8,7 +8,7 @@ Covers `apps/platform/` only: the `familiar-systems-platform` Axum binary. Overr
 
 ## Today vs. the PRD
 
-The [App Server PRD](../../docs/plans/2026-04-11-app-server-prd.md) specifies auth, campaign CRUD, membership, a routing table, shard heartbeats and leases, checkout orchestration, billing, and a public showcase. **The shipped surface is `GET /health` and `GET /me`.** Everything else is greenfield: treat the PRD as the spec, not as a description of code to extend.
+The [App Server PRD](../../docs/plans/2026-04-11-app-server-prd.md) specifies auth, campaign CRUD, membership, a routing table, shard heartbeats and leases, checkout orchestration, billing, and a public showcase. **The shipped surface is `GET /health`, `GET /me`, `POST /campaigns`, `GET /campaigns`, and `GET /campaigns/{id}` (with implicit shard lease).** Internal endpoints: `PATCH /internal/platform/campaign/{id}`, `POST /internal/platform/campaign/{id}/init-failed`, `DELETE /internal/platform/campaign/{id}/lease`. Treat the PRD as the spec for everything not yet built.
 
 Related context for architectural decisions: [Deployment Architecture](../../docs/plans/2026-03-30-deployment-architecture.md).
 

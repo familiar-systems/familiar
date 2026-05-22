@@ -5,7 +5,7 @@
 //   2. An always-visible "Bring your own" card below the search. BYO is
 //      a first-class affordance, not a fallback. Picking it surfaces an
 //      optional custom-name input; the wizard resolves a single
-//      `game_system` string at Seal time (catalog pick name | trimmed
+//      `game_system` string at initialization time (catalog pick name | trimmed
 //      BYO name | BYO_DEFAULT_NAME). No magic slugs cross the wire.
 //
 // The BYO card's UI copy lives here as hardcoded English, matching the

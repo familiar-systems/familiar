@@ -79,6 +79,51 @@
         ]
       }
     },
+    "/campaigns/{id}": {
+      "get": {
+        "tags": ["campaigns"],
+        "summary": "`GET /api/campaigns/{id}`: fetch a single campaign and ensure it is\nloaded on its shard. The SPA calls this before talking to the campaign\nserver; the implicit lease acquisition is invisible to the caller.",
+        "description": "Returns 404 for both \"not found\" and \"not owned by this user\" to\nprevent campaign-ID enumeration.",
+        "operationId": "get_campaign",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Campaign details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Campaign"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Campaign not found or not owned"
+          },
+          "500": {
+            "description": "Shard failure"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/health": {
       "get": {
         "tags": ["system"],
@@ -122,7 +167,7 @@
       "Campaign": {
         "type": "object",
         "description": "One row in the response of `GET /api/campaigns`.\n\nMirrored from the campaign tier on every successful initialize and\nsettings edit. Fields marked `Option` are `None` until the wizard's\nSeal call commits, after which they are mirrored over.\n\n`last_init_error`: populated by the campaign tier via\n`POST /internal/platform/campaigns/<id>/init-failed` when an initialize\nattempt fails. Distinct from \"no init attempt yet\" (`wizard_completed_at IS NULL`\nAND `last_init_error IS NULL`).",
-        "required": ["id", "created_at", "updated_at"],
+        "required": ["id", "loaded", "created_at", "updated_at"],
         "properties": {
           "content_locale": {
             "type": ["string", "null"]
@@ -139,6 +184,9 @@
           },
           "last_init_error": {
             "type": ["string", "null"]
+          },
+          "loaded": {
+            "type": "boolean"
           },
           "name": {
             "type": ["string", "null"]
@@ -183,7 +231,7 @@
       },
       "MeResponse": {
         "type": "object",
-        "description": "Response body for `GET /me`.\n\n**Wire format we own (API contract with the SPA).** Exported to TypeScript\nas `MeResponse` via ts-rs. Changes are breaking changes to the frontend.\n\n`id` is the Hanko subject (= `users.id`); see\n`apps/platform/src/entities/users.rs`.",
+        "description": "Response body for `GET /me`.\n\n`id` is the Hanko subject (= `users.id`).",
         "required": ["id", "email"],
         "properties": {
           "email": {

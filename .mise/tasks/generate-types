@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#MISE description="Regenerate all TS bindings from Rust (ts-rs + OpenAPI)"
+#MISE sources=["apps/platform/**/*.rs", "apps/campaign/**/*.rs", "crates/**/*.rs", "Cargo.toml", "Cargo.lock", "apps/platform/Cargo.toml", "apps/campaign/Cargo.toml", "crates/**/Cargo.toml", "tooling/openapi-codegen/generate.ts"]
+#MISE outputs=["packages/types-app/src/generated/**/*.ts", "packages/types-campaign/src/generated/**/*.ts", "packages/types-app/openapi/platform.json", "packages/types-app/src/openapi/platform.ts", "packages/types-campaign/openapi/campaign.json", "packages/types-campaign/src/openapi/campaign.ts"]
+set -euo pipefail
+
+readonly TYPE_PACKAGES=(packages/types-app packages/types-campaign)
+
+# ── 1. ts-rs bindings ────────────────────────────────────────────────
+# Clean stale output so renames/deletes don't leave ghosts.
+for pkg in "${TYPE_PACKAGES[@]}"; do
+  rm -rf "${pkg}/src/generated"
+done
+
+# cargo test emits .ts files as a side effect of ts-rs's #[ts(export)].
+cargo test --workspace --locked
+
+# Generate per-directory barrel files (index.ts with `export *`).
+for pkg in "${TYPE_PACKAGES[@]}"; do
+  for dir in "${pkg}"/src/generated/*/; do
+    [ -d "$dir" ] || continue
+    barrel="${dir}index.ts"
+    printf '// AUTO-GENERATED barrel. Run \x60mise run generate-types\x60 to refresh.\n' > "$barrel"
+    printf '// Do not edit by hand.\n' >> "$barrel"
+    for f in $(printf '%s\n' "${dir}"*.ts | LC_ALL=C sort); do
+      name="$(basename "$f" .ts)"
+      [ "$name" = "index" ] && continue
+      printf 'export * from "./%s";\n' "$name" >> "$barrel"
+    done
+  done
+done
+
+pnpm exec oxfmt packages/types-app/src/generated packages/types-campaign/src/generated
+
+# ── 2. OpenAPI spec + typed paths interface ──────────────────────────
+mkdir -p packages/types-app/openapi packages/types-campaign/openapi
+
+cargo run -p familiar-systems-platform --bin emit-openapi --locked \
+  > packages/types-app/openapi/platform.json
+cargo run -p familiar-systems-campaign --bin emit-openapi-campaign --locked \
+  > packages/types-campaign/openapi/campaign.json
+
+pnpm --filter @familiar-systems/openapi-codegen run generate:platform
+pnpm --filter @familiar-systems/openapi-codegen run generate:campaign
+
+pnpm exec oxfmt \
+  packages/types-app/openapi packages/types-app/src/openapi \
+  packages/types-campaign/openapi packages/types-campaign/src/openapi

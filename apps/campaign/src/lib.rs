@@ -10,6 +10,7 @@ pub mod loro;
 pub mod middleware;
 pub mod migrations;
 pub mod openapi;
+pub mod persistence;
 pub mod router;
 pub mod routes;
 pub mod starter_content;

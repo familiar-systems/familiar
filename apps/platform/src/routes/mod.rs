@@ -3,13 +3,13 @@ pub(crate) mod health;
 pub(crate) mod internal_campaigns;
 pub(crate) mod me;
 
-use crate::middleware::internal_auth::require_internal_bearer;
 use crate::openapi::api_router;
 use crate::state::AppState;
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, Method};
-use axum::routing::post;
+use axum::routing::{delete, patch, post};
 use axum::{Json, Router, middleware, routing::get};
+use familiar_systems_app_shared::middleware::internal_auth::require_internal_bearer;
 use std::sync::Arc;
 use tower_http::{
     cors::{AllowOrigin, CorsLayer},
@@ -56,8 +56,20 @@ fn make_request_span(req: &Request) -> Span {
 pub fn internal_router(state: AppState) -> Router {
     Router::new()
         .route(
-            "/internal/platform/campaigns/{id}/init-failed",
+            "/internal/platform/campaign/{id}",
+            patch(internal_campaigns::patch_campaign),
+        )
+        .route(
+            "/internal/platform/campaign/{id}/init-failed",
             post(internal_campaigns::report_init_failed),
+        )
+        .route(
+            "/internal/platform/campaign/{id}/lease",
+            delete(internal_campaigns::release_lease),
+        )
+        .route(
+            "/internal/platform/heartbeat",
+            post(internal_campaigns::heartbeat),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),

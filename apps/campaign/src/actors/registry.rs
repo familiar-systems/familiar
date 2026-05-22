@@ -4,8 +4,6 @@
 //! `CampaignSupervisor` reference. Spawning happens here, in the
 //! registry's mailbox, so that:
 //!
-//! - Storage init (open SQLite pool, run migrations) is serialized against
-//!   other ensures, eliminating concurrent-create races.
 //! - The map is mutated only from one task.
 //! - The kameo `link` is established immediately after spawn, so the
 //!   registry's `on_link_died` is the authoritative removal path. When a
@@ -15,7 +13,7 @@
 //! Shutdown is decoupled from the registry's mailbox. [`BeginDrain`]
 //! sets the registry's [`Phase`] to `Draining`, snapshots the live
 //! supervisors, and spawns the drain workflow on the tokio runtime via
-//! [`run_drain`]. The handler returns immediately, so the registry can
+//! `run_drain`. The handler returns immediately, so the registry can
 //! keep replying to incoming queries with `ShuttingDown` instead of
 //! blocking its mailbox on supervisor `wait_for_shutdown` futures. The
 //! drain task runs all supervisor stops in parallel via [`JoinSet`], so
@@ -27,7 +25,7 @@
 
 use std::collections::HashMap;
 use std::ops::ControlFlow;
-use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use familiar_systems_app_shared::id::{CampaignId, UserId};
@@ -39,22 +37,13 @@ use tokio::task::JoinSet;
 
 use crate::actors::supervisor::{
     CampaignSupervisor, CampaignSupervisorArgs, SetStopCause, StopCause,
-    initialize_campaign_storage,
 };
+use crate::clients::platform_internal::PlatformInternalClient;
 use crate::error::EnsureError;
+use crate::persistence::CampaignStore;
 
-/// Hard cap on how long a drain workflow waits for in-flight supervisor
-/// shutdowns before force-killing the laggards. Picked at 10 minutes to
-/// accommodate larger bucket uploads in the future without hanging
-/// deploys; expected real drains finish in seconds. Past this deadline,
-/// every supervisor receives `kill()` (a no-op on those that already
-/// stopped); their `on_stop` hooks still run per kameo's contract, so
-/// partial cleanup is best-effort.
 pub const DRAIN_DEADLINE: Duration = Duration::from_secs(600);
 
-/// Lifecycle phase of the registry. Transitions are strictly one-way:
-/// `Ready` is the only state in which new campaigns are spawned, and
-/// `Draining` is terminal for the lifetime of this registry instance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, kameo::Reply)]
 pub enum Phase {
     Ready,
@@ -64,23 +53,26 @@ pub enum Phase {
 pub struct CampaignRegistry {
     supervisors: HashMap<CampaignId, ActorRef<CampaignSupervisor>>,
     phase: Phase,
-    data_dir: PathBuf,
+    store: Arc<dyn CampaignStore>,
     idle_timeout: Duration,
     eviction_check_interval: Duration,
+    platform_client: Option<PlatformInternalClient>,
 }
 
 impl CampaignRegistry {
     pub fn new(
-        data_dir: PathBuf,
+        store: Arc<dyn CampaignStore>,
         idle_timeout: Duration,
         eviction_check_interval: Duration,
+        platform_client: Option<PlatformInternalClient>,
     ) -> Self {
         Self {
             supervisors: HashMap::new(),
             phase: Phase::Ready,
-            data_dir,
+            store,
             idle_timeout,
             eviction_check_interval,
+            platform_client,
         }
     }
 }
@@ -91,7 +83,6 @@ impl Actor for CampaignRegistry {
 
     async fn on_start(args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         tracing::info!(
-            data_dir = %args.data_dir.display(),
             idle_timeout_secs = args.idle_timeout.as_secs(),
             eviction_check_interval_ms = args.eviction_check_interval.as_millis() as u64,
             "campaign registry started"
@@ -104,13 +95,6 @@ impl Actor for CampaignRegistry {
         _actor_ref: WeakActorRef<Self>,
         _reason: ActorStopReason,
     ) -> Result<(), Self::Error> {
-        // BeginDrain is the standard shutdown path; on_stop is a fallback
-        // for the case where the registry stops without an explicit drain
-        // (programmer error, or a panic). Stop every still-tracked
-        // supervisor sequentially. This is the slow path and only fires
-        // if shutdown was misordered upstream. The `RegistryFallback`
-        // cause tag lets log readers tell this apart from the orderly
-        // drain path.
         let count = self.supervisors.len();
         if count > 0 {
             tracing::warn!(
@@ -144,25 +128,38 @@ impl Actor for CampaignRegistry {
                 "supervisor removed from registry via link_died"
             );
         }
-        // Never propagate a child's stop reason to the registry. A single
-        // dead campaign should not take down the whole process.
         Ok(ControlFlow::Continue(()))
     }
 }
 
-/// Idempotent: spawn a `CampaignSupervisor` for `campaign_id` if one
-/// isn't already live, run storage init, register it, and return its
-/// `ActorRef`. Repeat calls with the same `campaign_id` return the
-/// existing ref. Returns [`EnsureError::ShuttingDown`] if the registry
-/// has already entered its drain phase.
-///
-/// `owner_user_id` is plumbed through to logging only; persistence
-/// arrives with the users table in the auth-membership work and is
-/// not yet wired at the time of writing.
+/// Create a new campaign on this shard with the given owner. Idempotent
+/// on `campaign_id`: if the supervisor already exists, returns it.
+#[derive(Debug, Clone)]
+pub struct CreateCampaign {
+    pub campaign_id: CampaignId,
+    pub owner_user_id: UserId,
+}
+
+impl Message<CreateCampaign> for CampaignRegistry {
+    type Reply = Result<ActorRef<CampaignSupervisor>, EnsureError>;
+
+    async fn handle(
+        &mut self,
+        msg: CreateCampaign,
+        ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let registry_ref = ctx.actor_ref().clone();
+        self.ensure_supervisor(registry_ref, msg.campaign_id, Some(msg.owner_user_id))
+            .await
+    }
+}
+
+/// Ensure a campaign is checked out on this shard. For cold checkouts of
+/// existing campaigns (the DB already exists on disk or in object storage).
+/// Does not set an owner; the campaign must already have one.
 #[derive(Debug, Clone)]
 pub struct EnsureCampaign {
     pub campaign_id: CampaignId,
-    pub owner_user_id: UserId,
 }
 
 impl Message<EnsureCampaign> for CampaignRegistry {
@@ -173,70 +170,110 @@ impl Message<EnsureCampaign> for CampaignRegistry {
         msg: EnsureCampaign,
         ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        if matches!(self.phase, Phase::Draining) {
+        let registry_ref = ctx.actor_ref().clone();
+        self.ensure_supervisor(registry_ref, msg.campaign_id, None)
+            .await
+    }
+}
+
+/// Release a specific campaign from this shard. If the campaign is not
+/// loaded, this is a no-op. If loaded, tags it with `PlatformRelease` and
+/// stops it gracefully. The `on_link_died` handler removes the map entry
+/// once the supervisor finishes shutting down.
+#[derive(Debug, Clone)]
+pub struct ReleaseCampaign {
+    pub campaign_id: CampaignId,
+}
+
+impl Message<ReleaseCampaign> for CampaignRegistry {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: ReleaseCampaign,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let Some(supervisor) = self.supervisors.get(&msg.campaign_id) else {
             tracing::debug!(
                 campaign_id = %msg.campaign_id.0,
+                "release requested for unloaded campaign; no-op"
+            );
+            return;
+        };
+
+        tracing::info!(
+            campaign_id = %msg.campaign_id.0,
+            "releasing campaign (platform-initiated)"
+        );
+
+        let _ = supervisor
+            .tell(SetStopCause(StopCause::PlatformRelease))
+            .await;
+        if let Err(e) = supervisor.stop_gracefully().await {
+            tracing::warn!(
+                campaign_id = %msg.campaign_id.0,
+                error = ?e,
+                "supervisor already stopping during release"
+            );
+        }
+    }
+}
+
+impl CampaignRegistry {
+    async fn ensure_supervisor(
+        &mut self,
+        registry_ref: ActorRef<Self>,
+        campaign_id: CampaignId,
+        owner_user_id: Option<UserId>,
+    ) -> Result<ActorRef<CampaignSupervisor>, EnsureError> {
+        if matches!(self.phase, Phase::Draining) {
+            tracing::debug!(
+                campaign_id = %campaign_id.0,
                 "rejecting ensure during drain"
             );
             return Err(EnsureError::ShuttingDown);
         }
 
-        if let Some(existing) = self.supervisors.get(&msg.campaign_id) {
+        if let Some(existing) = self.supervisors.get(&campaign_id) {
             tracing::debug!(
-                campaign_id = %msg.campaign_id.0,
+                campaign_id = %campaign_id.0,
                 "supervisor already running"
             );
             return Ok(existing.clone());
         }
 
         tracing::info!(
-            campaign_id = %msg.campaign_id.0,
-            owner_user_id = %msg.owner_user_id.0,
+            campaign_id = %campaign_id.0,
             "spawning campaign supervisor"
         );
 
         let started = Instant::now();
-        let (db_path, conn) = initialize_campaign_storage(&msg.campaign_id, &self.data_dir).await?;
 
         let supervisor = CampaignSupervisor::spawn(CampaignSupervisorArgs {
-            campaign_id: msg.campaign_id.clone(),
-            db_path,
-            conn,
+            campaign_id: campaign_id.clone(),
+            owner_user_id,
+            store: self.store.clone(),
             idle_timeout: self.idle_timeout,
             eviction_check_interval: self.eviction_check_interval,
+            platform_client: self.platform_client.clone(),
         });
 
-        // Link bidirectionally so the registry sees on_link_died when
-        // the supervisor stops for any reason (idle eviction, crash,
-        // signal drain). `link` is the only kameo path that fires when
-        // a child stops; on_stop on the child runs but doesn't carry
-        // back to the parent.
-        //
-        // FIXME: there is a tiny window between `spawn` and `link.await`
-        // during which the supervisor's actor task is running. Today
-        // that window is irrelevant because `on_start` is `Infallible`
-        // (it cannot exit before reaching the message loop), but once
-        // the bucket-world on_start move (see the FIXME in
-        // `supervisor::CampaignSupervisor::on_start`) lands, `on_start`
-        // can return `Err(InitError)`. If on_start fails during this
-        // window, the actor stops before `link` records the parent.
-        // on_link_died won't fire, leaving a stale ref in the map until
-        // an external signal (next ensure for the same id, drain, etc.)
-        // surfaces it.
-        //
-        // Fix when the bucket move lands: either link inside the actor's
-        // own task (`on_start` calls a "link to parent" hook before
-        // doing the slow work) so the link is established before any
-        // failure can race it, or detect post-link that the actor is
-        // already dead via `is_alive()`/`wait_for_startup_result()` and
-        // clean up the map entry inline.
-        ctx.actor_ref().link(&supervisor).await;
+        registry_ref.link(&supervisor).await;
+
+        supervisor.wait_for_startup().await;
+        if !supervisor.is_alive() {
+            tracing::warn!(
+                campaign_id = %campaign_id.0,
+                "supervisor died during startup"
+            );
+            return Err(EnsureError::SupervisorDied);
+        }
 
         self.supervisors
-            .insert(msg.campaign_id.clone(), supervisor.clone());
+            .insert(campaign_id.clone(), supervisor.clone());
 
         tracing::info!(
-            campaign_id = %msg.campaign_id.0,
+            campaign_id = %campaign_id.0,
             init_total_elapsed_ms = started.elapsed().as_millis() as u64,
             "campaign ensured"
         );
@@ -244,11 +281,6 @@ impl Message<EnsureCampaign> for CampaignRegistry {
     }
 }
 
-/// Returns the registry's current [`Phase`]. The HTTP `/health`
-/// handler uses this to map readiness state to a status code (200 for
-/// Ready, 503 for Draining). The k8s readiness probe consumes that
-/// status to take the pod out of the LB rotation as soon as drain
-/// begins.
 #[derive(Debug, Clone, Copy)]
 pub struct GetPhase;
 
@@ -260,8 +292,6 @@ impl Message<GetPhase> for CampaignRegistry {
     }
 }
 
-/// Lookup without spawning. Returns `None` if no supervisor is currently
-/// live for `campaign_id`, or if the registry is in its drain phase.
 #[derive(Debug, Clone)]
 pub struct GetCampaign(pub CampaignId);
 
@@ -280,16 +310,26 @@ impl Message<GetCampaign> for CampaignRegistry {
     }
 }
 
-/// Sent by `main` after axum drains. Transitions the registry into the
-/// `Draining` phase and spawns [`run_drain`] on the tokio runtime. The
-/// handler returns immediately; the caller awaits `completion` to learn
-/// when the drain workflow has actually finished.
-///
-/// Sending `BeginDrain` while a drain is already in progress signals the
-/// new completion sender right away. This is acceptable because the
-/// production caller (`main.rs`) only ever sends one `BeginDrain`; the
-/// fast-path here exists so that a misbehaving caller doesn't hang
-/// forever waiting on a oneshot that nobody ever resolves.
+/// Returns the IDs of all campaigns currently loaded in the registry.
+/// Empty during drain (campaigns are being stopped, not available).
+#[derive(Debug, Clone, Copy)]
+pub struct ListLoaded;
+
+impl Message<ListLoaded> for CampaignRegistry {
+    type Reply = Vec<CampaignId>;
+
+    async fn handle(
+        &mut self,
+        _: ListLoaded,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        if matches!(self.phase, Phase::Draining) {
+            return Vec::new();
+        }
+        self.supervisors.keys().cloned().collect()
+    }
+}
+
 pub struct BeginDrain {
     pub completion: oneshot::Sender<()>,
 }
@@ -305,9 +345,6 @@ impl Message<BeginDrain> for CampaignRegistry {
         }
         self.phase = Phase::Draining;
 
-        // `drain` takes ownership of every (id, ref) pair, leaving the
-        // map empty. on_link_died notifications still fire during the
-        // drain but find nothing to remove, which is correct.
         let snapshot: Vec<_> = self.supervisors.drain().collect();
         let count = snapshot.len();
         tracing::info!(
@@ -319,19 +356,6 @@ impl Message<BeginDrain> for CampaignRegistry {
     }
 }
 
-/// The drain workflow itself. Lives on the tokio runtime, not in the
-/// registry's mailbox, so the registry stays responsive while drain runs.
-///
-/// Phase 1 tags each supervisor with `StopCause::Drain` (so its on_stop
-/// log reads `cause=drain`) then fires `stop_gracefully` on every
-/// supervisor (just queues a Stop signal, returns immediately).
-///
-/// Phase 2 awaits every supervisor's shutdown concurrently via
-/// [`JoinSet`], wrapped in a [`DRAIN_DEADLINE`] timeout so a single
-/// stuck supervisor can't hang the deploy past the k8s grace period.
-/// On timeout, every supervisor in the snapshot is `kill()`-ed (a
-/// no-op for those that already stopped) and the join futures are
-/// abort_all'd.
 async fn run_drain(
     snapshot: Vec<(CampaignId, ActorRef<CampaignSupervisor>)>,
     completion: oneshot::Sender<()>,
@@ -340,11 +364,6 @@ async fn run_drain(
     let started = Instant::now();
 
     for (id, sup) in &snapshot {
-        // Best-effort cause-tagging. If the supervisor's mailbox is
-        // already closed (it stopped from idle eviction milliseconds
-        // ago), the tell errors and the cause stays whatever the
-        // supervisor set itself; that's fine, the supervisor's own
-        // cause is still accurate.
         let _ = sup.tell(SetStopCause(StopCause::Drain)).await;
         if let Err(e) = sup.stop_gracefully().await {
             tracing::warn!(
@@ -388,14 +407,11 @@ async fn run_drain(
                 supervisor_count = count,
                 deadline_secs = DRAIN_DEADLINE.as_secs(),
                 elapsed_secs = started.elapsed().as_secs(),
-                "drain deadline exceeded; killing all supervisors (no-op on those already stopped)"
+                "drain deadline exceeded; killing all supervisors"
             );
             for (_id, sup) in &snapshot {
                 sup.kill();
             }
-            // Cancel any still-pending join futures; we no longer care
-            // about their result. on_stop still runs for the killed
-            // supervisors per kameo's contract.
             set.abort_all();
         }
     }
@@ -405,20 +421,23 @@ async fn run_drain(
 
 #[cfg(test)]
 mod tests {
+    use super::CreateCampaign;
     use super::*;
     use crate::actors::supervisor::Ping as SupPing;
     use crate::db::register_sqlite_vec;
+    use crate::persistence::LocalCampaignStore;
     use tempfile::TempDir;
 
     fn user_id() -> UserId {
         UserId::generate()
     }
 
-    /// See the matching helper in `supervisor::tests`. Migrations open a
-    /// `vec0` table; the extension must be auto-registered before any
-    /// campaign DB opens. Idempotent.
     fn ensure_vec0() {
         register_sqlite_vec();
+    }
+
+    fn store_in(dir: &std::path::Path) -> Arc<dyn CampaignStore> {
+        Arc::new(LocalCampaignStore::new(dir.to_path_buf()))
     }
 
     async fn begin_drain(registry: &ActorRef<CampaignRegistry>) {
@@ -435,14 +454,15 @@ mod tests {
         ensure_vec0();
         let tmp = TempDir::new().unwrap();
         let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-            tmp.path().to_path_buf(),
+            store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
 
         let campaign_id = CampaignId::generate();
         let first = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: campaign_id.clone(),
                 owner_user_id: user_id(),
             })
@@ -450,7 +470,7 @@ mod tests {
             .unwrap();
 
         let second = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: campaign_id.clone(),
                 owner_user_id: user_id(),
             })
@@ -470,9 +490,10 @@ mod tests {
         ensure_vec0();
         let tmp = TempDir::new().unwrap();
         let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-            tmp.path().to_path_buf(),
+            store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
         let id = CampaignId::generate();
         assert!(
@@ -483,7 +504,7 @@ mod tests {
                 .is_none()
         );
         registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id.clone(),
                 owner_user_id: user_id(),
             })
@@ -503,22 +524,21 @@ mod tests {
         ensure_vec0();
         let tmp = TempDir::new().unwrap();
         let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-            tmp.path().to_path_buf(),
+            store_in(tmp.path()),
             Duration::from_millis(50),
             Duration::from_millis(20),
+            None,
         ));
 
         let id = CampaignId::generate();
         registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id.clone(),
                 owner_user_id: user_id(),
             })
             .await
             .unwrap();
 
-        // Wait long enough for the supervisor to idle out and for the
-        // link_died notification to propagate back to the registry.
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         let after = registry.ask(GetCampaign(id.clone())).await.unwrap();
@@ -533,36 +553,33 @@ mod tests {
         ensure_vec0();
         let tmp = TempDir::new().unwrap();
         let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-            tmp.path().to_path_buf(),
+            store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
 
         let id_a = CampaignId::generate();
         let id_b = CampaignId::generate();
         let sup_a = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id_a.clone(),
                 owner_user_id: user_id(),
             })
             .await
             .unwrap();
         let sup_b = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id_b.clone(),
                 owner_user_id: user_id(),
             })
             .await
             .unwrap();
-        // Both supervisors are reachable before drain.
         sup_a.ask(SupPing).await.unwrap();
         sup_b.ask(SupPing).await.unwrap();
 
         begin_drain(&registry).await;
 
-        // After drain completes, GetCampaign must short-circuit on the
-        // Draining phase and return None, and direct sends to the now-
-        // stopped supervisors must fail.
         assert!(
             registry
                 .ask(GetCampaign(id_a.clone()))
@@ -584,43 +601,27 @@ mod tests {
     #[tokio::test]
     async fn ensure_propagates_init_failure_and_does_not_insert() {
         ensure_vec0();
-        // Construct a data_dir that `create_dir_all` cannot satisfy:
-        // create a regular file, then point the registry at a path
-        // *inside* that file. `tokio::fs::create_dir_all` returns
-        // NotADirectory, which `initialize_campaign_storage` maps to
-        // `InitError::CreateDir`, which the EnsureCampaign reply
-        // folds into `SendError::HandlerError(EnsureError::Init(...))`.
         let tmp = TempDir::new().unwrap();
         let blocker = tmp.path().join("not-a-dir");
         std::fs::write(&blocker, b"").unwrap();
         let unusable_data_dir = blocker.join("nested");
 
         let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-            unusable_data_dir,
+            store_in(&unusable_data_dir),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
 
         let id = CampaignId::generate();
         let err = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id.clone(),
                 owner_user_id: user_id(),
             })
-            .await
-            .expect_err("ensure should fail when data_dir is unusable");
-        assert!(
-            matches!(
-                err,
-                kameo::error::SendError::HandlerError(EnsureError::Init(
-                    crate::error::InitError::CreateDir { .. }
-                ))
-            ),
-            "expected Init(CreateDir), got {err:?}"
-        );
+            .await;
+        assert!(err.is_err(), "create should fail when data_dir is unusable");
 
-        // The failed ensure must not leave a stale entry in the map.
-        // A subsequent GetCampaign for the same id returns None.
         assert!(
             registry
                 .ask(GetCampaign(id.clone()))
@@ -636,22 +637,18 @@ mod tests {
         ensure_vec0();
         let tmp = TempDir::new().unwrap();
         let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-            tmp.path().to_path_buf(),
+            store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
         let supervisor = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: CampaignId::generate(),
                 owner_user_id: user_id(),
             })
             .await
             .unwrap();
-        // Stop the registry directly, skipping BeginDrain. The fallback
-        // path in CampaignRegistry::on_stop must still cascade the stop
-        // to every child supervisor; this guards against a regression
-        // that silently leaves orphaned supervisors when shutdown
-        // ordering is wrong upstream.
         registry.stop_gracefully().await.unwrap();
         registry.wait_for_shutdown_with_result(|_| ()).await;
         assert!(
@@ -663,19 +660,15 @@ mod tests {
     #[tokio::test]
     async fn ask_to_stopped_supervisor_returns_error() {
         ensure_vec0();
-        // The plan accepts a rare race where an HTTP handler holds a
-        // supervisor `ActorRef` and the supervisor evicts itself before
-        // the handler sends. Verifying it deterministically: stop the
-        // supervisor, wait for full shutdown, then send. The expected
-        // behaviour is a transport error the HTTP handler maps to 503.
         let tmp = TempDir::new().unwrap();
         let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-            tmp.path().to_path_buf(),
+            store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
         let supervisor = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: CampaignId::generate(),
                 owner_user_id: user_id(),
             })
@@ -691,14 +684,14 @@ mod tests {
         ensure_vec0();
         let tmp = TempDir::new().unwrap();
         let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-            tmp.path().to_path_buf(),
+            store_in(tmp.path()),
             Duration::from_secs(60),
             Duration::from_secs(60),
+            None,
         ));
 
-        // Seed one supervisor so the drain has something to do.
         registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: CampaignId::generate(),
                 owner_user_id: user_id(),
             })
@@ -708,12 +701,12 @@ mod tests {
         begin_drain(&registry).await;
 
         let err = registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: CampaignId::generate(),
                 owner_user_id: user_id(),
             })
             .await
-            .expect_err("ensure during drain must error");
+            .expect_err("create during drain must error");
         assert!(
             matches!(
                 err,
@@ -721,5 +714,126 @@ mod tests {
             ),
             "expected ShuttingDown, got {err:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn release_campaign_stops_supervisor() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let registry = CampaignRegistry::spawn(CampaignRegistry::new(
+            store_in(tmp.path()),
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+            None,
+        ));
+
+        let id = CampaignId::generate();
+        let sup = registry
+            .ask(CreateCampaign {
+                campaign_id: id.clone(),
+                owner_user_id: user_id(),
+            })
+            .await
+            .unwrap();
+        sup.ask(SupPing).await.unwrap();
+
+        registry
+            .ask(ReleaseCampaign {
+                campaign_id: id.clone(),
+            })
+            .await
+            .unwrap();
+
+        sup.wait_for_shutdown_with_result(|_| ()).await;
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            registry
+                .ask(GetCampaign(id.clone()))
+                .await
+                .unwrap()
+                .is_none(),
+            "released supervisor should be removed from registry"
+        );
+    }
+
+    #[tokio::test]
+    async fn release_unknown_campaign_is_noop() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let registry = CampaignRegistry::spawn(CampaignRegistry::new(
+            store_in(tmp.path()),
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+            None,
+        ));
+
+        registry
+            .ask(ReleaseCampaign {
+                campaign_id: CampaignId::generate(),
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_loaded_returns_campaign_ids() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let registry = CampaignRegistry::spawn(CampaignRegistry::new(
+            store_in(tmp.path()),
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+            None,
+        ));
+
+        let id_a = CampaignId::generate();
+        let id_b = CampaignId::generate();
+        registry
+            .ask(CreateCampaign {
+                campaign_id: id_a.clone(),
+                owner_user_id: user_id(),
+            })
+            .await
+            .unwrap();
+        registry
+            .ask(CreateCampaign {
+                campaign_id: id_b.clone(),
+                owner_user_id: user_id(),
+            })
+            .await
+            .unwrap();
+
+        let mut loaded = registry.ask(ListLoaded).await.unwrap();
+        loaded.sort_by(|a, b| a.0.0.cmp(&b.0.0));
+        assert_eq!(loaded.len(), 2);
+        let mut expected = vec![id_a, id_b];
+        expected.sort_by(|a, b| a.0.0.cmp(&b.0.0));
+        assert_eq!(loaded, expected);
+    }
+
+    #[tokio::test]
+    async fn list_loaded_returns_empty_during_drain() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let registry = CampaignRegistry::spawn(CampaignRegistry::new(
+            store_in(tmp.path()),
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+            None,
+        ));
+
+        registry
+            .ask(CreateCampaign {
+                campaign_id: CampaignId::generate(),
+                owner_user_id: user_id(),
+            })
+            .await
+            .unwrap();
+
+        begin_drain(&registry).await;
+
+        let loaded = registry.ask(ListLoaded).await.unwrap();
+        assert!(loaded.is_empty(), "should return empty during drain");
     }
 }

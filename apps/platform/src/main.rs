@@ -38,6 +38,7 @@ async fn main() {
         validator,
         config: config.clone(),
         campaign_internal,
+        loaded_cache: Default::default(),
     };
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port))
         .await

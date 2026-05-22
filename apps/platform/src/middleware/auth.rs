@@ -1,60 +1,74 @@
-use crate::{entities::users, error::AppError, state::AppState};
-use axum::{
-    extract::{FromRef, FromRequestParts},
-    http::request::Parts,
-};
+//! Platform auth extractor: validates Hanko JWT + upserts user row.
+//!
+//! Wraps the shared [`AuthenticatedUser`] extractor from `app-shared` with
+//! the platform-specific user-table upsert. Handlers take [`PlatformUser`]
+//! instead of the bare `AuthenticatedUser`.
+
+use std::sync::Arc;
+
+use axum::extract::{FromRef, FromRequestParts};
+use axum::http::request::Parts;
 use chrono::Utc;
+use familiar_systems_app_shared::auth::{AuthenticatedUser, HankoSessionValidator};
+use familiar_systems_app_shared::middleware::internal_auth::InternalBearerConfig;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, SqlErr, sea_query::OnConflict,
 };
 use uuid::Uuid;
 
-/// Authenticated user, proven via Hanko and persisted in `users`.
-///
-/// `id` is the Hanko subject (= the `users` primary key); see
-/// `apps/platform/src/entities/users.rs`.
-#[derive(Debug, Clone)]
-pub struct AuthenticatedUser {
+use crate::entities::users;
+use crate::error::AppError;
+use crate::state::AppState;
+
+impl FromRef<AppState> for Arc<HankoSessionValidator> {
+    fn from_ref(state: &AppState) -> Self {
+        state.validator.clone()
+    }
+}
+
+impl FromRef<AppState> for InternalBearerConfig {
+    fn from_ref(state: &AppState) -> Self {
+        InternalBearerConfig {
+            primary: state.config.internal_bearer_primary.clone(),
+            secondary: state.config.internal_bearer_secondary.clone(),
+        }
+    }
+}
+
+pub struct PlatformUser {
     pub id: Uuid,
     pub email: String,
 }
 
-impl<S> FromRequestParts<S> for AuthenticatedUser
+impl<S> FromRequestParts<S> for PlatformUser
 where
     AppState: FromRef<S>,
+    Arc<HankoSessionValidator>: FromRef<S>,
     S: Send + Sync,
 {
     type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let user = AuthenticatedUser::from_request_parts(parts, state)
+            .await
+            .map_err(|e| match e {
+                familiar_systems_app_shared::auth::extractor::AuthRejection::MissingHeader => {
+                    AppError::Unauthorized("missing authorization header".into())
+                }
+                familiar_systems_app_shared::auth::extractor::AuthRejection::MalformedHeader => {
+                    AppError::Unauthorized("expected Bearer scheme".into())
+                }
+                familiar_systems_app_shared::auth::extractor::AuthRejection::ValidationFailed(
+                    auth_err,
+                ) => AppError::Auth(auth_err),
+            })?;
+
         let app_state = AppState::from_ref(state);
-        let header = parts
-            .headers
-            .get(axum::http::header::AUTHORIZATION)
-            .and_then(|h| h.to_str().ok())
-            .ok_or(AppError::Unauthorized(
-                "missing authorization header".into(),
-            ))?;
-        let token = header
-            .strip_prefix("Bearer ")
-            .ok_or(AppError::Unauthorized("expected Bearer scheme".into()))?;
-
-        let claims = app_state.validator.validate(token).await?;
         let now = Utc::now();
-        let id = claims.subject;
 
-        // TODO add rate limiting cached by user ID
-        // Currently, every login writes a row to the database.
-        // This is wildly inefficient.
-
-        // Upsert by id (= Hanko subject). ON CONFLICT (id) handles the normal
-        // repeat-login case; a UNIQUE(email) violation on either the INSERT
-        // or the UPDATE path surfaces as AppError::EmailConflict → 409.
-        // exec_with_returning uses SQLite's RETURNING clause to get the row
-        // back in one round-trip.
         let am = users::ActiveModel {
-            id: Set(id),
-            email: Set(claims.email.clone()),
+            id: Set(user.id),
+            email: Set(user.email.clone()),
             created_at: Set(now),
             updated_at: Set(now),
         };
@@ -71,22 +85,18 @@ where
             Err(e) => {
                 if let Some(SqlErr::UniqueConstraintViolation(detail)) = e.sql_err()
                     && detail.contains("email")
-                // FIXME we probably want a detail.contains that's less dialect-fragile
                 {
-                    // Look up the other row to give the log event both
-                    // parties' ids. Best-effort; if the lookup itself
-                    // errors, we still emit the event with what we have.
                     let other_id = users::Entity::find()
-                        .filter(users::Column::Email.eq(&claims.email))
+                        .filter(users::Column::Email.eq(&user.email))
                         .one(&app_state.db)
                         .await
                         .ok()
                         .flatten()
                         .map(|r| r.id);
                     tracing::error!(
-                        incoming_user_id = %id,
+                        incoming_user_id = %user.id,
                         colliding_user_id = ?other_id,
-                        email = %claims.email,
+                        email = %user.email,
                         "email unique collision during upsert; local mirror likely stale vs. Hanko"
                     );
                     return Err(AppError::EmailConflict);
@@ -95,16 +105,7 @@ where
             }
         };
 
-        // Populate the wide-event correlation fields declared as Empty on the
-        // request span (see routes::make_request_span). These IDs are
-        // pseudonymous and logged under legitimate interest (application
-        // reliability); email is *not* recorded here and must not be logged
-        // on the success path.
-        let span = tracing::Span::current();
-        span.record("user_id", tracing::field::display(row.id));
-        span.record("session_id", tracing::field::display(&claims.session_id));
-
-        Ok(AuthenticatedUser {
+        Ok(PlatformUser {
             id: row.id,
             email: row.email,
         })

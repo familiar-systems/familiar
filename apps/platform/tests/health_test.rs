@@ -32,6 +32,7 @@ async fn make_app() -> axum::Router {
         validator,
         config,
         campaign_internal,
+        loaded_cache: Default::default(),
     };
     serve_router(state, vec![])
 }

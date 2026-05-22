@@ -6,14 +6,17 @@
 //! registry's `BeginDrain` is called (the same path SIGTERM takes in
 //! `main.rs`), and we assert each `.db` file is intact and readable.
 
+use std::sync::Arc;
+use std::time::Duration;
+
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use familiar_systems_campaign::{
-    actors::registry::{BeginDrain, CampaignRegistry, EnsureCampaign},
+    actors::registry::{BeginDrain, CampaignRegistry, CreateCampaign},
     db::{connect, register_sqlite_vec},
+    persistence::LocalCampaignStore,
 };
 use kameo::actor::Spawn;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
-use std::time::Duration;
 use tempfile::TempDir;
 use tokio::sync::oneshot;
 
@@ -21,17 +24,20 @@ use tokio::sync::oneshot;
 async fn ensure_drain_and_reopen_three_campaigns() {
     register_sqlite_vec();
     let data_dir = TempDir::new().unwrap();
+    let store: Arc<dyn familiar_systems_campaign::persistence::CampaignStore> =
+        Arc::new(LocalCampaignStore::new(data_dir.path().to_path_buf()));
 
     let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-        data_dir.path().to_path_buf(),
+        store,
         Duration::from_secs(300),
         Duration::from_secs(60),
+        None,
     ));
 
     let ids: Vec<CampaignId> = (0..3).map(|_| CampaignId::generate()).collect();
     for id in &ids {
         registry
-            .ask(EnsureCampaign {
+            .ask(CreateCampaign {
                 campaign_id: id.clone(),
                 owner_user_id: UserId::generate(),
             })
@@ -39,10 +45,6 @@ async fn ensure_drain_and_reopen_three_campaigns() {
             .expect("ensure should succeed");
     }
 
-    // BeginDrain runs the same code path main.rs uses on SIGTERM: hand
-    // the supervisor set off to a tokio task that stops them in parallel,
-    // then signal the oneshot when the last child has finished its
-    // on_stop (which itself drains the DatabaseActor).
     let (tx, rx) = oneshot::channel();
     registry
         .ask(BeginDrain { completion: tx })
@@ -52,10 +54,6 @@ async fn ensure_drain_and_reopen_three_campaigns() {
     registry.stop_gracefully().await.expect("registry stop");
     registry.wait_for_shutdown_with_result(|_| ()).await;
 
-    // Every campaign's DB file should still exist and be openable. We
-    // reopen with sea-orm directly (bypassing the actor system, which is
-    // gone) and query `seaql_migrations` to confirm the schema survived
-    // the drain. Any unflushed WAL or corruption would surface here.
     for id in &ids {
         let path = data_dir.path().join(format!("{}.db", id.0));
         assert!(path.exists(), "{path:?} should exist after drain");

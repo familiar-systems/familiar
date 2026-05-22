@@ -36,7 +36,7 @@ pub struct ConversationId(pub Ulid);
 
 /// Identifies one connected client (one WebSocket upgrade -> one tab).
 ///
-/// Server-minted at WS upgrade. Distinct from [`UserId`](familiar_systems_app_shared::id::UserId):
+/// Server-minted at WS upgrade. Distinct from `UserId` (in `app-shared`):
 /// a single user with two tabs has one `UserId` and two `ClientId`s. Routing
 /// (which socket to send an ack to) keys on `ClientId`; authorship and
 /// permissions key on `UserId`.

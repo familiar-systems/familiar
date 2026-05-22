@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "familiar.systems campaign API",
-    "description": "Campaign-scoped endpoints: catalog, initialization, and (future) CRDT room bootstrapping.",
+    "description": "Campaign-scoped endpoints: catalog, metadata, and (future) CRDT room bootstrapping.",
     "license": {
       "name": "AGPL-3.0-or-later",
       "identifier": "AGPL-3.0-or-later"
@@ -10,10 +10,52 @@
     "version": "0.1.0"
   },
   "paths": {
-    "/campaign/{id}/initialize": {
-      "post": {
+    "/campaign/{id}": {
+      "get": {
         "tags": ["campaign"],
-        "operationId": "initialize",
+        "operationId": "get_campaign",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Campaign metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignMetadataResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Not the campaign owner"
+          },
+          "404": {
+            "description": "Campaign not on this shard"
+          },
+          "500": {
+            "description": "Internal error"
+          },
+          "503": {
+            "description": "Server restarting"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["campaign"],
+        "operationId": "patch_campaign",
         "parameters": [
           {
             "name": "id",
@@ -29,7 +71,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/InitializeRequest"
+                "$ref": "#/components/schemas/PatchCampaignRequest"
               }
             }
           },
@@ -37,14 +79,36 @@
         },
         "responses": {
           "200": {
-            "description": "Campaign initialized"
-          },
-          "500": {
-            "description": "Initialization failed",
+            "description": "Campaign updated",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InitializeErrorResponse"
+                  "$ref": "#/components/schemas/CampaignMetadataResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Not the campaign owner"
+          },
+          "404": {
+            "description": "Campaign not on this shard"
+          },
+          "409": {
+            "description": "Wizard already completed"
+          },
+          "422": {
+            "description": "Required fields missing for wizard completion"
+          },
+          "500": {
+            "description": "Update failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignErrorResponse"
                 }
               }
             }
@@ -116,6 +180,49 @@
           }
         }
       },
+      "CampaignErrorResponse": {
+        "type": "object",
+        "required": ["error", "campaign_id"],
+        "properties": {
+          "campaign_id": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "CampaignMetadataResponse": {
+        "type": "object",
+        "required": ["campaign_id", "name", "created_at", "updated_at"],
+        "properties": {
+          "campaign_id": {
+            "type": "string"
+          },
+          "content_locale": {
+            "type": ["string", "null"]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "game_system": {
+            "type": ["string", "null"]
+          },
+          "name": {
+            "type": "string"
+          },
+          "tagline": {
+            "type": ["string", "null"]
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "wizard_completed_at": {
+            "type": ["string", "null"],
+            "description": "ISO 8601 timestamp, present once the wizard has been completed."
+          }
+        }
+      },
       "CatalogResponse": {
         "type": "object",
         "required": ["systems", "byo"],
@@ -132,56 +239,46 @@
           }
         }
       },
-      "InitializeErrorResponse": {
+      "PatchCampaignRequest": {
         "type": "object",
-        "description": "Returned on the deliberate failure path of v0. The FE renders `error`\ninline and surfaces `campaign_id` so the user can find their (broken)\ncampaign back in the hub.",
-        "required": ["error", "campaign_id"],
-        "properties": {
-          "campaign_id": {
-            "type": "string"
-          },
-          "error": {
-            "type": "string"
-          }
-        }
-      },
-      "InitializeRequest": {
-        "type": "object",
-        "required": [
-          "game_system",
-          "content_locale",
-          "name",
-          "template_slugs",
-          "audio",
-          "evals_enabled"
-        ],
         "properties": {
           "audio": {
-            "$ref": "#/components/schemas/AudioMode"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AudioMode"
+              }
+            ]
           },
           "content_locale": {
-            "type": "string",
+            "type": ["string", "null"],
             "description": "BCP-47 language tag for the campaign's content (sticky once set)."
           },
           "evals_enabled": {
-            "type": "boolean"
+            "type": ["boolean", "null"]
           },
           "game_system": {
-            "type": "string",
-            "description": "Opaque display label for the campaign's game system. The wizard\nresolves a single string at Seal time: catalog pick -> the catalog\nentry's locale-resolved `name`; BYO with a typed name -> that name;\nBYO with an empty input -> the catalog's `byo.default_name`. The\ncampaign tier and platform tier both treat this as an opaque label;\nno special slugs cross the wire."
+            "type": ["string", "null"],
+            "description": "Opaque display label for the campaign's game system. The wizard\nresolves a single string at submission: catalog pick uses the\nlocale-resolved `name`; BYO uses the typed name or the catalog's\n`byo.default_name`. Both tiers treat this as an opaque label."
           },
           "name": {
-            "type": "string"
+            "type": ["string", "null"]
           },
           "tagline": {
             "type": ["string", "null"]
           },
           "template_slugs": {
-            "type": "array",
+            "type": ["array", "null"],
             "items": {
               "type": "string"
             },
             "description": "Bundle slugs the GM picked. Deduped client-side."
+          },
+          "wizard_complete": {
+            "type": "boolean",
+            "description": "When true, validates all required fields are present and sets\n`wizard_completed_at`. Returns 409 if the wizard was already\ncompleted. Subsequent PATCHes without this flag update metadata\nwithout touching the wizard timestamp."
           }
         }
       },

@@ -7,10 +7,14 @@ use crate::{
     clients::campaign_internal::CampaignInternalError,
     entities::{campaigns, create_attempts},
     error::AppError,
-    middleware::auth::AuthenticatedUser,
+    middleware::auth::PlatformUser,
     state::AppState,
 };
-use axum::{Json, extract::State};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+};
 use chrono::Utc;
 use familiar_systems_app_shared::{
     campaigns::api::{Campaign, CreateCampaignRequest, CreateCampaignResponse},
@@ -41,7 +45,7 @@ use sea_orm::{
     security(("bearerAuth" = [])),
 )]
 pub async fn create_campaign(
-    user: AuthenticatedUser,
+    user: PlatformUser,
     State(state): State<AppState>,
     Json(body): Json<CreateCampaignRequest>,
 ) -> Result<Json<CreateCampaignResponse>, AppError> {
@@ -86,18 +90,33 @@ pub async fn create_campaign(
         .ok_or_else(|| AppError::Internal("idempotency record vanished after upsert".into()))?;
     let resolved_campaign_id = CampaignId::new(Nanoid(resolved.campaign_id));
 
-    // Step 4: shard init. Idempotent on the campaign tier's side, so a retry
-    // (whether ours or someone else's) re-runs cleanly.
+    // Step 4a: create the campaign on the shard. Idempotent on campaign_id.
     state
         .campaign_internal
-        .init(&resolved_campaign_id, &user_id)
+        .create_campaign(&resolved_campaign_id, &user_id)
         .await
         .map_err(|e| match e {
             CampaignInternalError::Transport(err) => {
-                AppError::Internal(format!("campaign init transport: {err}"))
+                AppError::Internal(format!("campaign create transport: {err}"))
             }
             CampaignInternalError::Status { status } => {
-                AppError::Internal(format!("campaign init status: {status}"))
+                AppError::Internal(format!("campaign create status: {status}"))
+            }
+        })?;
+
+    // Step 4b: acquire the lease (ensure it's checked out). For a just-created
+    // campaign this is already true; the call is here for uniformity with the
+    // cold-checkout flow.
+    state
+        .campaign_internal
+        .acquire_lease(&resolved_campaign_id)
+        .await
+        .map_err(|e| match e {
+            CampaignInternalError::Transport(err) => {
+                AppError::Internal(format!("lease acquire transport: {err}"))
+            }
+            CampaignInternalError::Status { status } => {
+                AppError::Internal(format!("lease acquire status: {status}"))
             }
         })?;
 
@@ -124,6 +143,10 @@ pub async fn create_campaign(
     .exec(&state.db)
     .await?;
 
+    if let Ok(mut cache) = state.loaded_cache.write() {
+        cache.insert(resolved_campaign_id.clone());
+    }
+
     Ok(Json(CreateCampaignResponse {
         campaign_id: resolved_campaign_id,
     }))
@@ -143,7 +166,7 @@ pub async fn create_campaign(
     security(("bearerAuth" = [])),
 )]
 pub async fn list_campaigns(
-    user: AuthenticatedUser,
+    user: PlatformUser,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<Campaign>>, AppError> {
     let rows = campaigns::Entity::find()
@@ -151,19 +174,95 @@ pub async fn list_campaigns(
         .order_by_desc(campaigns::Column::CreatedAt)
         .all(&state.db)
         .await?;
+    let cache = state.loaded_cache.read().ok();
     let out: Vec<Campaign> = rows
         .into_iter()
-        .map(|m| Campaign {
-            id: CampaignId::new(Nanoid(m.id)),
-            name: m.name,
-            tagline: m.tagline,
-            game_system: m.game_system,
-            content_locale: m.content_locale,
-            last_init_error: m.last_init_error,
-            wizard_completed_at: m.wizard_completed_at,
-            created_at: m.created_at,
-            updated_at: m.updated_at,
+        .map(|m| {
+            let cid = CampaignId::new(Nanoid(m.id));
+            let loaded = cache.as_ref().is_some_and(|c| c.contains(&cid));
+            Campaign {
+                id: cid,
+                name: m.name,
+                tagline: m.tagline,
+                game_system: m.game_system,
+                content_locale: m.content_locale,
+                last_init_error: m.last_init_error,
+                loaded,
+                wizard_completed_at: m.wizard_completed_at,
+                created_at: m.created_at,
+                updated_at: m.updated_at,
+            }
         })
         .collect();
     Ok(Json(out))
+}
+
+/// `GET /api/campaigns/{id}`: fetch a single campaign and ensure it is
+/// loaded on its shard. The SPA calls this before talking to the campaign
+/// server; the implicit lease acquisition is invisible to the caller.
+///
+/// Returns 404 for both "not found" and "not owned by this user" to
+/// prevent campaign-ID enumeration.
+#[utoipa::path(
+    get,
+    path = "/campaigns/{id}",
+    tag = "campaigns",
+    params(
+        ("id" = String, Path, description = "Campaign ID"),
+    ),
+    responses(
+        (status = OK, description = "Campaign details", body = Campaign),
+        (status = UNAUTHORIZED, description = "Authentication required"),
+        (status = NOT_FOUND, description = "Campaign not found or not owned"),
+        (status = INTERNAL_SERVER_ERROR, description = "Shard failure"),
+    ),
+    security(("bearerAuth" = [])),
+)]
+pub async fn get_campaign(
+    user: PlatformUser,
+    State(state): State<AppState>,
+    Path(campaign_id): Path<String>,
+) -> Result<(StatusCode, Json<Campaign>), AppError> {
+    let row = campaigns::Entity::find_by_id(campaign_id.clone())
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    if row.owner_user_id != user.id {
+        return Err(AppError::NotFound);
+    }
+
+    let cid = CampaignId::new(Nanoid(campaign_id));
+    state
+        .campaign_internal
+        .acquire_lease(&cid)
+        .await
+        .map_err(|e| match e {
+            CampaignInternalError::Transport(err) => {
+                AppError::Internal(format!("lease acquire transport: {err}"))
+            }
+            CampaignInternalError::Status { status } => {
+                AppError::Internal(format!("lease acquire status: {status}"))
+            }
+        })?;
+
+    if let Ok(mut cache) = state.loaded_cache.write() {
+        cache.insert(cid.clone());
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(Campaign {
+            id: cid,
+            name: row.name,
+            tagline: row.tagline,
+            game_system: row.game_system,
+            content_locale: row.content_locale,
+            last_init_error: row.last_init_error,
+            loaded: true,
+            wizard_completed_at: row.wizard_completed_at,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }),
+    ))
 }

@@ -8,8 +8,8 @@
 //!
 //! This is a pure state machine: no time, no scheduler, no mailbox. The
 //! protocol's 10-second reassembly timeout is enforced one layer up by the
-//! [`FragmentReassembly`](super::reassembly::FragmentReassembly) trait,
-//! which schedules a self-message at the deadline and calls
+//! [`FragmentTimeout`](super::reassembly::FragmentTimeout) message,
+//! which is scheduled at the deadline and calls
 //! [`drop_batch`](BatchAssembler::drop_batch) when it fires. That split
 //! keeps this module testable without a tokio runtime and lets every actor
 //! that owns an assembler get reassembly-with-timeout for free.

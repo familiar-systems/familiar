@@ -1,6 +1,12 @@
+use familiar_systems_app_shared::auth::HankoSessionValidator;
 use familiar_systems_campaign::{
-    actors::registry::CampaignRegistry, clients::platform_internal::PlatformInternalClient,
-    config::Config, db::register_sqlite_vec, router::serve_router, starter_content::Catalog,
+    actors::registry::CampaignRegistry,
+    clients::platform_internal::PlatformInternalClient,
+    config::{Config, StorageBackend},
+    db::register_sqlite_vec,
+    persistence::LocalCampaignStore,
+    router::serve_router,
+    starter_content::Catalog,
     state::AppState,
 };
 use kameo::actor::{ActorRef, Spawn};
@@ -9,48 +15,85 @@ use std::time::Duration;
 use tempfile::TempDir;
 use wiremock::MockServer;
 
+use familiar_systems_app_shared::id::UserId;
+use fs_id::Uuid;
+
+pub const TEST_USER_SUBJECT: &str = "0195b4a0-0000-7000-8000-000000000001";
+pub const TEST_SESSION_TOKEN: &str = "test-session-token";
+
+#[allow(dead_code)]
+pub fn test_user_id() -> UserId {
+    UserId(Uuid::parse_str(TEST_USER_SUBJECT).expect("valid test UUID"))
+}
+
 #[allow(dead_code)]
 pub struct TestApp {
     pub base_url: String,
     pub platform: MockServer,
+    pub hanko: MockServer,
     pub bearer: String,
     pub data_dir: TempDir,
-    /// Live registry handle so tests can drive lifecycle (e.g. begin
-    /// drain to assert the internal routes flip to 503).
     pub registry: ActorRef<CampaignRegistry>,
 }
 
 #[allow(dead_code)]
+impl TestApp {
+    pub fn auth_header(&self) -> String {
+        format!("Bearer {TEST_SESSION_TOKEN}")
+    }
+}
+
+#[allow(dead_code)]
 pub async fn spawn_app() -> TestApp {
-    // sqlite-vec registration is global and idempotent; safe to call
-    // once per test run even if multiple TestApps spawn.
     register_sqlite_vec();
-    // The campaign tier calls the platform on the deliberate-fail path, so
-    // tests need a stand-in platform to assert the callback lands. wiremock
-    // gives one with verifiable expectations per test.
     let platform = MockServer::start().await;
+    let hanko = MockServer::start().await;
+
+    // Mount a default Hanko mock that accepts any session token.
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/sessions/validate"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "is_valid": true,
+            "claims": {
+                "subject": TEST_USER_SUBJECT,
+                "email": {"address": "test@example.com", "is_primary": true, "is_verified": true},
+                "expiration": "2099-01-01T00:00:00Z",
+                "session_id": "test-session-1"
+            }
+        })))
+        .mount(&hanko)
+        .await;
+
     let bearer = "test-internal-bearer".to_string();
     let data_dir = TempDir::new().expect("create tempdir for campaign data");
     let config = Arc::new(Config {
+        storage_backend: StorageBackend::Local,
+        s3: None,
         port: 0,
+        hanko_api_url: hanko.uri(),
         campaign_data_dir: data_dir.path().to_path_buf(),
         internal_bearer_primary: bearer.clone(),
         internal_bearer_secondary: None,
         platform_url: platform.uri(),
-        // Long idle timeout so the supervisor doesn't evict mid-test.
         idle_timeout: Duration::from_secs(300),
         eviction_check_interval: Duration::from_secs(60),
+        heartbeat_interval: Duration::from_secs(300),
     });
+    let validator = Arc::new(HankoSessionValidator::new(&config.hanko_api_url));
     let catalog =
         Arc::new(Catalog::load_from_embedded().expect("embedded catalog should parse in tests"));
     let platform_internal = PlatformInternalClient::new(platform.uri(), &bearer);
+    let store: Arc<dyn familiar_systems_campaign::persistence::CampaignStore> =
+        Arc::new(LocalCampaignStore::new(data_dir.path().to_path_buf()));
     let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-        config.campaign_data_dir.clone(),
+        store,
         config.idle_timeout,
         config.eviction_check_interval,
+        Some(platform_internal.clone()),
     ));
     let state = AppState {
         config,
+        validator,
         catalog,
         platform_internal,
         registry: registry.clone(),
@@ -65,6 +108,7 @@ pub async fn spawn_app() -> TestApp {
     TestApp {
         base_url: format!("http://{addr}"),
         platform,
+        hanko,
         bearer,
         data_dir,
         registry,

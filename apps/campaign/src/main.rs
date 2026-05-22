@@ -1,9 +1,11 @@
+use familiar_systems_app_shared::auth::HankoSessionValidator;
 use familiar_systems_campaign::{
-    actors::registry::{BeginDrain, CampaignRegistry},
+    actors::registry::{BeginDrain, CampaignRegistry, ListLoaded},
     clients::platform_internal::PlatformInternalClient,
     config::Config,
     db::register_sqlite_vec,
     error::StartupError,
+    persistence,
     router::serve_router,
     starter_content::catalog::Catalog,
     state::AppState,
@@ -19,6 +21,7 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 async fn main() -> Result<(), StartupError> {
     init_tracing();
     let config = Arc::new(Config::from_env());
+    let validator = Arc::new(HankoSessionValidator::new(config.hanko_api_url.clone()));
     let catalog = Arc::new(Catalog::load_from_embedded().map_err(StartupError::Catalog)?);
     let platform_internal =
         PlatformInternalClient::new(config.platform_url.clone(), &config.internal_bearer_primary);
@@ -28,14 +31,17 @@ async fn main() -> Result<(), StartupError> {
     // automatically.
     register_sqlite_vec();
 
+    let store = persistence::store_from_config(&config);
     let registry = CampaignRegistry::spawn(CampaignRegistry::new(
-        config.campaign_data_dir.clone(),
+        store,
         config.idle_timeout,
         config.eviction_check_interval,
+        Some(platform_internal.clone()),
     ));
 
     let state = AppState {
         config: config.clone(),
+        validator,
         catalog,
         platform_internal,
         registry: registry.clone(),
@@ -49,8 +55,15 @@ async fn main() -> Result<(), StartupError> {
         port = config.port,
         data_dir = %config.campaign_data_dir.display(),
         idle_timeout_secs = config.idle_timeout.as_secs(),
+        heartbeat_interval_secs = config.heartbeat_interval.as_secs(),
         "campaign server starting"
     );
+
+    tokio::spawn(heartbeat_loop(
+        registry.clone(),
+        state.platform_internal.clone(),
+        config.heartbeat_interval,
+    ));
 
     axum::serve(listener, serve_router(state))
         .with_graceful_shutdown(shutdown_signal())
@@ -98,6 +111,29 @@ fn init_tracing() {
                 .with_span_list(false),
         )
         .init();
+}
+
+async fn heartbeat_loop(
+    registry: kameo::actor::ActorRef<CampaignRegistry>,
+    client: PlatformInternalClient,
+    interval: std::time::Duration,
+) {
+    let mut tick = tokio::time::interval(interval);
+    tick.tick().await;
+    loop {
+        tick.tick().await;
+        match registry.ask(ListLoaded).await {
+            Ok(campaigns) => {
+                if let Err(e) = client.heartbeat(&campaigns).await {
+                    tracing::warn!(error = %e, "heartbeat to platform failed");
+                }
+            }
+            Err(e) => {
+                tracing::debug!(error = ?e, "registry unavailable for heartbeat (shutting down?)");
+                break;
+            }
+        }
+    }
 }
 
 /// Wait for SIGINT or SIGTERM (Unix). Kubernetes sends SIGTERM during

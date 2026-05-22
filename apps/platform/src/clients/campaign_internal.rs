@@ -1,10 +1,10 @@
-//! Outbound HTTP client: platform → campaign tier `/internal/campaign/*`.
+//! Outbound HTTP client: platform -> campaign tier `/internal/campaign/*`.
 //!
 //! One client per process; cloned cheaply per request. Bearer header is
 //! attached on every send via the [`reqwest::Client`] default headers, so
 //! call sites don't have to remember it.
 
-use familiar_systems_app_shared::campaigns::internal::InternalInitRequest;
+use familiar_systems_app_shared::campaigns::internal::CreateCampaignRequest;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use reqwest::{Client, header};
 use std::sync::Arc;
@@ -58,20 +58,58 @@ impl CampaignInternalClient {
         }
     }
 
-    /// `POST /internal/campaign/init`: tells the campaign tier "this
-    /// campaign now exists; allocate whatever per-campaign state you need."
-    /// Idempotent on `campaign_id`; safe to retry.
-    pub async fn init(
+    /// `POST /internal/campaign`: create a new campaign on the shard with
+    /// the given owner. Idempotent on `campaign_id`.
+    pub async fn create_campaign(
         &self,
         campaign_id: &CampaignId,
         owner_user_id: &UserId,
     ) -> Result<(), CampaignInternalError> {
-        let url = format!("{}/internal/campaign/init", self.inner.base_url);
-        let body = InternalInitRequest {
+        let url = format!("{}/internal/campaign", self.inner.base_url);
+        let body = CreateCampaignRequest {
             campaign_id: campaign_id.clone(),
             owner_user_id: owner_user_id.clone(),
         };
         let resp = self.inner.http.post(&url).json(&body).send().await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(CampaignInternalError::Status {
+                status: resp.status(),
+            })
+        }
+    }
+
+    /// `PUT /internal/campaign/{id}/lease`: ensure the campaign is loaded
+    /// on the shard. For cold checkouts; no body needed.
+    pub async fn acquire_lease(
+        &self,
+        campaign_id: &CampaignId,
+    ) -> Result<(), CampaignInternalError> {
+        let url = format!(
+            "{}/internal/campaign/{}/lease",
+            self.inner.base_url, campaign_id.0
+        );
+        let resp = self.inner.http.put(&url).send().await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(CampaignInternalError::Status {
+                status: resp.status(),
+            })
+        }
+    }
+    /// `DELETE /internal/campaign/{id}/lease`: tell the shard to release
+    /// a specific campaign. Used for planned eviction or migration.
+    pub async fn release_lease(
+        &self,
+        campaign_id: &CampaignId,
+    ) -> Result<(), CampaignInternalError> {
+        let url = format!(
+            "{}/internal/campaign/{}/lease",
+            self.inner.base_url, campaign_id.0
+        );
+        let resp = self.inner.http.delete(&url).send().await?;
         if resp.status().is_success() {
             Ok(())
         } else {
@@ -99,10 +137,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn init_sends_bearer_and_returns_ok() {
+    async fn create_campaign_sends_bearer_and_returns_ok() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/internal/campaign/init"))
+            .and(path("/internal/campaign"))
             .and(header("authorization", "Bearer secret"))
             .respond_with(ResponseTemplate::new(200))
             .expect(1)
@@ -110,20 +148,75 @@ mod tests {
             .await;
 
         let client = CampaignInternalClient::new(server.uri(), "secret");
-        client.init(&campaign_id(), &user_id()).await.unwrap();
+        client
+            .create_campaign(&campaign_id(), &user_id())
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
-    async fn init_returns_status_error_on_5xx() {
+    async fn create_campaign_returns_status_error_on_5xx() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/internal/campaign/init"))
+            .and(path("/internal/campaign"))
             .respond_with(ResponseTemplate::new(500))
             .mount(&server)
             .await;
 
         let client = CampaignInternalClient::new(server.uri(), "secret");
-        let err = client.init(&campaign_id(), &user_id()).await.unwrap_err();
+        let err = client
+            .create_campaign(&campaign_id(), &user_id())
+            .await
+            .unwrap_err();
+        match err {
+            CampaignInternalError::Status { status } => {
+                assert_eq!(status, reqwest::StatusCode::INTERNAL_SERVER_ERROR);
+            }
+            other => panic!("expected Status error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn acquire_lease_uses_put_with_no_body() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/internal/campaign/test-id/lease"))
+            .and(header("authorization", "Bearer secret"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = CampaignInternalClient::new(server.uri(), "secret");
+        client.acquire_lease(&campaign_id()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn release_lease_sends_delete_with_bearer() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/internal/campaign/test-id/lease"))
+            .and(header("authorization", "Bearer secret"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = CampaignInternalClient::new(server.uri(), "secret");
+        client.release_lease(&campaign_id()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn release_lease_returns_status_error_on_5xx() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/internal/campaign/test-id/lease"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let client = CampaignInternalClient::new(server.uri(), "secret");
+        let err = client.release_lease(&campaign_id()).await.unwrap_err();
         match err {
             CampaignInternalError::Status { status } => {
                 assert_eq!(status, reqwest::StatusCode::INTERNAL_SERVER_ERROR);

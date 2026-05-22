@@ -1,9 +1,9 @@
-export type { CampaignId } from "./generated/id/CampaignId";
-export type { UserId } from "./generated/id/UserId";
-export type { MeResponse } from "./generated/auth/MeResponse";
-export type { Campaign } from "./generated/campaigns/Campaign";
-export type { CreateCampaignRequest } from "./generated/campaigns/CreateCampaignRequest";
-export type { CreateCampaignResponse } from "./generated/campaigns/CreateCampaignResponse";
+// ts-rs generated types, re-exported via auto-generated barrels.
+// Individual type files live under generated/; barrel index.ts files are
+// produced by `mise run generate-types`. Never edit generated/ by hand.
+export * from "./generated/id";
+export * from "./generated/auth";
+export * from "./generated/campaigns";
 
 // `paths` describes every route the platform server exposes. Generated
 // from utoipa's OpenAPI spec; component schemas resolve back to the

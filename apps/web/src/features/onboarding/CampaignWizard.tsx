@@ -1,14 +1,12 @@
 // Orchestrating component for the new-campaign wizard.
 //
-// State is entirely client-side until the user presses the seal. On Seal
-// we fire one `POST /campaign/<id>/initialize`. In v0 the campaign tier
-// deliberately fails this call; the FE renders that failure inline and
-// leaves the wizard mounted so the user can navigate back to the hub.
+// State is entirely client-side until the user seals the campaign.
+// On seal we fire one `PATCH /campaign/{id}` with `wizard_complete: true`.
 
 import type {
   AudioMode,
   CatalogResponse,
-  InitializeRequest,
+  PatchCampaignRequest,
   SystemEntry,
 } from "@familiar-systems/types-campaign";
 import { useEffect, useMemo, useState } from "react";
@@ -118,16 +116,16 @@ export function CampaignWizard({
     }
   }, [pick]);
 
-  const onSeal = async (): Promise<void> => {
+  const onInitializeCampaign = async (): Promise<void> => {
     if (systemDisplay === null || audio === null || evalsEnabled === null) {
-      // Should be unreachable since canAdvance gates the seal step, but
-      // guard so we never POST a partial payload.
+      // Should be unreachable since canAdvance gates the initialization step,
+      // but guard so we never POST a partial payload.
       setErrorMessage("Wizard payload incomplete; please review each step.");
       return;
     }
     setSealState("sealing");
     setErrorMessage(null);
-    const body: InitializeRequest = {
+    const body: PatchCampaignRequest = {
       game_system: systemDisplay.name,
       content_locale: locale,
       name: name.trim(),
@@ -135,13 +133,14 @@ export function CampaignWizard({
       template_slugs: Array.from(templateSlugs),
       audio,
       evals_enabled: evalsEnabled,
+      wizard_complete: true,
     };
-    const { error } = await campaignClient.POST("/campaign/{id}/initialize", {
+    const { error } = await campaignClient.PATCH("/campaign/{id}", {
       params: { path: { id: campaignId } },
       body,
     });
     if (error) {
-      setErrorMessage(error.error ?? "Seal failed; please try again.");
+      setErrorMessage(error.error ?? "Something went wrong; please try again.");
       setSealState("cracked");
       return;
     }
@@ -198,8 +197,8 @@ export function CampaignWizard({
             sealState={sealState}
             errorMessage={errorMessage}
             locale={locale}
-            onSeal={() => {
-              void onSeal();
+            onInitializeCampaign={() => {
+              void onInitializeCampaign();
             }}
             onBack={() => {
               setSealState("idle");

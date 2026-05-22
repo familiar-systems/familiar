@@ -1,50 +1,52 @@
-// Campaign route. v0 thin slice: only shows the wizard. Once the wizard
-// seals (or fails), the user navigates back to the hub via the wizard's
-// own "Back to hub" affordance.
+// Campaign route. Fetches metadata directly from the campaign server to
+// prove the full round-trip: create on the shard, read it back. After
+// successful initialization the route refetches and transitions to the
+// initialized campaign view.
 
-import { campaignIdSchema, type Campaign } from "@familiar-systems/types-app";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { campaignIdSchema } from "@familiar-systems/types-app";
+import type { CampaignMetadataResponse } from "@familiar-systems/types-campaign";
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { CampaignWizard } from "../../../features/onboarding/CampaignWizard";
 import { client } from "../../../lib/api";
+import { campaignClient } from "../../../lib/campaigns-api";
 
 interface LoadState {
-  campaign: Campaign | null;
+  campaign: CampaignMetadataResponse | null;
   error: string | null;
 }
 
 function CampaignPage(): React.ReactElement {
   const { campaignId } = Route.useParams();
-  const navigate = useNavigate();
   const [load, setLoad] = useState<LoadState>({ campaign: null, error: null });
+  const [refetchKey, setRefetchKey] = useState(0);
 
-  // Look up the campaign in the user's list. The list endpoint already
-  // returns enough metadata (`name`, `tagline`, `wizard_completed_at`,
-  // `last_init_error`) to decide whether to render the wizard. A future
-  // slice will add `GET /api/campaigns/:id` for direct fetch.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const { data, response } = await client.GET("/campaigns");
+      const { response: leaseResp } = await client.GET("/campaigns/{id}", {
+        params: { path: { id: campaignId as string } },
+      });
+      if (cancelled) return;
+      if (!leaseResp.ok) {
+        setLoad({ campaign: null, error: `Failed to load campaign (${leaseResp.status})` });
+        return;
+      }
+
+      const { data, response } = await campaignClient.GET("/campaign/{id}", {
+        params: { path: { id: campaignId as string } },
+      });
       if (cancelled) return;
       if (!response.ok || !data) {
-        setLoad({ campaign: null, error: `List failed (${response.status})` });
+        setLoad({ campaign: null, error: `Failed to load campaign (${response.status})` });
         return;
       }
-      // Cross openapi-fetch's expanded-brand boundary back to the ts-rs alias
-      // shape (see lib/auth.ts for the same pattern on MeResponse).
-      const list = data as Campaign[];
-      const found = list.find((c) => (c.id as string) === (campaignId as string));
-      if (!found) {
-        setLoad({ campaign: null, error: "Campaign not found." });
-        return;
-      }
-      setLoad({ campaign: found, error: null });
+      setLoad({ campaign: data as CampaignMetadataResponse, error: null });
     })();
     return () => {
       cancelled = true;
     };
-  }, [campaignId]);
+  }, [campaignId, refetchKey]);
 
   if (load.error !== null) {
     return (
@@ -62,18 +64,14 @@ function CampaignPage(): React.ReactElement {
   }
 
   if (load.campaign.wizard_completed_at !== null) {
-    // Sealed campaigns get a placeholder view; the next slice replaces
-    // this with the real campaign editor.
     return (
       <section
         className="mx-auto w-full max-w-3xl space-y-4 px-8 pt-24"
         data-testid="campaign-placeholder"
       >
-        <h1 className="font-display text-3xl font-medium tracking-tight">
-          {load.campaign.name ?? "Untitled campaign"}
-        </h1>
+        <h1 className="font-display text-3xl font-medium tracking-tight">{load.campaign.name}</h1>
         <p className="text-sm text-muted-foreground">
-          Sealed at {load.campaign.wizard_completed_at}. The campaign editor lands in the next
+          Initialized at {load.campaign.wizard_completed_at}. The campaign editor lands in the next
           slice.
         </p>
       </section>
@@ -86,7 +84,7 @@ function CampaignPage(): React.ReactElement {
         campaignId={campaignId as string}
         locale="en"
         onDone={() => {
-          void navigate({ to: "/" });
+          setRefetchKey((k) => k + 1);
         }}
       />
     </section>

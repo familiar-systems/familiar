@@ -1,11 +1,12 @@
 import { type Page, expect, test } from "@playwright/test";
 
-// End-to-end exercise of the new-campaign wizard's failure path.
+// End-to-end exercise of the new-campaign wizard.
 //
 // The platform mints a campaign id, the SPA navigates into the campaign,
 // the wizard fetches the catalog, the user walks through the four steps,
-// and pressing Seal triggers the campaign tier's deliberate 500. The
-// post-failure hub renders the campaign with an "init failed" badge.
+// and pressing the seal fires `PATCH /campaign/{id}` with
+// `wizard_complete: true`. Two tests: success (transitions to the
+// initialized view) and failure (hub shows the init-failed badge).
 //
 // All network calls are stubbed: this test does not need a running
 // platform, campaign, or Hanko backend. The shape of each stub mirrors
@@ -92,6 +93,22 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     });
   });
 
+  // Platform: single-campaign fetch (lease + metadata).
+  await page.route(`**/api/campaigns/${CAMPAIGN_ID}`, async (route) => {
+    if (route.request().method() === "GET") {
+      const row = state.campaigns.find((c) => c.id === CAMPAIGN_ID);
+      if (!row) {
+        return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(row),
+      });
+    }
+    return route.fallback();
+  });
+
   // Platform: list + create campaigns.
   await page.route("**/api/campaigns", async (route) => {
     const req = route.request();
@@ -128,7 +145,50 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
     return route.fallback();
   });
 
-  // Campaign tier: catalog + initialize.
+  // Campaign tier: GET + PATCH /campaign/{id}, catalog.
+  await page.route(`**/campaign/${CAMPAIGN_ID}`, async (route) => {
+    const method = route.request().method();
+    const row = state.campaigns.find((c) => c.id === CAMPAIGN_ID);
+
+    if (method === "GET") {
+      if (!row) {
+        return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          campaign_id: row.id,
+          name: row.name ?? "",
+          tagline: row.tagline,
+          game_system: row.game_system,
+          content_locale: row.content_locale,
+          wizard_completed_at: row.wizard_completed_at,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        }),
+      });
+    }
+
+    if (method === "PATCH") {
+      // Default: deliberate failure so the hub shows the badge.
+      if (row) {
+        row.last_init_error = "deliberate_thin_slice_failure";
+        row.updated_at = new Date().toISOString();
+      }
+      return route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Campaign initialization is not yet wired up. This is a known thin-slice failure.",
+          campaign_id: CAMPAIGN_ID,
+        }),
+      });
+    }
+
+    return route.fallback();
+  });
+
   await page.route("**/catalog/systems**", async (route) => {
     return route.fulfill({
       status: 200,
@@ -136,28 +196,77 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
       body: JSON.stringify(MOCK_SYSTEMS),
     });
   });
+}
 
-  await page.route(`**/campaign/${CAMPAIGN_ID}/initialize`, async (route) => {
-    // Mimic the campaign tier's deliberate failure: 500 + structured body,
-    // and mark the campaign as failed in the mock state so the next GET
-    // /campaigns reflects the badge.
+test("wizard success transitions to initialized campaign view", async ({ page }) => {
+  const state: MockState = { campaigns: [] };
+  await installMocks(page, state);
+
+  // Override the PATCH handler on /campaign/{id} to succeed and mirror metadata.
+  await page.route(`**/campaign/${CAMPAIGN_ID}`, async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const body = JSON.parse(route.request().postData() ?? "{}") as {
+      name?: string;
+      tagline?: string | null;
+      game_system?: string;
+      content_locale?: string;
+      wizard_complete?: boolean;
+    };
     const row = state.campaigns.find((c) => c.id === CAMPAIGN_ID);
     if (row) {
-      row.last_init_error = "deliberate_thin_slice_failure";
+      if (body.wizard_complete) row.wizard_completed_at = new Date().toISOString();
+      if (body.name !== undefined) row.name = body.name;
+      if (body.tagline !== undefined) row.tagline = body.tagline;
+      if (body.game_system !== undefined) row.game_system = body.game_system;
+      if (body.content_locale !== undefined) row.content_locale = body.content_locale;
       row.updated_at = new Date().toISOString();
     }
     return route.fulfill({
-      status: 500,
+      status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        error: "Campaign initialization is not yet wired up. This is a known thin-slice failure.",
         campaign_id: CAMPAIGN_ID,
+        name: row?.name ?? "",
+        tagline: row?.tagline ?? null,
+        game_system: row?.game_system ?? null,
+        content_locale: row?.content_locale ?? null,
+        wizard_completed_at: row?.wizard_completed_at ?? null,
+        created_at: row?.created_at ?? new Date().toISOString(),
+        updated_at: row?.updated_at ?? new Date().toISOString(),
       }),
     });
   });
-}
 
-test("wizard walks through every step, fails on seal, hub shows the badge", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("start-first-campaign").click();
+  await expect(page).toHaveURL(`/c/${CAMPAIGN_ID}`);
+  await expect(page.getByTestId("campaign-wizard")).toBeVisible();
+
+  // Step 1: name + tagline.
+  await page.getByTestId("wizard-name-input").fill("Embergrove Saga");
+  await page.getByTestId("wizard-tagline-input").fill("An autumn court, a debt come due.");
+  await page.getByTestId("wizard-next").click();
+
+  // Step 2: pick Blades.
+  await page.getByTestId("system-search-input").fill("blades");
+  await page.getByTestId("system-card-blades-in-the-dark").click();
+  await page.getByTestId("wizard-next").click();
+
+  // Step 3: privacy.
+  await page.getByTestId("audio-opt-out").click();
+  await page.getByTestId("evals-off").click();
+  await page.getByTestId("wizard-next").click();
+
+  // Step 4: seal. Should stay on the campaign, not bounce to hub.
+  await page.getByTestId("wax-seal").click();
+  await expect(page.getByTestId("campaign-placeholder")).toBeVisible();
+  await expect(page).toHaveURL(`/c/${CAMPAIGN_ID}`);
+  await expect(page.getByText("Embergrove Saga")).toBeVisible();
+});
+
+test("wizard walks through every step, fails on initialize, hub shows the badge", async ({
+  page,
+}) => {
   const state: MockState = { campaigns: [] };
   await installMocks(page, state);
 
@@ -193,7 +302,7 @@ test("wizard walks through every step, fails on seal, hub shows the badge", asyn
   await expect(page.getByTestId("wizard-next")).toBeEnabled();
   await page.getByTestId("wizard-next").click();
 
-  // Step 4: review + seal.
+  // Step 4: review + initialize.
   await expect(page.getByTestId("review-summary")).toBeVisible();
   await expect(page.getByTestId("wax-seal")).toHaveAttribute("data-state", "idle");
 
@@ -211,5 +320,8 @@ test("wizard walks through every step, fails on seal, hub shows the badge", asyn
   await page.getByRole("link", { name: "familiar.systems hub" }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByTestId(`campaign-card-${CAMPAIGN_ID}`)).toBeVisible();
-  await expect(page.getByTestId("failed-init-badge")).toBeVisible();
+  await expect(page.getByTestId(`campaign-card-${CAMPAIGN_ID}`)).toHaveAttribute(
+    "data-state",
+    "init-failed",
+  );
 });

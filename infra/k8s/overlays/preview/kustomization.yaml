@@ -8,6 +8,7 @@ resources:
   - namespace.yaml
   # External Secrets (ESO syncs from Scaleway SM)
   - secrets/internal-bearer.yaml
+  - secrets/hetzner-s3.yaml
   # Persistent storage (per-PR hostPaths)
   - storage/platform-pv.yaml
   - storage/platform-pvc.yaml

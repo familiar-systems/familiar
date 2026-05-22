@@ -7,7 +7,7 @@ use tokio::sync::oneshot;
 const CAMPAIGN_ID: &str = "test-campaign-id-1";
 const USER_ID: &str = "0195b4a0-0000-7000-8000-000000000099";
 
-fn payload() -> serde_json::Value {
+fn create_payload() -> serde_json::Value {
     json!({
         "campaign_id": CAMPAIGN_ID,
         "owner_user_id": USER_ID
@@ -15,12 +15,12 @@ fn payload() -> serde_json::Value {
 }
 
 #[tokio::test]
-async fn init_with_correct_bearer_returns_200_and_creates_db_file() {
+async fn create_campaign_with_correct_bearer_returns_200_and_creates_db_file() {
     let app = common::spawn_app().await;
     let resp = reqwest::Client::new()
-        .post(format!("{}/internal/campaign/init", app.base_url))
+        .post(format!("{}/internal/campaign", app.base_url))
         .header("authorization", format!("Bearer {}", app.bearer))
-        .json(&payload())
+        .json(&create_payload())
         .send()
         .await
         .unwrap();
@@ -29,24 +29,19 @@ async fn init_with_correct_bearer_returns_200_and_creates_db_file() {
     let db_path = app.data_dir.path().join(format!("{CAMPAIGN_ID}.db"));
     assert!(
         db_path.exists(),
-        "expected campaign DB at {db_path:?} to exist after init"
+        "expected campaign DB at {db_path:?} to exist after create"
     );
 }
 
 #[tokio::test]
-async fn repeat_init_is_idempotent() {
-    // The platform retries init on transient failures; calling twice with
-    // the same campaign_id must return 200 both times without spawning a
-    // second supervisor or overwriting the existing DB. The registry's
-    // mailbox serializes ensure calls, so concurrent or sequential repeats
-    // converge on the single live supervisor.
+async fn repeat_create_is_idempotent() {
     let app = common::spawn_app().await;
     let client = reqwest::Client::new();
     let post = || async {
         client
-            .post(format!("{}/internal/campaign/init", app.base_url))
+            .post(format!("{}/internal/campaign", app.base_url))
             .header("authorization", format!("Bearer {}", app.bearer))
-            .json(&payload())
+            .json(&create_payload())
             .send()
             .await
             .unwrap()
@@ -58,11 +53,11 @@ async fn repeat_init_is_idempotent() {
 }
 
 #[tokio::test]
-async fn init_without_bearer_returns_401() {
+async fn create_without_bearer_returns_401() {
     let app = common::spawn_app().await;
     let resp = reqwest::Client::new()
-        .post(format!("{}/internal/campaign/init", app.base_url))
-        .json(&payload())
+        .post(format!("{}/internal/campaign", app.base_url))
+        .json(&create_payload())
         .send()
         .await
         .unwrap();
@@ -70,11 +65,7 @@ async fn init_without_bearer_returns_401() {
 }
 
 #[tokio::test]
-async fn init_during_drain_returns_503() {
-    // Once the registry has entered its drain phase, the create-side
-    // hook must return 503 so the platform retries against whichever
-    // shard takes the campaign over. A 500 here would be misread as a
-    // terminal init failure rather than "wrong shard."
+async fn create_during_drain_returns_503() {
     let app = common::spawn_app().await;
     let (tx, rx) = oneshot::channel();
     app.registry
@@ -84,9 +75,9 @@ async fn init_during_drain_returns_503() {
     rx.await.expect("drain completion");
 
     let resp = reqwest::Client::new()
-        .post(format!("{}/internal/campaign/init", app.base_url))
+        .post(format!("{}/internal/campaign", app.base_url))
         .header("authorization", format!("Bearer {}", app.bearer))
-        .json(&payload())
+        .json(&create_payload())
         .send()
         .await
         .unwrap();
@@ -94,12 +85,108 @@ async fn init_during_drain_returns_503() {
 }
 
 #[tokio::test]
-async fn init_with_wrong_bearer_returns_401() {
+async fn create_with_wrong_bearer_returns_401() {
     let app = common::spawn_app().await;
     let resp = reqwest::Client::new()
-        .post(format!("{}/internal/campaign/init", app.base_url))
+        .post(format!("{}/internal/campaign", app.base_url))
         .header("authorization", "Bearer wrong")
-        .json(&payload())
+        .json(&create_payload())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn acquire_lease_returns_200_for_existing_campaign() {
+    let app = common::spawn_app().await;
+    let client = reqwest::Client::new();
+
+    // Create the campaign first.
+    let resp = client
+        .post(format!("{}/internal/campaign", app.base_url))
+        .header("authorization", format!("Bearer {}", app.bearer))
+        .json(&create_payload())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+
+    // Acquire lease (idempotent, already checked out).
+    let resp = client
+        .put(format!(
+            "{}/internal/campaign/{}/lease",
+            app.base_url, CAMPAIGN_ID
+        ))
+        .header("authorization", format!("Bearer {}", app.bearer))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn acquire_lease_without_bearer_returns_401() {
+    let app = common::spawn_app().await;
+    let resp = reqwest::Client::new()
+        .put(format!(
+            "{}/internal/campaign/{}/lease",
+            app.base_url, CAMPAIGN_ID
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+}
+
+#[tokio::test]
+async fn release_lease_returns_200_for_loaded_campaign() {
+    let app = common::spawn_app().await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(format!("{}/internal/campaign", app.base_url))
+        .header("authorization", format!("Bearer {}", app.bearer))
+        .json(&create_payload())
+        .send()
+        .await
+        .unwrap();
+
+    let resp = client
+        .delete(format!(
+            "{}/internal/campaign/{}/lease",
+            app.base_url, CAMPAIGN_ID
+        ))
+        .header("authorization", format!("Bearer {}", app.bearer))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn release_lease_returns_200_for_unknown_campaign() {
+    let app = common::spawn_app().await;
+    let resp = reqwest::Client::new()
+        .delete(format!(
+            "{}/internal/campaign/{}/lease",
+            app.base_url, "never-created"
+        ))
+        .header("authorization", format!("Bearer {}", app.bearer))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn release_lease_without_bearer_returns_401() {
+    let app = common::spawn_app().await;
+    let resp = reqwest::Client::new()
+        .delete(format!(
+            "{}/internal/campaign/{}/lease",
+            app.base_url, CAMPAIGN_ID
+        ))
         .send()
         .await
         .unwrap();

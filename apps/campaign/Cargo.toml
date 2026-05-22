@@ -13,12 +13,15 @@ path = "src/bin/emit-openapi.rs"
 axum = { workspace = true }
 familiar-systems-app-shared = { path = "../../crates/app-shared" }
 familiar-systems-campaign-shared = { path = "../../crates/campaign-shared" }
+fs-id = { path = "../../crates/fs-id" }
 
 chrono = { workspace = true }
 include_dir = "0.7"
 kameo = { workspace = true }
 libsqlite3-sys = "0.30"
 loro = { workspace = true }
+object_store = { version = "0.13", features = ["aws"] }
+async-trait = "0.1"
 # Not on crates.io (upstream publishing issue); pinned via git tag.
 # Bump when upstream cuts a newer release.
 loro-protocol = { git = "https://github.com/loro-dev/protocol.git", tag = "loro-protocol-v0.3.0" }
@@ -30,7 +33,6 @@ serde_json = { workspace = true }
 serde_yaml = "0.9"
 sqlite-vec = "0.1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite"] }
-subtle = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
