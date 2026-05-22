@@ -231,7 +231,7 @@
       },
       "MeResponse": {
         "type": "object",
-        "description": "Response body for `GET /me`.\n\n**Wire format we own (API contract with the SPA).** Exported to TypeScript\nas `MeResponse` via ts-rs. Changes are breaking changes to the frontend.\n\n`id` is the Hanko subject (= `users.id`); see\n`apps/platform/src/entities/users.rs`.",
+        "description": "Response body for `GET /me`.\n\n`id` is the Hanko subject (= `users.id`).",
         "required": ["id", "email"],
         "properties": {
           "email": {

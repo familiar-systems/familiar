@@ -4,10 +4,6 @@ import type { UserId } from "../id/UserId";
 /**
  * Response body for `GET /me`.
  *
- * **Wire format we own (API contract with the SPA).** Exported to TypeScript
- * as `MeResponse` via ts-rs. Changes are breaking changes to the frontend.
- *
- * `id` is the Hanko subject (= `users.id`); see
- * `apps/platform/src/entities/users.rs`.
+ * `id` is the Hanko subject (= `users.id`).
  */
 export type MeResponse = { id: UserId; email: string };
