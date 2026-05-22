@@ -11,6 +11,7 @@ fs-id = { workspace = true }
 reqwest.workspace = true
 tracing.workspace = true
 serde.workspace = true
+subtle.workspace = true
 thiserror.workspace = true
 ts-rs.workspace = true
 utoipa.workspace = true

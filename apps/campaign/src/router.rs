@@ -1,10 +1,10 @@
-use crate::middleware::internal_auth::require_internal_bearer;
 use crate::openapi::api_router;
 use crate::state::AppState;
 use axum::{
     Router, middleware,
     routing::{post, put},
 };
+use familiar_systems_app_shared::middleware::internal_auth::require_internal_bearer;
 
 /// Internal-only routes (`/internal/campaign/*`). Bearer-protected.
 /// Not part of the OpenAPI spec (matches the platform pattern).

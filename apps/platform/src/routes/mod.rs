@@ -3,13 +3,13 @@ pub(crate) mod health;
 pub(crate) mod internal_campaigns;
 pub(crate) mod me;
 
-use crate::middleware::internal_auth::require_internal_bearer;
 use crate::openapi::api_router;
 use crate::state::AppState;
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, Method};
 use axum::routing::{delete, patch, post};
 use axum::{Json, Router, middleware, routing::get};
+use familiar_systems_app_shared::middleware::internal_auth::require_internal_bearer;
 use std::sync::Arc;
 use tower_http::{
     cors::{AllowOrigin, CorsLayer},

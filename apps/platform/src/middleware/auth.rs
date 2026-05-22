@@ -10,6 +10,7 @@ use axum::extract::{FromRef, FromRequestParts};
 use axum::http::request::Parts;
 use chrono::Utc;
 use familiar_systems_app_shared::auth::{AuthenticatedUser, HankoSessionValidator};
+use familiar_systems_app_shared::middleware::internal_auth::InternalBearerConfig;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, SqlErr, sea_query::OnConflict,
 };
@@ -22,6 +23,15 @@ use crate::state::AppState;
 impl FromRef<AppState> for Arc<HankoSessionValidator> {
     fn from_ref(state: &AppState) -> Self {
         state.validator.clone()
+    }
+}
+
+impl FromRef<AppState> for InternalBearerConfig {
+    fn from_ref(state: &AppState) -> Self {
+        InternalBearerConfig {
+            primary: state.config.internal_bearer_primary.clone(),
+            secondary: state.config.internal_bearer_secondary.clone(),
+        }
     }
 }
 

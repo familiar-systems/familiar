@@ -33,7 +33,6 @@ serde_json = { workspace = true }
 serde_yaml = "0.9"
 sqlite-vec = "0.1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite"] }
-subtle = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
