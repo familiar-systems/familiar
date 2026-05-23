@@ -391,9 +391,7 @@ def verify_local(*, dry_run: bool) -> None:
         check=False,
     )
     if plan.returncode != 0:
-        raise RuntimeError(
-            "`tofu plan` failed with the new key. Same state and rollback as above."
-        )
+        raise RuntimeError("`tofu plan` failed with the new key. Same state and rollback as above.")
 
 
 def revoke(old: ApiKey, *, dry_run: bool) -> None:

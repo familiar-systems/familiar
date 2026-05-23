@@ -15,6 +15,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  MISE_PYTHON_UV_VENV_AUTO: "false"
+
 permissions:
   contents: read
 

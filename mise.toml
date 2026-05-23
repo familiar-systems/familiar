@@ -278,10 +278,10 @@ sources = [
 ]
 
 [tasks."lint:infra"]
-description = "Validate OpenTofu configuration (fmt check + validate)"
+description = "Validate OpenTofu configuration and lint infra Python scripts"
 dir = "infra/tofu"
-run = ["tofu fmt -check -recursive", "tofu validate"]
-sources = ["infra/tofu/**/*.tf", "infra/tofu/**/*.tfvars"]
+run = ["tofu fmt -check -recursive", "tofu validate", "uv run ruff check ."]
+sources = ["infra/tofu/**/*.tf", "infra/tofu/**/*.tfvars", "infra/tofu/**/*.py"]
 
 [tasks."lint:workflows"]
 description = "Lint GitHub Actions workflow files with actionlint"
@@ -366,7 +366,7 @@ run = "uv run ruff format"
 
 [tasks."format:infra"]
 dir = "infra/tofu"
-run = "tofu fmt -recursive"
+run = ["tofu fmt -recursive", "uv run ruff format"]
 
 [tasks."format:check"]
 description = "Check formatting (all ecosystems)"
@@ -399,8 +399,8 @@ sources = ["workers/whisperx/**/*.py", "workers/whisperx/pyproject.toml"]
 
 [tasks."format:check:infra"]
 dir = "infra/tofu"
-run = "tofu fmt -check -recursive"
-sources = ["infra/tofu/**/*.tf", "infra/tofu/**/*.tfvars"]
+run = ["tofu fmt -check -recursive", "uv run ruff format --check ."]
+sources = ["infra/tofu/**/*.tf", "infra/tofu/**/*.tfvars", "infra/tofu/**/*.py"]
 
 # --- typecheck ---
 
@@ -446,7 +446,14 @@ sources = [
   "workers/whisperx/uv.lock",
 ]
 
-# typecheck:infra removed; HCL validation is handled by lint:infra (tofu validate).
+[tasks."typecheck:infra"]
+dir = "infra/tofu"
+run = "uv run basedpyright"
+sources = [
+  "infra/tofu/**/*.py",
+  "infra/tofu/pyproject.toml",
+  "infra/tofu/uv.lock",
+]
 
 # --- generate ---
 

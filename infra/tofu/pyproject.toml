@@ -32,6 +32,10 @@ ignore = [
   "PLR0913", # too-many-arguments (click commands)
   "COM812",  # trailing comma (conflicts with formatter)
   "ISC001",  # implicit string concat (conflicts with formatter)
+  "TRY003",  # long exception messages inline (readability over ceremony for ops scripts)
+  "EM101",   # string literal in exception
+  "EM102",   # f-string in exception
+  "INP001",  # implicit namespace package (scripts/ is not a package)
 ]
 
 [tool.basedpyright]
