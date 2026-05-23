@@ -90,9 +90,11 @@ jobs:
           TF_VAR_state_encryption_passphrase: ${{ steps.passphrase.outputs.value }}
         run: |
           tofu plan -no-color -out=tfplan 2>&1 | tee plan-output.txt
-          echo "plan<<PLANEOF" >> "$GITHUB_OUTPUT"
-          head -c 60000 plan-output.txt >> "$GITHUB_OUTPUT"
-          echo "PLANEOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "plan<<PLANEOF"
+            head -c 60000 plan-output.txt
+            echo "PLANEOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Comment plan on PR
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
