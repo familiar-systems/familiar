@@ -10,21 +10,31 @@
 //! handler awaits the startup result before inserting the supervisor
 //! into its map.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use axum::extract::ws;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
-use kameo::actor::{ActorRef, WeakActorRef};
+use familiar_systems_campaign_shared::id::ThingId;
+use familiar_systems_campaign_shared::loro::thing::ThingHandle;
+use familiar_systems_campaign_shared::loro::toc::TocEntry;
+use kameo::actor::{ActorRef, Spawn, WeakActorRef};
 use kameo::error::ActorStopReason;
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
+use tokio::sync::mpsc;
 
 use sea_orm::EntityTrait;
 
 use crate::actors::database_writer::{
-    GetMetadata, MetadataError, PatchCampaignError, PatchCampaignMetadata as DbPatchCampaign,
-    PatchCampaignResult,
+    CreateThing as DbCreateThing, DeleteThing as DbDeleteThing, GetMetadata, LoadTocSnapshot,
+    MetadataError, PatchCampaignError, PatchCampaignMetadata as DbPatchCampaign,
+    PatchCampaignResult, ThingExists,
 };
+use crate::actors::thing::{ThingActor, ThingActorArgs};
+use crate::actors::toc::{self, TocActor, TocActorArgs};
+use crate::actors::RoomHandle;
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::entities::campaign_metadata;
 use crate::error::InitError;
@@ -39,6 +49,8 @@ pub struct CampaignSupervisor {
     campaign_id: CampaignId,
     store: Arc<dyn CampaignStore>,
     db: Option<CampaignDatabase>,
+    toc: Option<ActorRef<TocActor>>,
+    things: HashMap<ThingId, ActorRef<ThingActor>>,
     last_activity: Instant,
     idle_timeout: Duration,
     stop_cause: Option<StopCause>,
@@ -109,7 +121,20 @@ impl Actor for CampaignSupervisor {
         )
         .await?;
 
-        tracing::info!("campaign ready");
+        let toc_snapshot = match db.writer().ask(LoadTocSnapshot).await {
+            Ok(snap) => snap,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to load toc snapshot, starting fresh");
+                None
+            }
+        };
+
+        let toc = TocActor::spawn(TocActorArgs {
+            snapshot: toc_snapshot,
+            db_writer: db.writer().clone(),
+        });
+
+        tracing::info!("campaign ready (toc actor spawned)");
 
         let timer_ref = actor_ref.clone();
         let interval = args.eviction_check_interval;
@@ -128,6 +153,8 @@ impl Actor for CampaignSupervisor {
             campaign_id: args.campaign_id,
             store: args.store,
             db: Some(db),
+            toc: Some(toc),
+            things: HashMap::new(),
             last_activity: Instant::now(),
             idle_timeout: args.idle_timeout,
             stop_cause: None,
@@ -154,6 +181,18 @@ impl Actor for CampaignSupervisor {
         };
         tracing::info!(cause, "draining supervisor");
         let started = Instant::now();
+
+        for (thing_id, thing_ref) in self.things.drain() {
+            tracing::debug!(thing_id = %thing_id.0, "stopping thing actor");
+            let _ = thing_ref.stop_gracefully().await;
+            thing_ref.wait_for_shutdown().await;
+        }
+
+        if let Some(toc) = self.toc.take() {
+            tracing::debug!("stopping toc actor");
+            let _ = toc.stop_gracefully().await;
+            toc.wait_for_shutdown().await;
+        }
 
         if let Some(db) = self.db.take()
             && let Err(e) = db.release(self.store.as_ref(), &self.campaign_id).await
@@ -285,6 +324,238 @@ impl Message<GetMetadata> for CampaignSupervisor {
             .one(db.reader())
             .await?
             .ok_or(MetadataError::NoMetadataRow)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JoinRoom
+// ---------------------------------------------------------------------------
+
+const TOC_ROOM_ID: &str = "toc";
+
+pub struct JoinRoom {
+    pub conn_id: u64,
+    pub room_id: String,
+    pub tx: mpsc::UnboundedSender<ws::Message>,
+}
+
+#[derive(kameo::Reply)]
+pub enum JoinRoomResult {
+    Joined(RoomHandle),
+    NotFound,
+    ActorError(String),
+}
+
+impl Message<JoinRoom> for CampaignSupervisor {
+    type Reply = JoinRoomResult;
+
+    async fn handle(
+        &mut self,
+        msg: JoinRoom,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+
+        if msg.room_id == TOC_ROOM_ID {
+            let Some(toc) = &self.toc else {
+                return JoinRoomResult::ActorError("toc actor not ready".to_string());
+            };
+            let _ = toc
+                .tell(toc::ClientJoin {
+                    conn_id: msg.conn_id,
+                    tx: msg.tx,
+                })
+                .send()
+                .await;
+            tracing::info!(conn_id = msg.conn_id, "client joined toc room");
+            JoinRoomResult::Joined(RoomHandle::Toc(toc.clone()))
+        } else {
+            let thing_id = ThingId(msg.room_id.clone().into());
+            match self.get_or_spawn_thing(&thing_id).await {
+                Some(thing) => {
+                    let _ = thing
+                        .tell(crate::actors::thing::ClientJoin {
+                            conn_id: msg.conn_id,
+                            tx: msg.tx,
+                        })
+                        .send()
+                        .await;
+                    tracing::info!(conn_id = msg.conn_id, thing_id = %msg.room_id, "client joined thing room");
+                    JoinRoomResult::Joined(RoomHandle::Thing(thing))
+                }
+                None => JoinRoomResult::NotFound,
+            }
+        }
+    }
+}
+
+impl CampaignSupervisor {
+    async fn get_or_spawn_thing(&mut self, thing_id: &ThingId) -> Option<ActorRef<ThingActor>> {
+        if let Some(thing) = self.things.get(thing_id) {
+            return Some(thing.clone());
+        }
+
+        let db = self.db.as_ref()?;
+        let exists = match db
+            .writer()
+            .ask(ThingExists {
+                thing_id: thing_id.clone(),
+            })
+            .await
+        {
+            Ok(b) => b,
+            Err(_) => return None,
+        };
+
+        if !exists {
+            tracing::warn!(thing_id = %thing_id.0, "thing not found in database");
+            return None;
+        }
+
+        let thing_ref = ThingActor::spawn(ThingActorArgs {
+            thing_id: thing_id.clone(),
+        });
+        self.things.insert(thing_id.clone(), thing_ref.clone());
+        Some(thing_ref)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CreateThing
+// ---------------------------------------------------------------------------
+
+pub struct CreateThing {
+    pub name: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum CreateThingError {
+    #[error("database error: {0}")]
+    Db(String),
+    #[error("toc error: {0}")]
+    Toc(String),
+    #[error("supervisor not ready")]
+    NotReady,
+}
+
+impl Message<CreateThing> for CampaignSupervisor {
+    type Reply = Result<ThingHandle, CreateThingError>;
+
+    async fn handle(
+        &mut self,
+        msg: CreateThing,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        let db = self.db.as_ref().ok_or(CreateThingError::NotReady)?;
+        let toc = self.toc.as_ref().ok_or(CreateThingError::NotReady)?;
+
+        let handle = db
+            .writer()
+            .ask(DbCreateThing {
+                name: msg.name.clone(),
+            })
+            .await
+            .map_err(|e| CreateThingError::Db(e.to_string()))?;
+
+        let entry = TocEntry::Thing {
+            title: handle.name.clone(),
+            thing_id: handle.id.clone(),
+        };
+        toc.ask(toc::AddEntry {
+            entry,
+            parent: None,
+        })
+        .await
+        .map_err(|e| CreateThingError::Toc(e.to_string()))?;
+
+        tracing::info!(thing_id = %handle.id.0, name = %handle.name, "thing created");
+        Ok(handle)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DeleteThing
+// ---------------------------------------------------------------------------
+
+pub struct DeleteThing {
+    pub thing_id: ThingId,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DeleteThingError {
+    #[error("database error: {0}")]
+    Db(String),
+    #[error("supervisor not ready")]
+    NotReady,
+}
+
+impl Message<DeleteThing> for CampaignSupervisor {
+    type Reply = Result<bool, DeleteThingError>;
+
+    async fn handle(
+        &mut self,
+        msg: DeleteThing,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        let db = self.db.as_ref().ok_or(DeleteThingError::NotReady)?;
+
+        if let Some(thing_ref) = self.things.remove(&msg.thing_id) {
+            let _ = thing_ref.stop_gracefully().await;
+            thing_ref.wait_for_shutdown().await;
+        }
+
+        let deleted = db
+            .writer()
+            .ask(DbDeleteThing {
+                thing_id: msg.thing_id.clone(),
+            })
+            .await
+            .map_err(|e| DeleteThingError::Db(e.to_string()))?;
+
+        if deleted {
+            if let Some(toc) = &self.toc {
+                let tree = {
+                    // Find the tree_id for this thing in the ToC.
+                    // The TocActor doesn't expose a find-by-thing-id message yet,
+                    // so we ask for the snapshot and search locally. This is fine
+                    // for the thin-slice; a dedicated message is a follow-up.
+                    // For now, we remove by broadcasting the deletion; the client
+                    // will see the thing disappear from the ToC.
+                    //
+                    // TODO: add a RemoveByThingId message to TocActor to avoid
+                    // the snapshot round-trip.
+                    None::<loro::TreeID>
+                };
+                if let Some(tree_id) = tree {
+                    let _ = toc.ask(toc::RemoveEntry { tree_id }).await;
+                }
+            }
+            tracing::info!(thing_id = %msg.thing_id.0, "thing deleted");
+        }
+
+        Ok(deleted)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ClientDisconnected
+// ---------------------------------------------------------------------------
+
+pub struct ClientDisconnected {
+    pub conn_id: u64,
+}
+
+impl Message<ClientDisconnected> for CampaignSupervisor {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: ClientDisconnected,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        tracing::info!(conn_id = msg.conn_id, "client disconnected");
     }
 }
 

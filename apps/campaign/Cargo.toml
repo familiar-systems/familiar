@@ -10,12 +10,13 @@ name = "emit-openapi-campaign"
 path = "src/bin/emit-openapi.rs"
 
 [dependencies]
-axum = { workspace = true }
+axum = { workspace = true, features = ["ws"] }
 familiar-systems-app-shared = { path = "../../crates/app-shared" }
 familiar-systems-campaign-shared = { path = "../../crates/campaign-shared" }
 fs-id = { path = "../../crates/fs-id" }
 
 chrono = { workspace = true }
+futures-util = "0.3"
 include_dir = "0.7"
 kameo = { workspace = true }
 libsqlite3-sys = "0.30"

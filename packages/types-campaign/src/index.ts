@@ -4,6 +4,10 @@
 export * from "./generated/id";
 export * from "./generated/document";
 export * from "./generated/onboarding";
+export * from "./generated/things";
+
+// Runtime schemas for branded IDs.
+export { thingIdSchema } from "./schemas";
 
 // `paths` describes every route the campaign server exposes. Generated
 // from utoipa's OpenAPI spec; component schemas resolve back to the

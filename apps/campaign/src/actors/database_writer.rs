@@ -5,11 +5,16 @@
 
 use chrono::Utc;
 use familiar_systems_app_shared::id::CampaignId;
+use familiar_systems_campaign_shared::id::ThingId;
+use familiar_systems_campaign_shared::loro::thing::ThingHandle;
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+};
 
-use crate::entities::campaign_metadata;
+use crate::domain::crdt::doc::Snapshot;
+use crate::entities::{campaign_metadata, things};
 
 pub struct DatabaseActor {
     campaign_id: CampaignId,
@@ -157,6 +162,152 @@ impl Message<GetMetadata> for DatabaseActor {
             .one(&self.conn)
             .await?
             .ok_or(MetadataError::NoMetadataRow)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CreateThing
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct CreateThing {
+    pub name: String,
+}
+
+impl Message<CreateThing> for DatabaseActor {
+    type Reply = Result<ThingHandle, sea_orm::DbErr>;
+
+    async fn handle(
+        &mut self,
+        msg: CreateThing,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let id = ThingId::generate();
+        let now = Utc::now();
+        let am = things::ActiveModel {
+            id: Set(id.clone().into()),
+            name: Set(msg.name.clone()),
+            status: Set(crate::entities::columns::StatusCol::GmOnly),
+            prototype_id: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+        };
+        am.insert(&self.conn).await?;
+        Ok(ThingHandle {
+            id,
+            name: msg.name,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DeleteThing
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct DeleteThing {
+    pub thing_id: ThingId,
+}
+
+impl Message<DeleteThing> for DatabaseActor {
+    type Reply = Result<bool, sea_orm::DbErr>;
+
+    async fn handle(
+        &mut self,
+        msg: DeleteThing,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let col_id: crate::entities::columns::ThingIdCol = msg.thing_id.into();
+        let result = things::Entity::delete_many()
+            .filter(things::Column::Id.eq(col_id))
+            .exec(&self.conn)
+            .await?;
+        Ok(result.rows_affected > 0)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ThingExists
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct ThingExists {
+    pub thing_id: ThingId,
+}
+
+impl Message<ThingExists> for DatabaseActor {
+    type Reply = Result<bool, sea_orm::DbErr>;
+
+    async fn handle(
+        &mut self,
+        msg: ThingExists,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let col_id: crate::entities::columns::ThingIdCol = msg.thing_id.into();
+        let row = things::Entity::find_by_id(col_id)
+            .one(&self.conn)
+            .await?;
+        Ok(row.is_some())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SaveTocSnapshot / LoadTocSnapshot
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+pub struct SaveTocSnapshot {
+    pub snapshot: Snapshot,
+}
+
+impl Message<SaveTocSnapshot> for DatabaseActor {
+    type Reply = Result<(), sea_orm::DbErr>;
+
+    async fn handle(
+        &mut self,
+        msg: SaveTocSnapshot,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        use sea_orm::{ConnectionTrait, Statement};
+        let now = Utc::now().to_rfc3339();
+        self.conn
+            .execute(Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Sqlite,
+                "INSERT INTO toc (id, snapshot, updated_at) VALUES (1, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET snapshot = excluded.snapshot, updated_at = excluded.updated_at",
+                [msg.snapshot.0.into(), now.into()],
+            ))
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct LoadTocSnapshot;
+
+impl Message<LoadTocSnapshot> for DatabaseActor {
+    type Reply = Result<Option<Snapshot>, sea_orm::DbErr>;
+
+    async fn handle(
+        &mut self,
+        _: LoadTocSnapshot,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        use sea_orm::{ConnectionTrait, Statement};
+        let result = self
+            .conn
+            .query_one(Statement::from_string(
+                sea_orm::DatabaseBackend::Sqlite,
+                "SELECT snapshot FROM toc WHERE id = 1".to_string(),
+            ))
+            .await?;
+        match result {
+            Some(row) => {
+                let bytes: Vec<u8> = row.try_get_by_index(0)?;
+                Ok(Some(Snapshot(bytes)))
+            }
+            None => Ok(None),
+        }
     }
 }
 

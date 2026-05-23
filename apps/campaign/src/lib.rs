@@ -11,6 +11,7 @@ pub mod middleware;
 pub mod migrations;
 pub mod openapi;
 pub mod persistence;
+pub mod protocol;
 pub mod router;
 pub mod routes;
 pub mod starter_content;

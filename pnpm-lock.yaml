@@ -180,6 +180,15 @@ importers:
       '@teamhanko/hanko-elements':
         specifier: ^2.6.0
         version: 2.6.0
+      loro-adaptors:
+        specifier: ^0.6.1
+        version: 0.6.1(loro-crdt@1.12.1)
+      loro-crdt:
+        specifier: ^1.12.1
+        version: 1.12.1
+      loro-websocket:
+        specifier: ^0.6.2
+        version: 0.6.2(loro-crdt@1.12.1)
       lucide-react:
         specifier: 'catalog:'
         version: 1.11.0(react@19.2.5)
@@ -270,6 +279,9 @@ importers:
       '@familiar-systems/types-app':
         specifier: workspace:*
         version: link:../types-app
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@familiar-systems/tsconfig':
         specifier: workspace:*
@@ -2106,6 +2118,9 @@ packages:
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
 
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
+
   '@ungap/structured-clone@1.3.0':
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
     deprecated: Potential CWE-502 - Update to 1.3.1 or higher
@@ -3204,6 +3219,34 @@ packages:
 
   longest-streak@3.1.0:
     resolution: {integrity: sha512-9Ri+o0JYgehTaVBBDoMqIl8GXtbWg711O3srftcHhZ0dqnETqLaoIK0x17fUw9rFSlK/0NlsKe0Ahhyl5pXE2g==}
+
+  loro-adaptors@0.6.1:
+    resolution: {integrity: sha512-s1H4NfKRIRF76FNgOX2/mmtXLnedE7bQVJR4wmcwarpmePXx7nE6r7QJkATYanF4SJnlP5S1oRT6Vkl1N85e2Q==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      '@loro-dev/flock': ^4.1.0
+      loro-crdt: ^1.9.0
+      yjs: '*'
+    peerDependenciesMeta:
+      '@loro-dev/flock':
+        optional: true
+      loro-crdt:
+        optional: true
+      yjs:
+        optional: true
+
+  loro-crdt@1.12.1:
+    resolution: {integrity: sha512-iHDGq4RaTHr6CFbXqV91ngKyVlB2NuYXz0q9t0Dedr8sQnbcPNdFs4DaqzDNP1jojuygFvYv12gt407M22OeQg==}
+
+  loro-protocol@0.3.0:
+    resolution: {integrity: sha512-j28FzDwOVHk95asjQEk8yse7hfYHnStdusYcQBphWRwzA8wzE5iMHQpnDyog1O6kmJQ6W/iC8yDisHpxH0wUAg==}
+    engines: {node: '>=18.0.0'}
+
+  loro-websocket@0.6.2:
+    resolution: {integrity: sha512-B9rHs5L1XZkmiBg8+HIFbFH1uiFg12m8Ua66D0tywvOy74WyqKVY/jbYcVLdCMglBzxU+u6XO5/yh0L4RLiJMA==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      loro-crdt: ^1.9.0
 
   lower-case@2.0.2:
     resolution: {integrity: sha512-7fm3l3NAF9WfN6W3JOmf5drwpVqX78JtoGJ3A6W0a6ZnldM41w2fV5D490psKFTpMds8TJse/eHLFFsNHHjHgg==}
@@ -4477,6 +4520,18 @@ packages:
     resolution: {integrity: sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==}
     engines: {node: '>=10'}
 
+  ws@8.20.1:
+    resolution: {integrity: sha512-It4dO0K5v//JtTXuPkfEOaI3uUN87iYPnqo/ZzqCoG3g8uhA66QUMs/SrM0YK7/NAu+r4LMh/9dq2A7k+rHs+w==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   xml-naming@0.1.0:
     resolution: {integrity: sha512-k8KO9hrMyNk6tUWqUfkTEZbezRRpONVOzUTnc97VnCvyj6Tf9lyUR9EDAIeiVLv56jsMcoXEwjW8Kv5yPY52lw==}
     engines: {node: '>=16.0.0'}
@@ -4715,13 +4770,13 @@ snapshots:
     dependencies:
       fast-xml-parser: 5.7.2
       piccolore: 0.1.3
-      zod: 4.3.6
+      zod: 4.4.3
 
   '@astrojs/sitemap@3.7.2':
     dependencies:
       sitemap: 9.0.1
       stream-replace-string: 2.0.0
-      zod: 4.3.6
+      zod: 4.4.3
 
   '@astrojs/telemetry@3.3.1':
     dependencies:
@@ -6146,6 +6201,10 @@ snapshots:
 
   '@types/unist@3.0.3': {}
 
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 25.6.0
+
   '@ungap/structured-clone@1.3.0': {}
 
   '@upsetjs/venn.js@2.0.0':
@@ -7458,6 +7517,29 @@ snapshots:
   lodash-es@4.18.1: {}
 
   longest-streak@3.1.0: {}
+
+  loro-adaptors@0.6.1(loro-crdt@1.12.1):
+    dependencies:
+      loro-protocol: 0.3.0
+    optionalDependencies:
+      loro-crdt: 1.12.1
+
+  loro-crdt@1.12.1: {}
+
+  loro-protocol@0.3.0: {}
+
+  loro-websocket@0.6.2(loro-crdt@1.12.1):
+    dependencies:
+      '@types/ws': 8.18.1
+      loro-adaptors: 0.6.1(loro-crdt@1.12.1)
+      loro-crdt: 1.12.1
+      loro-protocol: 0.3.0
+      ws: 8.20.1
+    transitivePeerDependencies:
+      - '@loro-dev/flock'
+      - bufferutil
+      - utf-8-validate
+      - yjs
 
   lower-case@2.0.2:
     dependencies:
@@ -9090,6 +9172,8 @@ snapshots:
       ansi-styles: 4.3.0
       string-width: 4.2.3
       strip-ansi: 6.0.1
+
+  ws@8.20.1: {}
 
   xml-naming@0.1.0: {}
 

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "familiar.systems campaign API",
-    "description": "Campaign-scoped endpoints: catalog, metadata, and (future) CRDT room bootstrapping.",
+    "description": "Campaign-scoped endpoints: catalog, metadata, things, and CRDT room bootstrapping.",
     "license": {
       "name": "AGPL-3.0-or-later",
       "identifier": "AGPL-3.0-or-later"
@@ -112,6 +112,106 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/campaign/{id}/things": {
+      "post": {
+        "tags": ["things"],
+        "operationId": "create_thing",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateThingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Thing created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateThingResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Not the campaign owner"
+          },
+          "404": {
+            "description": "Campaign not on this shard"
+          },
+          "500": {
+            "description": "Internal error"
+          },
+          "503": {
+            "description": "Server restarting"
+          }
+        }
+      }
+    },
+    "/campaign/{id}/things/{thing_id}": {
+      "delete": {
+        "tags": ["things"],
+        "operationId": "delete_thing",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "thing_id",
+            "in": "path",
+            "description": "Thing ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Thing deleted"
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Not the campaign owner"
+          },
+          "404": {
+            "description": "Campaign or thing not found"
+          },
+          "500": {
+            "description": "Internal error"
+          },
+          "503": {
+            "description": "Server restarting"
           }
         }
       }
@@ -239,6 +339,27 @@
           }
         }
       },
+      "CreateThingRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateThingResponse": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ThingId"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "PatchCampaignRequest": {
         "type": "object",
         "properties": {
@@ -330,6 +451,11 @@
             "description": "`<system-id>/<template-name>` slug, e.g. `common/npc`."
           }
         }
+      },
+      "ThingId": {
+        "type": "string",
+        "format": "nanoid",
+        "description": "Uniquely identifies a thing (NPC, location, item, etc.).\nKept as a nanoid for short URLs."
       }
     }
   }

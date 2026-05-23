@@ -8,9 +8,12 @@ import type {
   CampaignErrorResponse,
   CampaignMetadataResponse,
   CatalogResponse,
+  CreateThingRequest,
+  CreateThingResponse,
   PatchCampaignRequest,
   SystemEntry,
   TemplateRef,
+  ThingId,
 } from "@familiar-systems/types-campaign";
 export interface paths {
   "/campaign/{id}": {
@@ -27,6 +30,38 @@ export interface paths {
     options?: never;
     head?: never;
     patch: operations["patch_campaign"];
+    trace?: never;
+  };
+  "/campaign/{id}/things": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["create_thing"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/campaign/{id}/things/{thing_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations["delete_thing"];
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/catalog/systems": {
@@ -88,9 +123,17 @@ export interface components {
     CampaignErrorResponse: CampaignErrorResponse;
     CampaignMetadataResponse: CampaignMetadataResponse;
     CatalogResponse: CatalogResponse;
+    CreateThingRequest: CreateThingRequest;
+    CreateThingResponse: CreateThingResponse;
     PatchCampaignRequest: PatchCampaignRequest;
     SystemEntry: SystemEntry;
     TemplateRef: TemplateRef;
+    /**
+     * Format: nanoid
+     * @description Uniquely identifies a thing (NPC, location, item, etc.).
+     *     Kept as a nanoid for short URLs.
+     */
+    ThingId: ThingId;
   };
   responses: never;
   parameters: never;
@@ -226,6 +269,126 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["CampaignErrorResponse"];
         };
+      };
+    };
+  };
+  create_thing: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateThingRequest"];
+      };
+    };
+    responses: {
+      /** @description Thing created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreateThingResponse"];
+        };
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not the campaign owner */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not on this shard */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_thing: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+        /** @description Thing ID */
+        thing_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Thing deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not the campaign owner */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign or thing not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
