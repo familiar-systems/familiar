@@ -4,7 +4,7 @@
 #   docker build -f apps/web/Dockerfile -t familiar-systems-web .
 
 # -- Stage 1: Build ----------------------------------------------------------
-FROM node:24-bookworm-slim AS builder
+FROM node:26-bookworm-slim AS builder
 
 # pnpm version is the single source of truth in mise.toml (resolved to an exact
 # patch by mise.lock). CI reads it via `mise current 'npm:pnpm'` and passes it
@@ -54,7 +54,7 @@ ENV VITE_SITE_URL=${VITE_SITE_URL}
 RUN pnpm --filter @familiar-systems/web build
 
 # -- Stage 2: Serve -----------------------------------------------------------
-FROM nginx:1.30-alpine
+FROM nginx:1.31.1-alpine
 
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /build/apps/web/dist /usr/share/nginx/html
