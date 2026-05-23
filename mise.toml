@@ -70,9 +70,19 @@ dir = "workers/whisperx"
 run = "uv sync"
 
 [tasks."setup:infra"]
-description = "Initialize OpenTofu + sync Python venv for infra scripts"
+description = "Download OpenTofu providers + sync Python venv for infra scripts"
 dir = "infra/tofu"
-run = ["tofu init", "uv sync"]
+# If the backend is already configured (infra contributor), re-init normally
+# so provider versions stay in sync. Otherwise skip the backend so fresh
+# contributors don't need Scaleway credentials.
+run = """
+if [ -f .terraform/terraform.tfstate ]; then
+  tofu init
+else
+  tofu init -backend=false
+fi
+uv sync
+"""
 
 [tasks."setup:e2e"]
 description = "Install Playwright's browser binary (chromium) for apps/web e2e tests"
@@ -463,7 +473,13 @@ dir = "infra/tofu"
 raw = true
 run = "uv run python scripts/rotate_scw_key.py"
 
+[tasks."infra:init"]
+description = "Initialize OpenTofu with full S3 backend (requires Scaleway credentials + .envrc)"
+dir = "infra/tofu"
+run = "tofu init"
+
 [tasks."plan:infra"]
 description = "Preview infrastructure changes (tofu plan)"
 dir = "infra/tofu"
+depends = ["infra:init"]
 run = "tofu plan"
