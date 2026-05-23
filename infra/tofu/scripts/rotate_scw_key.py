@@ -9,13 +9,13 @@ it manually again. State machine:
                     local: scw config set + ./scripts/setup.sh regen of .envrc
     4. verify       gha:   gh workflow run ci_cd_main.yml + infra.yml on main,
                            gh run watch --exit-status (block until green).
-                    local: scw account info + pulumi preview --non-interactive
+                    local: scw account info + tofu plan
                            (with os.environ refreshed from the new .envrc).
     5. revoke       scw iam api-key delete <old> (skipped with --keep-old).
     6. report       summary of what changed.
 
 Auth model: reads the current shell's SCW credentials from the env (typically
-loaded via direnv from infra/pulumi-cloud/.envrc). That key must have IAM
+loaded via direnv from infra/tofu/.envrc). That key must have IAM
 permission to mint and delete api-keys on the target Application; in
 practice this means an admin key. For target=local, the script swaps the
 process env mid-run after step 3 so steps 4 and 5 use the NEW credentials.
@@ -42,7 +42,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, TypeAdapter
 REPO_DEFAULT = "familiar-systems/familiar"
 GHA_VERIFY_WORKFLOWS = ("ci_cd_main.yml", "infra.yml")
 SCRIPT_DIR = Path(__file__).resolve().parent
-PULUMI_DIR = SCRIPT_DIR.parent
+TOFU_DIR = SCRIPT_DIR.parent
 
 Target = Literal["gha", "local"]
 TARGETS: Final[tuple[Target, ...]] = get_args(Target)
@@ -139,7 +139,7 @@ def run(
 
 
 def preflight() -> None:
-    for tool in ("scw", "gh", "pulumi", "git"):
+    for tool in ("scw", "gh", "tofu", "git"):
         if not shutil.which(tool):
             raise FileNotFoundError(f"{tool} not on PATH. Install it before re-running.")
     auth = run(["gh", "auth", "status"], check=False)
@@ -262,7 +262,7 @@ def apply_local(new: ApiKey, *, dry_run: bool) -> None:
     if dry_run:
         click.echo(f"--   [dry-run] scw config set access-key={new.access_key}")
         click.echo("--   [dry-run] scw config set secret-key=<new>")
-        click.echo(f"--   [dry-run] cd {PULUMI_DIR} && bash scripts/setup.sh")
+        click.echo(f"--   [dry-run] cd {TOFU_DIR} && bash scripts/setup.sh")
         return
     if new.secret_key is None:
         raise RuntimeError(
@@ -273,8 +273,8 @@ def apply_local(new: ApiKey, *, dry_run: bool) -> None:
         ["scw", "config", "set", f"secret-key={new.secret_key.get_secret_value()}"],
         capture=False,
     )
-    setup = PULUMI_DIR / "scripts" / "setup.sh"
-    _ = run(["bash", str(setup)], cwd=PULUMI_DIR, capture=False)
+    setup = TOFU_DIR / "scripts" / "setup.sh"
+    _ = run(["bash", str(setup)], cwd=TOFU_DIR, capture=False)
 
 
 def trigger_and_watch_workflow(workflow: str, repo: str) -> None:
@@ -352,9 +352,9 @@ def reload_env_from_envrc() -> None:
     os.environ. Required between step 3 and step 4 for target=local because
     the running process inherited the OLD credentials at startup; we have to
     propagate the NEW ones into our own environment before invoking
-    `scw account info` and `pulumi preview`.
+    `scw account info` and `tofu plan`.
     """
-    envrc = PULUMI_DIR / ".envrc"
+    envrc = TOFU_DIR / ".envrc"
     if not envrc.exists():
         raise FileNotFoundError(f"Expected {envrc} to exist after setup.sh; it doesn't.")
     for raw_line in envrc.read_text().splitlines():
@@ -369,11 +369,11 @@ def reload_env_from_envrc() -> None:
 
 
 def verify_local(*, dry_run: bool) -> None:
-    click.echo("-- step 4 (local): scw account info + pulumi preview")
+    click.echo("-- step 4 (local): scw account info + tofu plan")
     if dry_run:
         click.echo("--   [dry-run] os.environ <- new .envrc")
         click.echo("--   [dry-run] scw account info")
-        click.echo(f"--   [dry-run] cd {PULUMI_DIR} && pulumi preview --non-interactive")
+        click.echo(f"--   [dry-run] cd {TOFU_DIR} && tofu plan")
         return
     reload_env_from_envrc()
     r = run(["scw", "account", "info"], check=False)
@@ -384,16 +384,14 @@ def verify_local(*, dry_run: bool) -> None:
             "To roll back: edit ~/.config/scw/config.yaml back to the OLD pair, re-run\n"
             "`./scripts/setup.sh`, then `scw iam api-key delete <new-access-key>`."
         )
-    preview = run(
-        ["pulumi", "preview", "--non-interactive"],
-        cwd=PULUMI_DIR,
+    plan = run(
+        ["tofu", "plan", ""],
+        cwd=TOFU_DIR,
         capture=False,
         check=False,
     )
-    if preview.returncode != 0:
-        raise RuntimeError(
-            "`pulumi preview` failed with the new key. Same state and rollback as above."
-        )
+    if plan.returncode != 0:
+        raise RuntimeError("`tofu plan` failed with the new key. Same state and rollback as above.")
 
 
 def revoke(old: ApiKey, *, dry_run: bool) -> None:

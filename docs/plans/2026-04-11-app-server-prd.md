@@ -213,9 +213,9 @@ Three environments, same application shape. What changes between them is the fab
 
 ### Prod
 
-- **Entry point:** Pulumi-managed k3s resources in the default namespace. `pulumi up` from `infra/pulumi-cloud/`.
+- **Entry point:** Kustomize-managed k8s resources in the default namespace. Applied by CI on merge to main (see `ci_cd_main.yml`).
 - **URLs:** `https://familiar.systems/` (Astro); `https://app.familiar.systems/{,api,campaign}/...`. Two host-scoped Traefik IngressRoutes; longest-prefix rules apply within the app apex.
-- **Auth:** prod Hanko tenant via `HANKO_API_URL` (value is `HANKO_API_URL_PROD` constant from Pulumi config, injected into the platform deployment). Registered origin is exactly `https://app.familiar.systems`.
+- **Auth:** prod Hanko tenant via `HANKO_API_URL` (hardcoded in `infra/k8s/overlays/prod/patches/deployments.yaml`, injected into the platform deployment). Registered origin is exactly `https://app.familiar.systems`.
 - **Data:** platform DB on Hetzner Volume at `/data/platform/platform.db`. Campaign libSQL files on the volume + mirrored to Hetzner Object Storage (source of truth for recovery + cross-shard handoff).
 
 ### What's the same across all three

@@ -2,14 +2,14 @@
 
 **Status:** Draft
 **Date:** 2026-03-30
-**Supersedes:** [k3s + Pulumi Infrastructure (deployment strategy)](../archive/plans/2026-03-12-deployment-strategy.md) - jointly with [Infrastructure](./2026-03-30-infrastructure.md). The superseded document covered both infrastructure primitives and deployment concerns as one plan. This ADR covers service topology, deployment lifecycle, and preview environments. The [Infrastructure](./2026-03-30-infrastructure.md) doc covers the cluster, storage, certificates, and CI/CD pipeline.
-**Related decisions:** [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [Project Structure](./2026-03-26-project-structure-design.md), [Infrastructure](./2026-03-30-infrastructure.md)
+**Supersedes:** [k3s + Pulumi Infrastructure (deployment strategy)](../archive/plans/2026-03-12-deployment-strategy.md) - jointly with [Infrastructure](./2026-05-23-infrastructure.md). The superseded document covered both infrastructure primitives and deployment concerns as one plan. This ADR covers service topology, deployment lifecycle, and preview environments. The [Infrastructure](./2026-05-23-infrastructure.md) doc covers the cluster, storage, certificates, and CI/CD pipeline.
+**Related decisions:** [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [Project Structure](./2026-03-26-project-structure-design.md), [Infrastructure](./2026-05-23-infrastructure.md)
 
 ---
 
 ## Context
 
-The [Project Structure](./2026-03-26-project-structure-design.md) defines four deployment targets with different lifecycles: public site (Astro static), frontend (Vite SPA), server (Rust: Axum + kameo), and ML workers (Python). The [Infrastructure](./2026-03-30-infrastructure.md) doc defines the k3s cluster, Hetzner Volume, Pulumi project structure, and CI/CD pipeline.
+The [Project Structure](./2026-03-26-project-structure-design.md) defines four deployment targets with different lifecycles: public site (Astro static), frontend (Vite SPA), server (Rust: Axum + kameo), and ML workers (Python). The [Infrastructure](./2026-05-23-infrastructure.md) doc defines the k3s cluster, Hetzner Volume, OpenTofu project structure, and CI/CD pipeline.
 
 This ADR decides how the Rust server is split, how services discover each other, how deployments happen without disrupting active sessions, and how preview environments work. The decisions here are driven by three properties of the system:
 
@@ -280,7 +280,7 @@ Contributors are added manually by email on the preview tenant; registration is 
 
 #### TLS
 
-A single cert-manager `Certificate` covers all four apex domains - `familiar.systems`, `app.familiar.systems`, `preview.familiar.systems`, `app.preview.familiar.systems` - issued once via DNS-01 + bunny.net. No per-PR certs, no wildcard SANs. See [Infrastructure](./2026-03-30-infrastructure.md) for the cert-manager configuration.
+A single cert-manager `Certificate` covers all four apex domains - `familiar.systems`, `app.familiar.systems`, `preview.familiar.systems`, `app.preview.familiar.systems` - issued once via DNS-01 + bunny.net. No per-PR certs, no wildcard SANs. See [Infrastructure](./2026-05-23-infrastructure.md) for the cert-manager configuration.
 
 #### Lifecycle
 
@@ -288,7 +288,7 @@ A single cert-manager `Certificate` covers all four apex domains - `familiar.sys
 
 **PR close:** `.github/workflows/cleanup-preview.yml` deletes the namespace, which cascade-removes all resources inside (Deployments, Services, Ingresses, Middlewares, PVCs, Jobs); it also deletes the platform hostPath PV and the per-PR registry image tags. The preview bucket's `campaigns/pr-<N>/` prefix is **not** cleaned eagerly: the preview bucket's bucket-wide `expiration: "7d"` lifecycle rule expires the objects 7 days after the last writeback (so within a week of PR close). Storage cost during the grace window is sub-cent per PR at realistic campaign-DB sizes, so the simpler "let lifecycle do it" path wins over wiring up S3 deletes in CI.
 
-Per-PR manifests are Kustomize overlays with `${VAR}` placeholders for non-secret per-PR values (namespace, images) rather than Pulumi-managed. Pulumi owns permanent cluster state (cert-manager, ClusterIssuers, the TLS cert, IAM credentials, SM secrets); CI owns ephemeral per-PR state. Secrets are `ExternalSecret` CRDs resolved by ESO. Ephemeral resources don't deserve Pulumi state overhead, and `kubectl apply` on raw YAML is ~2s per resource.
+Per-PR manifests are Kustomize overlays with `${VAR}` placeholders for non-secret per-PR values (namespace, images). OpenTofu owns permanent cloud infrastructure (compute, IAM, secrets containers, object storage); Helm-bootstrapped controllers (cert-manager, ESO) and Kustomize-applied manifests own the k8s layer; CI owns ephemeral per-PR state. Secrets are `ExternalSecret` CRDs resolved by ESO. `kubectl apply` on raw YAML is ~2s per resource.
 
 #### Why real data, not fixtures
 

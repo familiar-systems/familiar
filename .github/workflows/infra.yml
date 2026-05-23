@@ -3,20 +3,20 @@ name: Infrastructure
 on:
   pull_request:
     branches: [main]
-    paths: [infra/pulumi-cloud/**]
+    paths: [infra/tofu/**]
   push:
     branches: [main]
-    paths: [infra/pulumi-cloud/**]
-  # Manual trigger: used by infra/pulumi-cloud/scripts/rotate_scw_key.py
-  # to verify a freshly-rotated SCW_* secret pair against the Pulumi
-  # state backend (which uses the same credentials mapped to AWS_*).
-  # Bypasses the `paths:` filter intentionally; we want to run the
-  # workflow even when nothing under infra/pulumi-cloud/ has changed.
+    paths: [infra/tofu/**]
+  # Manual trigger: used by infra/tofu/scripts/rotate_scw_key.py to verify
+  # a freshly-rotated SCW_* secret pair against the state backend.
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  MISE_PYTHON_UV_VENV_AUTO: "false"
 
 permissions:
   contents: read
@@ -26,50 +26,45 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: infra/pulumi-cloud
+        working-directory: infra/tofu
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-
-      - name: ruff check
-        run: uv run ruff check --output-format=github .
-
-      - name: ruff format
-        run: uv run ruff format --check .
-
-  typecheck:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: infra/pulumi-cloud
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
         with:
-          persist-credentials: false
+          install_args: "opentofu"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
 
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: tofu fmt
+        run: tofu fmt -check -recursive
 
-      - name: basedpyright
-        run: uv run basedpyright
+      - name: tofu init (validation only)
+        run: tofu init -backend=false
+
+      - name: tofu validate
+        run: tofu validate
 
   preview:
-    # Fork-PR guard: only PRs from this repository run pulumi preview.
-    # Fork PRs skip without executing any step.
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    needs: [lint, typecheck]
+    needs: [lint]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
+    defaults:
+      run:
+        working-directory: infra/tofu
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install_args: "opentofu"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
 
       - uses: ./.github/actions/setup-scw
         with:
@@ -81,41 +76,62 @@ jobs:
       - uses: ./.github/actions/fetch-scw-secret
         id: passphrase
         with:
-          secret-name: pulumi-config-passphrase
+          secret-name: tofu-config-passphrase
 
-      - name: Cache Pulumi plugins
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/.pulumi/plugins
-          key: pulumi-plugins-${{ runner.os }}-${{ hashFiles('infra/pulumi-cloud/uv.lock') }}
-          restore-keys: |
-            pulumi-plugins-${{ runner.os }}-
-
-      - uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
-        with:
-          command: preview
-          stack-name: prod
-          cloud-url: s3://loreweaver-pulumi-state?endpoint=s3.fr-par.scw.cloud&region=fr-par
-          work-dir: infra/pulumi-cloud
-          comment-on-pr: true
+      - name: tofu init
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}
-          PULUMI_CONFIG_PASSPHRASE: ${{ steps.passphrase.outputs.value }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TF_VAR_state_encryption_passphrase: ${{ steps.passphrase.outputs.value }}
+        run: tofu init
+
+      - name: tofu plan
+        id: plan
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          TF_VAR_state_encryption_passphrase: ${{ steps.passphrase.outputs.value }}
+        run: |
+          tofu plan -no-color -out=tfplan 2>&1 | tee plan-output.txt
+          {
+            echo "plan<<PLANEOF"
+            head -c 60000 plan-output.txt
+            echo "PLANEOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment plan on PR
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          PLAN: ${{ steps.plan.outputs.plan }}
+        with:
+          script: |
+            const plan = process.env.PLAN;
+            const body = `### OpenTofu Plan\n\n\`\`\`\n${plan.substring(0, 60000)}\n\`\`\``;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
 
   deploy:
-    if: github.event_name == 'push'
-    needs: [lint, typecheck]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: [lint]
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    defaults:
+      run:
+        working-directory: infra/tofu
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install_args: "opentofu"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
 
       - uses: ./.github/actions/setup-scw
         with:
@@ -127,24 +143,20 @@ jobs:
       - uses: ./.github/actions/fetch-scw-secret
         id: passphrase
         with:
-          secret-name: pulumi-config-passphrase
+          secret-name: tofu-config-passphrase
 
-      - name: Cache Pulumi plugins
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/.pulumi/plugins
-          key: pulumi-plugins-${{ runner.os }}-${{ hashFiles('infra/pulumi-cloud/uv.lock') }}
-          restore-keys: |
-            pulumi-plugins-${{ runner.os }}-
-
-      - uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
-        with:
-          command: up
-          stack-name: prod
-          cloud-url: s3://loreweaver-pulumi-state?endpoint=s3.fr-par.scw.cloud&region=fr-par
-          work-dir: infra/pulumi-cloud
+      - name: tofu init
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}
-          PULUMI_CONFIG_PASSPHRASE: ${{ steps.passphrase.outputs.value }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TF_VAR_state_encryption_passphrase: ${{ steps.passphrase.outputs.value }}
+        run: tofu init
+
+      - name: tofu apply
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SCW_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          TF_VAR_state_encryption_passphrase: ${{ steps.passphrase.outputs.value }}
+        run: |
+          tofu plan -out=tfplan
+          tofu apply tfplan

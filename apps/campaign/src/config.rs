@@ -1,7 +1,7 @@
 //! Environment-driven configuration for the campaign server binary.
 //!
 //! All required values panic on missing (fail-fast at startup, not a silent default at
-//! request time). See `mise.toml` for development defaults and `infra/pulumi-cloud/` for
+//! request time). See `mise.toml` for development defaults and `infra/tofu/` for
 //! deployment values. Each field is documented on [`Config`].
 
 use std::path::PathBuf;
@@ -29,7 +29,7 @@ pub struct Config {
     pub hanko_api_url: String,
     pub campaign_data_dir: PathBuf,
     /// Shared bearer for `/internal/*` traffic. Same value used by every
-    /// peer; rotation contract documented in `infra/pulumi-cloud/CLAUDE.md`.
+    /// peer; rotation contract documented in `infra/CLAUDE.md`.
     pub internal_bearer_primary: String,
     pub internal_bearer_secondary: Option<String>,
     /// Base URL of the platform binary, used for outbound callbacks

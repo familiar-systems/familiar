@@ -19,6 +19,7 @@ zizmor = "latest"
 pinact = "latest"
 trufflehog = "latest"
 gitleaks = "latest"
+opentofu = "latest"
 "pipx:check-jsonschema" = "latest"
 
 [settings]
@@ -36,8 +37,8 @@ HANKO_API_URL_DEV = "https://auth.preview.familiar.systems"
 # Shared bearer for the platform <-> campaign /internal/* API. Local-only
 # value: never appears in any deployed environment. Both prod and preview
 # pull their bearer from Scaleway SM (`internal-bearer-prod`,
-# `internal-bearer-preview`); see infra/pulumi-cloud/CLAUDE.md "Required
-# Scaleway SM Secrets". Pulling from SM at every `mise run dev` would add
+# `internal-bearer-preview`); see infra/CLAUDE.md "Required Scaleway SM
+# Secrets". Pulling from SM at every `mise run dev` would add
 # a Scaleway credential dependency for every dev start, which we explicitly
 # don't want — hence the fixed string here.
 INTERNAL_BEARER_PRIMARY = "dev-internal-bearer-not-a-secret"
@@ -68,10 +69,20 @@ description = "Sync Python venv for ML workers"
 dir = "workers/whisperx"
 run = "uv sync"
 
-[tasks."setup:python-infra"]
-description = "Sync Python venv for Pulumi infra"
-dir = "infra/pulumi-cloud"
-run = "uv sync"
+[tasks."setup:infra"]
+description = "Download OpenTofu providers + sync Python venv for infra scripts"
+dir = "infra/tofu"
+# If the backend is already configured (infra contributor), re-init normally
+# so provider versions stay in sync. Otherwise skip the backend so fresh
+# contributors don't need Scaleway credentials.
+run = """
+if [ -f .terraform/terraform.tfstate ]; then
+  tofu init
+else
+  tofu init -backend=false
+fi
+uv sync
+"""
 
 [tasks."setup:e2e"]
 description = "Install Playwright's browser binary (chromium) for apps/web e2e tests"
@@ -267,13 +278,10 @@ sources = [
 ]
 
 [tasks."lint:infra"]
-dir = "infra/pulumi-cloud"
-run = "uv run ruff check ."
-sources = [
-  "infra/pulumi-cloud/**/*.py",
-  "infra/pulumi-cloud/pyproject.toml",
-  "infra/pulumi-cloud/uv.lock",
-]
+description = "Validate OpenTofu configuration and lint infra Python scripts"
+dir = "infra/tofu"
+run = ["tofu fmt -check -recursive", "tofu validate", "uv run ruff check ."]
+sources = ["infra/tofu/**/*.tf", "infra/tofu/**/*.tfvars", "infra/tofu/**/*.py"]
 
 [tasks."lint:workflows"]
 description = "Lint GitHub Actions workflow files with actionlint"
@@ -357,8 +365,8 @@ dir = "workers/whisperx"
 run = "uv run ruff format"
 
 [tasks."format:infra"]
-dir = "infra/pulumi-cloud"
-run = "uv run ruff format"
+dir = "infra/tofu"
+run = ["tofu fmt -recursive", "uv run ruff format"]
 
 [tasks."format:check"]
 description = "Check formatting (all ecosystems)"
@@ -390,9 +398,9 @@ run = "uv run ruff format --check ."
 sources = ["workers/whisperx/**/*.py", "workers/whisperx/pyproject.toml"]
 
 [tasks."format:check:infra"]
-dir = "infra/pulumi-cloud"
-run = "uv run ruff format --check ."
-sources = ["infra/pulumi-cloud/**/*.py", "infra/pulumi-cloud/pyproject.toml"]
+dir = "infra/tofu"
+run = ["tofu fmt -check -recursive", "uv run ruff format --check ."]
+sources = ["infra/tofu/**/*.tf", "infra/tofu/**/*.tfvars", "infra/tofu/**/*.py"]
 
 # --- typecheck ---
 
@@ -439,13 +447,12 @@ sources = [
 ]
 
 [tasks."typecheck:infra"]
-dir = "infra/pulumi-cloud"
+dir = "infra/tofu"
 run = "uv run basedpyright"
 sources = [
-  "infra/pulumi-cloud/**/*.py",
-  "infra/pulumi-cloud/pyproject.toml",
-  "infra/pulumi-cloud/uv.lock",
-  "infra/pulumi-cloud/pyrightconfig.json",
+  "infra/tofu/**/*.py",
+  "infra/tofu/pyproject.toml",
+  "infra/tofu/uv.lock",
 ]
 
 # --- generate ---
@@ -463,12 +470,23 @@ find . -name '*.tsbuildinfo' -delete
 
 # --- ops ---
 
-# Wraps infra/pulumi-cloud/scripts/rotate_scw_key.py. `raw = true` lets
+# Wraps infra/tofu/scripts/rotate_scw_key.py. `raw = true` lets
 # click (in the script) own arg parsing. For usage, run:
 #   mise run rotate-scw-key -- -h
 # The `--` is required only because mise's own `run` claims -h/--help.
 [tasks."rotate-scw-key"]
 description = "Rotate a Scaleway IAM api-key end-to-end. Args: <application-name> <gha|local> [--dry-run] [--keep-old]"
-dir = "infra/pulumi-cloud"
+dir = "infra/tofu"
 raw = true
 run = "uv run python scripts/rotate_scw_key.py"
+
+[tasks."infra:init"]
+description = "Initialize OpenTofu with full S3 backend (requires Scaleway credentials + .envrc)"
+dir = "infra/tofu"
+run = "tofu init"
+
+[tasks."plan:infra"]
+description = "Preview infrastructure changes (tofu plan)"
+dir = "infra/tofu"
+depends = ["infra:init"]
+run = "tofu plan"

@@ -9,7 +9,7 @@ set -euo pipefail
 #   - kubectl configured with cluster access
 #   - helm v3 installed
 #   - scw CLI authenticated (SCW_ACCESS_KEY, SCW_SECRET_KEY set)
-#   - Pulumi has run at least once (creates the ESO credential and
+#   - OpenTofu has run at least once (creates the ESO credential and
 #     registry-pull-credential SM secrets)
 
 CERT_MANAGER_VERSION="v1.17.2"

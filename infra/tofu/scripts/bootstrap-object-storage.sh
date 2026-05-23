@@ -1,26 +1,14 @@
 #!/usr/bin/env bash
-# bootstrap-object-storage.sh -- Operator-bootstrap Hetzner Object Storage
-# state that Pulumi can't manage end-to-end:
+# bootstrap-object-storage.sh -- Operator-bootstrap Hetzner Object Storage state.
 #   1. Five S3 credential pairs stored in Scaleway Secrets Manager.
 #   2. The two buckets themselves (familiar-systems-prod, -preview).
 #
 # Why this exists:
-#   (1) Hetzner Object Storage has no public API for creating S3 credentials
-#       -- they can only be generated through the Hetzner Console UI. So the
-#       five credential pairs we need are operator-bootstrapped: created by
-#       hand in the Console, then written into Scaleway SM as JSON blobs
-#       that Pulumi reads at apply time. Same shape `bootstrap.sh` uses for
-#       `pulumi-config-passphrase`.
-#   (2) Bucket Create runs into an unfixed upstream bug. pulumi-minio 0.16.9
-#       pins aminueza/terraform-provider-minio v1.20.1, whose Create flow
-#       does an immediate Read-after-Create that races with Hetzner's
-#       eventually-consistent bucket index -- the Read sees NoSuchBucket
-#       and the provider returns (nil state, nil error), tripping a Pulumi
-#       bridge panic. The fix is in aminueza v3.28.1 but the bridge has
-#       never bumped past v1.20.1 (released 2023-11-08, immediately put
-#       into maintenance mode). See pulumi-minio#754, aminueza#839.
-#       So we create the buckets here, and Pulumi adopts them on first
-#       apply via `pulumi.ResourceOptions(import_=...)` in object_storage.py.
+#   Hetzner Object Storage has no public API for creating S3 credentials --
+#   they can only be generated through the Hetzner Console UI. So the five
+#   credential pairs we need are operator-bootstrapped: created by hand in the
+#   Console, then written into Scaleway SM as JSON blobs that OpenTofu reads at
+#   apply time. Bucket creation is also handled here for bootstrap ordering.
 #
 # Per-credential JSON shape stored in SM:
 #   {"access_key_id": "...", "secret_access_key": "..."}
@@ -33,7 +21,7 @@
 #                                          AND the credential this script uses for CreateBucket.
 #   - familiar-systems-operator-key     -- Human ad-hoc data access (Cyberduck, AWS CLI)
 #
-# Bucket policies (created by Pulumi after this script runs) restrict the
+# Bucket policies (created by OpenTofu after this script runs) restrict the
 # seed key to read-only on prod and write-only on preview. The other three
 # keys have full access to their respective buckets via the policies' allow
 # lists.
@@ -60,7 +48,7 @@ SECRETS=(
     "familiar-systems-prod-key|campaign-server prod credentials (read+write, full project access)"
     "familiar-systems-preview-key|campaign-server preview credentials (read+write, full project access)"
     "familiar-systems-preview-seed-key|CI seed credentials (read prod, write preview only -- enforced by bucket policy)"
-    "familiar-systems-pulumi-key|Pulumi management credentials (configures the MinIO provider; must remain in all bucket policies' allow lists)"
+    "familiar-systems-pulumi-key|IaC management credentials (configures the MinIO provider; must remain in all bucket policies' allow lists)"
     "familiar-systems-operator-key|Operator ad-hoc data access (Cyberduck / AWS CLI). Full access to both buckets, not bound to any pod -- rotates without service impact."
 )
 
@@ -180,9 +168,9 @@ done
 # ---------------------------------------------------------------------------
 # Bucket creation
 # ---------------------------------------------------------------------------
-# Buckets are created here, not by Pulumi, because pulumi-minio 0.16.9 cannot
-# survive Hetzner's read-after-create race (see header). Pulumi adopts the
-# pre-created buckets on first apply via `import_=` in object_storage.py.
+# Buckets are created here for bootstrap ordering. OpenTofu's minio provider
+# (aminueza v3) can create buckets natively, but on a fresh setup the buckets
+# need to exist before the first `tofu apply` runs the import.
 
 HETZNER_S3_ENDPOINT="https://hel1.your-objectstorage.com"
 HETZNER_REGION="hel1"
@@ -237,12 +225,7 @@ cat <<EOF
 ==> Bootstrap complete.
 
 Next steps:
-  1. Make sure Pulumi config has the Hetzner Cloud project ID set:
-       pulumi config set hetzner-project-id <numeric-project-id>
-     (Find it in Hetzner Console -> top-right project menu -> the number
-      after the project name. NOT a secret.)
-  2. pulumi up  -- adopts the two buckets into Pulumi state (via import_=
-                   on the S3Bucket resources) and creates the bucket policies,
-                   lifecycle rules, and versioning. The pulumi-key SM secret
-                   is what the MinIO provider authenticates with.
+  1. Make sure prod.tfvars has hetzner_project_id set to the numeric ID
+     from the Hetzner Console (top-right project menu). NOT a secret.
+  2. tofu apply
 EOF

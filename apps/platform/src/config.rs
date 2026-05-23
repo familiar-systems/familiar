@@ -14,7 +14,7 @@ pub struct Config {
     /// During rotation, both primary and secondary are accepted; once
     /// every caller has switched to the new value, the operator removes
     /// secondary and re-deploys. See the rotation contract in
-    /// `infra/pulumi-cloud/CLAUDE.md`.
+    /// `infra/CLAUDE.md`.
     pub internal_bearer_secondary: Option<String>,
     /// Base URL of the campaign-tier shard the platform routes new
     /// campaigns to. v0 uses one shard; round-robin/load-aware comes later.

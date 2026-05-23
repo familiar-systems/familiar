@@ -3,6 +3,6 @@
     "typescript-lsp@claude-plugins-official": true
   },
   "permissions": {
-    "deny": ["Read(./infra/pulumi-cloud/.envrc)", "Read(./**/.envrc)", "Read(./**/.env)"]
+    "deny": ["Read(./**/.envrc)", "Read(./**/.env)"]
   }
 }

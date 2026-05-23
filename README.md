@@ -47,7 +47,7 @@ See [project structure](docs/plans/2026-03-26-project-structure-design.md) for t
 - **API contract:** ts-rs (type generation) + utoipa (OpenAPI)
 - **Public site:** Astro (static, React islands)
 - **ML workers:** Python with faster-whisper, pyannote (GPU, k8s Jobs)
-- **Infrastructure:** k3s on Hetzner, Pulumi IaC, Traefik Ingress
+- **Infrastructure:** k3s on Hetzner, OpenTofu IaC, Traefik Ingress
 
 ## Infrastructure
 
@@ -60,7 +60,7 @@ Each environment terminates traffic on **two apexes** with **path-based routing*
 
 PR previews share both apexes via a `/pr-{N}` path prefix rather than per-PR subdomains. The SPA only ever sees shard-agnostic URLs of the form `app.familiar.systems/campaign/{campaign_id}/*`; the platform's routing table maps each campaign ID to the shard currently hosting it, and that mapping never appears in user-facing URLs.
 
-See [infrastructure](docs/plans/2026-03-30-infrastructure.md), [deployment architecture](docs/plans/2026-03-30-deployment-architecture.md), and [libSQL over PostgreSQL decision](docs/discovery/2026-03-09-sqlite-over-postgres-decision.md).
+See [infrastructure](docs/plans/2026-05-23-infrastructure.md), [deployment architecture](docs/plans/2026-03-30-deployment-architecture.md), and [libSQL over PostgreSQL decision](docs/discovery/2026-03-09-sqlite-over-postgres-decision.md).
 
 ## Getting started
 
@@ -106,7 +106,7 @@ Use `mise tasks` to list every task with its description.
 - [Campaign collaboration](docs/plans/2026-03-25-campaign-collaboration-architecture.md): Rust/kameo/Loro collaboration architecture (authoritative)
 - [App server PRD](docs/plans/2026-04-11-app-server-prd.md): auth, campaign CRUD, routing table, shard coordination, billing
 - [Deployment architecture](docs/plans/2026-03-30-deployment-architecture.md): service topology, graceful restarts, preview environments
-- [Infrastructure](docs/plans/2026-03-30-infrastructure.md): k3s cluster, Hetzner Volume, Pulumi IaC, certificates
+- [Infrastructure](docs/plans/2026-05-23-infrastructure.md): k3s cluster, Hetzner Volume, OpenTofu IaC, certificates
 
 ### AI and domain model
 

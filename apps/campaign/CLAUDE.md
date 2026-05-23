@@ -36,7 +36,7 @@ main.rs
 
 **Shutdown.** `main` waits for SIGINT/SIGTERM, lets axum drain in-flight requests, then sends `BeginDrain` to the registry. `BeginDrain` flips the phase, snapshots the supervisor map, and runs the drain workflow on a tokio task (not in the registry mailbox) so the registry stays responsive while children stop in parallel. `DRAIN_DEADLINE` is the internal safety net; the k8s grace period is the real deadline.
 
-**Bearer + readiness.** `/internal/*` is bearer-protected via `middleware/internal_auth.rs`; the bearer is the layer-3 backstop, Ingress and NetworkPolicy carry layers 1 and 2 (see `infra/pulumi-cloud/CLAUDE.md`). `/health` flips to 503 the moment the registry enters `Draining`.
+**Bearer + readiness.** `/internal/*` is bearer-protected via `middleware/internal_auth.rs`; the bearer is the layer-3 backstop, Ingress and NetworkPolicy carry layers 1 and 2 (see `infra/CLAUDE.md`). `/health` flips to 503 the moment the registry enters `Draining`.
 
 ## Module map
 

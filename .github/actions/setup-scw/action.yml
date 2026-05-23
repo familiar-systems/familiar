@@ -36,7 +36,7 @@ runs:
       with:
         version: ${{ inputs.version }}
         save-config: true
-        export-config: true
+        export-config: false
         access-key: ${{ inputs.access-key }}
         secret-key: ${{ inputs.secret-key }}
         default-project-id: ${{ inputs.default-project-id }}

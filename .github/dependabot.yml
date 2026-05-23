@@ -64,20 +64,21 @@ updates:
         update-types:
           - major
 
-  # Pulumi cloud infrastructure (uv-managed). Held in its own block rather
-  # than co-grouped with the worker because the dep universes don't overlap.
+  # OpenTofu infrastructure scripts (uv-managed). rotate_scw_key.py and its
+  # click/pydantic deps. Held in its own block rather than co-grouped with
+  # the worker because the dep universes don't overlap.
   - package-ecosystem: uv
-    directory: /infra/pulumi-cloud
+    directory: /infra/tofu
     schedule:
       interval: monthly
     cooldown:
       default-days: 7
     groups:
-      pulumi-minor-and-patch:
+      infra-minor-and-patch:
         update-types:
           - minor
           - patch
-      pulumi-major:
+      infra-major:
         update-types:
           - major
 

@@ -1,6 +1,8 @@
 {
   "file_types": {
-    "GitHub Actions": [".github/workflows/*.yml", ".github/workflows/*.yaml"]
+    "GitHub Actions": [".github/workflows/*.yml", ".github/workflows/*.yaml"],
+    "OpenTofu": ["tf", "tofu"],
+    "OpenTofu Vars": ["tfvars"]
   },
   "lsp": {
     "oxlint": {
@@ -29,6 +31,17 @@
         "css": { "lint": { "unknownAtRules": "ignore" } },
         "scss": { "lint": { "unknownAtRules": "ignore" } },
         "less": { "lint": { "unknownAtRules": "ignore" } }
+      }
+    },
+    "tofu-ls": {
+      "settings": {
+        "tofu": {
+          // "path": "/usr/local/bin/tofu",
+          "timeout": "30s"
+        },
+        "indexing": {
+          "ignoreDirectoryNames": ["vendor"]
+        }
       }
     }
   },

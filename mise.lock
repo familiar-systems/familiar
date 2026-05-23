@@ -274,6 +274,38 @@ url = "https://nodejs.org/dist/v24.14.1/node-v24.14.1-win-x64.zip"
 version = "11.1.0"
 backend = "npm:pnpm"
 
+[[tools.opentofu]]
+version = "1.12.0"
+backend = "aqua:opentofu/opentofu"
+
+[tools.opentofu."platforms.linux-arm64"]
+checksum = "sha256:2c7f48f95678cf75bbe34b66eeee35de75e6ee46e2ec4b55f80a0d93445f47d8"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.0/tofu_1.12.0_linux_arm64.tar.gz"
+
+[tools.opentofu."platforms.linux-arm64-musl"]
+checksum = "sha256:2c7f48f95678cf75bbe34b66eeee35de75e6ee46e2ec4b55f80a0d93445f47d8"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.0/tofu_1.12.0_linux_arm64.tar.gz"
+
+[tools.opentofu."platforms.linux-x64"]
+checksum = "sha256:5fe1da79e7779538a13713809e83abe1238b95a7abd43ecffc6161af10b0ddf7"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.0/tofu_1.12.0_linux_amd64.tar.gz"
+
+[tools.opentofu."platforms.linux-x64-musl"]
+checksum = "sha256:5fe1da79e7779538a13713809e83abe1238b95a7abd43ecffc6161af10b0ddf7"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.0/tofu_1.12.0_linux_amd64.tar.gz"
+
+[tools.opentofu."platforms.macos-arm64"]
+checksum = "sha256:9ad35307131102371d770cfc1a9806225fd5040acf1a3d3d8c3b5ad5418cd454"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.0/tofu_1.12.0_darwin_arm64.tar.gz"
+
+[tools.opentofu."platforms.macos-x64"]
+checksum = "sha256:472a9b14bd9fc617b58dd00cf39411f64bd6fff6474d968a7ce041f33e991e72"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.0/tofu_1.12.0_darwin_amd64.tar.gz"
+
+[tools.opentofu."platforms.windows-x64"]
+checksum = "sha256:5900eb95e934c4cebb22a487cfa372710dd1f0234400c1c16c0db63b8485e6ce"
+url = "https://github.com/opentofu/opentofu/releases/download/v1.12.0/tofu_1.12.0_windows_amd64.tar.gz"
+
 [[tools.pinact]]
 version = "3.9.0"
 backend = "aqua:suzuki-shunsuke/pinact"

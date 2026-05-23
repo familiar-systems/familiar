@@ -139,7 +139,7 @@ The list of contributor emails lives in a version-controlled `contributors.sql` 
 
 **Tier 2 (when Turso Database exits beta):** Swap in Turso Database. Same files, better engine. `BEGIN CONCURRENT` available if needed. No infrastructure changes - only the database driver in `@familiar-systems/db` changes.
 
-Both tiers use the same file-on-disk model. The Hetzner Volume, the PR preview copy logic, and the Pulumi infrastructure don't change between tiers. Note: the [Hocuspocus Architecture ADR](.../archive/discovery/plans/2026-03-14-hocuspocus-architecture.md) makes Object Storage the source of truth with local disk as a working cache (campaign checkout/checkin lifecycle with ~30-second writeback).
+Both tiers use the same file-on-disk model. The Hetzner Volume, the PR preview copy logic, and the OpenTofu infrastructure don't change between tiers. Note: the [Hocuspocus Architecture ADR](.../archive/discovery/plans/2026-03-14-hocuspocus-architecture.md) makes Object Storage the source of truth with local disk as a working cache (campaign checkout/checkin lifecycle with ~30-second writeback).
 
 ## Self-hosting story
 
@@ -174,8 +174,8 @@ All containers mount the data directory. No database server to install, configur
 - [Previous PostgreSQL decision](../archive/discovery/2026-02-18-postgres-vs-turso.md) - superseded by this document
 - [Turso Database (Rust SQLite rewrite)](https://github.com/tursodatabase/turso) - MIT licensed, in-process, SQLite-compatible
 - [Turso Database JavaScript binding](https://www.npmjs.com/package/@tursodatabase/database)
-- [Infrastructure (k3s on Hetzner)](../../plans/2026-03-30-infrastructure.md) - deployment infrastructure this decision integrates with
+- [Infrastructure (k3s on Hetzner)](../../plans/2026-05-23-infrastructure.md) - deployment infrastructure this decision integrates with
 - [Hanko](https://www.hanko.io/) - authentication provider for familiar.systems
 - [SQLite WAL mode](https://www.sqlite.org/wal.html) - write-ahead logging for concurrent read/write
-- [Deployment strategy (archived)](../../archive/plans/2026-02-18-deployment-strategy.md) - superseded; see [current infrastructure plan](../../plans/2026-03-30-infrastructure.md)
+- [Deployment strategy (archived)](../../archive/plans/2026-02-18-deployment-strategy.md) - superseded; see [current infrastructure plan](../../plans/2026-05-23-infrastructure.md)
 - [Storage overview](../archive/discovery/2026-02-14-storage-overview.md) - original storage analysis
