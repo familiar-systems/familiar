@@ -299,7 +299,7 @@ Three layers, most specific wins:
 
 **ML workers** - Stateless GPU jobs for transcription and diarization. Deploy as k8s Jobs, decoupled from the application cluster. Receive audio file references, return structured transcripts.
 
-> See [infrastructure](plans/2026-03-30-infrastructure.md) for the full infrastructure stack (Hetzner, k3s, Pulumi, Bunny.net, Nebius, etc.).
+> See [infrastructure](plans/2026-05-23-infrastructure.md) for the full infrastructure stack (Hetzner, k3s, OpenTofu, Bunny.net, Nebius, etc.).
 > See [deployment-architecture](plans/2026-03-30-deployment-architecture.md) for service topology, worker deployment, and job dispatch.
 > See [project-structure-design](plans/2026-03-26-project-structure-design.md) for the Cargo workspace, TypeScript packages, and dependency graph.
 

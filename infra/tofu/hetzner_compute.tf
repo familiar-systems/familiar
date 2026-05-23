@@ -146,6 +146,7 @@ locals {
       - path: /etc/fstab
         append: true
         content: "${hcloud_volume.data.linux_device} /data ext4 defaults,nofail 0 2"
+      # TODO: rename to tofu-admin at next server replacement (cloud-init only runs at first boot)
       - path: /var/lib/rancher/k3s/server/manifests/pulumi-admin.yaml
         content: |
           apiVersion: v1

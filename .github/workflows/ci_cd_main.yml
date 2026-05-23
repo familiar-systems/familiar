@@ -13,7 +13,7 @@ name: CI + Deploy
 on:
   push:
     branches: [main]
-  # Manual trigger: used by infra/pulumi-cloud/scripts/rotate_scw_key.py
+  # Manual trigger: used by infra/tofu/scripts/rotate_scw_key.py
   # to verify a freshly-rotated SCW_* secret pair end-to-end without
   # requiring a no-op commit. No inputs; runs against the configured ref.
   workflow_dispatch:
@@ -40,12 +40,12 @@ env:
   REGISTRY: rg.fr-par.scw.cloud/loreweaver
   DO_NOT_TRACK: 1
   # Public Hanko tenant URL for the production environment.
-  # Canonical source: infra/pulumi-cloud/config.py::HANKO_API_URL_PROD.
-  # Pulumi injects it into the platform deployment's runtime env; here we
-  # bake it into the web image at build time via VITE_HANKO_API_URL.
-  # GHA cannot import Python natively; this is a documented derived copy.
-  # Drift is visible in code review and breaks prod sign-in loudly. The
-  # value is non-secret (it appears in TLS SNI on every browser request).
+  # Canonical source: infra/k8s/overlays/prod/patches/deployments.yaml.
+  # Kustomize injects it into the platform + campaign deployments' runtime
+  # env; here we bake it into the web image at build time via
+  # VITE_HANKO_API_URL. This is a documented derived copy. Drift is visible
+  # in code review and breaks prod sign-in loudly. The value is non-secret
+  # (it appears in TLS SNI on every browser request).
   HANKO_API_URL_PROD: "https://auth.familiar.systems"
 
 jobs:

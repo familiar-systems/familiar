@@ -32,6 +32,7 @@ data "scaleway_secret_version" "s3_seed_key" {
   region      = "fr-par"
 }
 
+# TODO: rename to familiar-systems-iac-key (requires new Hetzner console credential + bucket policy update)
 data "scaleway_secret_version" "s3_pulumi_key" {
   secret_name = "familiar-systems-pulumi-key"
   revision    = "latest"

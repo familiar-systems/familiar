@@ -37,8 +37,8 @@ HANKO_API_URL_DEV = "https://auth.preview.familiar.systems"
 # Shared bearer for the platform <-> campaign /internal/* API. Local-only
 # value: never appears in any deployed environment. Both prod and preview
 # pull their bearer from Scaleway SM (`internal-bearer-prod`,
-# `internal-bearer-preview`); see infra/pulumi-cloud/CLAUDE.md "Required
-# Scaleway SM Secrets". Pulling from SM at every `mise run dev` would add
+# `internal-bearer-preview`); see infra/CLAUDE.md "Required Scaleway SM
+# Secrets". Pulling from SM at every `mise run dev` would add
 # a Scaleway credential dependency for every dev start, which we explicitly
 # don't want — hence the fixed string here.
 INTERNAL_BEARER_PRIMARY = "dev-internal-bearer-not-a-secret"

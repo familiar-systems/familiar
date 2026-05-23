@@ -176,12 +176,12 @@ jobs:
       - name: test
         run: uv run pytest
 
-  # ── Infra (Pulumi Python + workflow YAML) ──────────────
+  # ── Infra (OpenTofu scripts Python + workflow YAML) ──────────────
   infra:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: infra/pulumi-cloud
+        working-directory: infra/tofu
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -201,7 +201,7 @@ jobs:
         with:
           version: ${{ steps.versions.outputs.uv }}
           enable-cache: true
-          cache-dependency-glob: "infra/pulumi-cloud/uv.lock"
+          cache-dependency-glob: "infra/tofu/uv.lock"
 
       - name: sync
         run: uv sync --frozen

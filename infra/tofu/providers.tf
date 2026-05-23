@@ -10,6 +10,7 @@ ephemeral "scaleway_secret_version" "hcloud_token" {
   region      = "fr-par"
 }
 
+# TODO: rename to familiar-systems-iac-key (requires new Hetzner console credential + bucket policy update)
 ephemeral "scaleway_secret_version" "minio_key" {
   secret_name = "familiar-systems-pulumi-key"
   revision    = "latest"

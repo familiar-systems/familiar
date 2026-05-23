@@ -1,9 +1,10 @@
 # Infrastructure: k3s + Pulumi Python
 
-**Status:** Active
+**Status:** Archived
 **Date:** 2026-03-30
-**Supersedes:** [k3s + Pulumi Infrastructure (deployment strategy)](../archive/plans/2026-03-12-deployment-strategy.md) - jointly with [Deployment Architecture](./2026-03-30-deployment-architecture.md). The superseded document covered both infrastructure primitives and deployment concerns as one plan with a Coolify-to-k3s migration path. That migration is complete. This document describes the infrastructure as it exists today.
-**Related decisions:** [Deployment Architecture](./2026-03-30-deployment-architecture.md), [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)
+**Superseded by:** [Infrastructure: k3s + OpenTofu](../../plans/2026-05-23-infrastructure.md). Migration rationale: [#115](https://github.com/familiar-systems/familiar/issues/115), [#116](https://github.com/familiar-systems/familiar/issues/116).
+**Supersedes:** [k3s + Pulumi Infrastructure (deployment strategy)](2026-03-12-deployment-strategy.md) - jointly with [Deployment Architecture](../../plans/2026-03-30-deployment-architecture.md).
+**Related decisions:** [Deployment Architecture](../../plans/2026-03-30-deployment-architecture.md), [Campaign Collaboration Architecture](../../plans/2026-03-25-campaign-collaboration-architecture.md), [libSQL decision](../../discovery/2026-03-09-sqlite-over-postgres-decision.md)
 
 ---
 

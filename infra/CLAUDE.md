@@ -44,7 +44,7 @@ The **Floating IP** is the public entry point: DNS A records for all apexes poin
 The server provisions k3s via cloud-init, which:
 - Mounts the 10GB volume at `/data` (k3s state, campaigns, preview data)
 - Installs k3s with `--tls-san <floating-ip>` and `--data-dir /data/k3s`
-- Auto-applies a `pulumi-admin` SA + cluster-admin binding + token Secret manifest
+- Auto-applies a `pulumi-admin` SA (legacy name, see [Legacy Naming](#legacy-naming)) + cluster-admin binding + token Secret manifest
 
 **`lifecycle { ignore_changes = [user_data] }`** on the server prevents cloud-init changes from replacing the server. Cloud-init only runs at first boot.
 
@@ -63,12 +63,12 @@ Hetzner has **no public API** for creating S3 credentials. Five pairs are bootst
 | `familiar-systems-prod-key` | campaign-server (prod) | read+write | denied |
 | `familiar-systems-preview-key` | campaign-server (preview) | denied | read+write |
 | `familiar-systems-preview-seed-key` | CI seed step | read-only | write-only |
-| `familiar-systems-pulumi-key` | OpenTofu minio provider | full | full |
+| `familiar-systems-pulumi-key` (legacy name) | OpenTofu minio provider | full | full |
 | `familiar-systems-operator-key` | Human ad-hoc access | full | full |
 
 #### Lockout protection
 
-The `familiar-systems-pulumi-key` access-key ID **must remain in every bucket policy's allow list**. If removed, OpenTofu loses the ability to update those policies.
+The `familiar-systems-pulumi-key` (legacy name) access-key ID **must remain in every bucket policy's allow list**. If removed, OpenTofu loses the ability to update those policies.
 
 ### Provider Authentication
 
@@ -76,7 +76,7 @@ The `familiar-systems-pulumi-key` access-key ID **must remain in every bucket po
 |---|---|
 | `hcloud` | Ephemeral `scaleway_secret_version` (reads `hcloud-api-token` from SM at runtime) |
 | `scaleway` | `~/.config/scw/config.yaml` (scw CLI config, no env vars needed) |
-| `minio` | Ephemeral `scaleway_secret_version` (reads `familiar-systems-pulumi-key` from SM at runtime) |
+| `minio` | Ephemeral `scaleway_secret_version` (reads `familiar-systems-pulumi-key` (legacy name) from SM at runtime) |
 | S3 backend | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (Scaleway creds mapped, via `setup.sh`) |
 
 ### State Backend
@@ -103,7 +103,7 @@ Scaleway Object Storage bucket `familiar-systems-tofu-state` in `fr-par`, access
 | `loreweaver-deploy-ssh-key` | Break-glass SSH private key | OpenTofu (container) + operator (value) |
 | `bunny-api-key` | bunny.net API key for DNS-01 ACME | OpenTofu (container) + operator (value) |
 | `k3s-kubeconfig` | Token-based kubeconfig for GHA + kubectl | OpenTofu (container) + bootstrap-k8s-admin.sh (value) |
-| `k3s-pulumi-admin-token` | SA bearer token (cluster-admin) | bootstrap-k8s-admin.sh |
+| `k3s-pulumi-admin-token` (legacy name) | SA bearer token (cluster-admin) | bootstrap-k8s-admin.sh |
 | `k3s-cluster-ca` | Cluster CA cert (base64 PEM) | bootstrap-k8s-admin.sh |
 | `hcloud-api-token` | Hetzner Cloud API token | OpenTofu (container) + operator (value) |
 | `internal-bearer-prod` | Shared bearer for prod platform/campaign | OpenTofu (container) + operator (value) |
@@ -162,3 +162,12 @@ Per-PR preview deployments are **not** OpenTofu-managed. They are created and de
 - All application secrets live in Scaleway Secrets Manager.
 - **Lint/format/check**: `mise run lint:infra && mise run format:infra`.
 - Never run `tofu apply` without reviewing the plan first.
+
+## Legacy Naming
+
+Two operational names retain their original "pulumi" prefix from the Pulumi-to-OpenTofu migration ([#115](https://github.com/familiar-systems/familiar/issues/115), [#116](https://github.com/familiar-systems/familiar/issues/116)). Renaming requires cluster access, SM secret recreation, and (for the S3 key) manual Hetzner console work with no API. They will be renamed opportunistically at the next server replacement.
+
+| Legacy name | Used in | Future name |
+|---|---|---|
+| `pulumi-admin` (k8s SA) | cloud-init manifest, `bootstrap-k8s-admin.sh`, SM secret `k3s-pulumi-admin-token` | `tofu-admin` or `iac-admin` |
+| `familiar-systems-pulumi-key` | Hetzner S3 credential, `providers.tf`, `hetzner_s3.tf`, `bootstrap-object-storage.sh` | `familiar-systems-iac-key` |

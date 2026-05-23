@@ -5,7 +5,7 @@
 //! middleware is the in-process backstop that catches Ingress drift,
 //! namespace misconfiguration, and contributors who forget to scope a new
 //! Ingress. See the bearer-rotation contract in
-//! `infra/pulumi-cloud/CLAUDE.md`.
+//! `infra/CLAUDE.md`.
 //!
 //! Constant-time compare via [`subtle::ConstantTimeEq`] avoids a timing
 //! oracle on the bearer string. Both primary and secondary are accepted so

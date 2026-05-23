@@ -155,5 +155,5 @@ graph BT
 ## References
 
 - [Project structure](./2026-03-26-project-structure-design.md) - the 4-target architecture this design extends
-- [Infrastructure](./2026-03-30-infrastructure.md) -- k3s cluster and Traefik Ingress routing
+- [Infrastructure](./2026-05-23-infrastructure.md) -- k3s cluster and Traefik Ingress routing
 - [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) - why the core app is an SPA (the reasoning that creates the need for a separate public site)
