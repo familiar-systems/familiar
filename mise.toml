@@ -19,6 +19,7 @@ zizmor = "latest"
 pinact = "latest"
 trufflehog = "latest"
 gitleaks = "latest"
+opentofu = "latest"
 "pipx:check-jsonschema" = "latest"
 
 [settings]
@@ -68,10 +69,10 @@ description = "Sync Python venv for ML workers"
 dir = "workers/whisperx"
 run = "uv sync"
 
-[tasks."setup:python-infra"]
-description = "Sync Python venv for Pulumi infra"
-dir = "infra/pulumi-cloud"
-run = "uv sync"
+[tasks."setup:infra"]
+description = "Initialize OpenTofu + sync Python venv for infra scripts"
+dir = "infra/tofu"
+run = ["tofu init", "uv sync"]
 
 [tasks."setup:e2e"]
 description = "Install Playwright's browser binary (chromium) for apps/web e2e tests"
@@ -267,13 +268,10 @@ sources = [
 ]
 
 [tasks."lint:infra"]
-dir = "infra/pulumi-cloud"
-run = "uv run ruff check ."
-sources = [
-  "infra/pulumi-cloud/**/*.py",
-  "infra/pulumi-cloud/pyproject.toml",
-  "infra/pulumi-cloud/uv.lock",
-]
+description = "Validate OpenTofu configuration (fmt check + validate)"
+dir = "infra/tofu"
+run = ["tofu fmt -check -recursive", "tofu validate"]
+sources = ["infra/tofu/**/*.tf", "infra/tofu/**/*.tfvars"]
 
 [tasks."lint:workflows"]
 description = "Lint GitHub Actions workflow files with actionlint"
@@ -357,8 +355,8 @@ dir = "workers/whisperx"
 run = "uv run ruff format"
 
 [tasks."format:infra"]
-dir = "infra/pulumi-cloud"
-run = "uv run ruff format"
+dir = "infra/tofu"
+run = "tofu fmt -recursive"
 
 [tasks."format:check"]
 description = "Check formatting (all ecosystems)"
@@ -390,9 +388,9 @@ run = "uv run ruff format --check ."
 sources = ["workers/whisperx/**/*.py", "workers/whisperx/pyproject.toml"]
 
 [tasks."format:check:infra"]
-dir = "infra/pulumi-cloud"
-run = "uv run ruff format --check ."
-sources = ["infra/pulumi-cloud/**/*.py", "infra/pulumi-cloud/pyproject.toml"]
+dir = "infra/tofu"
+run = "tofu fmt -check -recursive"
+sources = ["infra/tofu/**/*.tf", "infra/tofu/**/*.tfvars"]
 
 # --- typecheck ---
 
@@ -438,15 +436,7 @@ sources = [
   "workers/whisperx/uv.lock",
 ]
 
-[tasks."typecheck:infra"]
-dir = "infra/pulumi-cloud"
-run = "uv run basedpyright"
-sources = [
-  "infra/pulumi-cloud/**/*.py",
-  "infra/pulumi-cloud/pyproject.toml",
-  "infra/pulumi-cloud/uv.lock",
-  "infra/pulumi-cloud/pyrightconfig.json",
-]
+# typecheck:infra removed; HCL validation is handled by lint:infra (tofu validate).
 
 # --- generate ---
 
@@ -463,12 +453,17 @@ find . -name '*.tsbuildinfo' -delete
 
 # --- ops ---
 
-# Wraps infra/pulumi-cloud/scripts/rotate_scw_key.py. `raw = true` lets
+# Wraps infra/tofu/scripts/rotate_scw_key.py. `raw = true` lets
 # click (in the script) own arg parsing. For usage, run:
 #   mise run rotate-scw-key -- -h
 # The `--` is required only because mise's own `run` claims -h/--help.
 [tasks."rotate-scw-key"]
 description = "Rotate a Scaleway IAM api-key end-to-end. Args: <application-name> <gha|local> [--dry-run] [--keep-old]"
-dir = "infra/pulumi-cloud"
+dir = "infra/tofu"
 raw = true
 run = "uv run python scripts/rotate_scw_key.py"
+
+[tasks."plan:infra"]
+description = "Preview infrastructure changes (tofu plan)"
+dir = "infra/tofu"
+run = "tofu plan"

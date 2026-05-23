@@ -1,0 +1,39 @@
+[project]
+name = "familiar-systems-infra"
+version = "0.1.0"
+description = "familiar.systems infrastructure scripts"
+requires-python = ">=3.12"
+dependencies = [
+  "click>=8",
+  "pydantic>=2",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.11", "basedpyright>=1"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["scripts"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "D",       # pydocstyle (no docstring enforcement for scripts)
+  "ANN",     # flake8-annotations (click decorators make these noisy)
+  "T20",     # flake8-print (scripts print by design)
+  "FBT",     # flake8-boolean-trap (click flags are booleans)
+  "PLR0913", # too-many-arguments (click commands)
+  "COM812",  # trailing comma (conflicts with formatter)
+  "ISC001",  # implicit string concat (conflicts with formatter)
+]
+
+[tool.basedpyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
