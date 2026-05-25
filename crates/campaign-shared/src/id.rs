@@ -21,11 +21,6 @@ pub struct BlockId(pub Ulid);
 #[fs_id(export_to = "types-campaign/src/generated/id/")]
 pub struct SessionId(pub Ulid);
 
-/// Uniquely identifies a journal.
-/// Kept as a nanoid for short URLs (same rationale as ThingId).
-#[fs_id(export_to = "types-campaign/src/generated/id/")]
-pub struct JournalId(pub Nanoid);
-
 /// Identifies a specific suggestion made by an AI assistant.
 #[fs_id(export_to = "types-campaign/src/generated/id/")]
 pub struct SuggestionId(pub Ulid);

@@ -167,7 +167,7 @@ packages/types-app/
 
 ### `@familiar-systems/types-campaign` -- Campaign-scoped types
 
-Generated from `crates/campaign-shared/`. Contains campaign-scoped IDs (ThingId, BlockId, SessionId, JournalId, SuggestionId, ConversationId) and document schema types (TocEntry, TocEntryKind, ThingHandle). The platform server never uses these types.
+Generated from `crates/campaign-shared/`. Contains campaign-scoped IDs (ThingId, BlockId, SessionId, SuggestionId, ConversationId) and document schema types (TocEntry, TocEntryKind, TocSuggestion, ThingHandle). The platform server never uses these types.
 
 ```
 packages/types-campaign/
@@ -256,7 +256,7 @@ The litmus test: **does the platform server need this type?** If yes, it belongs
 
 ### `crates/campaign-shared/` -- the campaign-only crate
 
-Campaign-scoped types and infrastructure that the platform server never touches. Contains the Loro document layer (CrdtDoc trait, typed wrappers for Thing and ToC documents, ProseMirror interop conventions), campaign-scoped IDs (ThingId, BlockId, SessionId, JournalId, SuggestionId, ConversationId), view status types (GmOnly, Known, Retconned), and WebSocket notification types. Only the campaign server depends on this crate.
+Campaign-scoped types and infrastructure that the platform server never touches. Contains the Loro document layer (CrdtDoc trait, typed wrappers for Thing and ToC documents, ProseMirror interop conventions), campaign-scoped IDs (ThingId, BlockId, SessionId, SuggestionId, ConversationId), view status types (GmOnly, Known, Retconned), and WebSocket notification types. Only the campaign server depends on this crate.
 
 ### Utility crates
 

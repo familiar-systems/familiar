@@ -15,3 +15,4 @@
 pub mod database_writer;
 pub mod registry;
 pub mod supervisor;
+pub mod toc;

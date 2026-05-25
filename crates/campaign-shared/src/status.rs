@@ -1,6 +1,11 @@
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
 /// Campaign content is filtered at the retrieval layer based on the users' permission.
 /// See: docs/plans/2026-02-22-ai-prd.md
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "types-campaign/src/generated/document/")]
 pub enum Status {
     /// This is known only to the GM.
     /// It could be a secret plot point or hidden story arc.
