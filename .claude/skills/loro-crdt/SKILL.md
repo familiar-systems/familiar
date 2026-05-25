@@ -6,8 +6,11 @@ description: >-
   (Map, List, Text, MovableList, Tree, Counter), WebSocket sync via
   loro-protocol (handshake, rooms, CrdtDocAdaptor trait), encoding/export,
   undo/redo, event subscriptions, time travel, cursors, and ephemeral state.
-  Use when working with loro, loro-crdt, loro-protocol, building
-  collaborative editing, real-time sync, WebSocket sync, or CRDTs.
+  MUST invoke before any response that reads or modifies files under
+  `*/loro/*`, `*/loro*.rs`, or `*/crdt/*`, or when the user's message
+  or referenced files contain Loro types (LoroDoc, LoroMap, LoroTree,
+  etc.). Also invoke when working with collaborative editing,
+  real-time sync, WebSocket sync, or CRDTs.
   Trigger: "loro", "crdt", "collaborative editing", "loro-crdt",
   "loro-protocol", "LoroDoc", "LoroMap", "LoroText", "LoroList",
   "LoroTree", "CrdtDocAdaptor", "WebSocket sync".
