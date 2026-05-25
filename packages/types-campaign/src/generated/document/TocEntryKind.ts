@@ -4,4 +4,4 @@
  * Discriminant-only enum for filtering and display.
  * Derivable from `TocEntry` via `TocEntry::kind()`.
  */
-export type TocEntryKind = "text" | "thing" | "journal";
+export type TocEntryKind = "folder" | "thing" | "suggestion";
