@@ -1,8 +1,12 @@
 {
-  "enabledPlugins": {
-    "typescript-lsp@claude-plugins-official": true
-  },
   "permissions": {
-    "deny": ["Read(./**/.envrc)", "Read(./**/.env)"]
+    "deny": [
+      "Read(./**/.envrc)",
+      "Read(./**/.env)"
+    ]
+  },
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true
   }
 }
