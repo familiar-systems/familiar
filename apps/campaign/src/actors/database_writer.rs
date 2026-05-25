@@ -1,4 +1,4 @@
-//! `DatabaseActor`: single owner of the per-campaign sea-orm write
+//! `DatabaseWriteActor`: single owner of the per-campaign sea-orm write
 //! connection.
 //!
 //! Every write to the campaign DB flows through this actor's mailbox.
@@ -11,18 +11,18 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrai
 
 use crate::entities::campaign_metadata;
 
-pub struct DatabaseActor {
+pub struct DatabaseWriteActor {
     campaign_id: CampaignId,
     conn: DatabaseConnection,
 }
 
-pub struct DatabaseActorArgs {
+pub struct DatabaseWriteActorArgs {
     pub campaign_id: CampaignId,
     pub conn: DatabaseConnection,
 }
 
-impl Actor for DatabaseActor {
-    type Args = DatabaseActorArgs;
+impl Actor for DatabaseWriteActor {
+    type Args = DatabaseWriteActorArgs;
     type Error = std::convert::Infallible;
 
     async fn on_start(
@@ -79,7 +79,7 @@ pub struct PatchCampaignResult {
     pub wizard_just_completed: bool,
 }
 
-impl Message<PatchCampaignMetadata> for DatabaseActor {
+impl Message<PatchCampaignMetadata> for DatabaseWriteActor {
     type Reply = Result<PatchCampaignResult, PatchCampaignError>;
 
     async fn handle(
@@ -145,7 +145,7 @@ pub enum MetadataError {
     ActorUnavailable,
 }
 
-impl Message<GetMetadata> for DatabaseActor {
+impl Message<GetMetadata> for DatabaseWriteActor {
     type Reply = Result<campaign_metadata::Model, MetadataError>;
 
     async fn handle(
@@ -170,7 +170,7 @@ pub struct Ping;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, kameo::Reply)]
 pub struct Pong;
 
-impl Message<Ping> for DatabaseActor {
+impl Message<Ping> for DatabaseWriteActor {
     type Reply = Pong;
 
     async fn handle(&mut self, _: Ping, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
@@ -186,7 +186,7 @@ mod tests {
     use kameo::actor::Spawn;
     use sea_orm_migration::MigratorTrait;
 
-    async fn spawn_with_migrations() -> (kameo::actor::ActorRef<DatabaseActor>, CampaignId) {
+    async fn spawn_with_migrations() -> (kameo::actor::ActorRef<DatabaseWriteActor>, CampaignId) {
         db::register_sqlite_vec();
         let conn = db::connect("sqlite::memory:")
             .await
@@ -212,7 +212,7 @@ mod tests {
         .await
         .expect("seed metadata");
 
-        let actor = DatabaseActor::spawn(DatabaseActorArgs {
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
             campaign_id: campaign_id.clone(),
             conn,
         });

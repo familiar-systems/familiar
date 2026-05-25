@@ -37,7 +37,7 @@ pub fn register_sqlite_vec() {
 
 /// Open a read-write sqlx sqlite pool and wrap it as a sea-orm `DatabaseConnection`.
 ///
-/// Used by the [`DatabaseActor`](crate::actors::database_writer::DatabaseActor), which
+/// Used by the [`DatabaseWriteActor`](crate::actors::database_writer::DatabaseWriteActor), which
 /// serializes writes through its kameo mailbox. A small pool (2 connections) is sufficient
 /// since concurrent writes are mailbox-serialized.
 ///
@@ -61,7 +61,7 @@ pub async fn connect(database_url: &str) -> Result<DatabaseConnection, sqlx::Err
 /// Open a read-only connection pool against an existing database file.
 ///
 /// WAL mode allows concurrent readers alongside the single writer owned
-/// by the [`DatabaseActor`](crate::actors::database_writer::DatabaseActor). The pool is
+/// by the [`DatabaseWriteActor`](crate::actors::database_writer::DatabaseWriteActor). The pool is
 /// `Clone + Send + Sync` so it can be handed to every actor that needs read access.
 ///
 /// The pool is sized for campaign-scale concurrency: dozens of room actors restoring

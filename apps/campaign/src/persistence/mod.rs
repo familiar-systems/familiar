@@ -6,7 +6,7 @@
 //! - [`CampaignStore`] handles *where* files live: local filesystem for development, S3-compatible
 //!   object storage for hosted deployments. See [`LocalCampaignStore`] and [`S3CampaignStore`].
 //! - [`CampaignDatabase`] handles *what happens with them*: opening read/write connections, running
-//!   migrations, spawning the [`DatabaseActor`](crate::actors::database_writer::DatabaseActor) for
+//!   migrations, spawning the [`DatabaseWriteActor`](crate::actors::database_writer::DatabaseWriteActor) for
 //!   serialized writes, and tearing down cleanly on release.
 //!
 //! ## Glossary

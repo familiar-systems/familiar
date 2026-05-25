@@ -5,7 +5,7 @@
 //!   live campaigns and is spawned once per process by `main`.
 //! - [`CampaignSupervisor`](supervisor::CampaignSupervisor) is spawned
 //!   per active campaign by the registry; it owns the
-//!   [`DatabaseActor`](database_writer::DatabaseActor) and the idle-eviction
+//!   [`DatabaseWriteActor`](database_writer::DatabaseWriteActor) and the idle-eviction
 //!   clock.
 //!
 //! Future child room actors (ThingActor, TocActor, AgentConversation,

@@ -2,7 +2,7 @@
 //!
 //! Exercises the full happy path the production main loop drives: a
 //! registry is spawned, several campaigns are ensured (each gets a
-//! supervisor, DatabaseActor, on-disk file with migrations), the
+//! supervisor, DatabaseWriteActor, on-disk file with migrations), the
 //! registry's `BeginDrain` is called (the same path SIGTERM takes in
 //! `main.rs`), and we assert each `.db` file is intact and readable.
 

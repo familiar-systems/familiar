@@ -26,11 +26,11 @@ Two-level actor topology:
 main.rs
   └─ CampaignRegistry            // one per process
        └─ CampaignSupervisor     // one per active campaign
-            └─ DatabaseActor     // owns the only sea-orm write connection
+            └─ DatabaseWriteActor     // owns the only sea-orm write connection
             └─ (future: ThingActor, TocActor, AgentConversationActor, ...)
 ```
 
-**Single-writer invariant.** The actor system owns the only `DatabaseConnection` for a given campaign. HTTP handlers reach the database by `ask`ing the registry for a supervisor, then sending messages; no handler holds a connection directly. `DatabaseActor` currently accepts only a test `Ping`; initialization will land write commands here.
+**Single-writer invariant.** The actor system owns the only `DatabaseConnection` for a given campaign. HTTP handlers reach the database by `ask`ing the registry for a supervisor, then sending messages; no handler holds a connection directly. `DatabaseWriteActor` currently accepts only a test `Ping`; initialization will land write commands here.
 
 **Lifecycle.** The registry is the only path to spawn supervisors, so storage init (create dir, open pool, run migrations) is serialized through one mailbox. Spawned supervisors are `link`ed to the registry so `on_link_died` is the authoritative removal path (covers idle eviction, crash, link death). Per-supervisor idle timer self-stops the supervisor when `last_activity` exceeds `idle_timeout`; eviction drops the supervisor from RAM and leaves the `.db` on disk (no object-storage path yet).
 

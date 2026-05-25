@@ -1,7 +1,7 @@
 //! Campaign database lifecycle: checkout, active use, and release.
 //!
 //! [`CampaignDatabase`] composes [`CampaignStore`] (file-level lifecycle) with sea-orm
-//! connections and the [`DatabaseActor`] (serialized writes). The
+//! connections and the [`DatabaseWriteActor`] (serialized writes). The
 //! [`CampaignSupervisor`](crate::actors::supervisor::CampaignSupervisor) holds one per campaign.
 
 use std::path::PathBuf;
@@ -14,7 +14,7 @@ use kameo::actor::{ActorRef, Spawn};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 use sea_orm_migration::MigratorTrait;
 
-use crate::actors::database_writer::{DatabaseActor, DatabaseActorArgs};
+use crate::actors::database_writer::{DatabaseWriteActor, DatabaseWriteActorArgs};
 use crate::config::{Config, StorageBackend};
 use crate::db;
 use crate::entities::campaign_metadata;
@@ -28,11 +28,11 @@ use super::store_s3::S3CampaignStore;
 /// A campaign's active database session.
 ///
 /// Holds a read-only sea-orm connection pool (WAL mode allows concurrent readers), an
-/// [`ActorRef`] to the [`DatabaseActor`] that serializes writes through a kameo mailbox,
+/// [`ActorRef`] to the [`DatabaseWriteActor`] that serializes writes through a kameo mailbox,
 /// and the local file path (retained for the release call).
 pub struct CampaignDatabase {
     reader: DatabaseConnection,
-    writer: ActorRef<DatabaseActor>,
+    writer: ActorRef<DatabaseWriteActor>,
     path: PathBuf,
 }
 
@@ -100,7 +100,7 @@ impl CampaignDatabase {
                     source,
                 })?;
 
-        let writer = DatabaseActor::spawn(DatabaseActorArgs {
+        let writer = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
             campaign_id: campaign_id.clone(),
             conn,
         });
@@ -122,8 +122,8 @@ impl CampaignDatabase {
         &self.reader
     }
 
-    /// Handle to the [`DatabaseActor`] that serializes writes through a kameo mailbox.
-    pub fn writer(&self) -> &ActorRef<DatabaseActor> {
+    /// Handle to the [`DatabaseWriteActor`] that serializes writes through a kameo mailbox.
+    pub fn writer(&self) -> &ActorRef<DatabaseWriteActor> {
         &self.writer
     }
 

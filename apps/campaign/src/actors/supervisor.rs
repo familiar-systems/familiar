@@ -5,7 +5,7 @@
 //! relationship graph, vocabulary).
 //!
 //! Storage initialization (checkout, open connection, run migrations,
-//! spawn DatabaseActor) runs in `on_start` via
+//! spawn DatabaseWriteActor) runs in `on_start` via
 //! [`CampaignDatabase::checkout`]. The registry's `EnsureCampaign`
 //! handler awaits the startup result before inserting the supervisor
 //! into its map.

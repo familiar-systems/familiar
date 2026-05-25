@@ -25,7 +25,7 @@ use crate::loro::toc::LoroTocDoc;
 #[allow(dead_code)]
 pub struct TocActor {
     doc: LoroTocDoc,
-    db_writer: database_writer::DatabaseActor,
+    db_writer: database_writer::DatabaseWriteActor,
     ///If dirty, this has yet to be synced back to the database.
     dirty: bool,
 }
