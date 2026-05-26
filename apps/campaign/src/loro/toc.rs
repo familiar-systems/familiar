@@ -140,7 +140,7 @@ impl LoroTocDoc {
             } => {
                 meta.insert(KEY_KIND, KIND_THING).unwrap();
                 meta.insert(KEY_TITLE, title.as_str()).unwrap();
-                meta.insert(KEY_THING_ID, thing_id.0.as_str()).unwrap();
+                meta.insert(KEY_THING_ID, thing_id.0.to_string()).unwrap();
                 meta.insert(KEY_VISIBILITY, Self::status_to_str(visibility))
                     .unwrap();
             }
@@ -187,7 +187,9 @@ impl LoroTocDoc {
                     _ => return None,
                 };
                 let thing_id = match meta.get(KEY_THING_ID)? {
-                    ValueOrContainer::Value(LoroValue::String(s)) => ThingId(s.to_string().into()),
+                    ValueOrContainer::Value(LoroValue::String(s)) => {
+                        ThingId::from(ulid::Ulid::from_string(&s).ok()?)
+                    }
                     _ => return None,
                 };
                 Some(TocEntry::Thing {
@@ -384,13 +386,15 @@ mod tests {
         }
     }
 
-    fn thing(title: &str, id: &str) -> TocEntry {
-        TocEntry::Thing {
+    fn thing(title: &str) -> (TocEntry, ThingId) {
+        let thing_id = ThingId::generate();
+        let entry = TocEntry::Thing {
             title: title.to_string(),
-            thing_id: ThingId(id.to_string().into()),
+            thing_id: thing_id.clone(),
             visibility: Status::Known,
             suggestions: Vec::new(),
-        }
+        };
+        (entry, thing_id)
     }
 
     #[test]
@@ -416,13 +420,13 @@ mod tests {
     #[test]
     fn add_thing_entry() {
         let mut doc = LoroTocDoc::new();
-        let entry = thing("Korgath the Destroyer", "abc123");
+        let (entry, expected_id) = thing("Korgath the Destroyer");
         let (_, _) = doc.add_entry(None, &entry).unwrap();
 
         let tree = doc.read_tree();
         assert_eq!(tree[0].entry.kind(), TocEntryKind::Thing);
         if let TocEntry::Thing { thing_id, .. } = &tree[0].entry {
-            assert_eq!(thing_id.0.as_str(), "abc123");
+            assert_eq!(*thing_id, expected_id);
         } else {
             panic!("expected Thing variant");
         }
@@ -479,7 +483,7 @@ mod tests {
     fn nested_entries() {
         let mut doc = LoroTocDoc::new();
         let (_, parent_id) = doc.add_entry(None, &folder("Act I")).unwrap();
-        let child_entry = thing("The Dragon's Lair", "xyz");
+        let (child_entry, _) = thing("The Dragon's Lair");
         doc.add_entry(Some(parent_id), &child_entry).unwrap();
 
         let tree = doc.read_tree();
@@ -505,7 +509,7 @@ mod tests {
         let mut doc = LoroTocDoc::new();
         let (_, id) = doc.add_entry(None, &folder("Draft")).unwrap();
 
-        let updated = thing("Final", "t1");
+        let (updated, _) = thing("Final");
         doc.update_entry(id, &updated).unwrap();
 
         let entry = doc.read_entry(id).unwrap();

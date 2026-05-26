@@ -1,11 +1,12 @@
 //! Bridge layer between branded ID types (defined in `campaign-shared`) and
 //! sea-orm. These wrappers exist for one reason: Rust's orphan rule. We can't
-//! impl sea-orm's `TryGetable` / `ValueType` / `Nullable` for `ThingId` from
+//! impl sea-orm's `TryGetable` / `ValueType` / `Nullable` for branded IDs from
 //! this crate (foreign trait + foreign type), and we don't want sea-orm
 //! depending on `crates/campaign-shared` (the rule that shared crates stay
-//! types-only). Instead, we declare local newtype wrappers around the
-//! primitive each branded ID stores; `DeriveValueType` emits the four traits
-//! locally; `From` impls move values across the entity ↔ domain boundary.
+//! types-only). Instead, `ulid_id_column!` declares local newtype wrappers
+//! around `ulid::Ulid` and hand-rolls the four sea-orm traits, serializing
+//! through Crockford base32 TEXT on disk. `From` impls move values across
+//! the entity/domain boundary.
 //!
 //! The `*Col` types live entirely inside this crate; nothing outside
 //! `apps/campaign/` imports them.
@@ -14,35 +15,9 @@ use familiar_systems_campaign_shared::id::{BlockId, ThingId};
 use familiar_systems_campaign_shared::status::Status;
 use sea_orm::sea_query::{ArrayType, ColumnType, Nullable, ValueType, ValueTypeErr};
 use sea_orm::{
-    ColIdx, DbErr, DeriveActiveEnum, DeriveValueType, EnumIter, QueryResult, TryFromU64,
-    TryGetError, TryGetable, Value,
+    ColIdx, DbErr, DeriveActiveEnum, EnumIter, QueryResult, TryFromU64, TryGetError, TryGetable,
+    Value,
 };
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, DeriveValueType)]
-#[sea_orm(column_type = "Text")]
-pub struct ThingIdCol(pub String);
-
-impl From<ThingId> for ThingIdCol {
-    fn from(v: ThingId) -> Self {
-        Self(v.0.into())
-    }
-}
-impl From<ThingIdCol> for ThingId {
-    fn from(v: ThingIdCol) -> Self {
-        ThingId(v.0.into())
-    }
-}
-
-// Sea-orm requires every primary-key type to implement `TryFromU64`, even when
-// the key isn't numeric. The standard pattern for non-numeric PKs is to fail
-// the conversion: it tells sea-orm "no, you can't construct one of these from
-// an autoincrement counter," which matches reality (nanoids and UUIDs aren't
-// generated from u64).
-impl TryFromU64 for ThingIdCol {
-    fn try_from_u64(_n: u64) -> Result<Self, DbErr> {
-        Err(DbErr::ConvertFromU64("ThingIdCol"))
-    }
-}
 
 // ULID-backed branded IDs (BlockId, SessionId, SuggestionId, ConversationId)
 // can't use `DeriveValueType` directly. The derive needs the inner type to
@@ -55,8 +30,7 @@ impl TryFromU64 for ThingIdCol {
 // don't.
 //
 // `ulid_id_column!` reuses this scaffolding for any ULID-backed branded ID.
-// Today only blocks have an entity so we only declare `BlockIdCol`; when
-// sessions/suggestions/conversations get tables we add lines, not files.
+// When sessions/suggestions/conversations get tables we add lines, not files.
 macro_rules! ulid_id_column {
     ($col:ident, $shared:path) => {
         #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -123,6 +97,7 @@ macro_rules! ulid_id_column {
     };
 }
 
+ulid_id_column!(ThingIdCol, ThingId);
 ulid_id_column!(BlockIdCol, BlockId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, DeriveActiveEnum)]

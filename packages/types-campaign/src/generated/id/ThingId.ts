@@ -2,6 +2,6 @@
 
 /**
  * Uniquely identifies a thing (NPC, location, item, etc.).
- * Kept as a nanoid for short URLs.
+ * ULID for compact URLs (26 chars) and B-tree-friendly insert ordering.
  */
 export type ThingId = string & { readonly __brand: "ThingId" };

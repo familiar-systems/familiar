@@ -3,12 +3,12 @@
 //! These IDs identify entities that exist within a campaign. The platform server
 //! never uses them directly.
 
-use fs_id::{Nanoid, Ulid, fs_id};
+use fs_id::{Ulid, fs_id};
 
 /// Uniquely identifies a thing (NPC, location, item, etc.).
-/// Kept as a nanoid for short URLs.
+/// ULID for compact URLs (26 chars) and B-tree-friendly insert ordering.
 #[fs_id(export_to = "types-campaign/src/generated/id/")]
-pub struct ThingId(pub Nanoid);
+pub struct ThingId(pub Ulid);
 
 /// Uniquely identifies a block within a document. ULID gives approximate
 /// chronological creation ordering and a single representation across
