@@ -540,19 +540,85 @@ mod tests {
         assert_eq!(doc2.landing_page_id(), Some("lp1".to_string()));
     }
 
+    /// Proves that a client doc stays converged with a server doc across
+    /// a realistic sequence of mutations, each applied as a broadcast delta.
+    /// This is the contract the TocActor relies on: every public mutation
+    /// returns a delta, and applying that delta to a clone reproduces the
+    /// full state.
     #[test]
-    fn delta_can_be_applied_to_another_doc() {
+    fn server_client_convergence_across_mutation_sequence() {
+        macro_rules! apply {
+            ($server:expr, $client:expr, $delta:expr) => {{
+                $client.apply_updates(&[$delta]).unwrap();
+                assert_eq!(
+                    $server.debug_value(),
+                    $client.debug_value(),
+                    "docs diverged after applying delta"
+                );
+            }};
+        }
+
         let mut server = LoroTocDoc::new();
         let snapshot = server.export_snapshot().unwrap();
-
         let mut client = LoroTocDoc::from_snapshot(&snapshot).unwrap();
 
-        let (delta, _) = server.add_entry(None, &folder("Synced")).unwrap();
+        // 1. Add two root-level entries: a folder and a thing.
+        let (delta, folder_id) = server.add_entry(None, &folder("Act I")).unwrap();
+        apply!(server, client, delta);
 
-        client.apply_updates(&[delta]).unwrap();
+        let (thing_entry, _thing_id) = thing("The Iron Citadel");
+        let (delta, thing_node_id) = server.add_entry(None, &thing_entry).unwrap();
+        apply!(server, client, delta);
 
-        let tree = client.read_tree();
-        assert_eq!(tree.len(), 1);
-        assert_eq!(tree[0].entry.title(), Some("Synced"));
+        assert_eq!(server.read_tree().len(), 2);
+
+        // 2. Move the thing under the folder.
+        let delta = server.move_entry(thing_node_id, Some(folder_id)).unwrap();
+        apply!(server, client, delta);
+
+        let tree = server.read_tree();
+        assert_eq!(tree.len(), 1, "only the folder at root");
+        assert_eq!(tree[0].children.len(), 1, "thing is now a child");
+        assert_eq!(tree[0].children[0].entry, thing_entry);
+
+        // 3. Add a second child and reorder it before the first.
+        let (sibling_entry, _) = thing("The Shattered Gate");
+        let (delta, sibling_id) = server.add_entry(Some(folder_id), &sibling_entry).unwrap();
+        apply!(server, client, delta);
+
+        let delta = server.move_before(sibling_id, thing_node_id).unwrap();
+        apply!(server, client, delta);
+
+        let children = &server.read_tree()[0].children;
+        assert_eq!(children[0].entry, sibling_entry, "sibling moved first");
+        assert_eq!(children[1].entry, thing_entry, "original thing second");
+
+        // 4. Update an entry's metadata.
+        let updated = TocEntry::Folder {
+            title: "Act I: The Beginning".to_string(),
+            visibility: Status::GmOnly,
+            suggestions: Vec::new(),
+        };
+        let delta = server.update_entry(folder_id, &updated).unwrap();
+        apply!(server, client, delta);
+
+        assert_eq!(server.read_entry(folder_id).unwrap(), updated);
+
+        // 5. Set the landing page.
+        let delta = server.set_landing_page("welcome-page").unwrap();
+        apply!(server, client, delta);
+
+        assert_eq!(server.landing_page_id(), Some("welcome-page".to_string()));
+
+        // 6. Remove an entry.
+        let delta = server.remove_entry(sibling_id).unwrap();
+        apply!(server, client, delta);
+
+        let tree = server.read_tree();
+        assert_eq!(tree[0].children.len(), 1, "sibling removed");
+
+        // Final: full read_tree equality (not just debug_value).
+        assert_eq!(server.read_tree(), client.read_tree());
+        assert_eq!(server.landing_page_id(), client.landing_page_id());
     }
 }
