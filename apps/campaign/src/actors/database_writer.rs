@@ -5,11 +5,12 @@
 
 use chrono::Utc;
 use familiar_systems_app_shared::id::CampaignId;
-use kameo::message::{Context, Message};
-use kameo::prelude::Actor;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
+use kameo::prelude::{Actor, Context, Message};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+};
 
-use crate::entities::campaign_metadata;
+use crate::entities::{campaign_metadata, toc_entries};
 
 pub struct DatabaseWriteActor {
     campaign_id: CampaignId,
@@ -157,6 +158,92 @@ impl Message<GetMetadata> for DatabaseWriteActor {
             .one(&self.conn)
             .await?
             .ok_or(MetadataError::NoMetadataRow)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WriteTocSnapshot
+// ---------------------------------------------------------------------------
+
+pub struct WriteTocSnapshot {
+    pub rows: Vec<toc_entries::ActiveModel>,
+}
+
+impl Message<WriteTocSnapshot> for DatabaseWriteActor {
+    type Reply = Result<(), sea_orm::DbErr>;
+
+    async fn handle(
+        &mut self,
+        msg: WriteTocSnapshot,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let row_count = msg.rows.len();
+        tracing::debug!(
+            campaign_id = %self.campaign_id.0,
+            row_count,
+            "writing toc snapshot"
+        );
+
+        let keep_ids: Vec<sea_orm::Value> = msg
+            .rows
+            .iter()
+            .map(|r| r.id.clone().unwrap().into())
+            .collect();
+
+        if keep_ids.is_empty() {
+            if let Err(e) = toc_entries::Entity::delete_many().exec(&self.conn).await {
+                tracing::error!(
+                    campaign_id = %self.campaign_id.0,
+                    error = %e,
+                    "failed to delete toc entries"
+                );
+                return Err(e);
+            }
+        } else {
+            if let Err(e) = toc_entries::Entity::delete_many()
+                .filter(toc_entries::Column::Id.is_not_in(keep_ids))
+                .exec(&self.conn)
+                .await
+            {
+                tracing::error!(
+                    campaign_id = %self.campaign_id.0,
+                    error = %e,
+                    "failed to prune stale toc entries"
+                );
+                return Err(e);
+            }
+
+            if let Err(e) = toc_entries::Entity::insert_many(msg.rows)
+                .on_conflict(
+                    sea_orm::sea_query::OnConflict::column(toc_entries::Column::Id)
+                        .update_columns([
+                            toc_entries::Column::ThingId,
+                            toc_entries::Column::FolderTitle,
+                            toc_entries::Column::Visibility,
+                            toc_entries::Column::ParentId,
+                            toc_entries::Column::Position,
+                        ])
+                        .to_owned(),
+                )
+                .exec(&self.conn)
+                .await
+            {
+                tracing::error!(
+                    campaign_id = %self.campaign_id.0,
+                    row_count,
+                    error = %e,
+                    "failed to upsert toc entries"
+                );
+                return Err(e);
+            }
+        }
+
+        tracing::debug!(
+            campaign_id = %self.campaign_id.0,
+            row_count,
+            "toc snapshot written"
+        );
+        Ok(())
     }
 }
 

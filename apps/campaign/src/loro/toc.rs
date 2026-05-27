@@ -323,6 +323,7 @@ impl LoroTocDoc {
     // -- Metadata methods --
 
     /// Get the current landing page ID.
+    /// FIXME: move to campaign supervisor; the ToC should not own this.
     pub fn landing_page_id(&self) -> Option<String> {
         let meta = self.meta();
         match meta.get(KEY_LANDING_PAGE_ID)? {
@@ -332,6 +333,7 @@ impl LoroTocDoc {
     }
 
     /// Set the landing page ID. Returns delta bytes for broadcasting.
+    /// FIXME: move to campaign supervisor; the ToC should not own this.
     pub fn set_landing_page(&mut self, page_id: &str) -> Result<Vec<u8>, String> {
         let meta = self.meta();
         self.with_delta(|| {

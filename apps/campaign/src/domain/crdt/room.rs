@@ -1,5 +1,9 @@
-use super::doc::{Snapshot, VersionVector};
+use std::collections::HashMap;
+
+use super::doc::CrdtDoc;
+use super::room_actor::{AckPayload, Broadcast, Capability, JoinError, JoinResponse, UpdateError};
 use familiar_systems_campaign_shared::id::ClientId;
+use tokio::sync::mpsc;
 
 pub enum CrdtRoomType {
     Thing,
@@ -7,89 +11,114 @@ pub enum CrdtRoomType {
     Conversation,
 }
 
-/// Closely mirrors
-/// - loro_protocol::Permission
-/// - a similar Yrs construct.
-///
-/// Maps to `Read`/`Write` capabilities on the wire.
-/// Kept as a separate enum to avoid coupling domain with Loro.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Capability {
-    Read,
-    Write,
+struct Subscriber {
+    tx: mpsc::UnboundedSender<Vec<u8>>,
+    capability: Capability,
 }
 
-/// A CRDT room is a doc that clients can join, exchange updates against, and leave.
-/// Implemented by inner-state types (e.g. ThingRoom).
-pub trait CrdtRoom {
-    fn room_id(&self) -> &str;
-    fn crdt_room_type(&self) -> CrdtRoomType;
-    fn on_join(&mut self, client: ClientId, auth: &[u8]) -> Result<JoinResponse, JoinError>;
-    /// Apply one or more updates from a client. Returns a uniform broadcast
-    /// (fanned out to other subscribers) plus an `AckPayload` carrying the
-    /// post-apply version. The actor wraps the version into the wire-level
-    /// `ProtocolMessage::Ack` along with the originating `batch_id` and
-    /// status byte; correlation is the actor's concern, not the room's.
-    fn apply_updates(
+/// Generic CRDT room: subscriber management, snapshot-on-join, broadcast
+/// computation. Parameterized over a [`CrdtDoc`] for the content layer.
+///
+/// Authorization is the actor's concern. The actor resolves auth bytes into
+/// a [`Capability`] and passes the result here. Room never sees raw auth.
+pub struct Room<D: CrdtDoc> {
+    doc: D,
+    subscribers: HashMap<ClientId, Subscriber>,
+}
+
+impl<D: CrdtDoc> Room<D> {
+    pub fn new(doc: D) -> Self {
+        Self {
+            doc,
+            subscribers: HashMap::new(),
+        }
+    }
+
+    /// Access the inner doc (e.g. for actor-level reads or snapshots).
+    pub fn doc(&self) -> &D {
+        &self.doc
+    }
+
+    /// Mutable access to the inner doc (e.g. for actor-level mutations
+    /// like suggestion injection or domain-event-driven updates).
+    pub fn doc_mut(&mut self) -> &mut D {
+        &mut self.doc
+    }
+
+    /// Register a subscriber with a pre-resolved capability. Exports a
+    /// snapshot for the joining client. Auth is the caller's responsibility.
+    pub fn on_join(
+        &mut self,
+        client: ClientId,
+        tx: mpsc::UnboundedSender<Vec<u8>>,
+        capability: Capability,
+    ) -> Result<JoinResponse, JoinError> {
+        let snapshot = self
+            .doc
+            .export_snapshot()
+            .map_err(|e| JoinError::Internal(e.to_string()))?;
+        let version = self.doc.version();
+        self.subscribers
+            .insert(client, Subscriber { tx, capability });
+        Ok(JoinResponse {
+            snapshot,
+            version,
+            permission: capability,
+        })
+    }
+
+    /// Apply updates from a client. Returns the broadcast payload (for
+    /// fan-out to other subscribers) and an ack payload (for the sender).
+    ///
+    /// The actor wraps the ack into `ProtocolMessage::Ack` with the
+    /// originating `batch_id`; correlation is the actor's concern.
+    pub fn apply_updates(
         &mut self,
         from: ClientId,
         updates: &[Vec<u8>],
-    ) -> Result<(Broadcast, AckPayload), UpdateError>;
-    fn on_leave(&mut self, client: ClientId);
-}
+    ) -> Result<(Broadcast, AckPayload), UpdateError> {
+        if let Some(sub) = self.subscribers.get(&from) {
+            if sub.capability == Capability::Read {
+                return Err(UpdateError::Unauthorized);
+            }
+        }
 
-/// Snapshot + permission handed back to a freshly-joined client. The actor
-/// encodes this into `ProtocolMessage::JoinResponseOk`.
-#[derive(Debug, Clone)]
-pub struct JoinResponse {
-    /// Encoded full-document snapshot (loro `export(Snapshot)`).
-    pub snapshot: Snapshot,
-    /// Server's current oplog version vector at join time.
-    pub version: VersionVector,
-    /// Coarse capability gate for this socket (`Read` or `Write`). Domain
-    /// authorization (GM vs player, gm_only blocks) lives in `apply_updates`,
-    /// not here; this is only the wire-level handshake.
-    pub permission: Capability,
-}
+        self.doc
+            .apply_updates(updates)
+            .map_err(|e| UpdateError::Apply(e.to_string()))?;
 
-#[derive(Debug, thiserror::Error)]
-pub enum JoinError {
-    #[error("unauthorized")]
-    Unauthorized,
-    #[error("room not found")]
-    NotFound,
-    #[error("internal: {0}")]
-    Internal(String),
-}
+        let version = self.doc.version();
+        Ok((
+            Broadcast {
+                updates: updates.to_vec(),
+                exclude: Some(from),
+            },
+            AckPayload { version },
+        ))
+    }
 
-/// CRDT updates to fan out to other subscribers in the same room. Carries
-/// the same `Vec<Vec<u8>>` shape as the wire-level DocUpdate so the actor's
-/// broadcast loop is a thin re-encode.
-#[derive(Debug, Clone)]
-pub struct Broadcast {
-    pub updates: Vec<Vec<u8>>,
-    /// `Some(c)` skips subscriber `c` when fanning out (the originator,
-    /// who sees their own write echoed back via the `Ack` rather than the
-    /// broadcast. `None` broadcasts to all subscribers, used when the room
-    /// produced cascade-style edits the originator hasn't seen yet
-    /// (idempotent under CRDT semantics, so duplicate delivery is harmless).
-    pub exclude: Option<ClientId>,
-}
+    /// Fan out opaque byte frames to subscribers, skipping `exclude`.
+    ///
+    /// Room owns subscriber channels but has no wire knowledge. The actor
+    /// encodes `Broadcast` updates into `ProtocolMessage` frames (using
+    /// `wire::BatchFragmenter` for payloads over 256KB), then calls this
+    /// to distribute the encoded frames. Room just delivers bytes.
+    pub fn fan_out(&self, frames: &[Vec<u8>], exclude: Option<ClientId>) {
+        for (id, sub) in &self.subscribers {
+            if exclude == Some(*id) {
+                continue;
+            }
+            for frame in frames {
+                let _ = sub.tx.send(frame.clone());
+            }
+        }
+    }
 
-/// Per-sender acknowledgment that a batch was applied. The actor encodes
-/// this into `ProtocolMessage::Ack` and sends it to the originating client.
-#[derive(Debug, Clone)]
-pub struct AckPayload {
-    /// Server's oplog version vector after applying the batch.
-    pub version: VersionVector,
-}
+    pub fn on_leave(&mut self, client: ClientId) {
+        self.subscribers.remove(&client);
+    }
 
-#[derive(Debug, thiserror::Error)]
-pub enum UpdateError {
-    #[error("unauthorized write")]
-    Unauthorized,
-    #[error("crdt apply failed: {0}")]
-    Apply(String),
-    #[error("invalid update payload: {0}")]
-    Invalid(String),
+    pub fn subscriber_count(&self) -> usize {
+        self.subscribers.len()
+    }
 }

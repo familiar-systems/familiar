@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use familiar_systems_app_shared::id::{CampaignId, UserId};
-use kameo::actor::{ActorRef, WeakActorRef};
+use kameo::actor::{ActorRef, Spawn, WeakActorRef};
 use kameo::error::ActorStopReason;
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
@@ -25,6 +25,7 @@ use crate::actors::database_writer::{
     GetMetadata, MetadataError, PatchCampaignError, PatchCampaignMetadata as DbPatchCampaign,
     PatchCampaignResult,
 };
+use crate::actors::toc::{TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::entities::campaign_metadata;
 use crate::error::InitError;
@@ -39,6 +40,7 @@ pub struct CampaignSupervisor {
     campaign_id: CampaignId,
     store: Arc<dyn CampaignStore>,
     db: Option<CampaignDatabase>,
+    toc: ActorRef<TocActor>,
     last_activity: Instant,
     idle_timeout: Duration,
     stop_cause: Option<StopCause>,
@@ -109,6 +111,13 @@ impl Actor for CampaignSupervisor {
         )
         .await?;
 
+        let toc = TocActor::spawn(TocActorArgs {
+            campaign_id: args.campaign_id.clone(),
+            db_reader: db.reader().clone(),
+            db_writer: db.writer().clone(),
+            debounce_duration: Duration::from_secs(2),
+        });
+
         tracing::info!("campaign ready");
 
         let timer_ref = actor_ref.clone();
@@ -128,6 +137,7 @@ impl Actor for CampaignSupervisor {
             campaign_id: args.campaign_id,
             store: args.store,
             db: Some(db),
+            toc,
             last_activity: Instant::now(),
             idle_timeout: args.idle_timeout,
             stop_cause: None,
@@ -154,6 +164,13 @@ impl Actor for CampaignSupervisor {
         };
         tracing::info!(cause, "draining supervisor");
         let started = Instant::now();
+
+        // Stop TocActor before DatabaseWriteActor so any pending
+        // writeback reaches the writer before it drains.
+        if let Err(e) = self.toc.stop_gracefully().await {
+            tracing::warn!(error = ?e, "toc actor already stopped during drain");
+        }
+        self.toc.wait_for_shutdown_with_result(|_| ()).await;
 
         if let Some(db) = self.db.take()
             && let Err(e) = db.release(self.store.as_ref(), &self.campaign_id).await
