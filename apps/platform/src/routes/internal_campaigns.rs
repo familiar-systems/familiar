@@ -5,7 +5,11 @@
 //! mounted on the parent router (`/internal/platform/`) so every handler
 //! here is bearer-checked.
 
-use crate::{entities::campaigns, error::AppError, state::AppState};
+use crate::{
+    entities::{campaign_members, campaigns},
+    error::AppError,
+    state::AppState,
+};
 use axum::{
     Json,
     extract::{Path, State},
@@ -13,11 +17,12 @@ use axum::{
 };
 use chrono::Utc;
 use familiar_systems_app_shared::campaigns::internal::{
-    HeartbeatRequest, InitFailedRequest, PatchCampaignMirror,
+    CampaignRole, HeartbeatRequest, InitFailedRequest, MembershipResponse, PatchCampaignMirror,
 };
 use familiar_systems_app_shared::id::CampaignId;
 use fs_id::Nanoid;
 use sea_orm::{ActiveValue::Set, EntityTrait};
+use uuid::Uuid;
 
 /// `PATCH /internal/platform/campaign/{id}`: mirror changed campaign
 /// metadata from the campaign tier onto the platform's routing row. Fires
@@ -134,4 +139,51 @@ pub async fn report_init_failed(
     campaigns::Entity::update(am).exec(&state.db).await?;
 
     Ok(StatusCode::OK)
+}
+
+/// `GET /internal/platform/campaign/{id}/membership/{user_id}`: check
+/// whether a user is a member of a campaign and return their functional
+/// role.
+///
+/// Called by the campaign tier at WebSocket upgrade time (once per
+/// connection, not per message). Returns 200 + [`MembershipResponse`]
+/// if the user is a member, 404 if not.
+pub async fn check_membership(
+    State(state): State<AppState>,
+    Path((campaign_id, user_id)): Path<(String, String)>,
+) -> Result<Json<MembershipResponse>, StatusCode> {
+    let user_uuid = Uuid::parse_str(&user_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    let row = campaign_members::Entity::find_by_id((campaign_id.clone(), user_uuid))
+        .one(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                campaign_id = %campaign_id,
+                user_id = %user_id,
+                error = %e,
+                "membership check query failed"
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let Some(member) = row else {
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    let role = match member.role.as_str() {
+        "gm" => CampaignRole::Gm,
+        "player" => CampaignRole::Player,
+        other => {
+            tracing::error!(
+                campaign_id = %campaign_id,
+                user_id = %user_id,
+                role = %other,
+                "unknown role in campaign_members table"
+            );
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    Ok(Json(MembershipResponse { role }))
 }

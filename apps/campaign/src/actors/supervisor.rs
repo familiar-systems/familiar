@@ -13,6 +13,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use kameo::actor::{ActorRef, Spawn, WeakActorRef};
 use kameo::error::ActorStopReason;
@@ -326,9 +327,9 @@ impl RoomHandle {
         &self,
         client: ClientId,
         tx: mpsc::UnboundedSender<Vec<u8>>,
-        auth: Vec<u8>,
+        role: CampaignRole,
     ) -> Result<room_actor::JoinResponse, room_actor::JoinError> {
-        let msg = room_actor::ClientJoin { client, tx, auth };
+        let msg = room_actor::ClientJoin { client, tx, role };
         match self {
             RoomHandle::Toc(actor) => match actor.ask(msg).await {
                 Ok(response) => Ok(response),

@@ -68,6 +68,10 @@ pub fn internal_router(state: AppState) -> Router {
             delete(internal_campaigns::release_lease),
         )
         .route(
+            "/internal/platform/campaign/{id}/membership/{user_id}",
+            get(internal_campaigns::check_membership),
+        )
+        .route(
             "/internal/platform/heartbeat",
             post(internal_campaigns::heartbeat),
         )

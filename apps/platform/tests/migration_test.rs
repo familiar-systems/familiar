@@ -68,6 +68,25 @@ async fn migrator_creates_campaigns_table_with_owner_fk_and_mirror_columns() {
 }
 
 #[tokio::test]
+async fn migrator_creates_campaign_members_table_with_composite_pk_and_fks() {
+    let db = fresh_db().await;
+    let sql = table_ddl(&db, "campaign_members").await;
+    let lower = sql.to_lowercase();
+
+    assert!(
+        lower.contains("campaign_id") && lower.contains("user_id"),
+        "missing composite PK columns: {sql}"
+    );
+    assert!(lower.contains("primary key"), "missing PRIMARY KEY: {sql}");
+    assert!(lower.contains("role"), "missing role column: {sql}");
+    let fk_count = lower.matches("foreign key").count();
+    assert_eq!(
+        fk_count, 2,
+        "expected 2 FKs (campaigns + users), found {fk_count}: {sql}"
+    );
+}
+
+#[tokio::test]
 async fn migrator_creates_create_attempts_table_with_pk_on_token_and_no_fk() {
     let db = fresh_db().await;
     let sql = table_ddl(&db, "create_attempts").await;

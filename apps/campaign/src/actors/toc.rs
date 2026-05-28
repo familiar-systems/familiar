@@ -172,9 +172,15 @@ impl Message<room_actor::ClientJoin> for TocActor {
         msg: room_actor::ClientJoin,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        // TODO: resolve msg.auth into a Capability via middleware
-        self.doc_room
-            .on_join(msg.client, msg.tx, room_actor::Capability::Write)
+        use familiar_systems_app_shared::campaigns::internal::CampaignRole;
+        // TODO: per-Thing write access for players. When ThingActor lands,
+        // the mapping here should check Thing-level permissions, not just
+        // the campaign role.
+        let capability = match msg.role {
+            CampaignRole::Gm => room_actor::Capability::Write,
+            CampaignRole::Player => room_actor::Capability::Read,
+        };
+        self.doc_room.on_join(msg.client, msg.tx, capability)
     }
 }
 

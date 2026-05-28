@@ -10,6 +10,7 @@
 //! snapshot-on-join) that consumes these types. These types define the contract
 //! every room actor satisfies; `Room` is one implementation of that contract.
 
+use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_campaign_shared::id::ClientId;
 use tokio::sync::mpsc;
 
@@ -35,14 +36,18 @@ pub enum Capability {
 // Messages (inbound to actor)
 // ---------------------------------------------------------------------------
 
-/// A WebSocket client wants to join this room. The actor resolves the raw
-/// `auth` bytes into a [`Capability`] using campaign context (user role,
-/// content visibility) before calling [`Room::on_join`](super::room::Room::on_join).
+/// A WebSocket client wants to join this room. The actor resolves the
+/// pre-validated [`CampaignRole`] into a [`Capability`] based on room-level
+/// policy before calling [`Room::on_join`](super::room::Room::on_join).
+///
+/// The role is established at WebSocket upgrade time (Hanko validation +
+/// platform membership check), not per-JoinRequest. The loro-protocol
+/// `JoinRequest.auth` bytes are ignored server-side.
 #[derive(Debug)]
 pub struct ClientJoin {
     pub client: ClientId,
     pub tx: mpsc::UnboundedSender<Vec<u8>>,
-    pub auth: Vec<u8>,
+    pub role: CampaignRole,
 }
 
 /// A WebSocket client disconnected or sent a Leave frame. The actor removes

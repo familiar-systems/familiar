@@ -5,7 +5,7 @@
 
 use crate::{
     clients::campaign_internal::CampaignInternalError,
-    entities::{campaigns, create_attempts},
+    entities::{campaign_members, campaigns, create_attempts},
     error::AppError,
     middleware::auth::PlatformUser,
     state::AppState,
@@ -138,6 +138,25 @@ pub async fn create_campaign(
         OnConflict::column(campaigns::Column::Id)
             .do_nothing()
             .to_owned(),
+    )
+    .do_nothing()
+    .exec(&state.db)
+    .await?;
+
+    // Step 6: seed creator as GM. INSERT OR IGNORE so retries no-op.
+    campaign_members::Entity::insert(campaign_members::ActiveModel {
+        campaign_id: Set(resolved_campaign_id.0.0.clone()),
+        user_id: Set(user.id),
+        role: Set("gm".to_string()),
+        created_at: Set(now),
+    })
+    .on_conflict(
+        OnConflict::columns([
+            campaign_members::Column::CampaignId,
+            campaign_members::Column::UserId,
+        ])
+        .do_nothing()
+        .to_owned(),
     )
     .do_nothing()
     .exec(&state.db)

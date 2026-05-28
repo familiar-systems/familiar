@@ -11,6 +11,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket};
+use familiar_systems_app_shared::campaigns::internal::CampaignRole;
+use familiar_systems_app_shared::id::UserId;
 use familiar_systems_campaign_shared::id::ClientId;
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
@@ -25,6 +27,17 @@ use crate::wire::assembler::BatchAssembler;
 use crate::wire::broadcast::encode_broadcast;
 use crate::wire::fragmenter::BatchFragmenter;
 
+/// Identity established at WebSocket upgrade time. Carried through the
+/// connection's lifetime. Room joins resolve [`Capability`] from the role
+/// here, not from per-JoinRequest auth bytes.
+///
+/// [`Capability`]: crate::domain::crdt::room_actor::Capability
+#[derive(Debug, Clone)]
+pub struct ConnectionIdentity {
+    pub user_id: UserId,
+    pub role: CampaignRole,
+}
+
 const FRAGMENT_TIMEOUT: Duration = Duration::from_secs(10);
 const BROADCAST_FRAGMENT_SIZE: usize = 250 * 1024;
 
@@ -36,7 +49,12 @@ pub(crate) fn mint_client_id() -> ClientId {
 
 /// Run a WebSocket connection to completion. Spawns a write task and
 /// runs the read loop inline. Returns when the connection closes.
-pub async fn run(socket: WebSocket, client_id: ClientId, supervisor: ActorRef<CampaignSupervisor>) {
+pub async fn run(
+    socket: WebSocket,
+    client_id: ClientId,
+    supervisor: ActorRef<CampaignSupervisor>,
+    identity: ConnectionIdentity,
+) {
     let (ws_write, mut ws_read) = socket.split();
 
     // Binary frames: room broadcasts + encoded protocol replies.
@@ -75,6 +93,7 @@ pub async fn run(socket: WebSocket, client_id: ClientId, supervisor: ActorRef<Ca
                         handle_protocol_msg(
                             protocol_msg,
                             client_id,
+                            &identity,
                             &supervisor,
                             &mut rooms,
                             &mut assembler,
@@ -157,6 +176,7 @@ async fn write_loop(
 async fn handle_protocol_msg(
     msg: ProtocolMessage,
     client_id: ClientId,
+    identity: &ConnectionIdentity,
     supervisor: &ActorRef<CampaignSupervisor>,
     rooms: &mut HashMap<String, RoomEntry>,
     assembler: &mut BatchAssembler,
@@ -165,14 +185,16 @@ async fn handle_protocol_msg(
     timeout_tx: &mpsc::UnboundedSender<(ClientId, BatchId)>,
 ) {
     match msg {
-        ProtocolMessage::JoinRequest {
-            crdt,
-            room_id,
-            auth,
-            ..
-        } => {
+        ProtocolMessage::JoinRequest { crdt, room_id, .. } => {
             handle_join(
-                crdt, &room_id, auth, client_id, supervisor, rooms, binary_tx, fragmenter,
+                crdt,
+                &room_id,
+                identity.role,
+                client_id,
+                supervisor,
+                rooms,
+                binary_tx,
+                fragmenter,
             )
             .await;
         }
@@ -262,7 +284,7 @@ async fn handle_protocol_msg(
 async fn handle_join(
     crdt: CrdtType,
     room_id: &str,
-    auth: Vec<u8>,
+    role: CampaignRole,
     client_id: ClientId,
     supervisor: &ActorRef<CampaignSupervisor>,
     rooms: &mut HashMap<String, RoomEntry>,
@@ -291,7 +313,7 @@ async fn handle_join(
         }
     };
 
-    let join_result = handle.join(client_id, binary_tx.clone(), auth).await;
+    let join_result = handle.join(client_id, binary_tx.clone(), role).await;
     let response = match join_result {
         Ok(r) => r,
         Err(e) => {
