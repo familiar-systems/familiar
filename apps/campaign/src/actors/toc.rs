@@ -19,6 +19,8 @@ use crate::domain::crdt::room_actor;
 use crate::entities::columns::{StatusCol, ThingIdCol};
 use crate::entities::{things, toc_entries};
 use crate::loro::toc::{LoroTocDoc, TocTreeNode};
+use crate::wire::broadcast::encode_broadcast;
+use crate::wire::fragmenter::BatchFragmenter;
 
 // --- Actor ---
 
@@ -53,10 +55,14 @@ pub struct TocActor {
     /// created/deleted during the session.
     known_things: HashSet<ThingId>,
     db_writer: ActorRef<DatabaseWriteActor>,
+    self_ref: ActorRef<TocActor>,
     /// If dirty, this has yet to be synced back to the database.
     dirty: bool,
-    /// The debounce duration after which the ToC is persisted to the database.
+    // Wait this long before persisting dirty changes to the database.
     debounce_duration: Duration,
+    // Handle to the current persist task, if any.
+    persist_timer: Option<tokio::task::JoinHandle<()>>,
+    fragmenter: BatchFragmenter,
 }
 
 pub struct TocActorArgs {
@@ -108,10 +114,6 @@ impl Actor for TocActor {
         let (doc, id_map, dirty) = restore_toc(toc_rows, &things_map);
         let doc_room = room::Room::new(doc);
 
-        if dirty {
-            tracing::info!("toc restored with orphans, marked dirty");
-        }
-
         tracing::debug!(
             tree_size = id_map.len(),
             known_things = known_things.len(),
@@ -119,27 +121,23 @@ impl Actor for TocActor {
             "toc actor started"
         );
 
-        let timer_ref = actor_ref.clone();
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(args.debounce_duration);
-            tick.tick().await;
-            loop {
-                tick.tick().await;
-                if timer_ref.tell(PersistTick).await.is_err() {
-                    break;
-                }
-            }
-        });
-
-        Ok(Self {
+        let mut the_self = Self {
             campaign_id: args.campaign_id,
             doc_room,
             id_map,
             known_things,
             db_writer: args.db_writer,
+            self_ref: actor_ref,
             dirty,
             debounce_duration: args.debounce_duration,
-        })
+            persist_timer: None,
+            fragmenter: BatchFragmenter::new(250 * 1024),
+        };
+        if dirty {
+            tracing::info!("toc restored with orphans, marked dirty");
+            the_self.schedule_persist();
+        }
+        Ok(the_self)
     }
 
     async fn on_stop(
@@ -151,13 +149,8 @@ impl Actor for TocActor {
         let _guard = span.enter();
 
         if self.dirty {
-            let rows = snapshot_toc(&self.doc_room.doc(), &mut self.id_map, &self.known_things);
-            let row_count = rows.len();
-            tracing::info!(row_count, "flushing dirty toc snapshot on stop");
-            if let Err(e) = self.db_writer.tell(WriteTocSnapshot { rows }).await {
-                tracing::error!(error = %e, "failed to send toc snapshot during shutdown");
-            } else {
-                tracing::debug!(row_count, "toc snapshot enqueued for write");
+            if let Err(err) = self.persist_now().await {
+                tracing::error!(error=%err, "failed to persist toc on stop");
             }
         } else {
             tracing::debug!("toc clean, no snapshot needed on stop");
@@ -210,52 +203,65 @@ impl Message<room_actor::ClientUpdate> for TocActor {
         if old_version != ack.version {
             self.dirty = true;
         }
-        // TODO: encode broadcast.updates via wire::BatchFragmenter into
-        //       ProtocolMessage::DocUpdate frames, then call
-        //       self.doc_room.fan_out(&frames, broadcast.exclude)
-        let _ = broadcast;
+        let frames = encode_broadcast(
+            loro_protocol::CrdtType::Loro,
+            "toc",
+            &broadcast.updates,
+            &self.fragmenter,
+        );
+        self.doc_room.fan_out(&frames, broadcast.exclude);
         Ok(ack)
     }
 }
 
 // ---------------------------------------------------------------------------
-// PersistTick
+// PersistNow
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy)]
-struct PersistTick;
+struct PersistNow;
 
-impl Message<PersistTick> for TocActor {
-    type Reply = ();
+impl TocActor {
+    fn schedule_persist(&mut self) {
+        if let Some(handle) = self.persist_timer.take() {
+            handle.abort();
+        }
+        let self_ref = self.self_ref.clone();
+        let duration = self.debounce_duration;
+        self.persist_timer = Some(tokio::spawn(async move {
+            tokio::time::sleep(duration).await;
+            let _ = self_ref.tell(PersistNow).send().await;
+        }))
+    }
+
+    async fn persist_now(&mut self) -> Result<(), sea_orm::DbErr> {
+        let rows = snapshot_toc(self.doc_room.doc(), &mut self.id_map, &self.known_things);
+        let row_count = rows.len();
+        tracing::debug!("Persisting TOC snapshot: {} rows", row_count);
+
+        if let Err(err) = self.db_writer.tell(WriteTocSnapshot { rows }).await {
+            tracing::error!(error=%err, "Failed to send toc snapshot to database");
+        } else {
+            tracing::debug!(row_count, "toc snapshot enqueued for write")
+        }
+
+        self.dirty = false;
+        Ok(())
+    }
+}
+
+impl Message<PersistNow> for TocActor {
+    type Reply = Result<(), sea_orm::DbErr>;
 
     async fn handle(
         &mut self,
-        _: PersistTick,
+        _: PersistNow,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        if !self.dirty {
-            return;
+        if self.dirty {
+            self.persist_now().await?;
         }
-
-        let rows = snapshot_toc(&self.doc_room.doc(), &mut self.id_map, &self.known_things);
-        let row_count = rows.len();
-        match self.db_writer.tell(WriteTocSnapshot { rows }).await {
-            Ok(()) => {
-                self.dirty = false;
-                tracing::debug!(
-                    campaign_id = %self.campaign_id.0,
-                    row_count,
-                    "persist tick: snapshot enqueued"
-                );
-            }
-            Err(e) => {
-                tracing::error!(
-                    campaign_id = %self.campaign_id.0,
-                    error = %e,
-                    "persist tick: failed to enqueue snapshot, will retry"
-                );
-            }
-        }
+        Ok(())
     }
 }
 

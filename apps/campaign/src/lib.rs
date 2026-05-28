@@ -16,3 +16,4 @@ pub mod routes;
 pub mod starter_content;
 pub mod state;
 pub mod wire;
+pub mod ws;

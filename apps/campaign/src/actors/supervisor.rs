@@ -21,12 +21,16 @@ use kameo::prelude::Actor;
 
 use sea_orm::EntityTrait;
 
+use familiar_systems_campaign_shared::id::ClientId;
+use tokio::sync::mpsc;
+
 use crate::actors::database_writer::{
     GetMetadata, MetadataError, PatchCampaignError, PatchCampaignMetadata as DbPatchCampaign,
     PatchCampaignResult,
 };
 use crate::actors::toc::{TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
+use crate::domain::crdt::room_actor;
 use crate::entities::campaign_metadata;
 use crate::error::InitError;
 use crate::persistence::{CampaignDatabase, CampaignStore};
@@ -302,6 +306,86 @@ impl Message<GetMetadata> for CampaignSupervisor {
             .one(db.reader())
             .await?
             .ok_or(MetadataError::NoMetadataRow)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RoomHandle + JoinRoom (WebSocket room dispatch)
+// ---------------------------------------------------------------------------
+
+/// Handle to a room actor, held in the WebSocket connection's local routing
+/// table. Enum (not trait object) because kameo `ActorRef<A>` is generic
+/// over the concrete actor type.
+#[derive(Clone)]
+pub enum RoomHandle {
+    Toc(ActorRef<TocActor>),
+}
+
+impl RoomHandle {
+    pub async fn join(
+        &self,
+        client: ClientId,
+        tx: mpsc::UnboundedSender<Vec<u8>>,
+        auth: Vec<u8>,
+    ) -> Result<room_actor::JoinResponse, room_actor::JoinError> {
+        let msg = room_actor::ClientJoin { client, tx, auth };
+        match self {
+            RoomHandle::Toc(actor) => match actor.ask(msg).await {
+                Ok(response) => Ok(response),
+                Err(kameo::error::SendError::HandlerError(e)) => Err(e),
+                Err(e) => Err(room_actor::JoinError::Internal(e.to_string())),
+            },
+        }
+    }
+
+    pub async fn update(
+        &self,
+        client: ClientId,
+        updates: Vec<Vec<u8>>,
+    ) -> Result<room_actor::AckPayload, room_actor::UpdateError> {
+        let msg = room_actor::ClientUpdate { client, updates };
+        match self {
+            RoomHandle::Toc(actor) => match actor.ask(msg).await {
+                Ok(ack) => Ok(ack),
+                Err(kameo::error::SendError::HandlerError(e)) => Err(e),
+                Err(e) => Err(room_actor::UpdateError::Apply(e.to_string())),
+            },
+        }
+    }
+
+    pub async fn leave(&self, client: ClientId) {
+        let msg = room_actor::ClientLeave { client };
+        match self {
+            RoomHandle::Toc(actor) => {
+                let _ = actor.tell(msg).await;
+            }
+        }
+    }
+}
+
+pub struct JoinRoom {
+    pub room_id: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum JoinRoomError {
+    #[error("unknown room: {0}")]
+    UnknownRoom(String),
+}
+
+impl Message<JoinRoom> for CampaignSupervisor {
+    type Reply = Result<RoomHandle, JoinRoomError>;
+
+    async fn handle(
+        &mut self,
+        msg: JoinRoom,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        match msg.room_id.as_str() {
+            "toc" => Ok(RoomHandle::Toc(self.toc.clone())),
+            _ => Err(JoinRoomError::UnknownRoom(msg.room_id)),
+        }
     }
 }
 

@@ -14,8 +14,9 @@ edition = "2024"
 repository = "https://github.com/familiar-systems/familiar"
 
 [workspace.dependencies]
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 chrono = { version = "0.4.44", features = ["serde"] }
+futures-util = "0.3"
 fs-id = { path = "crates/fs-id" }
 fs-id-macros = { path = "crates/fs-id-macros" }
 kameo = "0.20"

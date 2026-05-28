@@ -77,10 +77,10 @@ impl<D: CrdtDoc> Room<D> {
         from: ClientId,
         updates: &[Vec<u8>],
     ) -> Result<(Broadcast, AckPayload), UpdateError> {
-        if let Some(sub) = self.subscribers.get(&from) {
-            if sub.capability == Capability::Read {
-                return Err(UpdateError::Unauthorized);
-            }
+        if let Some(sub) = self.subscribers.get(&from)
+            && sub.capability == Capability::Read
+        {
+            return Err(UpdateError::Unauthorized);
         }
 
         self.doc

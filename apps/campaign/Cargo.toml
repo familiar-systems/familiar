@@ -16,6 +16,7 @@ familiar-systems-campaign-shared = { path = "../../crates/campaign-shared" }
 fs-id = { path = "../../crates/fs-id" }
 
 chrono = { workspace = true }
+futures-util = { workspace = true }
 include_dir = "0.7"
 kameo = { workspace = true }
 libsqlite3-sys = "0.30"
