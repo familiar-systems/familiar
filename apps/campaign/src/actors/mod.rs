@@ -8,11 +8,14 @@
 //!   [`DatabaseWriteActor`](database_writer::DatabaseWriteActor) and the idle-eviction
 //!   clock.
 //!
-//! Future child room actors (ThingActor, TocActor, AgentConversation,
-//! relationship graph, vocabulary) attach under the supervisor. At the
-//! time of writing none of them exist yet.
+//! Child room actors under the supervisor:
+//! - [`TocActor`](toc::TocActor): singleton, eagerly spawned on checkout.
+//! - [`ThingActor`](thing::ThingActor): per-Thing, lazily spawned on first room join.
+//!
+//! Future: AgentConversation, RelationshipGraph, CampaignVocabulary.
 
 pub mod database_writer;
 pub mod registry;
 pub mod supervisor;
+pub mod thing;
 pub mod toc;

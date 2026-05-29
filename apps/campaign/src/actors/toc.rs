@@ -76,10 +76,11 @@ impl Actor for TocActor {
     type Args = TocActorArgs;
     type Error = sea_orm::DbErr;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %args.campaign_id.0),
+    )]
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        let span = tracing::info_span!("toc_actor", campaign_id = %args.campaign_id.0);
-        let _guard = span.enter();
-
         let toc_rows = toc_entries::Entity::find()
             .order_by_asc(toc_entries::Column::Position)
             .all(&args.db_reader)
@@ -140,14 +141,15 @@ impl Actor for TocActor {
         Ok(the_self)
     }
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn on_stop(
         &mut self,
         _actor_ref: WeakActorRef<Self>,
         _reason: ActorStopReason,
     ) -> Result<(), Self::Error> {
-        let span = tracing::info_span!("toc_actor", campaign_id = %self.campaign_id.0);
-        let _guard = span.enter();
-
         if self.dirty {
             if let Err(err) = self.persist_now().await {
                 tracing::error!(error=%err, "failed to persist toc on stop");
@@ -167,6 +169,10 @@ impl Actor for TocActor {
 impl Message<room_actor::ClientJoin> for TocActor {
     type Reply = Result<room_actor::JoinResponse, room_actor::JoinError>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, client_id = msg.client.0),
+    )]
     async fn handle(
         &mut self,
         msg: room_actor::ClientJoin,
@@ -187,6 +193,10 @@ impl Message<room_actor::ClientJoin> for TocActor {
 impl Message<room_actor::ClientLeave> for TocActor {
     type Reply = ();
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, client_id = msg.client.0),
+    )]
     async fn handle(
         &mut self,
         msg: room_actor::ClientLeave,
@@ -199,6 +209,10 @@ impl Message<room_actor::ClientLeave> for TocActor {
 impl Message<room_actor::ClientUpdate> for TocActor {
     type Reply = Result<room_actor::AckPayload, room_actor::UpdateError>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, client_id = msg.client.0),
+    )]
     async fn handle(
         &mut self,
         msg: room_actor::ClientUpdate,
@@ -240,6 +254,10 @@ impl TocActor {
         }))
     }
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn persist_now(&mut self) -> Result<(), sea_orm::DbErr> {
         let rows = snapshot_toc(self.doc_room.doc(), &mut self.id_map, &self.known_things);
         let row_count = rows.len();
@@ -259,6 +277,10 @@ impl TocActor {
 impl Message<PersistNow> for TocActor {
     type Reply = Result<(), sea_orm::DbErr>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         _: PersistNow,

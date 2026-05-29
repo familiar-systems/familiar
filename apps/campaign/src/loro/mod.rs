@@ -5,5 +5,6 @@
 //! domain types live in `familiar_systems_campaign_shared::loro`; the
 //! wrappers below are Rust-only and consumed solely by the campaign server.
 
+pub mod block_codec;
 pub mod thing;
 pub mod toc;

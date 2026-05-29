@@ -10,7 +10,8 @@ enum Blocks {
     ThingId,
     Status,
     Ordering,
-    Body,
+    Content,
+    Section,
     CreatedAt,
     UpdatedAt,
 }
@@ -33,7 +34,8 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Blocks::ThingId).text().not_null())
                     .col(ColumnDef::new(Blocks::Status).text().not_null())
                     .col(ColumnDef::new(Blocks::Ordering).big_integer().not_null())
-                    .col(ColumnDef::new(Blocks::Body).text().not_null())
+                    .col(ColumnDef::new(Blocks::Content).blob().not_null())
+                    .col(ColumnDef::new(Blocks::Section).text().not_null())
                     .col(
                         ColumnDef::new(Blocks::CreatedAt)
                             .timestamp_with_time_zone()

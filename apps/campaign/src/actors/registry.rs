@@ -143,6 +143,10 @@ pub struct CreateCampaign {
 impl Message<CreateCampaign> for CampaignRegistry {
     type Reply = Result<ActorRef<CampaignSupervisor>, EnsureError>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %msg.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         msg: CreateCampaign,
@@ -165,6 +169,10 @@ pub struct EnsureCampaign {
 impl Message<EnsureCampaign> for CampaignRegistry {
     type Reply = Result<ActorRef<CampaignSupervisor>, EnsureError>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %msg.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         msg: EnsureCampaign,
@@ -188,38 +196,36 @@ pub struct ReleaseCampaign {
 impl Message<ReleaseCampaign> for CampaignRegistry {
     type Reply = ();
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %msg.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         msg: ReleaseCampaign,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         let Some(supervisor) = self.supervisors.get(&msg.campaign_id) else {
-            tracing::debug!(
-                campaign_id = %msg.campaign_id.0,
-                "release requested for unloaded campaign; no-op"
-            );
+            tracing::debug!("release requested for unloaded campaign; no-op");
             return;
         };
 
-        tracing::info!(
-            campaign_id = %msg.campaign_id.0,
-            "releasing campaign (platform-initiated)"
-        );
+        tracing::info!("releasing campaign (platform-initiated)");
 
         let _ = supervisor
             .tell(SetStopCause(StopCause::PlatformRelease))
             .await;
         if let Err(e) = supervisor.stop_gracefully().await {
-            tracing::warn!(
-                campaign_id = %msg.campaign_id.0,
-                error = ?e,
-                "supervisor already stopping during release"
-            );
+            tracing::warn!(error = ?e, "supervisor already stopping during release");
         }
     }
 }
 
 impl CampaignRegistry {
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %campaign_id.0),
+    )]
     async fn ensure_supervisor(
         &mut self,
         registry_ref: ActorRef<Self>,
@@ -227,25 +233,16 @@ impl CampaignRegistry {
         owner_user_id: Option<UserId>,
     ) -> Result<ActorRef<CampaignSupervisor>, EnsureError> {
         if matches!(self.phase, Phase::Draining) {
-            tracing::debug!(
-                campaign_id = %campaign_id.0,
-                "rejecting ensure during drain"
-            );
+            tracing::debug!("rejecting ensure during drain");
             return Err(EnsureError::ShuttingDown);
         }
 
         if let Some(existing) = self.supervisors.get(&campaign_id) {
-            tracing::debug!(
-                campaign_id = %campaign_id.0,
-                "supervisor already running"
-            );
+            tracing::debug!("supervisor already running");
             return Ok(existing.clone());
         }
 
-        tracing::info!(
-            campaign_id = %campaign_id.0,
-            "spawning campaign supervisor"
-        );
+        tracing::info!("spawning campaign supervisor");
 
         let started = Instant::now();
 
@@ -262,10 +259,7 @@ impl CampaignRegistry {
 
         supervisor.wait_for_startup().await;
         if !supervisor.is_alive() {
-            tracing::warn!(
-                campaign_id = %campaign_id.0,
-                "supervisor died during startup"
-            );
+            tracing::warn!("supervisor died during startup");
             return Err(EnsureError::SupervisorDied);
         }
 
@@ -273,7 +267,6 @@ impl CampaignRegistry {
             .insert(campaign_id.clone(), supervisor.clone());
 
         tracing::info!(
-            campaign_id = %campaign_id.0,
             init_total_elapsed_ms = started.elapsed().as_millis() as u64,
             "campaign ensured"
         );
@@ -298,6 +291,10 @@ pub struct GetCampaign(pub CampaignId);
 impl Message<GetCampaign> for CampaignRegistry {
     type Reply = Option<ActorRef<CampaignSupervisor>>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %id.0),
+    )]
     async fn handle(
         &mut self,
         GetCampaign(id): GetCampaign,

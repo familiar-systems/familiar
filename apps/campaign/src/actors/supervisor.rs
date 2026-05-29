@@ -1,8 +1,9 @@
 //! `CampaignSupervisor`: per-campaign orchestrator.
 //!
-//! Owns the [`CampaignDatabase`] and an idle-eviction clock. Future work
-//! adds child room actors (ThingActor, TocActor, AgentConversation,
-//! relationship graph, vocabulary).
+//! Owns the [`CampaignDatabase`] and an idle-eviction clock. Child room
+//! actors: [`TocActor`] (singleton, eager), [`ThingActor`] (per-thing,
+//! lazy-spawned on first `JoinRoom`). Future: AgentConversation,
+//! RelationshipGraph, CampaignVocabulary.
 //!
 //! Storage initialization (checkout, open connection, run migrations,
 //! spawn DatabaseWriteActor) runs in `on_start` via
@@ -10,6 +11,7 @@
 //! handler awaits the startup result before inserting the supervisor
 //! into its map.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -20,19 +22,21 @@ use kameo::error::ActorStopReason;
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
 
-use sea_orm::EntityTrait;
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
-use familiar_systems_campaign_shared::id::ClientId;
+use familiar_systems_campaign_shared::id::{ClientId, ThingId};
 use tokio::sync::mpsc;
 
 use crate::actors::database_writer::{
     GetMetadata, MetadataError, PatchCampaignError, PatchCampaignMetadata as DbPatchCampaign,
     PatchCampaignResult,
 };
+use crate::actors::thing::{ThingActor, ThingActorArgs};
 use crate::actors::toc::{TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::domain::crdt::room_actor;
-use crate::entities::campaign_metadata;
+use crate::entities::columns::ThingIdCol;
+use crate::entities::{campaign_metadata, things};
 use crate::error::InitError;
 use crate::persistence::{CampaignDatabase, CampaignStore};
 
@@ -46,6 +50,7 @@ pub struct CampaignSupervisor {
     store: Arc<dyn CampaignStore>,
     db: Option<CampaignDatabase>,
     toc: ActorRef<TocActor>,
+    things: HashMap<ThingId, ActorRef<ThingActor>>,
     last_activity: Instant,
     idle_timeout: Duration,
     stop_cause: Option<StopCause>,
@@ -77,6 +82,10 @@ pub struct SetStopCause(pub StopCause);
 impl Message<SetStopCause> for CampaignSupervisor {
     type Reply = ();
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         msg: SetStopCause,
@@ -105,10 +114,11 @@ impl Actor for CampaignSupervisor {
     // but will block for seconds once S3 checkout downloads the .db file.
     // The design doc's pattern: spawn checkout as a tokio task, transition
     // through Starting -> Restoring -> Ready via completion messages.
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %args.campaign_id.0),
+    )]
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, InitError> {
-        let span = tracing::info_span!("campaign_supervisor", campaign_id = %args.campaign_id.0);
-        let _guard = span.enter();
-
         let db = CampaignDatabase::checkout(
             args.store.as_ref(),
             &args.campaign_id,
@@ -143,6 +153,7 @@ impl Actor for CampaignSupervisor {
             store: args.store,
             db: Some(db),
             toc,
+            things: HashMap::new(),
             last_activity: Instant::now(),
             idle_timeout: args.idle_timeout,
             stop_cause: None,
@@ -150,16 +161,15 @@ impl Actor for CampaignSupervisor {
         })
     }
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn on_stop(
         &mut self,
         _actor_ref: WeakActorRef<Self>,
         reason: ActorStopReason,
     ) -> Result<(), Self::Error> {
-        let span = tracing::info_span!(
-            "campaign_supervisor",
-            campaign_id = %self.campaign_id.0,
-        );
-        let _guard = span.enter();
         let cause = match (self.stop_cause, &reason) {
             (Some(c), _) => c.as_str(),
             (None, ActorStopReason::Normal | ActorStopReason::SupervisorRestart) => "signal",
@@ -170,8 +180,14 @@ impl Actor for CampaignSupervisor {
         tracing::info!(cause, "draining supervisor");
         let started = Instant::now();
 
-        // Stop TocActor before DatabaseWriteActor so any pending
-        // writeback reaches the writer before it drains.
+        // Stop all ThingActors, then TocActor, before DatabaseWriteActor
+        // so any pending writebacks reach the writer before it drains.
+        for (thing_id, actor) in self.things.drain() {
+            if let Err(e) = actor.stop_gracefully().await {
+                tracing::warn!(thing_id = %thing_id.0, error = ?e, "thing actor already stopped during drain");
+            }
+            actor.wait_for_shutdown_with_result(|_| ()).await;
+        }
         if let Err(e) = self.toc.stop_gracefully().await {
             tracing::warn!(error = ?e, "toc actor already stopped during drain");
         }
@@ -216,12 +232,11 @@ pub struct IdleCheck;
 impl Message<IdleCheck> for CampaignSupervisor {
     type Reply = ();
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(&mut self, _: IdleCheck, ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
-        let span = tracing::info_span!(
-            "campaign_supervisor",
-            campaign_id = %self.campaign_id.0,
-        );
-        let _guard = span.enter();
         if self.stop_cause.is_some() {
             return;
         }
@@ -255,6 +270,10 @@ pub struct PatchCampaignMetadata {
 impl Message<PatchCampaignMetadata> for CampaignSupervisor {
     type Reply = Result<PatchCampaignResult, PatchCampaignError>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         msg: PatchCampaignMetadata,
@@ -293,6 +312,10 @@ impl Message<PatchCampaignMetadata> for CampaignSupervisor {
 impl Message<GetMetadata> for CampaignSupervisor {
     type Reply = Result<campaign_metadata::Model, MetadataError>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         _: GetMetadata,
@@ -320,6 +343,7 @@ impl Message<GetMetadata> for CampaignSupervisor {
 #[derive(Clone)]
 pub enum RoomHandle {
     Toc(ActorRef<TocActor>),
+    Thing(ActorRef<ThingActor>),
 }
 
 impl RoomHandle {
@@ -332,6 +356,11 @@ impl RoomHandle {
         let msg = room_actor::ClientJoin { client, tx, role };
         match self {
             RoomHandle::Toc(actor) => match actor.ask(msg).await {
+                Ok(response) => Ok(response),
+                Err(kameo::error::SendError::HandlerError(e)) => Err(e),
+                Err(e) => Err(room_actor::JoinError::Internal(e.to_string())),
+            },
+            RoomHandle::Thing(actor) => match actor.ask(msg).await {
                 Ok(response) => Ok(response),
                 Err(kameo::error::SendError::HandlerError(e)) => Err(e),
                 Err(e) => Err(room_actor::JoinError::Internal(e.to_string())),
@@ -351,6 +380,11 @@ impl RoomHandle {
                 Err(kameo::error::SendError::HandlerError(e)) => Err(e),
                 Err(e) => Err(room_actor::UpdateError::Apply(e.to_string())),
             },
+            RoomHandle::Thing(actor) => match actor.ask(msg).await {
+                Ok(ack) => Ok(ack),
+                Err(kameo::error::SendError::HandlerError(e)) => Err(e),
+                Err(e) => Err(room_actor::UpdateError::Apply(e.to_string())),
+            },
         }
     }
 
@@ -358,6 +392,9 @@ impl RoomHandle {
         let msg = room_actor::ClientLeave { client };
         match self {
             RoomHandle::Toc(actor) => {
+                let _ = actor.tell(msg).await;
+            }
+            RoomHandle::Thing(actor) => {
                 let _ = actor.tell(msg).await;
             }
         }
@@ -372,11 +409,61 @@ pub struct JoinRoom {
 pub enum JoinRoomError {
     #[error("unknown room: {0}")]
     UnknownRoom(String),
+    #[error("database error: {0}")]
+    Db(#[from] sea_orm::DbErr),
+}
+
+impl CampaignSupervisor {
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, thing_id = %thing_id.0),
+    )]
+    async fn ensure_thing_actor(
+        &mut self,
+        thing_id: ThingId,
+    ) -> Result<ActorRef<ThingActor>, JoinRoomError> {
+        if let Some(actor) = self.things.get(&thing_id)
+            && actor.is_alive()
+        {
+            return Ok(actor.clone());
+        }
+
+        let db = self
+            .db
+            .as_ref()
+            .expect("db must be Some while actor is running");
+
+        let exists = things::Entity::find()
+            .filter(things::Column::Id.eq(ThingIdCol::from(thing_id.clone())))
+            .count(db.reader())
+            .await?
+            > 0;
+
+        if !exists {
+            return Err(JoinRoomError::UnknownRoom(format!("thing:{}", thing_id.0)));
+        }
+
+        let actor = ThingActor::spawn(ThingActorArgs {
+            campaign_id: self.campaign_id.clone(),
+            thing_id: thing_id.clone(),
+            db_reader: db.reader().clone(),
+            db_writer: db.writer().clone(),
+            debounce_duration: Duration::from_secs(2),
+            idle_timeout: Duration::from_secs(30),
+        });
+
+        self.things.insert(thing_id, actor.clone());
+        Ok(actor)
+    }
 }
 
 impl Message<JoinRoom> for CampaignSupervisor {
     type Reply = Result<RoomHandle, JoinRoomError>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, room_id = %msg.room_id),
+    )]
     async fn handle(
         &mut self,
         msg: JoinRoom,
@@ -385,6 +472,14 @@ impl Message<JoinRoom> for CampaignSupervisor {
         self.last_activity = Instant::now();
         match msg.room_id.as_str() {
             "toc" => Ok(RoomHandle::Toc(self.toc.clone())),
+            _ if msg.room_id.starts_with("thing:") => {
+                let id_str = &msg.room_id["thing:".len()..];
+                let ulid = ulid::Ulid::from_string(id_str)
+                    .map_err(|_| JoinRoomError::UnknownRoom(msg.room_id.clone()))?;
+                let thing_id = ThingId::from(ulid);
+                let actor = self.ensure_thing_actor(thing_id).await?;
+                Ok(RoomHandle::Thing(actor))
+            }
             _ => Err(JoinRoomError::UnknownRoom(msg.room_id)),
         }
     }
@@ -403,6 +498,10 @@ pub struct Pong;
 impl Message<Ping> for CampaignSupervisor {
     type Reply = Pong;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(&mut self, _: Ping, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
         self.last_activity = Instant::now();
         Pong
@@ -417,6 +516,10 @@ pub struct GetStopCause;
 impl Message<GetStopCause> for CampaignSupervisor {
     type Reply = Option<StopCause>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         _: GetStopCause,

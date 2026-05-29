@@ -95,8 +95,8 @@ run = "pnpm --filter @familiar-systems/web exec playwright install chromium"
 # --- check ---
 
 [tasks.check]
-description = "Run all checks in parallel (format:check, lint, typecheck, test, e2e)"
-depends = ["format:check", "lint", "typecheck", "test", "e2e"]
+description = "Run all checks in parallel (format:check, lint, typecheck, test, web:e2e)"
+depends = ["format:check", "lint", "typecheck", "test", "web:e2e"]
 
 # --- dev ---
 
@@ -209,7 +209,7 @@ sources = [
 
 # --- e2e ---
 
-[tasks.e2e]
+[tasks."web:e2e"]
 description = "Browser E2E tests for apps/web (run `mise run setup:e2e` once before first use)"
 # Deliberately not under `test:*`: Playwright spins up a Vite dev server
 # and chromium per run, which would slow `mise run test` (the inner-loop

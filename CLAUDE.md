@@ -4,7 +4,7 @@
 
 familiar.systems is an AI-assisted campaign notebook for tabletop RPG game masters. It captures session content (audio, notes) and uses AI to assemble a campaign knowledge base (NPCs, locations, items, relationships) as a graph that grows from play.
 
-**Status: Early implementation.** Platform and campaign servers are live (auth, campaign CRUD, creation flow, idle eviction). SPA has hub listing and a 4-step campaign creation wizard. Campaign editor, WebSocket, and AI are not yet built.
+**Status: Early implementation.** Platform and campaign servers are live (auth, campaign CRUD, creation flow, idle eviction). SPA has hub listing and a 4-step campaign creation wizard. Campaign server has ToC and Thing actor infrastructure (CRDT rooms, block persistence, supervisor routing). WebSocket upgrade handler exists but the client-side editor and AI are not yet built.
 
 ## Key Design Documents
 
@@ -102,7 +102,7 @@ Key design constraint: AI produces **Suggestions** (proposed mutations to the ca
 
 ```bash
 mise run setup                  # Install all dependencies (TS + Python workers + Python infra + e2e)
-mise run check                  # All checks in parallel (format:check + lint + typecheck + test + e2e)
+mise run check                  # All checks in parallel (format:check + lint + typecheck + test + web:e2e)
 mise run test                   # All tests (Vitest + cargo test + pytest)
 mise run typecheck              # All type-checking (tsc + cargo check + basedpyright)
 mise run lint                   # All linting (oxlint + clippy + ruff + actionlint + kubeconform + content schemas)

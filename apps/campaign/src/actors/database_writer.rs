@@ -10,7 +10,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 
-use crate::entities::{campaign_metadata, toc_entries};
+use crate::entities::{blocks, campaign_metadata, things, toc_entries};
 
 pub struct DatabaseWriteActor {
     campaign_id: CampaignId,
@@ -26,12 +26,14 @@ impl Actor for DatabaseWriteActor {
     type Args = DatabaseWriteActorArgs;
     type Error = std::convert::Infallible;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %args.campaign_id.0),
+    )]
     async fn on_start(
         args: Self::Args,
         _actor_ref: kameo::actor::ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
-        let _span =
-            tracing::info_span!("database_actor", campaign_id = %args.campaign_id.0).entered();
         tracing::debug!("database actor started");
         Ok(Self {
             campaign_id: args.campaign_id,
@@ -39,12 +41,16 @@ impl Actor for DatabaseWriteActor {
         })
     }
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn on_stop(
         &mut self,
         _actor_ref: kameo::actor::WeakActorRef<Self>,
         _reason: kameo::error::ActorStopReason,
     ) -> Result<(), Self::Error> {
-        tracing::debug!(campaign_id = %self.campaign_id.0, "database actor stopped");
+        tracing::debug!("database actor stopped");
         Ok(())
     }
 }
@@ -83,6 +89,10 @@ pub struct PatchCampaignResult {
 impl Message<PatchCampaignMetadata> for DatabaseWriteActor {
     type Reply = Result<PatchCampaignResult, PatchCampaignError>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         msg: PatchCampaignMetadata,
@@ -149,6 +159,10 @@ pub enum MetadataError {
 impl Message<GetMetadata> for DatabaseWriteActor {
     type Reply = Result<campaign_metadata::Model, MetadataError>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         _: GetMetadata,
@@ -172,17 +186,17 @@ pub struct WriteTocSnapshot {
 impl Message<WriteTocSnapshot> for DatabaseWriteActor {
     type Reply = Result<(), sea_orm::DbErr>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         msg: WriteTocSnapshot,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         let row_count = msg.rows.len();
-        tracing::debug!(
-            campaign_id = %self.campaign_id.0,
-            row_count,
-            "writing toc snapshot"
-        );
+        tracing::debug!(row_count, "writing toc snapshot");
 
         let keep_ids: Vec<sea_orm::Value> = msg
             .rows
@@ -192,11 +206,7 @@ impl Message<WriteTocSnapshot> for DatabaseWriteActor {
 
         if keep_ids.is_empty() {
             if let Err(e) = toc_entries::Entity::delete_many().exec(&self.conn).await {
-                tracing::error!(
-                    campaign_id = %self.campaign_id.0,
-                    error = %e,
-                    "failed to delete toc entries"
-                );
+                tracing::error!(error = %e, "failed to delete toc entries");
                 return Err(e);
             }
         } else {
@@ -205,11 +215,7 @@ impl Message<WriteTocSnapshot> for DatabaseWriteActor {
                 .exec(&self.conn)
                 .await
             {
-                tracing::error!(
-                    campaign_id = %self.campaign_id.0,
-                    error = %e,
-                    "failed to prune stale toc entries"
-                );
+                tracing::error!(error = %e, "failed to prune stale toc entries");
                 return Err(e);
             }
 
@@ -228,21 +234,70 @@ impl Message<WriteTocSnapshot> for DatabaseWriteActor {
                 .exec(&self.conn)
                 .await
             {
-                tracing::error!(
-                    campaign_id = %self.campaign_id.0,
-                    row_count,
-                    error = %e,
-                    "failed to upsert toc entries"
-                );
+                tracing::error!(row_count, error = %e, "failed to upsert toc entries");
                 return Err(e);
             }
         }
 
-        tracing::debug!(
-            campaign_id = %self.campaign_id.0,
-            row_count,
-            "toc snapshot written"
-        );
+        tracing::debug!(row_count, "toc snapshot written");
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WriteThingBlocks
+// ---------------------------------------------------------------------------
+
+use familiar_systems_campaign_shared::id::ThingId;
+
+use crate::entities::columns::ThingIdCol;
+
+pub struct WriteThingBlocks {
+    pub thing_id: ThingId,
+    pub blocks: Vec<blocks::ActiveModel>,
+    pub name_sync: Option<String>,
+}
+
+impl Message<WriteThingBlocks> for DatabaseWriteActor {
+    type Reply = Result<(), sea_orm::DbErr>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.thing_id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: WriteThingBlocks,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let block_count = msg.blocks.len();
+        tracing::debug!(block_count, "writing thing blocks");
+
+        // Delete all existing blocks for this thing, then insert the new set.
+        blocks::Entity::delete_many()
+            .filter(blocks::Column::ThingId.eq(ThingIdCol::from(msg.thing_id.clone())))
+            .exec(&self.conn)
+            .await?;
+
+        if !msg.blocks.is_empty() {
+            blocks::Entity::insert_many(msg.blocks)
+                .exec(&self.conn)
+                .await?;
+        }
+
+        if let Some(name) = msg.name_sync {
+            things::Entity::update_many()
+                .filter(things::Column::Id.eq(ThingIdCol::from(msg.thing_id.clone())))
+                .col_expr(things::Column::Name, sea_orm::sea_query::Expr::value(name))
+                .col_expr(
+                    things::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::value(Utc::now()),
+                )
+                .exec(&self.conn)
+                .await?;
+        }
+
+        tracing::debug!(block_count, "thing blocks written");
         Ok(())
     }
 }
@@ -260,6 +315,10 @@ pub struct Pong;
 impl Message<Ping> for DatabaseWriteActor {
     type Reply = Pong;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(&mut self, _: Ping, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
         Pong
     }
