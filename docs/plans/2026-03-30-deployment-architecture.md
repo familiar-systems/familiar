@@ -9,7 +9,7 @@
 
 ## Context
 
-The [Project Structure](./2026-03-26-project-structure-design.md) defines four deployment targets with different lifecycles: public site (Astro static), frontend (Vite SPA), server (Rust: Axum + kameo), and ML workers (Python). The [Infrastructure](./2026-05-23-infrastructure.md) doc defines the k3s cluster, Hetzner Volume, OpenTofu project structure, and CI/CD pipeline.
+The [Project Structure](./2026-03-26-project-structure-design.md) defines five deployment targets with different lifecycles: public site (Astro static), frontend (Vite SPA), platform and campaign servers (Rust: Axum + kameo, split below), and ML workers (Python). The [Infrastructure](./2026-05-23-infrastructure.md) doc defines the k3s cluster, Hetzner Volume, OpenTofu project structure, and CI/CD pipeline.
 
 This ADR decides how the Rust server is split, how services discover each other, how deployments happen without disrupting active sessions, and how preview environments work. The decisions here are driven by three properties of the system:
 
@@ -76,7 +76,7 @@ The platform owns everything that exists before a campaign is checked out and in
 - **Campaign server health monitoring.** Receives heartbeats from campaign servers, tracks load, detects failed leases.
 - **Future: community marketplace.** Starter packs, community templates, contributor profiles, content curation. This is cross-campaign, stateless, CDN-cacheable - a completely different traffic pattern from the campaign server's long-lived WebSocket connections.
 
-The platform's data store is platform.db, a SQLite file (via sea-orm + sqlx-sqlite) holding users, campaigns, subscriptions, the routing table, and (eventually) marketplace content. Its traffic pattern is bursty, short-lived HTTP requests. It scales horizontally trivially if needed (multiple instances behind a load balancer, Turso Database for shared state).
+The platform's data store is platform.db, a SQLite file (via sea-orm + sqlx-sqlite) holding users, campaigns, campaign membership, and (eventually) marketplace content. The campaign→shard routing table is held in memory, not in platform.db. Its traffic pattern is bursty, short-lived HTTP requests. It scales horizontally trivially if needed (multiple instances behind a load balancer, Turso Database for shared state).
 
 ### The campaign server
 
@@ -89,7 +89,7 @@ The campaign server owns everything that happens after a campaign is checked out
 
 ### ML workers
 
-Audio transcription (faster-whisper) and speaker diarization (pyannote) are long-running jobs on GPU nodes. The GPU infrastructure is decoupled from the application cluster - it could be Hetzner GPU boxes, Nebius, or anything with a GPU. Workers are stateless: they receive audio file references, process them, and return structured transcripts. They deploy as k8s Jobs, giving them independence from server deployments and a natural path for A/B testing (the job record carries a model identifier, the worker reads it).
+Audio transcription and speaker diarization (a single WhisperX pipeline, in `workers/whisperx/`) are long-running jobs on GPU nodes. The GPU infrastructure is decoupled from the application cluster - it could be Hetzner GPU boxes, Nebius, or anything with a GPU. Workers are stateless: they receive audio file references, process them, and return structured transcripts. They deploy as k8s Jobs, giving them independence from server deployments and a natural path for A/B testing (the job record carries a model identifier, the worker reads it).
 
 LLM inference (for AI conversations, journal synthesis, entity extraction) is a separate concern - the campaign server calls Nebius token factory endpoints directly over HTTP. No GPU nodes needed on the application side.
 
@@ -109,8 +109,8 @@ URL structure is governed by [app-server PRD §URL architecture](./2026-04-11-ap
 
 - **Two apexes per environment.** Marketing (`familiar.systems` / `preview.familiar.systems` / `localhost:8080`) serves the Astro site. App (`app.familiar.systems` / `app.preview.familiar.systems` / `app.localhost:8080`) serves the SPA, platform API, and campaign shards.
 - **Priority-ordered path rules within the app apex.** Longer prefixes win: `/api`, `/campaign` each land at their service; `/` catches the rest and serves the SPA at root. The marketing apex has one rule: `/` → Astro.
-- **`StripPrefix` middleware** strips the path prefix before requests reach backends, so the platform continues to own `/me`, `/campaigns/:id/checkout` on its own routes without prefix-awareness. In k3s this is a Traefik `Middleware` CRD; in local dev it's Caddy's `handle_path` directive.
-- **Shard-agnostic campaign URLs.** The checkout API returns `wss://{app-apex}/campaign/{campaign_id}/ws`; the SPA opens it verbatim. At N=1 shard the Ingress routes `/campaign/*` straight to the single shard. At N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the routing table. The SPA never observes shard identity.
+- **`StripPrefix` middleware** strips the path prefix before requests reach backends, so the platform continues to own `/me`, `/api/campaigns/:id` on its own routes without prefix-awareness. In k3s this is a Traefik `Middleware` CRD; in local dev it's Caddy's `handle_path` directive.
+- **Shard-agnostic campaign URLs.** The SPA builds `wss://{app-apex}/campaign/{campaign_id}/ws` by path convention (there is no checkout response body) and opens it directly. At N=1 shard the Ingress routes `/campaign/*` straight to the single shard. At N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the routing table. The SPA never observes shard identity.
 - **Origin isolation between marketing and app.** Cookies, localStorage, and sessionStorage at the marketing apex are invisible to the app apex, and vice versa. Authenticated session state lives on the app apex; the marketing apex has no authenticated surfaces.
 
 Subdomains outside either apex (Hanko tenants at `auth.*`, plus any future docs/status/blog surfaces) live on their own DNS and are not part of this routing contract.
@@ -148,9 +148,11 @@ The campaign server makes outbound callbacks to the platform via [`PlatformInter
 
 | Method | Path | Purpose |
 |--------|------|---------|
+| `GET` | `/internal/platform/campaign/{id}/membership/{user_id}` | Check a user's role at WebSocket-upgrade time (404 = not a member) |
 | `PATCH` | `/internal/platform/campaign/{id}` | Mirror campaign metadata updates to the platform |
 | `POST` | `/internal/platform/campaign/{id}/init-failed` | Report initialization failure |
 | `POST` | `/internal/platform/heartbeat` | Periodic heartbeat with loaded campaign list |
+| `DELETE` | `/internal/platform/campaign/{id}/lease` | Notify the platform of an idle eviction (fire-and-forget) |
 
 The platform handles atomicity for lease acquisition via `INSERT ... WHERE NOT EXISTS`; loser gets 409.
 
@@ -205,10 +207,10 @@ The cost of an interrupted turn is one LLM call on retry, not data corruption.
 When multiple campaign servers exist, restarts are sequential:
 
 1. Drain server A: run the per-campaign shutdown sequence above. Each campaign independently writes back to object storage and releases its lease.
-2. Clients reconnect. The checkout endpoint assigns their campaigns to server B (or C) and returns a shard-agnostic URL; ingress-layer routing points `/campaign/{id}/*` at the new shard. Campaigns check out from object storage onto the new server.
+2. Clients reconnect. The next `GET /api/campaigns/{id}` re-acquires the lease on server B (or C); ingress-layer routing points `/campaign/{id}/*` at the new shard. Campaigns check out from object storage onto the new server.
 3. Server A restarts with the new binary. New campaigns and rebalanced campaigns begin routing to it.
 
-The platform service is not restarted during campaign server rolls. Login, campaign listing, and discovery stay available throughout.
+The platform service is not restarted during campaign server rolls. Login and campaign listing stay available throughout.
 
 ---
 
@@ -280,7 +282,7 @@ Contributors are added manually by email on the preview tenant; registration is 
 
 #### TLS
 
-A single cert-manager `Certificate` covers all four apex domains - `familiar.systems`, `app.familiar.systems`, `preview.familiar.systems`, `app.preview.familiar.systems` - issued once via DNS-01 + bunny.net. No per-PR certs, no wildcard SANs. See [Infrastructure](./2026-05-23-infrastructure.md) for the cert-manager configuration.
+A single cert-manager `Certificate` covers the app's four apex domains - `familiar.systems`, `app.familiar.systems`, `preview.familiar.systems`, `app.preview.familiar.systems` - plus the legacy `loreweaver.no` and `preview.loreweaver.no` apexes still served from the site pod (six dnsNames total), issued once via DNS-01 + bunny.net. No per-PR certs, no wildcard SANs. See [Infrastructure](./2026-05-23-infrastructure.md) for the cert-manager configuration.
 
 #### Lifecycle
 
@@ -311,7 +313,7 @@ Campaign files are self-contained SQLite databases. Copying them is a file opera
 ### What this architecture costs us
 
 - **Two Deployments, two Dockerfiles, two health probe configurations.** Operational surface area. For a solo dev, this is real maintenance - every k8s manifest change is doubled.
-- **The internal API between platform and campaign server.** A handful of HTTP endpoints, but they're on the critical path (lease acquisition, discover). If the internal API has a bug, no campaign can be opened. This is a small, critical surface that needs disproportionate testing.
+- **The internal API between platform and campaign server.** A handful of HTTP endpoints, but they're on the critical path (lease acquisition, membership checks). If the internal API has a bug, no campaign can be opened. This is a small, critical surface that needs disproportionate testing.
 - **Preview environment data freshness.** Copied campaign data is a point-in-time snapshot. If a contributor needs to test against a specific campaign state that has changed since the last copy, they need to re-run the data setup. This is manual but infrequent.
 - **Resource split on a single server.** In the single-server phase, two pods share one machine's resources. The platform pod needs minimal resources (~64MB RAM, negligible CPU for SQLite CRUD). The campaign server pod is where the real work happens. Resource requests should reflect this asymmetry.
 

@@ -31,7 +31,7 @@ This is the core loop - the thing you'd do after every session:
 2. **The AI processes everything** - it transcribes audio, figures out what happened, and drafts a write-up of the session
 3. **You get a list of proposals**: "I found 3 new NPCs. I think Kael frequents the Rusty Anchor. Tormund appears to be dead now. Here's a draft of what happened."
 4. **You review**: accept the ones that look right, tweak the ones that are close, skip the ones you don't care about
-5. **Done.** Your campaign wiki just grew, and it took 15–30 minutes instead of hours
+5. **Done.** Your campaign wiki just grew, and it took 15-30 minutes instead of hours
 
 The AI does the heavy lifting. You make the judgment calls.
 
@@ -54,7 +54,7 @@ You can always build out your world manually - create locations, write NPC backs
 As you play sessions, your campaign wiki grows automatically. It contains:
 
 - **Sessions** - the write-up of what happened each time you played, organized chronologically
-- **Arcs** - optional groupings across sessions (like chapters: "The Siege of Grimhollow" spanning sessions 7–12)
+- **Arcs** - optional groupings across sessions (like chapters: "The Siege of Grimhollow" spanning sessions 7-12)
 - **Things** - every entity in your world: NPCs, locations, items, factions, monsters, lore. Each one has its own page that accumulates detail over time
 - **Connections** - how things relate to each other: "Clericman worships Murdergod," "Kael frequents the Rusty Anchor," "The Silver Compact is allied with the Crown of Ashenmoor"
 

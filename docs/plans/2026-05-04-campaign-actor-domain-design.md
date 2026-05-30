@@ -775,7 +775,7 @@ pub struct ThingRoom {
 }
 ```
 
-The actor wrapper (`ThingActor`) holds the kameo-shaped state on top: subscriber mpsc senders, the dirty flag, the db writer handle, plus wire-shape adaptation. On inbound, the actor reassembles fragmented batches into a single update before invoking `room.apply_updates(...)`. On outbound, the actor fragments large broadcasts to fit the protocol's per-message cap. The actor never reaches into the room's internals — it sequences trait calls and adapts wire shape on either side. See [Wire-Protocol Concerns Live at the Actor](#wire-protocol-concerns-live-at-the-actor) below.
+The actor wrapper (`ThingActor`) holds the kameo-shaped state on top: subscriber mpsc senders, the dirty flag, the db writer handle, plus wire-shape adaptation. On inbound, the actor reassembles fragmented batches into a single update before invoking `room.apply_updates(...)`. On outbound, the actor fragments large broadcasts to fit the protocol's per-message cap. The actor never reaches into the room's internals; it sequences trait calls and adapts wire shape on either side. See [Wire-Protocol Concerns Live at the Actor](#wire-protocol-concerns-live-at-the-actor) below.
 
 This split lets us write property tests against `ThingRoom` directly (apply N updates in two orders, assert convergence) without spinning up an actor system, and lets the wire utilities be fuzzed without standing up a room.
 
@@ -1016,7 +1016,7 @@ Per-block status filtering is a renderer concern, not a compiler concern (see [P
 
 The trait surface is wire-format-agnostic by design. `CrdtRoom` operates on already-assembled `Vec<Vec<u8>>` updates; it never sees `BatchId`, `Permission`, fragmentation, or the loro-protocol message envelope. Those concerns live at the actor layer, which adapts wire shape on both ingress (reassembling fragmented batches before invoking `room.apply_updates`) and egress (fragmenting large broadcasts to fit the protocol's 256 KB per-message cap).
 
-For implementation details — assembler/fragmenter internals, the reassembly timeout pattern, the kameo wiring — see the module docs in [`apps/campaign/src/wire/`](../../apps/campaign/src/wire/). The wire format itself is defined by [loro-protocol v0.3.0](https://github.com/loro-dev/protocol/blob/loro-protocol-v0.3.0/protocol.md) and was validated end-to-end by the [`tiptap-loro-kameo-rust`](../../../experiment-single-campaign-editor/tiptap-loro-kameo-rust) spike.
+For implementation details (assembler/fragmenter internals, the reassembly timeout pattern, the kameo wiring) see the module docs in [`apps/campaign/src/wire/`](../../apps/campaign/src/wire/). The wire format itself is defined by [loro-protocol v0.3.0](https://github.com/loro-dev/protocol/blob/loro-protocol-v0.3.0/protocol.md) and was validated end-to-end by the [`tiptap-loro-kameo-rust`](../../../experiment-single-campaign-editor/tiptap-loro-kameo-rust) spike.
 
 ---
 

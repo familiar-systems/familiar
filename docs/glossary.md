@@ -44,7 +44,7 @@ _"Thing" is internal vocabulary for the domain model and codebase. Users never s
 
 **Embed** - A block from one Thing embedded live in another. Edit it in one place, it updates everywhere. An embed is both a rendering behavior (show content inline) and an edge in the graph (a block-to-block mention), making the dependency queryable.
 
-**Arc** - A Thing representing a narrative grouping across sessions. "The Siege of Grimhollow" spanning sessions 7–12. Optional - not every campaign uses them. For GMs who run sequential bounded stories in a persistent world, each "campaign" in their parlance maps to an arc in the product's model.
+**Arc** - A Thing representing a narrative grouping across sessions. "The Siege of Grimhollow" spanning sessions 7-12. Optional - not every campaign uses them. For GMs who run sequential bounded stories in a persistent world, each "campaign" in their parlance maps to an arc in the product's model.
 
 > See [vision.md](vision.md) for the core concepts (Campaign, Thing, Block, Arc).
 
@@ -60,7 +60,7 @@ The sub-entities below are data _on_ the session Thing, not Things themselves:
 
 **Session Sources** - The raw inputs that feed the journal pipeline: session audio (the recording), player notes (optional uploads from players), and the GM summary. Consumed by SessionIngest. Individually, these are inputs to processing, not artifacts the system reasons about independently after the journal is produced.
 
-**GM Summary** - The GM's 4–5 bullet points or sentences about what happened. Lives within session sources. Has a precise role in the AI pipeline: it transforms extraction from open-ended ("what happened?") to guided ("find where _these things_ happened and fill in the gaps"). This is the oracle input - the segmentation prior and verification scaffold. _(When the GM doesn't upload audio, their notes become the primary input to journal drafting - functionally, they are writing the journal's raw material directly.)_
+**GM Summary** - The GM's 4-5 bullet points or sentences about what happened. Lives within session sources. Has a precise role in the AI pipeline: it transforms extraction from open-ended ("what happened?") to guided ("find where _these things_ happened and fill in the gaps"). This is the oracle input - the segmentation prior and verification scaffold. _(When the GM doesn't upload audio, their notes become the primary input to journal drafting - functionally, they are writing the journal's raw material directly.)_
 
 **Session Journal** - The cleaned, GM-approved narrative of a session. The primary written artifact of the campaign and the canonical source of truth for what happened - for both the AI and players. AI-drafted from session sources, then GM-reviewed. Composed of blocks containing references to Things.
 

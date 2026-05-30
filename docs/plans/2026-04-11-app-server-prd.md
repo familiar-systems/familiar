@@ -15,9 +15,9 @@ The app server is a conventional CRUD service. Axum + Tokio, a platform database
 
 Clients interact with two servers independently. The SPA calls the app server for platform operations (REST/JSON over HTTPS), then connects to campaign servers for collaboration (WebSocket, loro-protocol binary frames). The app server is never in the CRDT hot path.
 
-Campaign servers are the only processes that touch campaign data. The app server never reads from or writes to campaign libSQL files or object storage. This is structural: "nothing happens to a campaign without checkout" applies to the app server too.
+Campaign servers are the only processes that touch campaign data. The app server never reads from or writes to campaign SQLite files or object storage. This is structural: "nothing happens to a campaign without checkout" applies to the app server too.
 
-Both binaries verify Hanko JWTs independently. Shared auth code lives in `crates/shared/`. The SPA, app server, and campaign server share the **app apex** (`app.familiar.systems` in prod) - see "URL architecture" below - so browser calls between them are same-origin and do not trigger CORS preflight. The marketing site lives on a separate apex (`familiar.systems`) and does not make authenticated calls into the app. The CORS layer remains as defense-in-depth for any non-browser caller that sends an Origin header. Auth tokens are bearer JWTs and are origin-agnostic.
+Both binaries verify Hanko JWTs independently. Shared auth code lives in `crates/app-shared/`. The SPA, app server, and campaign server share the **app apex** (`app.familiar.systems` in prod) - see "URL architecture" below - so browser calls between them are same-origin and do not trigger CORS preflight. The marketing site lives on a separate apex (`familiar.systems`) and does not make authenticated calls into the app. The CORS layer remains as defense-in-depth for any non-browser caller that sends an Origin header. Auth tokens are bearer JWTs and are origin-agnostic.
 
 ### URL architecture
 
@@ -49,7 +49,7 @@ User-facing traffic is split across two apexes per environment: a **marketing ap
 
 **Origin isolation.** The marketing apex and the app apex are distinct browser origins. Cookies, localStorage, and sessionStorage at one are invisible to the other. Authenticated session state lives on the app apex and is unreachable from marketing code. Cross-apex calls (if any) go through CORS; the public campaign showcase endpoint on the app server is the one known candidate and is expected to be consumed at Astro build time, so no runtime cross-origin fetch is required.
 
-**Shard-agnostic URLs.** The platform's checkout API returns URLs that contain `campaign_id` but never a `shard_id`. The SPA treats them opaquely. When a campaign's shard assignment changes (lease expiry, reclaim), the URL is unchanged - ingress-layer re-resolution handles routing to the new shard. At N=1 shard the routing is a direct Ingress rule pointing `/campaign/*` at the only shard; at N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the platform's routing table. The app server is never in the CRDT hot path under either topology.
+**Shard-agnostic URLs.** Campaign URLs contain `campaign_id` but never a `shard_id`; the SPA builds them by path convention (`app.familiar.systems/campaign/{campaign_id}/...`), not from a server-returned URL. When a campaign's shard assignment changes (lease expiry, reclaim), the URL is unchanged - ingress-layer re-resolution handles routing to the new shard. At N=1 shard the routing is a direct Ingress rule pointing `/campaign/*` at the only shard; at N>1 shards a dedicated `campaign-router` binary reverse-proxies by consulting the platform's routing table. The app server is never in the CRDT hot path under either topology.
 
 **Hanko origin mapping.** Each tenant registers exactly one apex as its origin for the life of the project:
 
@@ -83,8 +83,8 @@ The fake auth provider is **not implemented today**. Today the only path is the 
 ### Campaign metadata CRUD
 
 - Create, read, update campaign metadata: name, description, game system, thumbnail
-- Campaign metadata lives in the platform database, not in the campaign libSQL file
-- Creating a campaign creates a platform DB record. The campaign libSQL file does not exist until first checkout on a shard.
+- Campaign metadata lives in the platform database, not in the campaign SQLite file
+- Creating a campaign creates a platform DB record. The campaign SQLite file does not exist until first checkout on a shard.
 
 ### Campaign membership and access control
 
@@ -93,7 +93,7 @@ The fake auth provider is **not implemented today**. Today the only path is the 
 - Invite flow (generate invite, accept invite)
 - Campaign join/leave
 - Ownership transfer
-- Membership data is the authority for "who is allowed to connect" - campaign servers verify membership on WebSocket connection
+- Membership data is the authority for "who is allowed to connect" - at WebSocket-upgrade time the campaign server calls `GET /internal/platform/campaign/{id}/membership/{user_id}` and maps the returned role to a read/write capability (404 → not a member → 403)
 
 ### Campaign list
 
@@ -103,10 +103,10 @@ The fake auth provider is **not implemented today**. Today the only path is the 
 ### Routing table
 
 - Maps campaign ID → shard name (internal identifier, never exposed in user-facing URLs)
-- Consulted by the app server when minting a checkout response; consulted by `campaign-router` (when N>1 shards exist) for per-request resolution
+- Consulted by the app server when resolving a campaign for checkout; consulted by `campaign-router` (when N>1 shards exist) for per-request resolution
 - Updated when campaigns are checked out, released, or reassigned
 - Single-server ownership enforced by leases
-- The SPA never sees the shard name. The checkout response contains shard-agnostic URLs (`app.familiar.systems/campaign/{campaign_id}/*` in prod; same path scheme under the preview app apex).
+- The SPA never sees the shard name. Campaign URLs are shard-agnostic path conventions (`app.familiar.systems/campaign/{campaign_id}/*` in prod; same path scheme under the preview app apex).
 
 ### Shard registry
 
@@ -116,10 +116,10 @@ The fake auth provider is **not implemented today**. Today the only path is the 
 
 ### Campaign checkout orchestration
 
-- Client requests access to a campaign
-- App server checks routing table: if already checked out, return a shard-agnostic URL for the campaign
-- If not checked out, select a shard, instruct it to check out the campaign, update routing table, return the URL
-- The SPA waits for checkout to complete before opening a WebSocket; the URL it opens contains only the campaign ID, never the shard name
+- Client requests a campaign via `GET /api/campaigns/{id}` (there is no separate checkout endpoint; checkout is implicit in the read)
+- App server checks the routing table: if already checked out, confirm the active lease
+- If not checked out, select a shard, instruct it to check out the campaign (`PUT /internal/campaign/{id}/lease`), update the routing table
+- The read returns once the lease is confirmed; the SPA then opens a path-convention campaign URL containing only the campaign ID, never the shard name
 
 ### Shard heartbeat and lease management
 
@@ -127,6 +127,7 @@ The fake auth provider is **not implemented today**. Today the only path is the 
 - Heartbeat confirms liveness and renews leases on checked-out campaigns
 - If a shard stops heartbeating, leases expire after a timeout
 - Expired leases trigger campaign reclaim: routing table entry removed, campaign available for checkout on another shard
+- A shard also proactively notifies the platform when it idle-evicts a campaign (`DELETE /internal/platform/campaign/{id}/lease`, fire-and-forget), so the routing table reflects the release without waiting for lease expiry
 
 ### Campaign deletion
 
@@ -139,7 +140,7 @@ The fake auth provider is **not implemented today**. Today the only path is the 
 
 - Endpoint serving campaign metadata for the Astro static site build
 - Limited to what the app server actually has: name, description, game system, GM-written blurb
-- No campaign-internal data (entity counts, NPC lists, auto-generated summaries) - that lives in campaign libSQL files and the app server does not access it
+- No campaign-internal data (entity counts, NPC lists, auto-generated summaries) - that lives in campaign SQLite files and the app server does not access it
 - Richer showcase content (if ever needed) would be served directly by the campaign server for checked-out campaigns, not aggregated by the app server
 
 ---
@@ -176,7 +177,7 @@ Usage-based billing for LLM tokens and audio processing minutes. The design is e
 - Real-time collaboration or CRDT sync
 - AI inference or LLM calls
 - Audio processing or diarization
-- Read or write campaign libSQL files
+- Read or write campaign SQLite files
 - Access object storage
 - Proxy WebSocket connections between clients and shards
 - Know about TipTap, Loro, ProseMirror, or document structure
@@ -186,8 +187,8 @@ Usage-based billing for LLM tokens and audio processing minutes. The design is e
 ## Technology
 
 - **Runtime:** Axum + Tokio
-- **Auth:** Hanko JWT verification (shared with campaign server via `crates/shared/`)
-- **Database:** Platform database (technology TBD - libSQL, Postgres, or otherwise). Single instance, does not need to scale beyond one for the foreseeable future.
+- **Auth:** Hanko JWT verification (shared with campaign server via `crates/app-shared/`)
+- **Database:** Platform database - SQLite via `sea-orm` + `sqlx-sqlite`, at `data/dev-platform.db` locally and `/data/platform/platform.db` in prod. Single instance, does not need to scale beyond one for the foreseeable future.
 - **Deployment:** k3s on Hetzner (hel1), alongside but independent of campaign server deployments
 
 ---
@@ -201,7 +202,7 @@ Three environments, same application shape. What changes between them is the fab
 - **Entry point:** `mise run dev` starts five parallel processes: Astro site (:4321), Vite SPA (:5173, `base=/`), platform (cargo run, :3000), campaign (cargo run, :3001), and a Caddy reverse proxy (:8080) configured by `Caddyfile.dev`.
 - **URLs the browser sees:** `http://localhost:8080` (marketing) and `http://app.localhost:8080` (app). Caddy binds both host matchers on port 8080; `*.localhost` is loopback by browser convention, so no `/etc/hosts` entries are required. The marketing host routes `/` → Astro; the app host routes `/api/*` → platform, `/campaign/*` → campaign, `/*` → SPA. Dev topology mirrors prod exactly - two apexes, same path rules within each.
 - **Auth:** preview Hanko tenant via `HANKO_API_URL_DEV` in `mise.toml`. Registered origin on the preview tenant is `http://app.localhost:8080`. Email/passcode works; passkeys don't (rpID mismatch, intentional).
-- **Data:** local libSQL files under `data/`. `:memory:` for tests.
+- **Data:** local SQLite files under `data/`. `:memory:` for tests.
 
 ### PR preview
 
@@ -216,7 +217,7 @@ Three environments, same application shape. What changes between them is the fab
 - **Entry point:** Kustomize-managed k8s resources in the default namespace. Applied by CI on merge to main (see `ci_cd_main.yml`).
 - **URLs:** `https://familiar.systems/` (Astro); `https://app.familiar.systems/{,api,campaign}/...`. Two host-scoped Traefik IngressRoutes; longest-prefix rules apply within the app apex.
 - **Auth:** prod Hanko tenant via `HANKO_API_URL` (hardcoded in `infra/k8s/overlays/prod/patches/deployments.yaml`, injected into the platform deployment). Registered origin is exactly `https://app.familiar.systems`.
-- **Data:** platform DB on Hetzner Volume at `/data/platform/platform.db`. Campaign libSQL files on the volume + mirrored to Hetzner Object Storage (source of truth for recovery + cross-shard handoff).
+- **Data:** platform DB on Hetzner Volume at `/data/platform/platform.db`. Campaign SQLite files on the volume + mirrored to Hetzner Object Storage (source of truth for recovery + cross-shard handoff).
 
 ### What's the same across all three
 
@@ -237,24 +238,22 @@ Three environments, same application shape. What changes between them is the fab
 
 The SPA calls two services over same-origin paths under the environment apex (see "URL architecture" above):
 
-1. **App server** at `familiar.systems/api/` (or `.../pr-N/api/` in preview) - platform CRUD via REST/JSON
-2. **Campaign server** at `familiar.systems/campaign/{campaign_id}/` - collaboration via WebSocket, path-prefix-routed to the owning shard
+1. **App server** at `app.familiar.systems/api/` (or `.../pr-N/api/` in preview) - platform CRUD via REST/JSON
+2. **Campaign server** at `app.familiar.systems/campaign/{campaign_id}/` - collaboration via WebSocket, path-prefix-routed to the owning shard
 
 The "enter campaign" flow from the SPA's perspective:
 
-1. Call app server: `POST /api/campaigns/{id}/checkout`
-2. App server returns a shard-agnostic URL (triggering checkout if needed)
-3. SPA waits for checkout confirmation
-4. SPA opens the returned WebSocket URL; ingress routes to the owning shard
-5. Collaboration begins
+1. Call app server: `GET /api/campaigns/{id}` (this triggers checkout if needed; the lease acquisition is invisible to the caller)
+2. The read returns once the campaign is confirmed checked out on a shard
+3. SPA opens the path-convention WebSocket URL (`/campaign/{id}/ws`); ingress routes to the owning shard
+4. Collaboration begins
 
-Because everything is same-origin, the SPA has no CORS preflight to handle, no cross-subdomain cookie handling, and no per-PR URL construction logic. The checkout response is treated opaquely - the SPA does not parse `shard_id` from the URL because it isn't there.
+Because everything is same-origin, the SPA has no CORS preflight to handle, no cross-subdomain cookie handling, and no per-PR URL construction logic. Campaign URLs are path conventions - there is no `shard_id` to parse because it isn't there.
 
 ---
 
 ## Open questions
 
-- Platform database technology choice (libSQL vs Postgres vs other)
 - Heartbeat interval and lease expiry timeout values
 - Usage reporting interval and actor design on the campaign server side
 - Invite flow mechanics (link-based, code-based, or both)

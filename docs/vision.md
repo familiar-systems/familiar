@@ -53,7 +53,7 @@ A campaign can ship with a **starter pack** - a set of prototype things (NPC, Lo
 
 ### Arc
 
-An optional narrative grouping across sessions. Arcs give structure to long-running campaigns - "The Siege of Grimhollow" might span sessions 7–12. Not every campaign uses arcs, and that's fine. They exist for GMs who think in terms of chapters or story beats.
+An optional narrative grouping across sessions. Arcs give structure to long-running campaigns - "The Siege of Grimhollow" might span sessions 7-12. Not every campaign uses arcs, and that's fine. They exist for GMs who think in terms of chapters or story beats.
 
 Arcs are nodes in the graph. They can have their own content (theme notes, planned revelations, dramatic questions) and they connect to sessions via edges.
 
@@ -267,7 +267,7 @@ GM reviews suggestions (accept / edit / reject / dismiss)
   - Skipping is fine - unreviewed suggestions auto-reject after ~14 days
 ```
 
-The entire post-session process should take **15–30 minutes**, not hours. The AI does the heavy lifting; the GM does the judgment calls.
+The entire post-session process should take **15-30 minutes**, not hours. The AI does the heavy lifting; the GM does the judgment calls.
 
 ### Pre-Session Workflow (Prep)
 
