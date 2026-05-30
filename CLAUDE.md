@@ -45,7 +45,7 @@ apps/campaign         Rust binary: Axum + kameo (actors, collab, AI, compiler)
 workers/              Job processors, language-agnostic (Python ML today)
 
 crates/app-shared       Rust library: IDs, auth (platform + campaign)
-crates/campaign-shared  Rust library: ToC/Thing Loro wrappers, PM conventions, CrdtDoc trait (campaign only)
+crates/campaign-shared  Rust library: Loro schema constants + ts-rs types (ToC/Thing schema, PM conventions), onboarding DTOs (campaign only)
 crates/fs-id, fs-id-macros  Rust utility crates: type-safe ID branding (#[fs_id] macro) used by both shared crates
 packages/types-app      @familiar-systems/types-app, generated from app-shared via ts-rs (CampaignId, UserId)
 packages/types-campaign @familiar-systems/types-campaign, generated from campaign-shared via ts-rs (ThingId, BlockId, ThingHandle, TocEntry, ...)
@@ -59,7 +59,7 @@ packages/editor         @familiar-systems/editor, TipTap/ProseMirror schema + cu
 - **`apps/web` depends on `types-app`, `types-campaign`, and `editor`.** The client/server boundary is enforced by the dependency graph. There is no server-side TypeScript to import.
 - **Each package's `src/index.ts` is its public API.** Import from `@familiar-systems/types-app` or `@familiar-systems/types-campaign`, never from `@familiar-systems/types-campaign/generated/ThingId`.
 - **Domain logic is Rust.** Two Rust binaries (platform + campaign server) and two shared crates own all backend logic. TypeScript is frontend-only.
-- **Two shared crates, two type packages, same split.** `app-shared` / `types-app` holds types both servers need (IDs, auth). `campaign-shared` / `types-campaign` holds campaign-only concerns (Loro wrappers, ToC schema, ProseMirror conventions, CrdtDoc trait). The test: "does the platform server need this type?" If yes, `app-shared`. If no, `campaign-shared`. Both crates export TypeScript types via ts-rs to their corresponding package.
+- **Two shared crates, two type packages, same split.** `app-shared` / `types-app` holds types both servers need (IDs, auth). `campaign-shared` / `types-campaign` holds campaign-only concerns (Loro schema constants and ts-rs types, ToC schema, ProseMirror conventions, onboarding DTOs); the concrete Loro doc wrappers and the `CrdtDoc` trait are app-local in `apps/campaign`. The test: "does the platform server need this type?" If yes, `app-shared`. If no, `campaign-shared`. Both crates export TypeScript types via ts-rs to their corresponding package.
 
 ### Deployment Targets
 
