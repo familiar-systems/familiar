@@ -8,9 +8,13 @@ import type {
   CampaignErrorResponse,
   CampaignMetadataResponse,
   CatalogResponse,
+  CreateThingRequest,
   PatchCampaignRequest,
+  Status,
   SystemEntry,
   TemplateRef,
+  ThingId,
+  ThingResponse,
 } from "@familiar-systems/types-campaign";
 export interface paths {
   "/campaign/{id}": {
@@ -27,6 +31,22 @@ export interface paths {
     options?: never;
     head?: never;
     patch: operations["patch_campaign"];
+    trace?: never;
+  };
+  "/campaign/{id}/things": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["create_thing"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/catalog/systems": {
@@ -88,9 +108,35 @@ export interface components {
     CampaignErrorResponse: CampaignErrorResponse;
     CampaignMetadataResponse: CampaignMetadataResponse;
     CatalogResponse: CatalogResponse;
+    /**
+     * @description Create a new Thing in a campaign.
+     *
+     *     `name` is required; everything else is optional. A missing `status` defaults
+     *     to `gmOnly` (the domain default for new content). `parent` places the Thing
+     *     in the table of contents: omitted appends it at the ToC root; `Some(id)`
+     *     nests it as the last child of that Thing's ToC node. `from_template_id` is
+     *     accepted but not yet implemented (the server returns 501).
+     */
+    CreateThingRequest: CreateThingRequest;
     PatchCampaignRequest: PatchCampaignRequest;
+    /**
+     * @description Visibility status for campaign content. The CRDT syncs all content to all
+     *     clients regardless of status; consumers (the browser UI, AI conversations)
+     *     filter what they surface based on the user's role.
+     *     See: docs/plans/2026-02-22-ai-prd.md
+     * @enum {string}
+     */
+    Status: Status;
     SystemEntry: SystemEntry;
     TemplateRef: TemplateRef;
+    /**
+     * Format: ulid
+     * @description Uniquely identifies a thing (NPC, location, item, etc.).
+     *     ULID for compact URLs (26 chars) and B-tree-friendly insert ordering.
+     */
+    ThingId: ThingId;
+    /** @description A created Thing, returned with `201 Created`. */
+    ThingResponse: ThingResponse;
   };
   responses: never;
   parameters: never;
@@ -226,6 +272,82 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["CampaignErrorResponse"];
         };
+      };
+    };
+  };
+  create_thing: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateThingRequest"];
+      };
+    };
+    responses: {
+      /** @description Thing created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ThingResponse"];
+        };
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller is not a GM of this campaign */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not on this shard */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Parent thing not found in the table of contents */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Creation failed */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Creating from a template is not yet supported */
+      501: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting or platform unreachable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

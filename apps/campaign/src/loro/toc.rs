@@ -313,6 +313,25 @@ impl LoroTocDoc {
         self.read_children(&tree, None)
     }
 
+    /// Find the `TreeID` of the node representing `thing_id`, if it appears
+    /// anywhere in the tree. Used to resolve a parent Thing for placement.
+    pub fn find_thing_node(&self, thing_id: &ThingId) -> Option<TreeID> {
+        fn search(nodes: &[TocTreeNode], target: &ThingId) -> Option<TreeID> {
+            for node in nodes {
+                if let TocEntry::Thing { thing_id: id, .. } = &node.entry
+                    && id == target
+                {
+                    return Some(node.tree_id);
+                }
+                if let Some(found) = search(&node.children, target) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        search(&self.read_tree(), thing_id)
+    }
+
     /// Read a single entry by TreeID.
     pub fn read_entry(&self, node: TreeID) -> Option<TocEntry> {
         let tree = self.tree();
@@ -492,6 +511,20 @@ mod tests {
         assert_eq!(tree.len(), 1, "one root node");
         assert_eq!(tree[0].children.len(), 1, "one child");
         assert_eq!(tree[0].children[0].entry, child_entry);
+    }
+
+    #[test]
+    fn find_thing_node_locates_nested_thing() {
+        let mut doc = LoroTocDoc::new();
+        let (_, folder_id) = doc.add_entry(None, &folder("Act I")).unwrap();
+        let (thing_entry, thing_id) = thing("The Dragon's Lair");
+        let (_, tree_id) = doc.add_entry(Some(folder_id), &thing_entry).unwrap();
+
+        assert_eq!(doc.find_thing_node(&thing_id), Some(tree_id));
+        assert!(
+            doc.find_thing_node(&ThingId::generate()).is_none(),
+            "absent thing resolves to None"
+        );
     }
 
     #[test]

@@ -25,14 +25,15 @@ use kameo::prelude::Actor;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use familiar_systems_campaign_shared::id::{ClientId, ThingId};
+use familiar_systems_campaign_shared::status::Status;
 use tokio::sync::mpsc;
 
 use crate::actors::database_writer::{
     GetMetadata, MetadataError, PatchCampaignError, PatchCampaignMetadata as DbPatchCampaign,
     PatchCampaignResult,
 };
-use crate::actors::thing::{ThingActor, ThingActorArgs};
-use crate::actors::toc::{TocActor, TocActorArgs};
+use crate::actors::thing::{ThingActor, ThingActorArgs, ThingInit};
+use crate::actors::toc::{AddThingNode, ResolveThingNode, TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::domain::crdt::room_actor;
 use crate::entities::columns::ThingIdCol;
@@ -334,6 +335,119 @@ impl Message<GetMetadata> for CampaignSupervisor {
 }
 
 // ---------------------------------------------------------------------------
+// CreateThing
+// ---------------------------------------------------------------------------
+
+/// Create a new Thing in this campaign. The supervisor validates placement,
+/// spawns the owning `ThingActor` in genesis mode (which persists the Thing's
+/// own birth row), registers it, and adds its node to the live ToC. Replies
+/// with the persisted `things` row for the HTTP response.
+#[derive(Debug, Clone)]
+pub struct CreateThing {
+    pub name: String,
+    pub status: Option<Status>,
+    /// Parent Thing to nest under in the ToC. `None` => ToC root.
+    pub parent: Option<ThingId>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum CreateThingError {
+    #[error("parent thing not found in toc")]
+    ParentNotFound,
+    #[error("thing genesis failed")]
+    Genesis,
+    #[error("a child actor was unavailable")]
+    ActorUnavailable,
+    #[error("database error: {0}")]
+    Db(#[from] sea_orm::DbErr),
+}
+
+impl Message<CreateThing> for CampaignSupervisor {
+    type Reply = Result<things::Model, CreateThingError>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: CreateThing,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+
+        // Validate placement before any write: a bad parent fails cleanly with
+        // nothing persisted.
+        if let Some(parent) = &msg.parent {
+            match self.toc.ask(ResolveThingNode(parent.clone())).await {
+                Ok(Some(_)) => {}
+                Ok(None) => return Err(CreateThingError::ParentNotFound),
+                Err(e) => {
+                    tracing::error!(error = %e, "toc unavailable while resolving parent");
+                    return Err(CreateThingError::ActorUnavailable);
+                }
+            }
+        }
+
+        let status = msg.status.unwrap_or(Status::GmOnly);
+        let thing_id = ThingId::generate();
+
+        let (db_reader, db_writer) = {
+            let db = self
+                .db
+                .as_ref()
+                .expect("db must be Some while actor is running");
+            (db.reader().clone(), db.writer().clone())
+        };
+
+        // Spawn the owning actor in genesis mode; it persists its own birth row
+        // through the single-writer. Nothing writes a Thing's rows around it.
+        let actor = ThingActor::spawn(ThingActorArgs {
+            campaign_id: self.campaign_id.clone(),
+            thing_id: thing_id.clone(),
+            db_reader: db_reader.clone(),
+            db_writer,
+            init: ThingInit::New {
+                name: msg.name.clone(),
+                status,
+            },
+            debounce_duration: Duration::from_secs(2),
+            idle_timeout: Duration::from_secs(30),
+        });
+        actor.wait_for_startup().await;
+        if !actor.is_alive() {
+            tracing::error!("thing actor died during genesis");
+            return Err(CreateThingError::Genesis);
+        }
+        self.things.insert(thing_id.clone(), actor);
+
+        // Place it in the live ToC. Best-effort: a failure here leaves a valid
+        // Thing that `restore_toc` re-surfaces at the root on the next checkout.
+        if let Err(e) = self
+            .toc
+            .ask(AddThingNode {
+                thing_id: thing_id.clone(),
+                title: msg.name.clone(),
+                visibility: status,
+                parent: msg.parent.clone(),
+            })
+            .await
+        {
+            tracing::error!(
+                error = %e,
+                "failed to add toc node for new thing; it will self-heal on next checkout"
+            );
+        }
+
+        // Read back the committed row for the response.
+        things::Entity::find_by_id(ThingIdCol::from(thing_id.clone()))
+            .one(&db_reader)
+            .await?
+            .ok_or(CreateThingError::Genesis)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // RoomHandle + JoinRoom (WebSocket room dispatch)
 // ---------------------------------------------------------------------------
 
@@ -448,6 +562,7 @@ impl CampaignSupervisor {
             thing_id: thing_id.clone(),
             db_reader: db.reader().clone(),
             db_writer: db.writer().clone(),
+            init: ThingInit::Restore,
             debounce_duration: Duration::from_secs(2),
             idle_timeout: Duration::from_secs(30),
         });

@@ -1,8 +1,11 @@
 //! `ThingActor`: per-Thing CRDT room actor.
 //!
-//! Spawned lazily by the `CampaignSupervisor` when a client first joins a
-//! Thing room. Holds a `LoroThingDoc` reconstructed from block rows in
-//! SQLite. Self-evicts when all subscribers leave and an idle timer fires.
+//! Spawned by the `CampaignSupervisor` either lazily, when a client first
+//! joins a Thing room (`ThingInit::Restore`, reconstructing a `LoroThingDoc`
+//! from block rows in SQLite), or at creation time (`ThingInit::New`, where the
+//! actor builds its doc and persists its own genesis row). Either way the actor
+//! is the sole mutator of its Thing. Self-evicts when all subscribers leave and
+//! an idle timer fires.
 
 use std::time::Duration;
 
@@ -19,10 +22,11 @@ use kameo::prelude::Actor;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 
-use crate::actors::database_writer::{DatabaseWriteActor, WriteThingBlocks};
+use crate::actors::database_writer::{DatabaseWriteActor, DbCreateThing, WriteThingBlocks};
 use crate::domain::crdt::doc::CrdtDoc;
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
+use crate::domain::thing::build_new_thing;
 use crate::entities::columns::{BlockIdCol, StatusCol, ThingIdCol};
 use crate::entities::{blocks, things};
 use crate::loro::thing::LoroThingDoc;
@@ -48,41 +52,81 @@ pub struct ThingActorArgs {
     pub thing_id: ThingId,
     pub db_reader: DatabaseConnection,
     pub db_writer: ActorRef<DatabaseWriteActor>,
+    /// Whether the actor loads an existing Thing or originates a new one.
+    pub init: ThingInit,
     pub debounce_duration: Duration,
     pub idle_timeout: Duration,
 }
 
+/// How a `ThingActor` comes into being.
+///
+/// `Restore` loads an existing Thing's blocks from SQLite (the room-join path).
+/// `New` originates a Thing: the actor builds its `LoroThingDoc` and persists
+/// its own genesis row. Keeping creation inside the actor preserves the
+/// invariant that every write to a Thing flows through its owning actor.
+pub enum ThingInit {
+    Restore,
+    New { name: String, status: Status },
+}
+
+/// Failure modes for `ThingActor` startup.
+#[derive(Debug, thiserror::Error)]
+pub enum ThingInitError {
+    #[error("database error: {0}")]
+    Db(#[from] sea_orm::DbErr),
+    #[error("genesis write failed")]
+    Genesis,
+}
+
 impl Actor for ThingActor {
     type Args = ThingActorArgs;
-    type Error = sea_orm::DbErr;
+    type Error = ThingInitError;
 
     #[tracing::instrument(
         skip_all,
         fields(campaign_id = %args.campaign_id.0, thing_id = %args.thing_id.0),
     )]
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
-        let thing_row = things::Entity::find_by_id(ThingIdCol::from(args.thing_id.clone()))
-            .one(&args.db_reader)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "failed to query thing"))?
-            .expect("ThingActor spawned for a thing that exists in the database");
+        let doc = match args.init {
+            ThingInit::Restore => {
+                let thing_row = things::Entity::find_by_id(ThingIdCol::from(args.thing_id.clone()))
+                    .one(&args.db_reader)
+                    .await
+                    .inspect_err(|e| tracing::error!(error = %e, "failed to query thing"))?
+                    .expect("ThingActor spawned for a thing that exists in the database");
 
-        let block_rows = blocks::Entity::find()
-            .filter(blocks::Column::ThingId.eq(ThingIdCol::from(args.thing_id.clone())))
-            .filter(blocks::Column::Section.eq(SECTION_CONTENT))
-            .order_by_asc(blocks::Column::Ordering)
-            .all(&args.db_reader)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "failed to query blocks"))?;
+                let block_rows = blocks::Entity::find()
+                    .filter(blocks::Column::ThingId.eq(ThingIdCol::from(args.thing_id.clone())))
+                    .filter(blocks::Column::Section.eq(SECTION_CONTENT))
+                    .order_by_asc(blocks::Column::Ordering)
+                    .all(&args.db_reader)
+                    .await
+                    .inspect_err(|e| tracing::error!(error = %e, "failed to query blocks"))?;
 
-        let status: Status = thing_row.status.into();
-        tracing::debug!(?status, block_count = block_rows.len(), "loaded thing");
+                let status: Status = thing_row.status.into();
+                let blobs: Vec<Vec<u8>> = block_rows.into_iter().map(|b| b.content).collect();
+                tracing::info!(block_count = blobs.len(), ?status, "thing actor restored");
+                LoroThingDoc::from_blocks(&thing_row.name, &status, &blobs)
+            }
+            ThingInit::New { name, status } => {
+                // The actor owns its own birth: build the doc, then persist the
+                // genesis row through the single-writer. Nothing writes a
+                // Thing's rows around the actor that owns it.
+                let new_thing = build_new_thing(args.thing_id.clone(), name, status);
+                let blobs: Vec<Vec<u8>> =
+                    new_thing.blocks.iter().map(|b| b.content.clone()).collect();
+                let doc = LoroThingDoc::from_blocks(&new_thing.name, &new_thing.status, &blobs);
 
-        let blobs: Vec<Vec<u8>> = block_rows.into_iter().map(|b| b.content).collect();
-        let doc = LoroThingDoc::from_blocks(&thing_row.name, &status, &blobs);
+                if let Err(e) = args.db_writer.ask(DbCreateThing { new_thing }).await {
+                    tracing::error!(error = %e, "thing genesis write failed");
+                    return Err(ThingInitError::Genesis);
+                }
+                tracing::info!(?status, "thing actor created");
+                doc
+            }
+        };
+
         let doc_room = room::Room::new(doc);
-
-        tracing::info!(block_count = blobs.len(), "thing actor started");
 
         Ok(Self {
             campaign_id: args.campaign_id,
@@ -414,10 +458,50 @@ mod tests {
             thing_id: thing_id.clone(),
             db_reader: conn,
             db_writer,
+            init: ThingInit::Restore,
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
         });
         actor.wait_for_startup().await;
+        actor.stop_gracefully().await.unwrap();
+        actor.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    #[tokio::test]
+    async fn new_init_persists_genesis_row() {
+        let conn = setup_db().await;
+        let campaign_id = CampaignId::generate();
+        let db_writer =
+            DatabaseWriteActor::spawn(crate::actors::database_writer::DatabaseWriteActorArgs {
+                campaign_id: campaign_id.clone(),
+                conn: conn.clone(),
+            });
+
+        let thing_id = ThingId::generate();
+        let actor = ThingActor::spawn(ThingActorArgs {
+            campaign_id,
+            thing_id: thing_id.clone(),
+            db_reader: conn.clone(),
+            db_writer,
+            init: ThingInit::New {
+                name: "Korgath the Destroyer".into(),
+                status: Status::GmOnly,
+            },
+            debounce_duration: Duration::from_secs(60),
+            idle_timeout: Duration::from_secs(60),
+        });
+        actor.wait_for_startup().await;
+        assert!(actor.is_alive(), "genesis should succeed");
+
+        // The actor wrote its own birth row.
+        let row = things::Entity::find_by_id(ThingIdCol::from(thing_id.clone()))
+            .one(&conn)
+            .await
+            .unwrap()
+            .expect("genesis thing row exists");
+        assert_eq!(row.name, "Korgath the Destroyer");
+        assert_eq!(Status::from(row.status), Status::GmOnly);
+
         actor.stop_gracefully().await.unwrap();
         actor.wait_for_shutdown_with_result(|_| ()).await;
     }
@@ -458,6 +542,7 @@ mod tests {
             thing_id,
             db_reader: conn,
             db_writer,
+            init: ThingInit::Restore,
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
         });

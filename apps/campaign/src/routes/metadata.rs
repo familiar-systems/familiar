@@ -28,11 +28,13 @@ use fs_id::Nanoid;
     ),
     responses(
         (status = OK, description = "Campaign metadata", body = CampaignMetadataResponse),
+        // 4XX
         (status = UNAUTHORIZED, description = "Missing or invalid session"),
         (status = FORBIDDEN, description = "Not the campaign owner"),
         (status = NOT_FOUND, description = "Campaign not on this shard"),
-        (status = 503, description = "Server restarting"),
-        (status = 500, description = "Internal error"),
+        // 5XX
+        (status = SERVICE_UNAVAILABLE, description = "Server restarting"),
+        (status = INTERNAL_SERVER_ERROR, description = "Internal error"),
     ),
 )]
 pub async fn get_campaign(

@@ -8,8 +8,13 @@ use familiar_systems_app_shared::id::CampaignId;
 use kameo::prelude::{Actor, Context, Message};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    TransactionTrait,
 };
 
+use familiar_systems_campaign_shared::loro::thing::SECTION_CONTENT;
+
+use crate::domain::thing::NewThing;
+use crate::entities::columns::{BlockIdCol, StatusCol};
 use crate::entities::{blocks, campaign_metadata, things, toc_entries};
 
 pub struct DatabaseWriteActor {
@@ -303,6 +308,74 @@ impl Message<WriteThingBlocks> for DatabaseWriteActor {
 }
 
 // ---------------------------------------------------------------------------
+// DbCreateThing (genesis write)
+// ---------------------------------------------------------------------------
+
+/// Persist a brand-new Thing: its `things` row plus any seeded `blocks`, in a
+/// single transaction. Invoked once, from the `ThingActor`'s genesis path
+/// (`ThingInit::New`), so the actor that owns the Thing owns its birth write.
+/// Replies with the persisted row (timestamps stamped here, at the write edge).
+pub struct DbCreateThing {
+    pub new_thing: NewThing,
+}
+
+impl Message<DbCreateThing> for DatabaseWriteActor {
+    type Reply = Result<things::Model, sea_orm::DbErr>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.new_thing.id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: DbCreateThing,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let nt = msg.new_thing;
+        let thing_id_col = ThingIdCol::from(nt.id.clone());
+        let block_count = nt.blocks.len();
+        let now = Utc::now();
+
+        tracing::debug!(block_count, "creating thing");
+
+        let txn = self.conn.begin().await?;
+
+        let model = things::ActiveModel {
+            id: Set(thing_id_col.clone()),
+            name: Set(nt.name),
+            status: Set(StatusCol::from(nt.status)),
+            prototype_id: Set(nt.prototype_id.map(ThingIdCol::from)),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&txn)
+        .await?;
+
+        if !nt.blocks.is_empty() {
+            let block_rows: Vec<blocks::ActiveModel> = nt
+                .blocks
+                .into_iter()
+                .map(|b| blocks::ActiveModel {
+                    id: Set(BlockIdCol::from(b.id)),
+                    thing_id: Set(thing_id_col.clone()),
+                    status: Set(StatusCol::from(b.status)),
+                    ordering: Set(b.ordering),
+                    content: Set(b.content),
+                    section: Set(SECTION_CONTENT.to_string()),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                })
+                .collect();
+            blocks::Entity::insert_many(block_rows).exec(&txn).await?;
+        }
+
+        txn.commit().await?;
+        tracing::debug!(block_count, "thing created");
+        Ok(model)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Ping (health check / test)
 // ---------------------------------------------------------------------------
 
@@ -463,5 +536,46 @@ mod tests {
         let (actor, _) = spawn_with_migrations().await;
         actor.stop_gracefully().await.expect("stop_gracefully");
         actor.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    #[tokio::test]
+    async fn create_thing_inserts_row_and_blocks_atomically() {
+        use crate::domain::thing::{NewBlock, NewThing};
+        use familiar_systems_campaign_shared::id::{BlockId, ThingId};
+        use familiar_systems_campaign_shared::status::Status;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        let thing_id = ThingId::generate();
+        let model = actor
+            .ask(DbCreateThing {
+                new_thing: NewThing {
+                    id: thing_id.clone(),
+                    name: "Korgath".into(),
+                    status: Status::GmOnly,
+                    prototype_id: None,
+                    blocks: vec![NewBlock {
+                        id: BlockId::generate(),
+                        ordering: 0,
+                        content: b"hello".to_vec(),
+                        status: Status::GmOnly,
+                    }],
+                },
+            })
+            .await
+            .expect("create thing");
+        assert_eq!(model.name, "Korgath");
+
+        let things = things::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(things.len(), 1, "thing row inserted");
+        let block_rows = blocks::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(block_rows.len(), 1, "block row inserted");
+        assert_eq!(block_rows[0].content, b"hello");
     }
 }

@@ -235,6 +235,98 @@ impl Message<room_actor::ClientUpdate> for TocActor {
 }
 
 // ---------------------------------------------------------------------------
+// Thing-node mutations (server-initiated, from CampaignSupervisor::CreateThing)
+// ---------------------------------------------------------------------------
+
+/// Resolve a Thing's ToC node, if present. The supervisor uses this to
+/// validate a requested parent placement before any write happens.
+#[derive(Debug, Clone)]
+pub struct ResolveThingNode(pub ThingId);
+
+impl Message<ResolveThingNode> for TocActor {
+    type Reply = Option<TreeID>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.0.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: ResolveThingNode,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.doc_room.doc().find_thing_node(&msg.0)
+    }
+}
+
+/// Insert a Thing node into the live ToC and broadcast the change. Sent once
+/// per Thing creation, after the genesis row is committed. Appends at the ToC
+/// root when `parent` is `None`, otherwise as the last child of the parent
+/// Thing's node. A `parent` that no longer resolves (a rare race after the
+/// supervisor's pre-check) falls back to the root with a warning, rather than
+/// failing a Thing that is already persisted.
+#[derive(Debug, Clone)]
+pub struct AddThingNode {
+    pub thing_id: ThingId,
+    pub title: String,
+    pub visibility: Status,
+    pub parent: Option<ThingId>,
+}
+
+impl Message<AddThingNode> for TocActor {
+    type Reply = Result<(), String>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.thing_id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: AddThingNode,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let parent_tree = match &msg.parent {
+            None => None,
+            Some(parent_id) => {
+                let resolved = self.doc_room.doc().find_thing_node(parent_id);
+                if resolved.is_none() {
+                    tracing::warn!(
+                        parent = %parent_id.0,
+                        "parent thing node not found in toc; appending at root"
+                    );
+                }
+                resolved
+            }
+        };
+
+        let entry = TocEntry::Thing {
+            title: msg.title,
+            thing_id: msg.thing_id.clone(),
+            visibility: msg.visibility,
+            suggestions: Vec::new(),
+        };
+
+        let delta = self.doc_room.doc_mut().add_entry(parent_tree, &entry)?.0;
+
+        // Track the new Thing so `snapshot_toc` doesn't treat its node as a
+        // dangling reference and drop it on the next persist.
+        self.known_things.insert(msg.thing_id);
+
+        let frames = encode_broadcast(
+            loro_protocol::CrdtType::Loro,
+            "toc",
+            std::slice::from_ref(&delta),
+            &self.fragmenter,
+        );
+        self.doc_room.fan_out(&frames, None);
+
+        self.dirty = true;
+        self.schedule_persist();
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // PersistNow
 // ---------------------------------------------------------------------------
 
@@ -863,6 +955,81 @@ mod tests {
         assert!(
             surviving_ids.contains(&id_map[&keep_id]),
             "kept node's row ID is present"
+        );
+    }
+
+    // -- Actor: AddThingNode --
+
+    /// Proves the critical `known_things` wiring: a node added via
+    /// `AddThingNode` survives `snapshot_toc` (which drops Thing entries not in
+    /// `known_things`) and is persisted. Forced through `on_stop` rather than
+    /// the debounce timer for determinism.
+    #[tokio::test]
+    async fn add_thing_node_tracks_known_thing_and_persists() {
+        use crate::actors::database_writer::{DatabaseWriteActor, DatabaseWriteActorArgs, Ping};
+        use crate::db;
+        use crate::migrations::Migrator;
+        use chrono::Utc;
+        use kameo::actor::Spawn;
+        use sea_orm::ActiveModelTrait;
+        use sea_orm_migration::MigratorTrait;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+
+        let campaign_id = CampaignId::generate();
+        let db_writer = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: campaign_id.clone(),
+            conn: conn.clone(),
+        });
+
+        let toc = TocActor::spawn(TocActorArgs {
+            campaign_id,
+            db_reader: conn.clone(),
+            db_writer: db_writer.clone(),
+            debounce_duration: Duration::from_secs(60), // don't fire mid-test
+        });
+        toc.wait_for_startup().await;
+
+        // Insert the backing Thing row so the toc_entries FK is satisfied. The
+        // running TocActor doesn't know about it yet (startup already read the
+        // things table), which is exactly the create-time situation.
+        let thing_id = ThingId::generate();
+        let now = Utc::now();
+        things::ActiveModel {
+            id: Set(ThingIdCol::from(thing_id.clone())),
+            name: Set("Korgath".into()),
+            status: Set(StatusCol::from(Status::GmOnly)),
+            prototype_id: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&conn)
+        .await
+        .unwrap();
+
+        toc.ask(AddThingNode {
+            thing_id: thing_id.clone(),
+            title: "Korgath".into(),
+            visibility: Status::GmOnly,
+            parent: None,
+        })
+        .await
+        .expect("add thing node");
+
+        // Stopping flushes the dirty doc through on_stop -> WriteTocSnapshot.
+        toc.stop_gracefully().await.unwrap();
+        toc.wait_for_shutdown_with_result(|_| ()).await;
+        // FIFO mailbox: Ping returns only after the snapshot write is processed.
+        db_writer.ask(Ping).await.unwrap();
+
+        let rows = toc_entries::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(rows.len(), 1, "the new thing's toc entry was persisted");
+        assert_eq!(
+            rows[0].thing_id.clone().map(ThingId::from),
+            Some(thing_id),
+            "persisted entry points at the created thing"
         );
     }
 }

@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use utoipa::ToSchema;
 
 /// Visibility status for campaign content. The CRDT syncs all content to all
 /// clients regardless of status; consumers (the browser UI, AI conversations)
 /// filter what they surface based on the user's role.
 /// See: docs/plans/2026-02-22-ai-prd.md
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "types-campaign/src/generated/document/")]
 pub enum Status {
