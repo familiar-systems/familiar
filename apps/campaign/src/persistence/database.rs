@@ -40,11 +40,16 @@ impl CampaignDatabase {
     /// Downloads the campaign file (via [`CampaignStore::checkout`]), opens read-write and
     /// read-only connections, runs schema migrations, seeds campaign metadata if absent,
     /// and spawns the write actor. Returns when the database is ready.
+    ///
+    /// The returned `bool` is `is_new`: `true` when this checkout created the
+    /// metadata row (a brand-new campaign's first-ever open), `false` for a
+    /// re-open of an existing campaign. The supervisor uses it to seed the home
+    /// page exactly once.
     pub async fn checkout(
         store: &dyn CampaignStore,
         campaign_id: &CampaignId,
         owner_user_id: Option<&UserId>,
-    ) -> Result<Self, InitError> {
+    ) -> Result<(Self, bool), InitError> {
         let started = Instant::now();
         tracing::info!("checking out campaign database");
 
@@ -73,7 +78,12 @@ impl CampaignDatabase {
             .await
             .map_err(InitError::Migration)?;
 
-        if existing.is_none() {
+        // A missing metadata row is the brand-new-campaign signal: this checkout
+        // is the campaign's first-ever open. The supervisor uses `is_new` to seed
+        // the home page exactly once, surviving later evictions/reopens (which
+        // find the row already present and so leave `is_new` false).
+        let is_new = existing.is_none();
+        if is_new {
             let now = Utc::now();
             campaign_metadata::ActiveModel {
                 id: Set(campaign_metadata::METADATA_ROW_ID),
@@ -83,6 +93,7 @@ impl CampaignDatabase {
                 tagline: Set(None),
                 game_system: Set(None),
                 content_locale: Set(None),
+                home_thing_id: Set(None),
                 wizard_completed_at: Set(None),
                 created_at: Set(now),
                 updated_at: Set(now),
@@ -110,11 +121,14 @@ impl CampaignDatabase {
             "campaign database ready"
         );
 
-        Ok(Self {
-            reader,
-            writer,
-            path,
-        })
+        Ok((
+            Self {
+                reader,
+                writer,
+                path,
+            },
+            is_new,
+        ))
     }
 
     /// Read-only sea-orm connection pool (WAL mode).

@@ -29,8 +29,8 @@ use familiar_systems_campaign_shared::status::Status;
 use tokio::sync::mpsc;
 
 use crate::actors::database_writer::{
-    GetMetadata, MetadataError, PatchCampaignError, PatchCampaignMetadata as DbPatchCampaign,
-    PatchCampaignResult,
+    DbSetLandingPage, GetMetadata, MetadataError, PatchCampaignError,
+    PatchCampaignMetadata as DbPatchCampaign, PatchCampaignResult,
 };
 use crate::actors::thing::{ThingActor, ThingActorArgs, ThingInit};
 use crate::actors::toc::{AddThingNode, ResolveThingNode, TocActor, TocActorArgs};
@@ -120,7 +120,7 @@ impl Actor for CampaignSupervisor {
         fields(campaign_id = %args.campaign_id.0),
     )]
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, InitError> {
-        let db = CampaignDatabase::checkout(
+        let (db, is_new) = CampaignDatabase::checkout(
             args.store.as_ref(),
             &args.campaign_id,
             args.owner_user_id.as_ref(),
@@ -148,6 +148,37 @@ impl Actor for CampaignSupervisor {
                 }
             }
         });
+
+        // Seed the campaign's home page exactly once, on first-ever checkout.
+        // Spawned (not inline) because on_start has not returned yet: the mailbox
+        // is not draining, so a self-`ask` would deadlock. This runs after
+        // on_start completes, going through the same CreateThing path the GM's
+        // future "new page" button uses. Best-effort: a failure is cosmetic, and
+        // the orphan path re-surfaces any created Thing at the ToC root on the
+        // next checkout.
+        if is_new {
+            let seed_ref = actor_ref.clone();
+            tokio::spawn(async move {
+                match seed_ref
+                    .ask(CreateThing {
+                        name: "Campaign Base Camp".to_string(),
+                        status: Some(Status::Known),
+                        parent: None,
+                    })
+                    .await
+                {
+                    Ok(thing) => {
+                        let thing_id = ThingId::from(thing.id);
+                        if let Err(e) = seed_ref.ask(SetLandingPage { thing_id }).await {
+                            tracing::warn!(error = %e, "failed to record campaign home page pointer");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "failed to seed campaign home page");
+                    }
+                }
+            });
+        }
 
         Ok(Self {
             campaign_id: args.campaign_id,
@@ -331,6 +362,53 @@ impl Message<GetMetadata> for CampaignSupervisor {
             .one(db.reader())
             .await?
             .ok_or(MetadataError::NoMetadataRow)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SetLandingPage
+// ---------------------------------------------------------------------------
+
+/// Point `campaign_metadata.home_thing_id` at a Thing (the campaign's home /
+/// landing page). System-set during seeding, never mirrored to the platform
+/// (it is a local display preference, unlike the wizard-seal metadata). Kept
+/// distinct from `PatchCampaignMetadata` so the wizard path stays clean.
+#[derive(Debug, Clone)]
+pub struct SetLandingPage {
+    pub thing_id: ThingId,
+}
+
+impl Message<SetLandingPage> for CampaignSupervisor {
+    type Reply = Result<(), PatchCampaignError>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.thing_id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: SetLandingPage,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        let db = self
+            .db
+            .as_ref()
+            .expect("db must be Some while actor is running");
+        match db
+            .writer()
+            .ask(DbSetLandingPage {
+                thing_id: msg.thing_id,
+            })
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(kameo::error::SendError::HandlerError(e)) => Err(e),
+            Err(e) => {
+                tracing::error!(error = %e, "database actor unavailable during set landing page");
+                Err(PatchCampaignError::ActorUnavailable)
+            }
+        }
     }
 }
 
@@ -741,5 +819,114 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
         actor_ref.wait_for_shutdown_with_result(|_| ()).await;
         assert!(actor_ref.ask(Ping).await.is_err());
+    }
+
+    /// Poll the campaign's SQLite file (the seed runs in a spawned task after
+    /// `on_start`, so it lands asynchronously) until the home base exists.
+    /// Asserts exactly one Thing named "Campaign Base Camp" (status `Known`)
+    /// with `home_thing_id` pointing at it, and returns its id.
+    async fn poll_until_seeded(db_path: &std::path::Path) -> ThingId {
+        for _ in 0..200 {
+            let conn = crate::db::connect_readonly(db_path)
+                .await
+                .expect("open readonly");
+            let things = things::Entity::find()
+                .all(&conn)
+                .await
+                .expect("query things");
+            let meta = campaign_metadata::Entity::find_by_id(campaign_metadata::METADATA_ROW_ID)
+                .one(&conn)
+                .await
+                .expect("query metadata")
+                .expect("metadata row exists");
+            // Require both writes (the Thing row, then the pointer) so we never
+            // observe the brief window between CreateThing and SetLandingPage.
+            if let (Some(thing), Some(home)) = (things.first(), meta.home_thing_id.clone()) {
+                assert_eq!(things.len(), 1, "exactly one Thing seeded");
+                assert_eq!(thing.name, "Campaign Base Camp");
+                assert_eq!(Status::from(thing.status), Status::Known);
+                let thing_id = ThingId::from(thing.id.clone());
+                assert_eq!(
+                    ThingId::from(home),
+                    thing_id,
+                    "home_thing_id points at the base camp"
+                );
+                return thing_id;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!("home base was not seeded within timeout");
+    }
+
+    #[tokio::test]
+    async fn brand_new_campaign_seeds_home_base() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let store = store_in(tmp.path());
+        let campaign_id = CampaignId::generate();
+        let args = fast_args(campaign_id.clone(), store, 60_000, 60_000);
+        let actor_ref = CampaignSupervisor::spawn(args);
+        actor_ref.wait_for_startup().await;
+
+        let db_path = tmp.path().join(format!("{}.db", campaign_id.0));
+        poll_until_seeded(&db_path).await;
+
+        actor_ref.stop_gracefully().await.unwrap();
+        actor_ref.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    #[tokio::test]
+    async fn reopen_does_not_reseed_home_base() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let store = store_in(tmp.path());
+        let campaign_id = CampaignId::generate();
+        let db_path = tmp.path().join(format!("{}.db", campaign_id.0));
+
+        // First open seeds the base camp.
+        let first = CampaignSupervisor::spawn(fast_args(
+            campaign_id.clone(),
+            store.clone(),
+            60_000,
+            60_000,
+        ));
+        first.wait_for_startup().await;
+        let seeded = poll_until_seeded(&db_path).await;
+        first.stop_gracefully().await.unwrap();
+        first.wait_for_shutdown_with_result(|_| ()).await;
+
+        // Reopen is a cold checkout (`is_new == false`): the existing metadata
+        // row means the seed guard does not fire, so no second base camp.
+        let second = CampaignSupervisor::spawn(fast_args(
+            campaign_id.clone(),
+            store.clone(),
+            60_000,
+            60_000,
+        ));
+        second.wait_for_startup().await;
+        // Give any (erroneous) seed task a chance to run before asserting.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let conn = crate::db::connect_readonly(&db_path)
+            .await
+            .expect("open readonly");
+        let things = things::Entity::find()
+            .all(&conn)
+            .await
+            .expect("query things");
+        assert_eq!(things.len(), 1, "reopen must not add a second base camp");
+        let meta = campaign_metadata::Entity::find_by_id(campaign_metadata::METADATA_ROW_ID)
+            .one(&conn)
+            .await
+            .expect("query metadata")
+            .expect("metadata row exists");
+        assert_eq!(
+            meta.home_thing_id.map(ThingId::from),
+            Some(seeded),
+            "home pointer unchanged on reopen"
+        );
+
+        second.stop_gracefully().await.unwrap();
+        second.wait_for_shutdown_with_result(|_| ()).await;
     }
 }

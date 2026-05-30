@@ -11,8 +11,8 @@ use std::borrow::Cow;
 
 use familiar_systems_campaign_shared::id::{ConversationId, ThingId};
 use familiar_systems_campaign_shared::loro::toc::{
-    CONTAINER_META, CONTAINER_TOC, KEY_CONVERSATION_ID, KEY_KIND, KEY_LANDING_PAGE_ID,
-    KEY_THING_ID, KEY_TITLE, KEY_VISIBILITY, KIND_FOLDER, KIND_SUGGESTION, KIND_THING, TocEntry,
+    CONTAINER_TOC, KEY_CONVERSATION_ID, KEY_KIND, KEY_THING_ID, KEY_TITLE, KEY_VISIBILITY,
+    KIND_FOLDER, KIND_SUGGESTION, KIND_THING, TocEntry,
 };
 use familiar_systems_campaign_shared::status::Status;
 use loro::{LoroDoc, LoroMap, LoroTree, LoroValue, TreeID, ValueOrContainer};
@@ -34,8 +34,6 @@ pub struct TocTreeNode {
 ///
 /// ```text
 /// LoroDoc root:
-///   "meta" (LoroMap)
-///     "landingPageId": string
 ///   "toc" (LoroTree, fractional index enabled)
 ///     Node metadata (LoroMap per node):
 ///       "kind": "folder" | "thing" | "suggestion"
@@ -50,13 +48,11 @@ pub struct LoroTocDoc {
 
 #[allow(clippy::new_without_default)]
 impl LoroTocDoc {
-    /// Create a new empty ToC document with initialized containers.
+    /// Create a new empty ToC document with its tree container initialized.
     pub fn new() -> Self {
         let doc = LoroDoc::new();
-        // Initialize containers so they exist from the start.
-        // Avoids the concurrent insert_container hazard.
-        let meta = doc.get_map(CONTAINER_META);
-        meta.insert(KEY_LANDING_PAGE_ID, "").unwrap();
+        // Initialize the tree up front so it exists from the start, avoiding the
+        // concurrent insert_container hazard.
         let tree = doc.get_tree(CONTAINER_TOC);
         tree.enable_fractional_index(0);
         Self { doc }
@@ -71,10 +67,6 @@ impl LoroTocDoc {
     }
 
     // -- Private helpers --
-
-    fn meta(&self) -> LoroMap {
-        self.doc.get_map(CONTAINER_META)
-    }
 
     fn tree(&self) -> LoroTree {
         self.doc.get_tree(CONTAINER_TOC)
@@ -338,27 +330,6 @@ impl LoroTocDoc {
         let meta = tree.get_meta(node).ok()?;
         Self::read_entry_from_meta(&meta)
     }
-
-    // -- Metadata methods --
-
-    /// Get the current landing page ID.
-    /// FIXME: move to campaign supervisor; the ToC should not own this.
-    pub fn landing_page_id(&self) -> Option<String> {
-        let meta = self.meta();
-        match meta.get(KEY_LANDING_PAGE_ID)? {
-            ValueOrContainer::Value(LoroValue::String(s)) if !s.is_empty() => Some(s.to_string()),
-            _ => None,
-        }
-    }
-
-    /// Set the landing page ID. Returns delta bytes for broadcasting.
-    /// FIXME: move to campaign supervisor; the ToC should not own this.
-    pub fn set_landing_page(&mut self, page_id: &str) -> Result<Vec<u8>, String> {
-        let meta = self.meta();
-        self.with_delta(|| {
-            meta.insert(KEY_LANDING_PAGE_ID, page_id).unwrap();
-        })
-    }
 }
 
 impl CrdtDoc for LoroTocDoc {
@@ -552,19 +523,9 @@ mod tests {
     }
 
     #[test]
-    fn landing_page() {
-        let mut doc = LoroTocDoc::new();
-        assert!(doc.landing_page_id().is_none());
-
-        doc.set_landing_page("page1").unwrap();
-        assert_eq!(doc.landing_page_id(), Some("page1".to_string()));
-    }
-
-    #[test]
     fn snapshot_round_trip() {
         let mut doc = LoroTocDoc::new();
         doc.add_entry(None, &folder("A")).unwrap();
-        doc.set_landing_page("lp1").unwrap();
 
         let snapshot = doc.export_snapshot().unwrap();
         let doc2 = LoroTocDoc::from_snapshot(&snapshot).unwrap();
@@ -572,7 +533,6 @@ mod tests {
         let tree = doc2.read_tree();
         assert_eq!(tree.len(), 1);
         assert_eq!(tree[0].entry.title(), Some("A"));
-        assert_eq!(doc2.landing_page_id(), Some("lp1".to_string()));
     }
 
     /// Proves that a client doc stays converged with a server doc across
@@ -639,13 +599,7 @@ mod tests {
 
         assert_eq!(server.read_entry(folder_id).unwrap(), updated);
 
-        // 5. Set the landing page.
-        let delta = server.set_landing_page("welcome-page").unwrap();
-        apply!(server, client, delta);
-
-        assert_eq!(server.landing_page_id(), Some("welcome-page".to_string()));
-
-        // 6. Remove an entry.
+        // 5. Remove an entry.
         let delta = server.remove_entry(sibling_id).unwrap();
         apply!(server, client, delta);
 
@@ -654,6 +608,5 @@ mod tests {
 
         // Final: full read_tree equality (not just debug_value).
         assert_eq!(server.read_tree(), client.read_tree());
-        assert_eq!(server.landing_page_id(), client.landing_page_id());
     }
 }

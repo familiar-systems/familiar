@@ -13,6 +13,7 @@ use axum::{
 };
 use familiar_systems_app_shared::campaigns::internal::PatchCampaignMirror;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
+use familiar_systems_campaign_shared::id::ThingId;
 use familiar_systems_campaign_shared::onboarding::initialize::{
     CampaignErrorResponse, PatchCampaignRequest,
 };
@@ -66,6 +67,7 @@ pub async fn get_campaign(
                 tagline: model.tagline,
                 game_system: model.game_system,
                 content_locale: model.content_locale,
+                home_thing_id: model.home_thing_id.map(ThingId::from),
                 wizard_completed_at: model.wizard_completed_at.map(|dt| dt.to_rfc3339()),
                 created_at: model.created_at.to_rfc3339(),
                 updated_at: model.updated_at.to_rfc3339(),
@@ -253,6 +255,7 @@ pub async fn patch_campaign(
         tagline: model.tagline,
         game_system: model.game_system,
         content_locale: model.content_locale,
+        home_thing_id: model.home_thing_id.map(ThingId::from),
         wizard_completed_at: model.wizard_completed_at.map(|dt| dt.to_rfc3339()),
         created_at: model.created_at.to_rfc3339(),
         updated_at: model.updated_at.to_rfc3339(),

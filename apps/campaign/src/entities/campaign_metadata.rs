@@ -3,6 +3,8 @@ use familiar_systems_app_shared::id::{CampaignId, UserId};
 use fs_id::Uuid;
 use sea_orm::entity::prelude::*;
 
+use crate::entities::columns::ThingIdCol;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, DeriveValueType)]
 #[sea_orm(column_type = "Text")]
 pub struct CampaignIdCol(pub String);
@@ -45,6 +47,13 @@ pub struct Model {
     pub game_system: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub content_locale: Option<String>,
+    /// Pointer to the campaign's home / landing-page Thing, seeded once at
+    /// creation ("Campaign Base Camp"). FK to `things(id)` with
+    /// `ON DELETE SET NULL` (see [`Relation::HomeThing`]): deleting the Thing
+    /// clears the pointer rather than the campaign row, so a non-null value
+    /// always resolves to a live Thing. Null only in the brief window before
+    /// the async seed completes.
+    pub home_thing_id: Option<ThingIdCol>,
     pub wizard_completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -59,6 +68,18 @@ impl Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    /// Soft reference to the home / landing-page Thing. `ON DELETE SET NULL`
+    /// so deleting the Thing clears the pointer instead of cascading into the
+    /// singleton campaign row. Mirrors the FK declared in the create migration;
+    /// `schema_drift` asserts the two stay in lockstep.
+    #[sea_orm(
+        belongs_to = "super::things::Entity",
+        from = "Column::HomeThingId",
+        to = "super::things::Column::Id",
+        on_delete = "SetNull"
+    )]
+    HomeThing,
+}
 
 impl ActiveModelBehavior for ActiveModel {}

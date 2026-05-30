@@ -46,9 +46,6 @@ use crate::status::Status;
 /// Top-level LoroTree container for the table of contents.
 pub const CONTAINER_TOC: &str = "toc";
 
-/// Top-level LoroMap container for ToC metadata.
-pub const CONTAINER_META: &str = "meta";
-
 // ── Schema: LoroMap key constants ───────────────────────────────────────────
 
 pub const KEY_KIND: &str = "kind";
@@ -56,7 +53,6 @@ pub const KEY_TITLE: &str = "title";
 pub const KEY_THING_ID: &str = "thingId";
 pub const KEY_VISIBILITY: &str = "visibility";
 pub const KEY_CONVERSATION_ID: &str = "conversationId";
-pub const KEY_LANDING_PAGE_ID: &str = "landingPageId";
 
 /// Maximum nesting depth for ToC entries. Ex:
 /// - One

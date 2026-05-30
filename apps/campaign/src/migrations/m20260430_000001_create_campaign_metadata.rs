@@ -10,8 +10,15 @@ enum CampaignMetadata {
     CampaignId,
     Name,
     Description,
+    HomeThingId,
     CreatedAt,
     UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum Things {
+    Table,
+    Id,
 }
 
 #[async_trait::async_trait]
@@ -36,6 +43,10 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(CampaignMetadata::Name).text().not_null())
                     .col(ColumnDef::new(CampaignMetadata::Description).text())
+                    // Home / landing-page pointer. Nullable (no page until the
+                    // genesis seed lands). Defined here, at table creation,
+                    // because SQLite cannot add or drop an FK column via ALTER.
+                    .col(ColumnDef::new(CampaignMetadata::HomeThingId).text())
                     .col(
                         ColumnDef::new(CampaignMetadata::CreatedAt)
                             .timestamp_with_time_zone()
@@ -45,6 +56,15 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(CampaignMetadata::UpdatedAt)
                             .timestamp_with_time_zone()
                             .not_null(),
+                    )
+                    // ON DELETE SET NULL: deleting the home Thing clears the
+                    // pointer rather than the singleton campaign row, so a
+                    // non-null home_thing_id always resolves to a live Thing.
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(CampaignMetadata::Table, CampaignMetadata::HomeThingId)
+                            .to(Things::Table, Things::Id)
+                            .on_delete(ForeignKeyAction::SetNull),
                     )
                     .to_owned(),
             )
@@ -90,6 +110,7 @@ mod tests {
             tagline: Set(Some("Gothic horror in Barovia".into())),
             game_system: Set(None),
             content_locale: Set(None),
+            home_thing_id: Set(None),
             wizard_completed_at: Set(None),
             created_at: Set(now),
             updated_at: Set(now),

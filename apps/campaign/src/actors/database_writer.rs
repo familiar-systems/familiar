@@ -145,6 +145,46 @@ impl Message<PatchCampaignMetadata> for DatabaseWriteActor {
 }
 
 // ---------------------------------------------------------------------------
+// DbSetLandingPage
+// ---------------------------------------------------------------------------
+
+/// Point `campaign_metadata.home_thing_id` at a Thing. Partial update: touches
+/// only `home_thing_id` and `updated_at`, leaving every other field as-is. No
+/// existence check: the sole caller (the genesis seed) passes a just-committed
+/// Thing, and the FK (`ON DELETE SET NULL`) keeps the pointer honest over the
+/// Thing's lifetime. Reuses [`PatchCampaignError`]; the only failure modes are
+/// a missing metadata row or a DB error.
+#[derive(Debug, Clone)]
+pub struct DbSetLandingPage {
+    pub thing_id: ThingId,
+}
+
+impl Message<DbSetLandingPage> for DatabaseWriteActor {
+    type Reply = Result<(), PatchCampaignError>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.thing_id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: DbSetLandingPage,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let existing = campaign_metadata::Entity::find_by_id(campaign_metadata::METADATA_ROW_ID)
+            .one(&self.conn)
+            .await?
+            .ok_or(PatchCampaignError::NoMetadataRow)?;
+
+        let mut am: campaign_metadata::ActiveModel = existing.into();
+        am.home_thing_id = Set(Some(ThingIdCol::from(msg.thing_id)));
+        am.updated_at = Set(Utc::now());
+        am.update(&self.conn).await?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // GetMetadata
 // ---------------------------------------------------------------------------
 
@@ -423,6 +463,7 @@ mod tests {
             tagline: Set(None),
             game_system: Set(None),
             content_locale: Set(None),
+            home_thing_id: Set(None),
             wizard_completed_at: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
