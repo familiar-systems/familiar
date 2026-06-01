@@ -1,0 +1,47 @@
+diff --git a/dist/index.js b/dist/index.js
+index e41095d5b08a1fdebb48143beceb7fe93aa20565..f0986ecd9c7a0b4d1d687e00aea1d8dd936323f5 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -461,7 +461,6 @@ function absolutePositionToCursor(pmRootNode, anchor, doc, mapping) {
+ 	const offset = pos.parentOffset;
+ 	const loroId = WEAK_NODE_TO_LORO_CONTAINER_MAPPING.get(nodeParent) ?? getByValue(mapping, nodeParent);
+ 	if (!loroId) {
+-		if (anchor > 1) console.error("Cannot find the loroNode");
+ 		return;
+ 	}
+ 	const children = doc.getMap(loroId).get(CHILDREN_KEY);
+@@ -562,7 +561,8 @@ const LoroSyncPlugin = (props) => {
+ 					doc: props.doc,
+ 					mapping: props.mapping ?? /* @__PURE__ */ new Map(),
+ 					changedBy: "local",
+-					containerId: props.containerId
++					containerId: props.containerId,
++					initialized: false
+ 				};
+ 			},
+ 			apply: (tr, state, oldEditorState, newEditorState) => {
+@@ -572,12 +572,13 @@ const LoroSyncPlugin = (props) => {
+ 				else state.changedBy = "local";
+ 				switch (meta?.type) {
+ 					case "doc-changed":
+-						if (!undoState?.isUndoing.current) updateLoroToPmState(state.doc, state.mapping, newEditorState, props.containerId);
++						if (state.initialized && !undoState?.isUndoing.current) updateLoroToPmState(state.doc, state.mapping, newEditorState, props.containerId);
+ 						break;
+ 					case "update-state":
+ 						state = {
+ 							...state,
+-							...meta.state
++							...meta.state,
++							initialized: true
+ 						};
+ 						state.doc.commit({
+ 							origin: "sys:init",
+@@ -590,7 +591,7 @@ const LoroSyncPlugin = (props) => {
+ 			}
+ 		},
+ 		appendTransaction: (transactions, _oldEditorState, newEditorState) => {
+-			if (transactions.some((tr) => tr.docChanged)) return newEditorState.tr.setMeta(loroSyncPluginKey, { type: "doc-changed" });
++			if (transactions.some((tr) => tr.docChanged && !tr.getMeta(loroSyncPluginKey))) return newEditorState.tr.setMeta(loroSyncPluginKey, { type: "doc-changed" });
+ 			return null;
+ 		},
+ 		view: (view) => {

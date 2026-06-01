@@ -26,7 +26,7 @@ use crate::actors::database_writer::{DatabaseWriteActor, DbCreateThing, WriteThi
 use crate::domain::crdt::doc::CrdtDoc;
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
-use crate::domain::thing::build_new_thing;
+use crate::domain::thing::{NewBlock, build_new_thing};
 use crate::entities::columns::{BlockIdCol, StatusCol, ThingIdCol};
 use crate::entities::{blocks, things};
 use crate::loro::thing::LoroThingDoc;
@@ -66,7 +66,14 @@ pub struct ThingActorArgs {
 /// invariant that every write to a Thing flows through its owning actor.
 pub enum ThingInit {
     Restore,
-    New { name: String, status: Status },
+    New {
+        name: String,
+        status: Status,
+        /// Initial content blocks: empty (`vec![]`) for a generic new Thing
+        /// whose content arrives later through the editor, or one empty
+        /// paragraph for the campaign home-page seed (so it opens editable).
+        seed_blocks: Vec<NewBlock>,
+    },
 }
 
 /// Failure modes for `ThingActor` startup.
@@ -108,11 +115,15 @@ impl Actor for ThingActor {
                 tracing::info!(block_count = blobs.len(), ?status, "thing actor restored");
                 LoroThingDoc::from_blocks(&thing_row.name, &status, &blobs)
             }
-            ThingInit::New { name, status } => {
+            ThingInit::New {
+                name,
+                status,
+                seed_blocks,
+            } => {
                 // The actor owns its own birth: build the doc, then persist the
                 // genesis row through the single-writer. Nothing writes a
                 // Thing's rows around the actor that owns it.
-                let new_thing = build_new_thing(args.thing_id.clone(), name, status);
+                let new_thing = build_new_thing(args.thing_id.clone(), name, status, seed_blocks);
                 let blobs: Vec<Vec<u8>> =
                     new_thing.blocks.iter().map(|b| b.content.clone()).collect();
                 let doc = LoroThingDoc::from_blocks(&new_thing.name, &new_thing.status, &blobs);
@@ -313,15 +324,29 @@ impl ThingActor {
 
         let block_rows: Vec<blocks::ActiveModel> = extracted
             .into_iter()
-            .map(|b| blocks::ActiveModel {
-                id: Set(BlockIdCol::from(BlockId::generate())),
-                thing_id: Set(ThingIdCol::from(self.thing_id.clone())),
-                status: Set(StatusCol::from(Status::GmOnly)),
-                ordering: Set(b.ordering),
-                content: Set(b.content),
-                section: Set(SECTION_CONTENT.to_string()),
-                created_at: Set(now),
-                updated_at: Set(now),
+            .map(|b| {
+                // Stable identity comes from the block's own `blockId` attribute
+                // (assigned by the editor's unique-id extension, or at genesis).
+                // Falling back to a fresh id only happens if it is missing or
+                // malformed -- then the id churns across persists, which the
+                // editor's unique-id plugin is there to prevent.
+                let block_id = b.id.unwrap_or_else(|| {
+                    tracing::warn!("persisted block has no stable blockId; minting a fresh one");
+                    BlockId::generate()
+                });
+                blocks::ActiveModel {
+                    id: Set(BlockIdCol::from(block_id)),
+                    thing_id: Set(ThingIdCol::from(self.thing_id.clone())),
+                    // Interim default: every block is GM-only until a per-block
+                    // visibility control exists (no editor plugin sets status
+                    // yet). Status is reset to gm_only on every persist.
+                    status: Set(StatusCol::from(Status::GmOnly)),
+                    ordering: Set(b.ordering),
+                    content: Set(b.content),
+                    section: Set(SECTION_CONTENT.to_string()),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                }
             })
             .collect();
 
@@ -486,6 +511,7 @@ mod tests {
             init: ThingInit::New {
                 name: "Korgath the Destroyer".into(),
                 status: Status::GmOnly,
+                seed_blocks: vec![],
             },
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),

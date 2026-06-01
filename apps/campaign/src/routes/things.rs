@@ -91,6 +91,8 @@ pub async fn create_thing(
             name: req.name,
             status: req.status,
             parent: req.parent,
+            // Generic Things start empty; content is added through the editor.
+            seed_blocks: vec![],
         })
         .await
     {

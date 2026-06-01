@@ -9,3 +9,6 @@ export * from "./generated/onboarding";
 // from utoipa's OpenAPI spec; component schemas resolve back to the
 // ts-rs branded types above (see tooling/openapi-codegen/generate.ts).
 export type { paths as CampaignPaths } from "./openapi/campaign";
+
+// Runtime-validating schemas for branded IDs (hand-written, not generated).
+export { thingIdSchema } from "./schemas";

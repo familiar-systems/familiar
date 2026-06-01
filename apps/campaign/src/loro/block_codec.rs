@@ -11,9 +11,11 @@
 //! text marks (bold, italic, etc.). A future session will replace this with
 //! a mark-preserving codec that uses `LoroText::to_delta`.
 
+use familiar_systems_campaign_shared::id::BlockId;
 use familiar_systems_campaign_shared::loro::prosemirror::{
-    ATTRIBUTES_KEY, CHILDREN_KEY, NODE_NAME_KEY,
+    ATTR_BLOCK_ID, ATTRIBUTES_KEY, CHILDREN_KEY, NODE_NAME_KEY,
 };
+use fs_id::Ulid;
 use loro::{LoroList, LoroMap, LoroText, LoroValue, ValueOrContainer};
 
 // ── Persist: Loro -> JSON blob ──────────────────────────────────────────────
@@ -22,6 +24,23 @@ use loro::{LoroList, LoroMap, LoroText, LoroValue, ValueOrContainer};
 pub fn serialize_block(block_map: &LoroMap) -> Vec<u8> {
     let value: serde_json::Value = block_map.get_deep_value().into();
     serde_json::to_vec(&value).expect("LoroValue is always serializable")
+}
+
+// ── Seed: build a starter block ─────────────────────────────────────────────
+
+/// Build the content blob for a seeded empty paragraph carrying a stable
+/// `blockId`. A brand-new Thing seeds one of these so it opens as a
+/// schema-valid, editable ProseMirror document (a `doc` with one `block+`
+/// child) rather than an empty, uneditable `doc`. Embedding the block's ULID
+/// in `attributes.blockId` keeps its identity stable from genesis through
+/// edit and reload (see [`extract_blocks`]).
+pub fn empty_paragraph_blob(block_id: &BlockId) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({
+        NODE_NAME_KEY: "paragraph",
+        ATTRIBUTES_KEY: { ATTR_BLOCK_ID: block_id.to_string() },
+        CHILDREN_KEY: [],
+    }))
+    .expect("paragraph block is always serializable")
 }
 
 // ── Restore: JSON blob -> Loro ──────────────────────────────────────────────
@@ -108,6 +127,11 @@ fn json_to_loro_value(v: &serde_json::Value) -> LoroValue {
 
 /// A block extracted from the LoroDoc content section, ready for persistence.
 pub struct ExtractedBlock {
+    /// Stable identity parsed from the node's `attributes.blockId` (a ULID
+    /// assigned by the editor's unique-id extension, or server-side at
+    /// genesis). `None` when the attribute is absent or malformed; the persist
+    /// path then mints a fresh id as a fallback (and the id will churn).
+    pub id: Option<BlockId>,
     pub content: Vec<u8>,
     pub ordering: i64,
 }
@@ -125,12 +149,28 @@ pub fn extract_blocks(content_map: &LoroMap) -> Vec<ExtractedBlock> {
         if let Some(ValueOrContainer::Container(loro::Container::Map(block_map))) = children.get(i)
         {
             blocks.push(ExtractedBlock {
+                id: read_block_id(&block_map),
                 content: serialize_block(&block_map),
                 ordering: i as i64,
             });
         }
     }
     blocks
+}
+
+/// Read a block node's stable `blockId` (a ULID) from its `attributes` map.
+/// Returns `None` if the attribute is missing, the wrong type, or not a valid
+/// ULID -- callers treat that as "mint a fresh id".
+fn read_block_id(block_map: &LoroMap) -> Option<BlockId> {
+    let attrs = match block_map.get(ATTRIBUTES_KEY)? {
+        ValueOrContainer::Container(loro::Container::Map(m)) => m,
+        _ => return None,
+    };
+    let raw = match attrs.get(ATTR_BLOCK_ID)? {
+        ValueOrContainer::Value(LoroValue::String(s)) => s.to_string(),
+        _ => return None,
+    };
+    Ulid::from_string(&raw).ok().map(BlockId::from)
 }
 
 /// Initialize a content LoroMap as a ProseMirror document root and
@@ -307,5 +347,30 @@ mod tests {
         assert_eq!(block[ATTRIBUTES_KEY]["level"], 2);
         assert_eq!(block[ATTRIBUTES_KEY]["blockId"], "01ABC");
         assert_eq!(block[ATTRIBUTES_KEY]["collapsed"], true);
+    }
+
+    #[test]
+    fn seed_blob_extracts_with_stable_block_id() {
+        // The genesis seed embeds the block's ULID in `attributes.blockId`;
+        // `extract_blocks` must recover that exact id (not mint a new one).
+        let block_id = BlockId::generate();
+        let doc = LoroDoc::new();
+        let content = doc.get_map("content");
+        restore_content(&content, &[empty_paragraph_blob(&block_id)]);
+
+        let blocks = extract_blocks(&content);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].id, Some(block_id));
+        assert_eq!(blocks[0].ordering, 0);
+    }
+
+    #[test]
+    fn extract_block_id_is_none_when_attribute_absent() {
+        // A heading carries only `level`; with no `blockId` the persist path
+        // falls back to minting a fresh id.
+        let (_doc, content) = setup_doc_with_heading();
+        let blocks = extract_blocks(&content);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].id, None);
     }
 }

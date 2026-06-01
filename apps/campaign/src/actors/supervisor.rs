@@ -24,7 +24,7 @@ use kameo::prelude::Actor;
 
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
-use familiar_systems_campaign_shared::id::{ClientId, ThingId};
+use familiar_systems_campaign_shared::id::{BlockId, ClientId, ThingId};
 use familiar_systems_campaign_shared::status::Status;
 use tokio::sync::mpsc;
 
@@ -36,9 +36,11 @@ use crate::actors::thing::{ThingActor, ThingActorArgs, ThingInit};
 use crate::actors::toc::{AddThingNode, ResolveThingNode, TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::domain::crdt::room_actor;
+use crate::domain::thing::NewBlock;
 use crate::entities::columns::ThingIdCol;
 use crate::entities::{campaign_metadata, things};
 use crate::error::InitError;
+use crate::loro::block_codec;
 use crate::persistence::{CampaignDatabase, CampaignStore};
 
 // TODO: replace `Option<CampaignDatabase>` with a `SupervisorState` enum
@@ -159,11 +161,23 @@ impl Actor for CampaignSupervisor {
         if is_new {
             let seed_ref = actor_ref.clone();
             tokio::spawn(async move {
+                // Seed one empty paragraph so the home page opens as a
+                // schema-valid, editable document. Its ULID is embedded in the
+                // block content (`attributes.blockId`) and used as the row id,
+                // so the block keeps a stable identity from genesis onward.
+                let block_id = BlockId::generate();
+                let seed_blocks = vec![NewBlock {
+                    id: block_id.clone(),
+                    ordering: 0,
+                    content: block_codec::empty_paragraph_blob(&block_id),
+                    status: Status::GmOnly,
+                }];
                 match seed_ref
                     .ask(CreateThing {
                         name: "Campaign Base Camp".to_string(),
                         status: Some(Status::Known),
                         parent: None,
+                        seed_blocks,
                     })
                     .await
                 {
@@ -426,6 +440,9 @@ pub struct CreateThing {
     pub status: Option<Status>,
     /// Parent Thing to nest under in the ToC. `None` => ToC root.
     pub parent: Option<ThingId>,
+    /// Initial content blocks. Empty for a generic new Thing; the home-page
+    /// seed passes one empty paragraph so the page opens editable.
+    pub seed_blocks: Vec<NewBlock>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -488,6 +505,7 @@ impl Message<CreateThing> for CampaignSupervisor {
             init: ThingInit::New {
                 name: msg.name.clone(),
                 status,
+                seed_blocks: msg.seed_blocks,
             },
             debounce_duration: Duration::from_secs(2),
             idle_timeout: Duration::from_secs(30),
@@ -851,6 +869,35 @@ mod tests {
                     thing_id,
                     "home_thing_id points at the base camp"
                 );
+
+                // The seed must give the home page exactly one block whose row
+                // id equals the ULID embedded in its content (`attributes.blockId`).
+                // This proves the page opens schema-valid (>=1 block) and that
+                // block identity is stable, not minted fresh on each persist.
+                let block_rows = crate::entities::blocks::Entity::find()
+                    .filter(
+                        crate::entities::blocks::Column::ThingId
+                            .eq(ThingIdCol::from(thing_id.clone())),
+                    )
+                    .all(&conn)
+                    .await
+                    .expect("query blocks");
+                assert_eq!(
+                    block_rows.len(),
+                    1,
+                    "home page seeded with exactly one block"
+                );
+                let block = &block_rows[0];
+                let row_id = BlockId::from(block.id.clone()).to_string();
+                let content: serde_json::Value =
+                    serde_json::from_slice(&block.content).expect("seed block content is JSON");
+                assert_eq!(
+                    content["attributes"]["blockId"].as_str(),
+                    Some(row_id.as_str()),
+                    "block row id equals the blockId embedded in its content",
+                );
+                assert_eq!(content["nodeName"].as_str(), Some("paragraph"));
+
                 return thing_id;
             }
             tokio::time::sleep(Duration::from_millis(25)).await;

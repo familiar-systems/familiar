@@ -21,6 +21,11 @@
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-router": "^1.169.2",
     "@teamhanko/hanko-elements": "^2.6.0",
+    "@tiptap/core": "catalog:",
+    "@tiptap/react": "catalog:",
+    "loro-adaptors": "catalog:",
+    "loro-crdt": "catalog:",
+    "loro-websocket": "catalog:",
     "lucide-react": "catalog:",
     "openapi-fetch": "^0.17",
     "react": "catalog:",
@@ -40,6 +45,7 @@
     "oxlint-tailwindcss": "^0.7.1",
     "typescript": "catalog:",
     "vite": "^7",
+    "vite-plugin-wasm": "^3.6.0",
     "vitest": "^4.1.5"
   }
 }

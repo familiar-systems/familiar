@@ -112,7 +112,6 @@ Maximum strictness, no exceptions:
 - `noUncheckedIndexedAccess`: array indexing returns `T | undefined`
 - `exactOptionalPropertyTypes`: distinguishes `undefined` from missing
 - `noUnusedLocals` + `noUnusedParameters`
-- Lint ban on `any`
 - Zod validation at every system boundary (API inputs, DB rows, env vars)
 
 ## Engineering Rules
@@ -154,7 +153,7 @@ Every environment terminates on **two apexes** - a marketing apex (Astro site) a
 - **Legacy:** prod also still serves `loreweaver.no` + `preview.loreweaver.no` (old project name) from the site pod - the prod cert and `site.yaml` ingress route them. Retire-or-keep is undecided; not part of the contract above.
 - **Scope:** only these apexes carry the app's services. Separate systems (Hanko's `auth.*`, future `docs.`/`status.`) own their own DNS/TLS/auth.
 
-**Authorities:** URL structure → [`app-server-prd.md` §URL architecture](docs/plans/2026-04-11-app-server-prd.md); topology + lifecycle → [`deployment-architecture.md`](docs/plans/2026-03-30-deployment-architecture.md). SPA helpers: `apps/web/src/lib/paths.ts` (`apiPath`, `campaignPath`, `spaRoute`) - use these, never hardcode `/api/...`.
+**Authorities:** URL structure → [`app-server-prd.md` §URL architecture](docs/plans/2026-04-11-app-server-prd.md); topology + lifecycle → [`deployment-architecture.md`](docs/plans/2026-03-30-deployment-architecture.md). SPA-side URL helpers and the preview-prefix mechanism: see `apps/web/CLAUDE.md`.
 
 ## Development Notes
 

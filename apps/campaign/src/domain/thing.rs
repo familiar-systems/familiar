@@ -39,24 +39,35 @@ pub struct NewThing {
     pub blocks: Vec<NewBlock>,
 }
 
-/// Build the description of a new, empty Thing.
+/// Build the description of a new Thing.
 ///
-/// Pure: no I/O, no clock, no RNG. The id and status are inputs so the function
-/// is deterministic and unit-testable. This is the kernel the future AI
-/// `create_thing` suggestion path will reuse.
+/// Pure: no I/O, no clock, no RNG. The id, status, and `seed_blocks` are inputs
+/// so the function is deterministic and unit-testable. This is the kernel the
+/// future AI `create_thing` suggestion path will reuse.
 ///
-/// TODO(templates): when `from_template_id` is supported, this gains a
-/// parameter carrying the prototype's blocks and clones them here — deep-copy
-/// each block's content, mint a fresh `BlockId`, reset `ordering` — and sets
-/// `prototype_id` for lineage. Until then a new Thing is empty; content is
-/// added later through the editor as CRDT edits.
-pub fn build_new_thing(id: ThingId, name: String, status: Status) -> NewThing {
+/// `seed_blocks` is the Thing's initial content. Most callers pass `vec![]`
+/// (an empty Thing whose content is added later through the editor); the
+/// campaign home-page seed passes one empty paragraph so the page opens as a
+/// schema-valid, editable document. The block ids are minted by the caller (an
+/// effect) and embedded in the block content as `attributes.blockId`, keeping
+/// the builder pure.
+///
+/// TODO(templates): when `from_template_id` is supported, the prototype's
+/// blocks are cloned into `seed_blocks` at the call edge — deep-copy each
+/// block's content, mint a fresh `BlockId`, reset `ordering` — and this sets
+/// `prototype_id` for lineage.
+pub fn build_new_thing(
+    id: ThingId,
+    name: String,
+    status: Status,
+    seed_blocks: Vec<NewBlock>,
+) -> NewThing {
     NewThing {
         id,
         name,
         status,
         prototype_id: None,
-        blocks: Vec::new(),
+        blocks: seed_blocks,
     }
 }
 
@@ -67,7 +78,7 @@ mod tests {
     #[test]
     fn empty_thing_has_no_blocks_and_no_prototype() {
         let id = ThingId::generate();
-        let new_thing = build_new_thing(id.clone(), "Korgath".to_string(), Status::GmOnly);
+        let new_thing = build_new_thing(id.clone(), "Korgath".to_string(), Status::GmOnly, vec![]);
 
         assert_eq!(new_thing.id, id);
         assert_eq!(new_thing.name, "Korgath");
@@ -77,9 +88,26 @@ mod tests {
     }
 
     #[test]
+    fn seed_blocks_are_carried_through() {
+        let block = NewBlock {
+            id: BlockId::generate(),
+            ordering: 0,
+            content: b"seed".to_vec(),
+            status: Status::GmOnly,
+        };
+        let nt = build_new_thing(
+            ThingId::generate(),
+            "Home".to_string(),
+            Status::Known,
+            vec![block.clone()],
+        );
+        assert_eq!(nt.blocks, vec![block]);
+    }
+
+    #[test]
     fn status_is_carried_through() {
         for status in [Status::GmOnly, Status::Known, Status::Retconned] {
-            let nt = build_new_thing(ThingId::generate(), "X".to_string(), status);
+            let nt = build_new_thing(ThingId::generate(), "X".to_string(), status, vec![]);
             assert_eq!(nt.status, status);
         }
     }

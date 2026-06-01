@@ -15,7 +15,20 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@familiar-systems/types-campaign": "workspace:*"
+    "@familiar-systems/types-campaign": "workspace:*",
+    "@tiptap/core": "catalog:",
+    "@tiptap/extension-document": "catalog:",
+    "@tiptap/extension-heading": "catalog:",
+    "@tiptap/extension-paragraph": "catalog:",
+    "@tiptap/extension-text": "catalog:",
+    "@tiptap/extension-unique-id": "catalog:",
+    "@tiptap/pm": "catalog:",
+    "loro-crdt": "catalog:",
+    "loro-prosemirror": "catalog:",
+    "prosemirror-model": "catalog:",
+    "prosemirror-state": "catalog:",
+    "prosemirror-view": "catalog:",
+    "ulidx": "catalog:"
   },
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",

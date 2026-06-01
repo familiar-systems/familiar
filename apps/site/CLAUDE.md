@@ -51,10 +51,10 @@ The same rule applies to public assets fetched at runtime (Pagefind CSS/JS, imag
 
 ### Quick check before merging
 
-Astro reads its `base` from `SITE_BASE_PATH` (see `astro.config.mjs:96` and the top-level block in `mise.toml`). Build with a non-root prefix and grep the output for stray root-relative links:
+Astro reads its `base` from `SITE_BASE_PATH`, which `mise.toml`'s `[env]` block pins to `/` (see `astro.config.mjs:96`). That pin beats a CLI override, so `mise run build:site` always builds at root. To simulate a preview prefix you must bypass the mise env and build the workspace package directly - this is the one place a raw `pnpm --filter` is correct (a `build` runs no install, so the lockfile is safe). Then grep the output for stray root-relative links:
 
 ```bash
-SITE_BASE_PATH=/pr-99/ pnpm --filter site build
+SITE_BASE_PATH=/pr-99/ pnpm --filter @familiar-systems/site build
 grep -rE 'href="/[^p]' apps/site/dist/ | head     # any hit that isn't /pr-99/... is a bug
 ```
 
@@ -67,10 +67,11 @@ mise run lint
 mise run typecheck
 ```
 
-For site-only iteration:
+For site-only iteration, use the scoped `mise` tasks. They wrap the right `pnpm` filter and inject the env the build reads (`PUBLIC_APP_URL`, `VITE_SITE_URL`) that a bare `pnpm --filter` would skip:
 
 ```bash
-pnpm --filter site dev
-pnpm --filter site build
-pnpm exec oxlint apps/site/src
+mise run dev:site     # Astro dev server on :4321
+mise run build:site   # site-only production build
 ```
+
+No site-scoped lint/typecheck task exists; run `mise run lint` / `mise run typecheck`.

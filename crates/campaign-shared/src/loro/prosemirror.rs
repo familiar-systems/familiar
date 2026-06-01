@@ -19,6 +19,14 @@ pub const ATTRIBUTES_KEY: &str = "attributes";
 /// Key in each node's LoroMap for the children list.
 pub const CHILDREN_KEY: &str = "children";
 
+/// Attribute key carrying a block's stable identity (a ULID). Assigned by the
+/// editor's unique-id extension on the client (or server-side at genesis); the
+/// server reads it back from a node's `attributes` and uses it as the durable
+/// `blocks.id`, so block identity survives the delete+reinsert persist cycle.
+/// Must match the `attributeName` configured on the TipTap UniqueID extension
+/// in `packages/editor/`.
+pub const ATTR_BLOCK_ID: &str = "blockId";
+
 // -- Custom familiar.systems node type names --
 // These must match the TipTap node specs in `packages/editor/`.
 

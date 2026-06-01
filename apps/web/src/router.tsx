@@ -22,13 +22,13 @@
 //   parseParams: ({ id }) => ({ id: campaignIdSchema.parse(id) }),
 //
 // Route.useParams() then returns { id: CampaignId }, which flows into
-// the typed API client without a cast. lib/api.ts already wires this
-// for the platform server (openapi-fetch over PlatformPaths, generated
-// from utoipa via tooling/openapi-codegen + ts-rs). The campaign server
-// is slated to grow the same pipeline, so the same end-to-end chain
-// (URL string, branded ID, typed call) will hold across both servers
-// once that lands. parseParams is where brands are minted; the typed
-// clients are where they're consumed.
+// the typed API client without a cast. Both servers wire this chain:
+// lib/api.ts (platform, PlatformPaths) and lib/campaigns-api.ts
+// (campaign, CampaignPaths) are openapi-fetch clients generated from
+// utoipa via tooling/openapi-codegen + ts-rs, so the same end-to-end
+// path (URL string, branded ID, typed call) holds across both servers.
+// parseParams is where brands are minted; the typed clients are where
+// they're consumed.
 
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
