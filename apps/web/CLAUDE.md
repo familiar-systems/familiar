@@ -55,13 +55,16 @@ The app apex stacks a per-PR prefix in preview (`/pr-42/`); dev and prod are `/`
 
 ## Editor + Loro collaboration
 
-The editor is split by concern: `@familiar-systems/editor` owns the shared TipTap schema and the Loro binding (`NODE_EXTENSIONS`, `BlockId`, `LoroExtension`, `readThingTitle`, `contentContainerId`); the React component and the WebSocket transport live here.
+The editor is split by concern: `@familiar-systems/editor` owns the shared TipTap schema and the Loro binding (`NODE_EXTENSIONS`, `BlockId`, `LoroExtension`, `readThingTitle`, `contentContainerId`); the React component, the WebSocket transport, and the doc/room lifecycle live here.
 
+- `features/editor/loro-manager.ts` — `LoroClientManager`: **one campaign-scoped WebSocket multiplexing many CRDT rooms** (the "Repo" pattern from loro-extended). Room join/leave lives here, not in React effects, so the socket survives navigation between Things (no per-navigation handshake + full-snapshot re-pull). Rooms are ref-counted with a debounced leave. The ToC room will share this socket; only the thing-room path is wired today.
+- `features/editor/LoroManagerProvider.tsx` — constructs the manager **purely** (`useState`) and drives `connect()`/`close()` from a `useEffect`, so StrictMode's mount→cleanup→remount opens exactly one live socket. Mounted once per campaign at the `/c/$campaignId` layout, **keyed by `campaignId`** so switching campaigns rebuilds the manager on the new socket URL. `useLoroManager()` reads it from context.
 - `features/editor/HomeEditor.tsx` binds TipTap to a synced Loro doc. `BoundEditor` is split out so `useEditor` runs unconditionally (rules of hooks), only after sync. It passes **no `content` prop** — loro-prosemirror builds the document from the Loro container, and seeding TipTap content would race the Loro init.
-- `features/editor/useThingDoc.ts` owns the `LoroWebsocketClient` lifecycle and returns a `ThingDocState` sum type (`connecting | synced | error`). Non-obvious invariants:
-  - A **fresh `LoroDoc` (and random PeerID) per mount** — never reuse a PeerID across concurrent writers.
-  - It awaits `waitForReachingServerVersion()` before exposing the doc, so the editor mounts against fully-synced content (no empty-doc flash).
-  - StrictMode's double-mount is handled by a `cancelled` guard plus synchronous teardown (`room.destroy()` / `client.close()` / `client.destroy()`).
+- `features/editor/useThingDoc.ts` is a read-only subscription over the manager (`useSyncExternalStore` on a per-Thing snapshot, plus an effect that `acquireThing`/`releaseThing`). It returns the same `ThingDocState` sum type (`connecting | synced | error`). Non-obvious invariants:
+  - The manager creates a **fresh `LoroDoc` (random PeerID) per room** — never reuse a PeerID across concurrent writers.
+  - A room exposes its doc only after `waitForReachingServerVersion()`, so the editor mounts against fully-synced content (no empty-doc flash).
+  - StrictMode's double-mount is absorbed by the provider's connect/close-in-effect plus the manager's debounced leave and join/destroy race handling — not a per-mount `cancelled` guard.
+  - Deep-linking straight to a Thing URL mounts the consumer's effect before the provider's `connect()` (React fires child effects first), so `doJoinThing` awaits an internal connect gate rather than failing.
   - The auth token rides the WS query string (`wsUrl(\`${campaignId}/ws?token=...\`)`) because the upgrade can't carry an `Authorization` header.
 
 ## Testing

@@ -11,12 +11,11 @@ import type { ContainerID, LoroDoc } from "loro-crdt";
 import { useThingDoc } from "./useThingDoc";
 
 interface HomeEditorProps {
-  campaignId: string;
   thingId: ThingId;
 }
 
-export function HomeEditor({ campaignId, thingId }: HomeEditorProps): React.ReactElement {
-  const state = useThingDoc(campaignId, thingId);
+export function HomeEditor({ thingId }: HomeEditorProps): React.ReactElement {
+  const state = useThingDoc(thingId);
 
   if (state.status === "error") {
     return (

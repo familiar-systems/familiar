@@ -52,7 +52,7 @@ pub struct NewThing {
 /// effect) and embedded in the block content as `attributes.blockId`, keeping
 /// the builder pure.
 ///
-/// TODO(templates): when `from_template_id` is supported, the prototype's
+/// TODO: (templates) when `from_template_id` is supported, the prototype's
 /// blocks are cloned into `seed_blocks` at the call edge — deep-copy each
 /// block's content, mint a fresh `BlockId`, reset `ordering` — and this sets
 /// `prototype_id` for lineage.

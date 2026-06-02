@@ -8,8 +8,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { HomeEditor } from "../../../../../features/editor/HomeEditor";
 
 function ThingPage(): React.ReactElement {
-  const { campaignId, thingId } = Route.useParams();
-  return <HomeEditor campaignId={campaignId} thingId={thingId} />;
+  const { thingId } = Route.useParams();
+  return <HomeEditor thingId={thingId} />;
 }
 
 export const Route = createFileRoute("/_authed/c/$campaignId/t/$thingId")({
