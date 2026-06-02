@@ -132,7 +132,13 @@ description = "Platform server (port 3000). dev-ui mounts Scalar at /api/docs."
 # task and the data directory only matters in dev. Fresh worktrees don't
 # inherit the directory; SQLite's `mode=rwc` creates the file but not the
 # parent. Cheap enough to run every dev start.
-run = ["mkdir -p data", "cargo run -p familiar-systems-platform --features dev-ui"]
+run = [
+  "mkdir -p data data/logs",
+  # Tee the JSON logs (stdout) to a fresh per-run file so they can be jq'd after
+  # the fact; cargo's compile output (stderr) stays console-only, keeping the
+  # file clean JSONL. `tee` without -a truncates on each dev start.
+  "cargo run -p familiar-systems-platform --features dev-ui | tee data/logs/platform.jsonl",
+]
 # CORS origin is the app-apex front door, not the marketing apex. The SPA
 # lives on app.localhost:8080 and any browser fetch from it to /api/* is
 # same-origin, so no preflight fires; this entry is defense-in-depth for
@@ -145,7 +151,11 @@ description = "Campaign server (port 3001)"
 # CAMPAIGN_DATA_DIR is set per task and the parent must exist before the
 # binary writes into it. Local-dev uses 3001 to avoid colliding with
 # dev:platform's 3000; the container default (Dockerfile + cluster) is 3000.
-run = ["mkdir -p data/dev-campaigns", "cargo run -p familiar-systems-campaign"]
+run = [
+  "mkdir -p data/dev-campaigns data/logs",
+  # See dev:platform: tee stdout JSON to a fresh per-run file for jq.
+  "cargo run -p familiar-systems-campaign | tee data/logs/campaign.jsonl",
+]
 env = { CAMPAIGN_STORAGE_BACKEND = "local", PORT = "3001", HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", CAMPAIGN_DATA_DIR = "data/dev-campaigns", PLATFORM_URL = "http://localhost:3000", CAMPAIGN_IDLE_TIMEOUT_SECS = "60", CAMPAIGN_EVICTION_CHECK_INTERVAL_SECS = "15", RUST_LOG = "info,familiar_systems_campaign=debug" }
 
 [tasks."dev:proxy"]

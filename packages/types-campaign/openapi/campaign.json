@@ -336,7 +336,7 @@
               },
               {
                 "$ref": "#/components/schemas/ThingId",
-                "description": "Parent Thing to nest under in the table of contents. `None` => ToC root."
+                "description": "Parent Thing to nest under in the table of contents. `None` => ToC root.\nFIXME this should probably the ID of the ToC block and not a ThingID.\nThis would let us nest things under, say, a Folder."
               }
             ]
           },

@@ -15,6 +15,9 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@dnd-kit/core": "catalog:",
+    "@dnd-kit/sortable": "catalog:",
+    "@dnd-kit/utilities": "catalog:",
     "@familiar-systems/editor": "workspace:*",
     "@familiar-systems/types-app": "workspace:*",
     "@familiar-systems/types-campaign": "workspace:*",

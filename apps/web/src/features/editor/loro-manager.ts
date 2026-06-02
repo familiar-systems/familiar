@@ -5,9 +5,8 @@
 // (see LoroManagerProvider's useThingDoc + useSyncExternalStore).
 //
 // Why this over per-mount ownership: a single socket means no WebSocket
-// handshake + auth + full-snapshot re-pull on every navigation, and it's the
-// connection the imminent ToC room will share with thing rooms. This slice wires
-// only the thing-room path; the ToC room lands with its consumer + shared schema.
+// handshake + auth + full-snapshot re-pull on every navigation, and it is shared
+// by the always-on ToC room and the per-Thing rooms.
 //
 // Lifecycle ownership:
 //   - connect()/close() are called by the provider's useEffect. The constructor
@@ -21,12 +20,45 @@
 //
 // The two vendored patches (loro-prosemirror, loro-websocket) sit below this at
 // the binding/transport layer and are unaffected by where join/leave is driven.
+//
+// ── Room joins must be idempotent per socket (a bug we must not reintroduce) ──
+//
+// loro-websocket's client.join() dedups by (crdtType + roomId): a second join
+// for a room already pending/active on the same socket returns the FIRST join's
+// room and silently discards the second call's adaptor + doc. Two joins for one
+// room on one socket therefore do not produce two independent syncs; the second
+// caller is left holding a doc that is never wired to the wire.
+//
+// StrictMode makes that reproducible rather than theoretical. The provider runs
+// connect -> close -> connect; each connect() kicks off a room join, but both
+// joins `await whenConnected()` first, and by the time they resume the
+// synchronous connect/close/connect has already settled this.client to the
+// second (surviving) socket. So both joins target that one socket and collide on
+// the dedup above. The winner wires up and syncs; the loser awaits the winner's
+// room version (which resolves), then reads its OWN still-empty doc and overwrites
+// the good snapshot with nothing. Symptom: an empty view even though the server
+// sent a full snapshot - so do not go looking for the bug on the server.
+//
+// The rule, for every room joined over this socket:
+//   - Thing rooms: ref-counted via acquireThing, plus a per-entry `joinClient`
+//     claim. Ref-count alone is not enough: on a hard refresh the provider's
+//     close() clears the `things` map between StrictMode's two acquires, so the
+//     re-acquire fires a second doJoinThing - the joinClient claim dedups it.
+//     (destroyPromises separately serializes a rejoin behind a dying room's
+//     destroy, the other half of the same dedup hazard.)
+//   - ToC room: always-on, so no ref-count; `tocJoinClient` records the socket a
+//     join was claimed for and a duplicate doJoinToc on it bails (see doJoinToc).
+//   - Any future room (presence, AgentConversation, ...) must be idempotent too.
 
+import { TOC_CONTAINER } from "@familiar-systems/types-campaign";
 import type { ThingId } from "@familiar-systems/types-campaign";
 import { LoroAdaptor } from "loro-adaptors/loro";
-import type { LoroDoc as LoroDocType } from "loro-crdt";
+import type { LoroDoc as LoroDocType, TreeID } from "loro-crdt";
 import { LoroDoc } from "loro-crdt";
 import { LoroWebsocketClient, type LoroWebsocketClientRoom } from "loro-websocket";
+
+import { moveTocNode as applyTocMove, readTocTree } from "../toc/toc-doc";
+import type { TocTreeNode } from "../toc/toc-doc";
 
 // Public, referentially-stable snapshot read by useSyncExternalStore. Doc-only:
 // the editor-specific containerId is derived in the hook, keeping this transport
@@ -48,6 +80,12 @@ interface ThingRoom {
   snapshot: ThingRoomSnapshot;
   room: LoroWebsocketClientRoom | null;
   leaveTimer: ReturnType<typeof setTimeout> | null;
+  // The socket this room's join was claimed for. The ref-count guard above keeps
+  // acquireThing idempotent within one socket, but a hard refresh churns the
+  // provider (connect/close/connect) and close() clears `things`, so the
+  // StrictMode re-acquire fires a second doJoinThing. This claim dedups it (see
+  // the "Room joins must be idempotent per socket" note up top).
+  joinClient: LoroWebsocketClient | null;
 }
 
 const LEAVE_DEBOUNCE_MS = 100;
@@ -55,6 +93,16 @@ const LEAVE_DEBOUNCE_MS = 100;
 // Single frozen instance so getThingState returns a stable reference for any
 // not-yet-acquired room (otherwise useSyncExternalStore would loop forever).
 const JOINING: ThingRoomSnapshot = Object.freeze({ status: "joining" });
+
+// Public ToC snapshot read by useToc via useSyncExternalStore. The ToC room is
+// always-on (joined on connect, torn down on close), so unlike thing rooms there
+// is no acquire/release; the snapshot is a derived view of the live LoroTree.
+export type TocSnapshot =
+  | { status: "loading" }
+  | { status: "ready"; tree: TocTreeNode[] }
+  | { status: "error"; message: string };
+
+const TOC_LOADING: TocSnapshot = Object.freeze({ status: "loading" });
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Failed to connect.";
@@ -76,6 +124,18 @@ export class LoroClientManager {
   // so the underlying client doesn't dedup the new join against the dying room.
   private readonly destroyPromises = new Map<ThingId, Promise<void>>();
 
+  // The always-on ToC room: one doc + room per manager lifetime, (re)joined on
+  // connect and dropped on close. `tocUnsub` detaches the doc subscription that
+  // recomputes the derived tree on every local commit or remote import.
+  private tocDoc: LoroDocType | null = null;
+  private tocRoom: LoroWebsocketClientRoom | null = null;
+  private tocUnsub: (() => void) | null = null;
+  private tocSnapshot: TocSnapshot = TOC_LOADING;
+  private readonly tocListeners = new Set<() => void>();
+  // The socket a ToC join has been claimed for: makes doJoinToc idempotent per
+  // socket. See the "Room joins must be idempotent per socket" note up top.
+  private tocJoinClient: LoroWebsocketClient | null = null;
+
   constructor(private readonly wsUrl: string) {
     // Pure: no side effects. The provider calls connect() in a useEffect.
   }
@@ -89,19 +149,83 @@ export class LoroClientManager {
     this.resolveConnect?.();
     this.connectGate = null;
     this.resolveConnect = null;
+    // The ToC room is always-on (the server's TocActor is an eager singleton), so
+    // join it eagerly here rather than on a consumer's mount.
+    void this.doJoinToc();
   }
 
-  // TODO: (toc) join the always-on "toc" room here over this same socket and
-  // expose a reactive ToC snapshot (subscribe/getSnapshot), deriving entries from
-  // the shared ToC schema (campaign-shared / types-campaign), not hand-rolled
-  // string keys. Lands next with the ToC consumer + new-page creation. Bring the
-  // end-to-end test then too: doc reuse across navigation, refcount + debounced
-  // leave, and one active socket held through navigation -- the machinery this
-  // slice ships untested because there is only one room today.
+  // ---- ToC room (useToc-owned, always-on) ---------------------------------
+
+  /**
+   * Join the campaign's "toc" room over this socket and start deriving the
+   * reactive tree snapshot. Fire-and-forget from connect(); on a StrictMode
+   * socket cycle the stale join detects the client swap after its awaits and
+   * tears its own room down.
+   */
+  private async doJoinToc(): Promise<void> {
+    await this.whenConnected();
+    const client = this.client;
+    if (!client) return; // closed before we could start
+    // Idempotent per socket (see the header note): claim synchronously, before
+    // any further await, so a duplicate StrictMode join on this same socket bails
+    // here instead of colliding on client.join()'s dedup and clobbering the doc.
+    if (this.tocJoinClient === client) return;
+    this.tocJoinClient = client;
+
+    const doc = new LoroDoc();
+    try {
+      await client.waitConnected();
+      const room = await client.join({
+        roomId: TOC_CONTAINER,
+        crdtAdaptor: new LoroAdaptor(doc),
+      });
+      // Resolves once the server snapshot is applied, so the first paint has the
+      // full tree rather than an empty one.
+      await room.waitForReachingServerVersion();
+
+      if (this.client !== client) {
+        // Socket cycled under us; the fresh connect() runs its own ToC join.
+        void room.destroy().catch(() => {});
+        return;
+      }
+
+      this.tocRoom = room;
+      this.tocDoc = doc;
+      // Fires on local commits (our own moves) and remote imports (peer edits).
+      this.tocUnsub = doc.subscribe(() => this.recomputeToc());
+      this.recomputeToc();
+    } catch (err) {
+      if (this.client === client) {
+        // Release the claim so a later connect() on this socket can retry.
+        this.tocJoinClient = null;
+        this.tocSnapshot = { status: "error", message: errMessage(err) };
+        this.notifyToc();
+      }
+    }
+  }
+
+  /** Re-derive the immutable tree snapshot and wake subscribers. */
+  private recomputeToc(): void {
+    if (!this.tocDoc) return;
+    const tree = readTocTree(this.tocDoc);
+    this.tocSnapshot = { status: "ready", tree };
+    this.notifyToc();
+  }
 
   /** Close the socket and drop all room state. Idempotent. */
   close(): void {
     if (!this.client) return;
+    // Tear down the always-on ToC room.
+    this.tocUnsub?.();
+    this.tocUnsub = null;
+    if (this.tocRoom) {
+      void this.tocRoom.destroy().catch(() => {});
+      this.tocRoom = null;
+    }
+    this.tocDoc = null;
+    this.tocSnapshot = TOC_LOADING;
+    // Drop the per-socket join claim so the next connect() rejoins on its socket.
+    this.tocJoinClient = null;
     for (const room of this.things.values()) {
       if (room.leaveTimer != null) clearTimeout(room.leaveTimer);
     }
@@ -110,8 +234,9 @@ export class LoroClientManager {
     this.client.close();
     this.client = null;
     // Re-arm the gate lazily (a fresh whenConnected() will create one) and wake
-    // any hooks so they re-read JOINING. Harmless if we're truly unmounting.
+    // any hooks so they re-read JOINING / TOC_LOADING. Harmless if truly unmounting.
     for (const id of this.listeners.keys()) this.notify(id);
+    this.notifyToc();
   }
 
   private whenConnected(): Promise<void> {
@@ -144,6 +269,7 @@ export class LoroClientManager {
       snapshot: JOINING,
       room: null,
       leaveTimer: null,
+      joinClient: null,
     });
     this.notify(id);
     void this.doJoinThing(id);
@@ -184,6 +310,13 @@ export class LoroClientManager {
       this.things.delete(id);
       return;
     }
+    // Idempotent per socket (see the header note): on F5 close() clears `things`
+    // between StrictMode's two acquires, so both fire a doJoinThing that resumes
+    // against the same surviving socket. Claim synchronously, before any further
+    // await, so the duplicate bails here instead of colliding on client.join()'s
+    // dedup and binding the editor to a never-synced empty doc.
+    if (wanted.joinClient === client) return;
+    wanted.joinClient = client;
 
     const doc = new LoroDoc();
     try {
@@ -250,5 +383,28 @@ export class LoroClientManager {
 
   private notify(id: ThingId): void {
     this.listeners.get(id)?.forEach((l) => l());
+  }
+
+  // ---- ToC useSyncExternalStore plumbing + mutations ----------------------
+
+  subscribeToc = (listener: () => void): (() => void) => {
+    this.tocListeners.add(listener);
+    return () => this.tocListeners.delete(listener);
+  };
+
+  getTocSnapshot = (): TocSnapshot => this.tocSnapshot;
+
+  /**
+   * Move a ToC node under `parent` (root when null) at sibling `index`. The local
+   * commit syncs over the room and optimistically updates this snapshot through
+   * the doc subscription. No-op until the ToC room has joined.
+   */
+  moveTocNode = (node: TreeID, parent: TreeID | null, index: number): void => {
+    if (!this.tocDoc) return;
+    applyTocMove(this.tocDoc, node, parent, index);
+  };
+
+  private notifyToc(): void {
+    this.tocListeners.forEach((l) => l());
   }
 }

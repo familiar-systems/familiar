@@ -16,6 +16,8 @@ export type CreateThingRequest = {
   status: Status | null;
   /**
    * Parent Thing to nest under in the table of contents. `None` => ToC root.
+   * FIXME this should probably the ID of the ToC block and not a ThingID.
+   * This would let us nest things under, say, a Folder.
    */
   parent: ThingId | null;
   /**

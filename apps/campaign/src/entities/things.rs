@@ -11,6 +11,8 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub name: String,
     pub status: StatusCol,
+    /// Which template this was cloned from, if any.
+    /// FIXME rename to `from_template_id`
     pub prototype_id: Option<ThingIdCol>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

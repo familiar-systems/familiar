@@ -20,6 +20,8 @@ pub struct CreateThingRequest {
     pub name: String,
     pub status: Option<Status>,
     /// Parent Thing to nest under in the table of contents. `None` => ToC root.
+    /// FIXME this should probably the ID of the ToC block and not a ThingID.
+    /// This would let us nest things under, say, a Folder.
     pub parent: Option<ThingId>,
     /// Template to clone from. Not yet supported; a value here yields 501.
     pub from_template_id: Option<ThingId>,

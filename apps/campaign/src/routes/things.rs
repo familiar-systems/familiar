@@ -18,11 +18,14 @@ use kameo::error::SendError;
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use familiar_systems_campaign_shared::document::things::{CreateThingRequest, ThingResponse};
-use familiar_systems_campaign_shared::id::ThingId;
+use familiar_systems_campaign_shared::id::{BlockId, ThingId};
+use familiar_systems_campaign_shared::status::Status;
 use fs_id::Nanoid;
 
 use crate::actors::registry::GetCampaign;
 use crate::actors::supervisor::{CreateThing, CreateThingError};
+use crate::domain::thing::NewBlock;
+use crate::loro::block_codec;
 use crate::middleware::auth::AuthenticatedUser;
 use crate::state::AppState;
 
@@ -86,13 +89,24 @@ pub async fn create_thing(
         }
     }
 
+    // Seed one empty paragraph so the new page opens as a schema-valid, editable
+    // ProseMirror document (a `doc` with one `block+` child) rather than an empty,
+    // uneditable `doc`. Mirrors the campaign home-page seed; the block's ULID is
+    // embedded in `attributes.blockId` and reused as its row id for stable identity.
+    let block_id = BlockId::generate();
+    let seed_blocks = vec![NewBlock {
+        id: block_id.clone(),
+        ordering: 0,
+        content: block_codec::empty_paragraph_blob(&block_id),
+        status: Status::GmOnly,
+    }];
+
     match supervisor
         .ask(CreateThing {
             name: req.name,
             status: req.status,
             parent: req.parent,
-            // Generic Things start empty; content is added through the editor.
-            seed_blocks: vec![],
+            seed_blocks,
         })
         .await
     {

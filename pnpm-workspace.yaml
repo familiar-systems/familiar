@@ -3,6 +3,11 @@ packages:
   - packages/*
   - tooling/*
 catalog:
+  # Headless drag-and-drop for the table-of-contents tree (apps/web). Owns no
+  # data: the tree lives in the Loro doc, dnd-kit only reports drop targets.
+  "@dnd-kit/core": ^6.3.1
+  "@dnd-kit/sortable": ^10.0.0
+  "@dnd-kit/utilities": ^3.2.2
   "@tailwindcss/vite": ^4.2.4
   "@types/react": ^19
   "@types/react-dom": ^19
