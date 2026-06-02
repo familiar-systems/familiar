@@ -11,9 +11,9 @@
     "test": "pnpm -r run test"
   },
   "devDependencies": {
-    "@oxlint/plugins": "^1.63.0",
-    "oxfmt": "^0.46.0",
-    "oxlint": "^1.63.0",
+    "@oxlint/plugins": "^1.66.0",
+    "oxfmt": "^0.51.0",
+    "oxlint": "^1.66.0",
     "typescript": "catalog:"
   }
 }
