@@ -224,8 +224,9 @@ description = "Frontend integration tests for apps/web (browser + mocked backend
 # Deliberately not under `test:*`: Playwright spins up a Vite dev server
 # and chromium per run, which would slow `mise run test` (the inner-loop
 # command) and require browser binaries on every fresh worktree. `mise
-# run check` includes this task, so PR-ready verification still covers
-# the full browser flow; CI runs `check`, so it fires on every PR.
+# run check` includes this task, so local PR-ready verification still
+# covers the full browser flow; CI runs it as a dedicated, path-filtered
+# `integration` job in .github/workflows/_ci.yml.
 run = "pnpm --filter @familiar-systems/web integration"
 sources = [
   "apps/web/src/**/*.{ts,tsx}",

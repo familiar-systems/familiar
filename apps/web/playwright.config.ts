@@ -20,7 +20,9 @@ export default defineConfig({
   testDir: "./integration",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // No retries, even in CI: a flaky test is a useless test - it works or it
+  // doesn't. A retry that turns red green just hides a real race.
+  retries: 0,
   reporter: "list",
   use: {
     baseURL: "http://localhost:5173",
