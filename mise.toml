@@ -7,7 +7,7 @@ node = "24"
 # missing from this CSV. The toolchain lives under ~/.rustup, not under
 # ~/.local/share/mise. Do NOT add a rust-toolchain.toml — RUSTUP_TOOLCHAIN
 # beats it in rustup's precedence chain, so the file would be a no-op.
-rust = { version = "latest", profile = 'default', components = "rust-analyzer,rust-src" }
+rust = { version = "1.96.0", profile = 'default', components = "rust-analyzer,rust-src" }
 python = "3.14"
 uv = "latest"
 actionlint = "latest"
@@ -310,10 +310,7 @@ run = [
   "check-jsonschema --schemafile content/.schemas/systems-schema.json content/systems.yaml",
   "check-jsonschema --schemafile content/.schemas/starter-content-schema.json content/templates/**/*.yaml",
 ]
-sources = [
-  "content/**/*.yaml",
-  "content/.schemas/*.json",
-]
+sources = ["content/**/*.yaml", "content/.schemas/*.json"]
 
 [tasks."lint:k8s"]
 description = "Build and validate Kustomize overlays (prod + preview) against Kubernetes schemas"
@@ -460,11 +457,7 @@ sources = [
 [tasks."typecheck:infra"]
 dir = "infra/tofu"
 run = "uv run basedpyright"
-sources = [
-  "infra/tofu/**/*.py",
-  "infra/tofu/pyproject.toml",
-  "infra/tofu/uv.lock",
-]
+sources = ["infra/tofu/**/*.py", "infra/tofu/pyproject.toml", "infra/tofu/uv.lock"]
 
 # --- generate ---
 
