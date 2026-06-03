@@ -357,9 +357,12 @@ jobs:
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          # Per-job key: integration and e2e run in parallel, so a shared key
+          # makes them race to save the same cache on a cold miss (harmless but
+          # noisy). Separate lanes; the browser is small relative to the cache.
+          key: playwright-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
-            playwright-${{ runner.os }}-
+            playwright-integration-${{ runner.os }}-
 
       - name: Install Playwright chromium
         run: pnpm --filter @familiar-systems/web exec playwright install chromium
@@ -426,12 +429,11 @@ jobs:
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          # Own lane (see the integration job) so the two parallel jobs don't
+          # race to save the same cache key on a cold miss.
+          key: playwright-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
-            playwright-${{ runner.os }}-
-
-      - name: Install Playwright chromium
-        run: pnpm --filter @familiar-systems/web exec playwright install chromium
+            playwright-e2e-${{ runner.os }}-
 
       - name: End-to-end smoke
         run: mise run e2e
