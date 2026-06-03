@@ -177,7 +177,13 @@ jobs:
         run: mise run generate-types
 
       - name: verify generated artifacts are clean
-        run: git diff --exit-code
+        # Exclude mise.lock: `mise run` provisions the toolchain as a side
+        # effect and rewrites the lock's [tools.rust.options] block (rust
+        # components/profile, resolved from mise.toml). That churn is not a
+        # generated-type artifact, so policing it here false-fails the gate on
+        # every run. The diff still catches real ts-rs / OpenAPI drift in every
+        # other path.
+        run: git diff --exit-code -- . ':(exclude)mise.lock'
 
   # ── Python ──────────────────────────────────────────────
   python:
