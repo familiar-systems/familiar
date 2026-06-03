@@ -16,6 +16,10 @@ WORKDIR /app
 # Copy workspace config + lockfile first (layer caching)
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 
+# pnpm-workspace.yaml declares patchedDependencies; pnpm hashes the patch
+# files during install (even --frozen-lockfile), so they must be in the image.
+COPY patches/ patches/
+
 # Copy only the site's package.json (no other apps/packages needed at install)
 COPY apps/site/package.json apps/site/package.json
 
