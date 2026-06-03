@@ -1,9 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// E2E tests run against the dev Vite server with mocked Hanko + /me. This
-// keeps the SPA exercise hermetic: no Caddy proxy, no platform server, no
-// real Hanko backend - just enough to assert the browser-side behavior we
-// can't catch with vitest. Tests live under apps/web/e2e.
+// Frontend INTEGRATION tests: the SPA runs in a real browser, but Hanko +
+// /me + every backend call are mocked at the network layer (route
+// interception). No Caddy proxy, no platform/campaign server, no real Hanko
+// - just the browser-side behavior we can't catch with vitest. Tests live
+// under apps/web/integration. (The genuine end-to-end test, which boots the
+// real stack, is the separate `playwright.e2e.config.ts` + `.mise/tasks/e2e`.)
 //
 // Why a separate config (not vitest browser): vitest's browser mode is
 // for unit tests rendered in a real browser; full-app navigation flows
@@ -15,7 +17,7 @@ import { defineConfig, devices } from "@playwright/test";
 // playwright install chromium`. CI runs this once; locally it's a
 // one-time setup.
 export default defineConfig({
-  testDir: "./e2e",
+  testDir: "./integration",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

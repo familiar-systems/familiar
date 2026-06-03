@@ -69,6 +69,15 @@ interface MockState {
 }
 
 async function installMocks(page: Page, state: MockState): Promise<void> {
+  // The campaign layout's LoroManagerProvider reads getSessionToken() (the
+  // `hanko` cookie) synchronously and throws if it's null, so reaching the
+  // wizard route needs a cookie even though every backend call here is mocked.
+  // validateSession and /me are network-stubbed below; this only satisfies that
+  // one local token read. (baseURL is http://localhost:5173 per playwright.config.ts.)
+  await page
+    .context()
+    .addCookies([{ name: "hanko", value: "integration-token", url: "http://localhost:5173" }]);
+
   // Hanko: any request to the placeholder host resolves as a valid session.
   await page.route("**/auth.example.test/**", async (route) => {
     if (route.request().url().endsWith("/sessions/validate")) {
@@ -164,6 +173,9 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
           game_system: row.game_system,
           content_locale: row.content_locale,
           wizard_completed_at: row.wizard_completed_at,
+          // null = no home page set -> index shows the no-home placeholder. A
+          // non-null value must be a ULID (the thing route validates it).
+          home_thing_id: null,
           created_at: row.created_at,
           updated_at: row.updated_at,
         }),
@@ -231,6 +243,8 @@ test("wizard success transitions to initialized campaign view", async ({ page })
         game_system: row?.game_system ?? null,
         content_locale: row?.content_locale ?? null,
         wizard_completed_at: row?.wizard_completed_at ?? null,
+        // No home page in this mock -> index lands on the no-home placeholder.
+        home_thing_id: null,
         created_at: row?.created_at ?? new Date().toISOString(),
         updated_at: row?.updated_at ?? new Date().toISOString(),
       }),
@@ -257,9 +271,12 @@ test("wizard success transitions to initialized campaign view", async ({ page })
   await page.getByTestId("evals-off").click();
   await page.getByTestId("wizard-next").click();
 
-  // Step 4: seal. Should stay on the campaign, not bounce to hub.
+  // Step 4: seal. Should stay on the campaign, not bounce to hub. The mocked
+  // GET /campaign/{id} carries no home_thing_id, so the index lands on the
+  // "no home page" placeholder (the real flow redirects to the home editor,
+  // which the full-stack e2e smoke test covers).
   await page.getByTestId("wax-seal").click();
-  await expect(page.getByTestId("campaign-placeholder")).toBeVisible();
+  await expect(page.getByTestId("campaign-no-home")).toBeVisible();
   await expect(page).toHaveURL(`/c/${CAMPAIGN_ID}`);
   await expect(page.getByText("Embergrove Saga")).toBeVisible();
 });

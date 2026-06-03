@@ -69,9 +69,12 @@ The editor is split by concern: `@familiar-systems/editor` owns the shared TipTa
 
 ## Testing
 
+Three tiers, deliberately distinct (one term per concept — the old "e2e" specs were never end-to-end):
+
 - **Unit (Vitest):** co-located `*.test.ts`; type-level tests are `*.test-d.ts`.
-- **E2E (Playwright):** in `e2e/` as `*.spec.ts`. They mock Hanko session validation and `/me` at the network layer and assert SPA-specific behavior — e.g. that navigation does no full-page reload and `Shell` stays mounted across it.
-- `vitest.config.ts` excludes `e2e/`; `playwright.config.ts` spawns `pnpm dev` against `:5173`.
+- **Integration (Playwright):** in `integration/` as `*.spec.ts`. The SPA runs in a real browser, but Hanko session validation, `/me`, and **every backend call** are mocked at the network layer (route interception). Asserts SPA-specific behavior — e.g. that navigation does no full-page reload and `Shell` stays mounted across it. `playwright.config.ts` spawns `pnpm dev` against `:5173`. Run via `mise run web:integration`; part of `mise run check`.
+- **E2E (Playwright):** the genuine full stack — real platform + campaign + Loro WebSocket + SQLite, only the third-party Hanko edge stubbed. One spec, `e2e/smoke.spec.ts`, under `playwright.e2e.config.ts` (baseURL `http://app.localhost:18080`, **no** `webServer`). The `.mise/tasks/e2e` shell harness boots the whole stack on an isolated port block (13000/13001/15173/18080/19100, so it coexists with a running `mise run dev`), runs the spec, then SIGTERMs the campaign for a graceful flush and asserts the persisted SQLite via `apps/campaign/examples/smoke_assert_db`. The browser "login" is one seeded `hanko` cookie (the SDK's `getSessionToken()` reads it); the stub `/sessions/validate` is `e2e/support/mock-hanko.mjs`. Run via `mise run e2e` (needs `mise run setup:playwright` once); **not** in `check`.
+- `vitest.config.ts` excludes both `e2e/` and `integration/` (those dirs are Playwright's, not vitest's).
 
 ## Build / serve
 
@@ -91,9 +94,10 @@ Read `docs/style-guide.md` before writing UI code. Use the `frontend-design` ski
 Use the workspace `mise` tasks (per the root rule, don't drop to raw `pnpm --filter`):
 
 ```bash
-mise run test          # Vitest unit tests
-mise run e2e           # Playwright end-to-end tests
+mise run test            # Vitest unit tests
+mise run web:integration # Playwright integration (browser + mocked backends); in `check`
+mise run e2e             # Playwright full-stack smoke (real servers + SQLite); not in `check`
 mise run lint
 mise run typecheck
-mise run dev           # full stack; web on :5173 behind the Caddy proxy on :8080
+mise run dev             # full stack; web on :5173 behind the Caddy proxy on :8080
 ```

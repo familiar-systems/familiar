@@ -84,8 +84,8 @@ fi
 uv sync
 """
 
-[tasks."setup:e2e"]
-description = "Install Playwright's browser binary (chromium) for apps/web e2e tests"
+[tasks."setup:playwright"]
+description = "Install Playwright's browser binary (chromium), shared by both apps/web browser tiers (web:integration and e2e)"
 depends = ["setup:ts"]
 # Playwright pins exact browser revisions per @playwright/test version, so
 # we let Playwright manage the install itself instead of mise tracking the
@@ -95,8 +95,8 @@ run = "pnpm --filter @familiar-systems/web exec playwright install chromium"
 # --- check ---
 
 [tasks.check]
-description = "Run all checks in parallel (format:check, lint, typecheck, test, web:e2e)"
-depends = ["format:check", "lint", "typecheck", "test", "web:e2e"]
+description = "Run all checks in parallel (format:check, lint, typecheck, test, web:integration)"
+depends = ["format:check", "lint", "typecheck", "test", "web:integration"]
 
 # --- dev ---
 
@@ -217,19 +217,19 @@ sources = [
   "workers/whisperx/uv.lock",
 ]
 
-# --- e2e ---
+# --- integration ---
 
-[tasks."web:e2e"]
-description = "Browser E2E tests for apps/web (run `mise run setup:e2e` once before first use)"
+[tasks."web:integration"]
+description = "Frontend integration tests for apps/web (browser + mocked backends; run `mise run setup:playwright` once first)"
 # Deliberately not under `test:*`: Playwright spins up a Vite dev server
 # and chromium per run, which would slow `mise run test` (the inner-loop
 # command) and require browser binaries on every fresh worktree. `mise
 # run check` includes this task, so PR-ready verification still covers
-# the full browser flow; CI runs `check`, so e2e fires on every PR.
-run = "pnpm --filter @familiar-systems/web e2e"
+# the full browser flow; CI runs `check`, so it fires on every PR.
+run = "pnpm --filter @familiar-systems/web integration"
 sources = [
   "apps/web/src/**/*.{ts,tsx}",
-  "apps/web/e2e/**/*.ts",
+  "apps/web/integration/**/*.ts",
   "apps/web/playwright.config.ts",
   "apps/web/package.json",
   "pnpm-lock.yaml",

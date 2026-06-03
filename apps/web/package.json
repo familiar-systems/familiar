@@ -12,7 +12,8 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "test": "vitest run --passWithNoTests",
-    "e2e": "playwright test"
+    "integration": "playwright test",
+    "e2e": "playwright test --config playwright.e2e.config.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "catalog:",

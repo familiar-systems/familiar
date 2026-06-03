@@ -91,7 +91,7 @@ Designed but not implemented (see the AI design docs listed above). Key constrai
 
 ```bash
 mise run setup                  # Install all dependencies (TS + Python workers + Python infra + e2e)
-mise run check                  # All checks in parallel (format:check + lint + typecheck + test + web:e2e)
+mise run check                  # All checks in parallel (format:check + lint + typecheck + test + web:integration)
 mise run test                   # All tests (Vitest + cargo test + pytest)
 mise run typecheck              # All type-checking (tsc + cargo check + basedpyright)
 mise run lint                   # All linting (oxlint + clippy + ruff + actionlint + kubeconform + content schemas)
