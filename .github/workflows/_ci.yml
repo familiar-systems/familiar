@@ -441,6 +441,13 @@ jobs:
           restore-keys: |
             playwright-e2e-${{ runner.os }}-
 
+      # Idempotent on a cache hit; required on a cold miss. The e2e cache lane
+      # is independent of integration's, so it cannot borrow that job's browser
+      # install - e2e must install chromium itself or `mise run e2e` launches
+      # against a missing executable.
+      - name: Install Playwright chromium
+        run: pnpm --filter @familiar-systems/web exec playwright install chromium
+
       - name: End-to-end smoke
         run: mise run e2e
 
