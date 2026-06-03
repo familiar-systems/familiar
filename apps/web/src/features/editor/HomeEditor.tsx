@@ -33,17 +33,27 @@ export function HomeEditor({ thingId }: HomeEditorProps): React.ReactElement {
     );
   }
 
-  return <BoundEditor doc={state.doc} containerId={state.containerId} />;
+  // synced or reconnecting: keep the editor mounted either way (edits buffer into
+  // the local Loro doc and flush when the socket returns); only the indicator
+  // differs.
+  return (
+    <BoundEditor
+      doc={state.doc}
+      containerId={state.containerId}
+      reconnecting={state.status === "reconnecting"}
+    />
+  );
 }
 
 interface BoundEditorProps {
   doc: LoroDoc;
   containerId: ContainerID;
+  reconnecting: boolean;
 }
 
 // Separate component so `useEditor` runs unconditionally (rules of hooks) and
 // only after the doc has synced. The editor is created once per doc.
-function BoundEditor({ doc, containerId }: BoundEditorProps): React.ReactElement {
+function BoundEditor({ doc, containerId, reconnecting }: BoundEditorProps): React.ReactElement {
   const title = readThingTitle(doc);
   const editor = useEditor(
     {
@@ -59,6 +69,12 @@ function BoundEditor({ doc, containerId }: BoundEditorProps): React.ReactElement
 
   return (
     <article className="mx-auto w-full max-w-3xl px-8 pt-16 pb-24">
+      {reconnecting ? (
+        <p className="mb-4 inline-flex items-center gap-1.5 text-xs text-amber-500">
+          <span className="size-1.5 animate-pulse rounded-full bg-amber-500" />
+          Reconnecting...
+        </p>
+      ) : null}
       <h1 className="mb-8 font-display text-3xl font-medium tracking-tight">{title}</h1>
       <EditorContent
         editor={editor}

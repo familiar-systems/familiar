@@ -15,6 +15,9 @@ import { useLoroManager } from "./LoroManagerProvider";
 export type ThingDocState =
   | { status: "connecting" }
   | { status: "synced"; doc: LoroDocType; containerId: ContainerID }
+  // Socket dropped while the doc is open: keep editing (edits buffer locally) and
+  // let the editor show a reconnecting indicator rather than tearing down.
+  | { status: "reconnecting"; doc: LoroDocType; containerId: ContainerID }
   | { status: "error"; message: string };
 
 export function useThingDoc(thingId: ThingId): ThingDocState {
@@ -36,7 +39,9 @@ export function useThingDoc(thingId: ThingId): ThingDocState {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot);
 
   // Derive the editor-facing state here (not in getSnapshot, which must return a
-  // stable reference). containerId is computed once per joined doc.
+  // stable reference). The room's view is the LoroDoc; containerId is computed
+  // per snapshot. The doc reference is stable across a reconnect, so the editor
+  // (keyed by doc) is not recreated when the socket blips.
   return useMemo<ThingDocState>(() => {
     switch (snapshot.status) {
       case "joining":
@@ -44,8 +49,14 @@ export function useThingDoc(thingId: ThingId): ThingDocState {
       case "joined":
         return {
           status: "synced",
-          doc: snapshot.doc,
-          containerId: contentContainerId(snapshot.doc),
+          doc: snapshot.view,
+          containerId: contentContainerId(snapshot.view),
+        };
+      case "reconnecting":
+        return {
+          status: "reconnecting",
+          doc: snapshot.view,
+          containerId: contentContainerId(snapshot.view),
         };
       case "error":
         return { status: "error", message: snapshot.message };

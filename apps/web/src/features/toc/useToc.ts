@@ -1,16 +1,50 @@
-// Read-only subscription to the campaign's table of contents. The "toc" room is
-// always-on in LoroClientManager (joined on connect, torn down on close), so this
-// hook has no acquire/release: it just reads the derived snapshot via
-// useSyncExternalStore. Mirrors useThingDoc minus the per-room lifecycle.
+// Read-only subscription to the campaign's table of contents, plus the hook that
+// pins the ToC room. The room is ref-counted in LoroClientManager like any other;
+// the campaign layout calls useTocRoom() to hold the single long-lived acquire,
+// and useToc() is a pure subscription that maps the manager's room snapshot into
+// the sidebar's vocabulary.
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
-import type { TocSnapshot } from "../editor/loro-manager";
 import { useLoroManager } from "../editor/LoroManagerProvider";
+import type { TocTreeNode } from "./toc-doc";
+
+export type TocSnapshot =
+  | { status: "loading" }
+  | { status: "ready"; tree: TocTreeNode[] }
+  // Socket dropped while the tree is open: keep showing the last-known tree with
+  // an indicator rather than collapsing back to the loading state.
+  | { status: "reconnecting"; tree: TocTreeNode[] }
+  | { status: "error"; message: string };
+
+/**
+ * Pin the campaign's ToC room for the lifetime of the calling component. Mounted
+ * once at the campaign layout so the tree is available to every reader (the
+ * sidebar today, a breadcrumb tomorrow) without each reader churning the join.
+ */
+export function useTocRoom(): void {
+  const manager = useLoroManager();
+  useEffect(() => {
+    manager.acquireToc();
+    return () => manager.releaseToc();
+  }, [manager]);
+}
 
 export function useToc(): TocSnapshot {
   const manager = useLoroManager();
   // subscribeToc / getTocSnapshot are stable bound fields on the manager instance
   // (itself stable for the campaign mount), so they can be passed directly.
-  return useSyncExternalStore(manager.subscribeToc, manager.getTocSnapshot);
+  const snapshot = useSyncExternalStore(manager.subscribeToc, manager.getTocSnapshot);
+  return useMemo<TocSnapshot>(() => {
+    switch (snapshot.status) {
+      case "joining":
+        return { status: "loading" };
+      case "joined":
+        return { status: "ready", tree: snapshot.view };
+      case "reconnecting":
+        return { status: "reconnecting", tree: snapshot.view };
+      case "error":
+        return { status: "error", message: snapshot.message };
+    }
+  }, [snapshot]);
 }

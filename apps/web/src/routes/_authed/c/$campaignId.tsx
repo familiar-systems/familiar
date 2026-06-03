@@ -9,6 +9,7 @@ import { Outlet, createFileRoute, useParams } from "@tanstack/react-router";
 
 import { LoroManagerProvider } from "../../../features/editor/LoroManagerProvider";
 import { TocSidebar } from "../../../features/toc/TocSidebar";
+import { useTocRoom } from "../../../features/toc/useToc";
 
 function CampaignLayout(): React.ReactElement {
   const { campaignId } = Route.useParams();
@@ -30,6 +31,10 @@ function CampaignLayout(): React.ReactElement {
 // editor pane scroll independently within the flex column the app Shell provides
 // one level up.
 function CampaignWorkspace({ campaignId }: { campaignId: CampaignId }): React.ReactElement {
+  // Pin the ToC room for the whole workspace lifetime, above the page/index
+  // branch so navigating between them never tears it down (the debounced leave
+  // would absorb a quick toggle, but pinning avoids the churn entirely).
+  useTocRoom();
   const onPage = useParams({ strict: false }).thingId !== undefined;
   if (!onPage) {
     return <Outlet />;

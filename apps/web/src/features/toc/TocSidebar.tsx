@@ -1,8 +1,9 @@
 // The campaign's table-of-contents sidebar: an IDE-style file explorer of the
-// campaign's pages. Reads the live tree from the always-on "toc" room (useToc),
-// renders a drag-to-reorder/reparent tree, and creates new pages via REST (the
-// new node arrives back over the same sync). Mounted at the /c/$campaignId layout
-// so it persists across navigation between pages.
+// campaign's pages. Reads the live tree from the layout-pinned "toc" room
+// (useToc; the campaign layout holds the acquire via useTocRoom), renders a
+// drag-to-reorder/reparent tree, and creates new pages via REST (the new node
+// arrives back over the same sync). Mounted at the /c/$campaignId layout so it
+// persists across navigation between pages.
 
 import type { CampaignId } from "@familiar-systems/types-app";
 import type { ThingId } from "@familiar-systems/types-campaign";
@@ -135,8 +136,12 @@ function SidebarBody({
       );
     case "error":
       return <p className="px-2 py-2 text-sm text-red-700 dark:text-red-400">{snapshot.message}</p>;
-    case "ready":
-      if (snapshot.tree.length === 0 && pendingParent === undefined) {
+    case "reconnecting":
+    case "ready": {
+      const reconnecting = snapshot.status === "reconnecting";
+      // Only offer the empty-state CTA when genuinely ready; a transient
+      // reconnect keeps the last-known tree (and its indicator) instead.
+      if (snapshot.tree.length === 0 && pendingParent === undefined && !reconnecting) {
         return (
           <button
             type="button"
@@ -149,17 +154,26 @@ function SidebarBody({
         );
       }
       return (
-        <TocTree
-          tree={snapshot.tree}
-          activeThingId={activeThingId}
-          pendingParent={pendingParent}
-          creating={creating}
-          onNavigate={onNavigate}
-          onMove={onMove}
-          onAddChild={onAddChild}
-          onSubmitCreate={onSubmitCreate}
-          onCancelCreate={onCancelCreate}
-        />
+        <>
+          {reconnecting ? (
+            <p className="flex items-center gap-1.5 px-2 py-1 text-xs text-amber-500">
+              <span className="size-1.5 animate-pulse rounded-full bg-amber-500" />
+              Reconnecting...
+            </p>
+          ) : null}
+          <TocTree
+            tree={snapshot.tree}
+            activeThingId={activeThingId}
+            pendingParent={pendingParent}
+            creating={creating}
+            onNavigate={onNavigate}
+            onMove={onMove}
+            onAddChild={onAddChild}
+            onSubmitCreate={onSubmitCreate}
+            onCancelCreate={onCancelCreate}
+          />
+        </>
       );
+    }
   }
 }
