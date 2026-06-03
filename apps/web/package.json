@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.60.0",
     "@tanstack/router-cli": "^1.166.43",
     "@tanstack/router-plugin": "^1.167.35",
     "@types/react": "catalog:",
