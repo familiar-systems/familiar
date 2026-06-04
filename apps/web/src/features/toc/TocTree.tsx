@@ -142,8 +142,22 @@ export function TocTree({
 
   function handleDragEnd(e: DragEndEvent): void {
     const over = e.over === null ? null : asTreeId(e.over.id);
-    if (activeId !== null && over !== null && projection !== null) {
-      const placement = getMovePlacement(items, activeId, over, projection);
+    if (activeId !== null && over !== null) {
+      // Recompute from the end event's final delta/over rather than the memoized
+      // `projection`: under coalesced pointer events the last onDragMove may not
+      // have flushed setOffsetLeft/setOverId before drag end, which would commit
+      // the drop one indent level (or one target) off. e.delta.x / e.over are
+      // authoritative. `items` is safe to read here (derived from the frozen
+      // snapshot + activeId, both stable for the drag's duration).
+      const finalProjection = getProjection(
+        items,
+        activeId,
+        over,
+        e.delta.x,
+        INDENT_WIDTH,
+        MAX_DRAG_DEPTH,
+      );
+      const placement = getMovePlacement(items, activeId, over, finalProjection);
       onMove(activeId, placement.parentId, placement.index);
     }
     reset();
@@ -154,7 +168,7 @@ export function TocTree({
   if (pendingParent === null) {
     rows.push(
       <TocCreateRow
-        key="create-root"
+        key={`create-${pendingParent ?? "root"}`}
         depth={0}
         indentWidth={INDENT_WIDTH}
         busy={creating}
@@ -188,7 +202,7 @@ export function TocTree({
     ) {
       rows.push(
         <TocCreateRow
-          key="create-child"
+          key={`create-${pendingParent ?? "root"}`}
           depth={node.depth + 1}
           indentWidth={INDENT_WIDTH}
           busy={creating}

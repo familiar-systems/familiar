@@ -119,6 +119,21 @@ pub struct AckPayload {
 pub enum UpdateError {
     #[error("unauthorized write")]
     Unauthorized,
+    /// The room actor is no longer running (stopped, evicted, or never
+    /// started). The connection drops the room from its routing table and
+    /// tells the client to rejoin. Carried as a typed variant rather than a
+    /// flattened error string so the WebSocket layer never has to substring-
+    /// match kameo's `SendError` Display text to recognize a dead actor.
+    #[error("room actor gone")]
+    RoomGone,
+    /// The room actor is alive but could not accept the update right now
+    /// (mailbox full or reply timed out). Transient backpressure: the client
+    /// should back off and retry, not rejoin.
+    #[error("room actor busy")]
+    Busy,
+    /// A genuine CRDT-level rejection: the bytes reached the doc and failed to
+    /// import (see `Room::apply_updates`). Distinct from the transport-layer
+    /// failures above, which mean the bytes never reached the doc at all.
     #[error("crdt apply failed: {0}")]
     Apply(String),
     #[error("invalid update payload: {0}")]

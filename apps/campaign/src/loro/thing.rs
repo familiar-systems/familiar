@@ -37,7 +37,7 @@ impl LoroThingDoc {
         let doc = LoroDoc::new();
         let meta = doc.get_map(CONTAINER_META);
         meta.insert(KEY_TITLE, "").unwrap();
-        meta.insert(KEY_STATUS, status_to_str(&Status::GmOnly))
+        meta.insert(KEY_STATUS, Status::GmOnly.as_loro_str())
             .unwrap();
         let _content = doc.get_map(CONTAINER_CONTENT);
         Self { doc }
@@ -51,7 +51,7 @@ impl LoroThingDoc {
         let this = Self::new();
         let meta = this.meta();
         meta.insert(KEY_TITLE, name).unwrap();
-        meta.insert(KEY_STATUS, status_to_str(status)).unwrap();
+        meta.insert(KEY_STATUS, status.as_loro_str()).unwrap();
 
         let content = this.content();
         block_codec::restore_content(&content, block_blobs);
@@ -103,7 +103,7 @@ impl LoroThingDoc {
     /// Read the status from the meta section.
     pub fn read_status(&self) -> Option<Status> {
         match self.meta().get(KEY_STATUS)? {
-            ValueOrContainer::Value(LoroValue::String(s)) => str_to_status(&s),
+            ValueOrContainer::Value(LoroValue::String(s)) => Status::from_loro_str(&s),
             _ => None,
         }
     }
@@ -144,23 +144,6 @@ impl CrdtDoc for LoroThingDoc {
 
     fn debug_value(&self) -> Option<serde_json::Value> {
         Some(self.doc.get_deep_value().into())
-    }
-}
-
-fn status_to_str(s: &Status) -> &'static str {
-    match s {
-        Status::GmOnly => "gmOnly",
-        Status::Known => "known",
-        Status::Retconned => "retconned",
-    }
-}
-
-fn str_to_status(s: &str) -> Option<Status> {
-    match s {
-        "gmOnly" => Some(Status::GmOnly),
-        "known" => Some(Status::Known),
-        "retconned" => Some(Status::Retconned),
-        _ => None,
     }
 }
 

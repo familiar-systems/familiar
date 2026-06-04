@@ -917,6 +917,7 @@ version = "0.0.0"
 dependencies = [
  "fs-id",
  "serde",
+ "serde_json",
  "ts-rs",
  "utoipa",
 ]

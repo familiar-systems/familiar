@@ -83,26 +83,9 @@ impl LoroTocDoc {
             .map_err(|e| format!("failed to export toc update: {e}"))
     }
 
-    fn status_to_str(s: &Status) -> &'static str {
-        match s {
-            Status::GmOnly => "gmOnly",
-            Status::Known => "known",
-            Status::Retconned => "retconned",
-        }
-    }
-
-    fn str_to_status(s: &str) -> Option<Status> {
-        match s {
-            "gmOnly" => Some(Status::GmOnly),
-            "known" => Some(Status::Known),
-            "retconned" => Some(Status::Retconned),
-            _ => None,
-        }
-    }
-
     fn read_status(meta: &LoroMap) -> Option<Status> {
         match meta.get(KEY_VISIBILITY)? {
-            ValueOrContainer::Value(LoroValue::String(s)) => Self::str_to_status(&s),
+            ValueOrContainer::Value(LoroValue::String(s)) => Status::from_loro_str(&s),
             _ => None,
         }
     }
@@ -121,7 +104,7 @@ impl LoroTocDoc {
             } => {
                 meta.insert(KEY_KIND, KIND_FOLDER).unwrap();
                 meta.insert(KEY_TITLE, title.as_str()).unwrap();
-                meta.insert(KEY_VISIBILITY, Self::status_to_str(visibility))
+                meta.insert(KEY_VISIBILITY, visibility.as_loro_str())
                     .unwrap();
             }
             TocEntry::Thing {
@@ -133,7 +116,7 @@ impl LoroTocDoc {
                 meta.insert(KEY_KIND, KIND_THING).unwrap();
                 meta.insert(KEY_TITLE, title.as_str()).unwrap();
                 meta.insert(KEY_THING_ID, thing_id.0.to_string()).unwrap();
-                meta.insert(KEY_VISIBILITY, Self::status_to_str(visibility))
+                meta.insert(KEY_VISIBILITY, visibility.as_loro_str())
                     .unwrap();
             }
             TocEntry::Suggestion {
@@ -147,7 +130,7 @@ impl LoroTocDoc {
                 }
                 meta.insert(KEY_CONVERSATION_ID, conversation_id.0.to_string().as_str())
                     .unwrap();
-                meta.insert(KEY_VISIBILITY, Self::status_to_str(visibility))
+                meta.insert(KEY_VISIBILITY, visibility.as_loro_str())
                     .unwrap();
             }
         }

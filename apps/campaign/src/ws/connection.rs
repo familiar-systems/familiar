@@ -23,6 +23,7 @@ use loro_protocol::{
 use tokio::sync::mpsc;
 
 use crate::actors::supervisor::{CampaignSupervisor, JoinRoom, RoomHandle};
+use crate::domain::crdt::room_actor::UpdateError;
 use crate::wire::assembler::BatchAssembler;
 use crate::wire::broadcast::encode_broadcast;
 use crate::wire::fragmenter::BatchFragmenter;
@@ -355,6 +356,35 @@ async fn handle_join(
     tracing::debug!(client_id = client_id.0, room_id, "client joined room");
 }
 
+/// What to do with the connection after a room-actor `update` fails. Keeps the
+/// error-to-action decision a pure function so the mapping is unit-testable
+/// without standing up a WebSocket, and so a new `UpdateError` variant is a
+/// compile error here rather than a silent fall-through.
+enum UpdateDisposition {
+    /// The room actor is gone: drop it from the routing table and tell the
+    /// client to rejoin.
+    RoomStale,
+    /// Reply to the originating batch with this status. The room stays in the
+    /// table; the failure is the doc's or the client's, not a dead actor.
+    Reply(UpdateStatusCode),
+}
+
+/// Classify a room-actor `update` failure into a connection action.
+///
+/// `RoomGone` is the only stale case (rejoin). `Busy` is transient backpressure
+/// reported as `RateLimited` so the client retries instead of rejoining a live
+/// but overloaded actor. `Apply`/`Invalid` are genuine doc-level rejections.
+fn classify_update_error(err: &UpdateError) -> UpdateDisposition {
+    match err {
+        UpdateError::RoomGone => UpdateDisposition::RoomStale,
+        UpdateError::Busy => UpdateDisposition::Reply(UpdateStatusCode::RateLimited),
+        UpdateError::Unauthorized => UpdateDisposition::Reply(UpdateStatusCode::PermissionDenied),
+        UpdateError::Apply(_) | UpdateError::Invalid(_) => {
+            UpdateDisposition::Reply(UpdateStatusCode::InvalidUpdate)
+        }
+    }
+}
+
 async fn handle_doc_update(
     crdt: CrdtType,
     room_id: &str,
@@ -385,13 +415,8 @@ async fn handle_doc_update(
             };
             let _ = send_msg(binary_tx, &ack);
         }
-        Err(e) => {
-            let is_stale = matches!(
-                e,
-                crate::domain::crdt::room_actor::UpdateError::Apply(ref msg)
-                    if msg.contains("ActorStopped") || msg.contains("mailbox")
-            );
-            if is_stale {
+        Err(e) => match classify_update_error(&e) {
+            UpdateDisposition::RoomStale => {
                 tracing::debug!(
                     client_id = client_id.0,
                     room_id,
@@ -405,13 +430,8 @@ async fn handle_doc_update(
                     message: "room actor evicted".to_string(),
                 };
                 let _ = send_msg(binary_tx, &err);
-            } else {
-                let status = match e {
-                    crate::domain::crdt::room_actor::UpdateError::Unauthorized => {
-                        UpdateStatusCode::PermissionDenied
-                    }
-                    _ => UpdateStatusCode::InvalidUpdate,
-                };
+            }
+            UpdateDisposition::Reply(status) => {
                 let ack = ProtocolMessage::Ack {
                     crdt,
                     room_id: room_id.to_string(),
@@ -420,7 +440,7 @@ async fn handle_doc_update(
                 };
                 let _ = send_msg(binary_tx, &ack);
             }
-        }
+        },
     }
 }
 
@@ -430,4 +450,38 @@ fn send_msg(
 ) -> Result<(), mpsc::error::SendError<Vec<u8>>> {
     let bytes = encode(msg).expect("encode protocol message");
     tx.send(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pins the `UpdateError` -> connection-action mapping. This is the test
+    /// the original substring match lacked: it caught neither the Debug-vs-
+    /// Display casing bug (`contains("ActorStopped")` never matched kameo's
+    /// `"actor stopped"` Display text) nor the backpressure misclassification
+    /// (`"mailbox full"` matched `"mailbox"` and wrongly suggested rejoin).
+    #[test]
+    fn classify_update_error_maps_each_variant() {
+        assert!(matches!(
+            classify_update_error(&UpdateError::RoomGone),
+            UpdateDisposition::RoomStale
+        ));
+        assert!(matches!(
+            classify_update_error(&UpdateError::Busy),
+            UpdateDisposition::Reply(UpdateStatusCode::RateLimited)
+        ));
+        assert!(matches!(
+            classify_update_error(&UpdateError::Unauthorized),
+            UpdateDisposition::Reply(UpdateStatusCode::PermissionDenied)
+        ));
+        assert!(matches!(
+            classify_update_error(&UpdateError::Apply("boom".to_string())),
+            UpdateDisposition::Reply(UpdateStatusCode::InvalidUpdate)
+        ));
+        assert!(matches!(
+            classify_update_error(&UpdateError::Invalid("nope".to_string())),
+            UpdateDisposition::Reply(UpdateStatusCode::InvalidUpdate)
+        ));
+    }
 }

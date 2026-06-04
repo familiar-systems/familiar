@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use kameo::actor::{ActorRef, Spawn, WeakActorRef};
-use kameo::error::ActorStopReason;
+use kameo::error::{ActorStopReason, SendError};
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
 
@@ -584,16 +584,31 @@ impl RoomHandle {
         updates: Vec<Vec<u8>>,
     ) -> Result<room_actor::AckPayload, room_actor::UpdateError> {
         let msg = room_actor::ClientUpdate { client, updates };
+        // Map kameo's transport-layer `SendError` to typed `UpdateError`
+        // variants by matching the structured enum, not its Display text.
+        // `ActorStopped`/`ActorNotRunning` mean the room actor is gone (a
+        // self-evicted room is the common case); `MailboxFull`/`Timeout` mean
+        // it is alive but overloaded. Mirrors the idiom in `actors/persist.rs`.
         match self {
             RoomHandle::Toc(actor) => match actor.ask(msg).await {
                 Ok(ack) => Ok(ack),
-                Err(kameo::error::SendError::HandlerError(e)) => Err(e),
-                Err(e) => Err(room_actor::UpdateError::Apply(e.to_string())),
+                Err(SendError::HandlerError(e)) => Err(e),
+                Err(SendError::ActorNotRunning(_) | SendError::ActorStopped) => {
+                    Err(room_actor::UpdateError::RoomGone)
+                }
+                Err(SendError::MailboxFull(_) | SendError::Timeout(_)) => {
+                    Err(room_actor::UpdateError::Busy)
+                }
             },
             RoomHandle::Thing(actor) => match actor.ask(msg).await {
                 Ok(ack) => Ok(ack),
-                Err(kameo::error::SendError::HandlerError(e)) => Err(e),
-                Err(e) => Err(room_actor::UpdateError::Apply(e.to_string())),
+                Err(SendError::HandlerError(e)) => Err(e),
+                Err(SendError::ActorNotRunning(_) | SendError::ActorStopped) => {
+                    Err(room_actor::UpdateError::RoomGone)
+                }
+                Err(SendError::MailboxFull(_) | SendError::Timeout(_)) => {
+                    Err(room_actor::UpdateError::Busy)
+                }
             },
         }
     }
@@ -802,6 +817,49 @@ mod tests {
 
         actor_ref.stop_gracefully().await.unwrap();
         actor_ref.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    /// Proves the kameo `SendError` -> `UpdateError` mapping at the
+    /// `RoomHandle::update` seam: a stopped room actor yields `RoomGone`, not a
+    /// flattened error string. This is the boundary the `classify_update_error`
+    /// unit test cannot reach, and the exact case the old substring match
+    /// silently misread (kameo's Display is `"actor stopped"`, never the
+    /// `"ActorStopped"` Debug casing the connection layer was matching).
+    #[tokio::test]
+    async fn update_to_stopped_room_actor_is_room_gone() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let store = store_in(tmp.path());
+        let args = fast_args(CampaignId::generate(), store, 60_000, 60_000);
+        let supervisor = CampaignSupervisor::spawn(args);
+        supervisor.wait_for_startup().await;
+
+        let handle = supervisor
+            .ask(JoinRoom {
+                room_id: "toc".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // Stop the underlying ToC actor so the next send fails at the transport
+        // layer (ActorStopped/ActorNotRunning) rather than in the handler.
+        let RoomHandle::Toc(ref toc) = handle else {
+            panic!("expected a ToC room handle");
+        };
+        toc.stop_gracefully().await.unwrap();
+        toc.wait_for_shutdown_with_result(|_| ()).await;
+
+        let err = handle
+            .update(ClientId::new(1), vec![vec![0u8]])
+            .await
+            .expect_err("update to a stopped actor must fail");
+        assert!(
+            matches!(err, room_actor::UpdateError::RoomGone),
+            "expected RoomGone, got {err:?}",
+        );
+
+        supervisor.stop_gracefully().await.unwrap();
+        supervisor.wait_for_shutdown_with_result(|_| ()).await;
     }
 
     #[tokio::test]
