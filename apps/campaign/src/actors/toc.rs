@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use crate::actors::database_writer::{DatabaseWriteActor, WriteTocSnapshot};
+use crate::actors::persist::{Persist, PersistError, PersistNow};
 use crate::domain::crdt::doc::CrdtDoc;
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
@@ -56,12 +57,11 @@ pub struct TocActor {
     known_things: HashSet<ThingId>,
     db_writer: ActorRef<DatabaseWriteActor>,
     self_ref: ActorRef<TocActor>,
-    /// If dirty, this has yet to be synced back to the database.
-    dirty: bool,
+    /// Whether the doc has unpersisted edits and, if so, the armed flush timer.
+    /// See [`Persist`]; the timer is inseparable from dirtiness by construction.
+    persist: Persist,
     // Wait this long before persisting dirty changes to the database.
     debounce_duration: Duration,
-    // Handle to the current persist task, if any.
-    persist_timer: Option<tokio::task::JoinHandle<()>>,
     fragmenter: BatchFragmenter,
 }
 
@@ -129,14 +129,15 @@ impl Actor for TocActor {
             known_things,
             db_writer: args.db_writer,
             self_ref: actor_ref,
-            dirty,
+            persist: Persist::new(),
             debounce_duration: args.debounce_duration,
-            persist_timer: None,
             fragmenter: BatchFragmenter::new(250 * 1024),
         };
         if dirty {
             tracing::info!("toc restored with orphans, marked dirty");
-            the_self.schedule_persist();
+            the_self
+                .persist
+                .schedule(&the_self.self_ref, the_self.debounce_duration);
         }
         Ok(the_self)
     }
@@ -150,8 +151,8 @@ impl Actor for TocActor {
         _actor_ref: WeakActorRef<Self>,
         _reason: ActorStopReason,
     ) -> Result<(), Self::Error> {
-        if self.dirty {
-            if let Err(err) = self.persist_now().await {
+        if self.persist.is_dirty() {
+            if let Err(err) = self.flush().await {
                 tracing::error!(error=%err, "failed to persist toc on stop");
             }
         } else {
@@ -221,7 +222,8 @@ impl Message<room_actor::ClientUpdate> for TocActor {
         let old_version = self.doc_room.doc().version();
         let (broadcast, ack) = self.doc_room.apply_updates(msg.client, &msg.updates)?;
         if old_version != ack.version {
-            self.dirty = true;
+            self.persist
+                .schedule(&self.self_ref, self.debounce_duration);
         }
         let frames = encode_broadcast(
             loro_protocol::CrdtType::Loro,
@@ -320,54 +322,38 @@ impl Message<AddThingNode> for TocActor {
         );
         self.doc_room.fan_out(&frames, None);
 
-        self.dirty = true;
-        self.schedule_persist();
+        self.persist
+            .schedule(&self.self_ref, self.debounce_duration);
         Ok(())
     }
 }
 
 // ---------------------------------------------------------------------------
-// PersistNow
+// Persistence
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
-struct PersistNow;
-
 impl TocActor {
-    fn schedule_persist(&mut self) {
-        if let Some(handle) = self.persist_timer.take() {
-            handle.abort();
-        }
-        let self_ref = self.self_ref.clone();
-        let duration = self.debounce_duration;
-        self.persist_timer = Some(tokio::spawn(async move {
-            tokio::time::sleep(duration).await;
-            let _ = self_ref.tell(PersistNow).send().await;
-        }))
-    }
-
+    /// Serialize the ToC tree to rows and write them durably, awaiting the
+    /// commit (`ask`, not `tell`). The error is returned so the caller keeps the
+    /// actor dirty and retries; this never silently clears dirtiness.
     #[tracing::instrument(
         skip_all,
         fields(campaign_id = %self.campaign_id.0),
     )]
-    async fn persist_now(&mut self) -> Result<(), sea_orm::DbErr> {
+    async fn flush(&mut self) -> Result<(), PersistError> {
         let rows = snapshot_toc(self.doc_room.doc(), &mut self.id_map, &self.known_things);
         let row_count = rows.len();
-        tracing::debug!("Persisting TOC snapshot: {} rows", row_count);
+        tracing::debug!(row_count, "persisting toc snapshot");
 
-        if let Err(err) = self.db_writer.tell(WriteTocSnapshot { rows }).await {
-            tracing::error!(error=%err, "Failed to send toc snapshot to database");
-        } else {
-            tracing::debug!(row_count, "toc snapshot enqueued for write")
-        }
+        self.db_writer.ask(WriteTocSnapshot { rows }).await?;
 
-        self.dirty = false;
+        tracing::debug!(row_count, "toc snapshot written");
         Ok(())
     }
 }
 
 impl Message<PersistNow> for TocActor {
-    type Reply = Result<(), sea_orm::DbErr>;
+    type Reply = ();
 
     #[tracing::instrument(
         skip_all,
@@ -378,10 +364,12 @@ impl Message<PersistNow> for TocActor {
         _: PersistNow,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        if self.dirty {
-            self.persist_now().await?;
+        if !self.persist.is_dirty() {
+            return;
         }
-        Ok(())
+        let result = self.flush().await;
+        self.persist
+            .after_flush(result, &self.self_ref, self.debounce_duration);
     }
 }
 
@@ -595,6 +583,22 @@ fn topological_sort(entries: Vec<toc_entries::Model>) -> Vec<toc_entries::Model>
 mod tests {
     use super::*;
     use familiar_systems_campaign_shared::loro::toc::TocEntryKind;
+
+    /// Test-only probe: ask the actor whether it currently holds unpersisted
+    /// edits, so a test can assert dirtiness without reaching into private state.
+    #[derive(Debug, Clone, Copy)]
+    struct InspectDirty;
+
+    impl Message<InspectDirty> for TocActor {
+        type Reply = bool;
+        async fn handle(
+            &mut self,
+            _: InspectDirty,
+            _ctx: &mut Context<Self, Self::Reply>,
+        ) -> Self::Reply {
+            self.persist.is_dirty()
+        }
+    }
 
     fn make_folder(title: &str) -> TocEntry {
         TocEntry::Folder {
@@ -1031,5 +1035,63 @@ mod tests {
             Some(thing_id),
             "persisted entry points at the created thing"
         );
+    }
+
+    /// Bug 3 regression: a flush that fails (here, the writer is dead so every
+    /// `ask` errors) must leave the actor dirty, not falsely clean. The old
+    /// fire-and-forget path cleared `dirty` on enqueue regardless of the write's
+    /// fate; the `ask`-and-`after_flush` path keeps it dirty so the on-stop flush
+    /// and subsequent retries still fire.
+    #[tokio::test]
+    async fn failed_flush_leaves_actor_dirty() {
+        use crate::actors::database_writer::{DatabaseWriteActor, DatabaseWriteActorArgs};
+        use crate::db;
+        use crate::migrations::Migrator;
+        use kameo::actor::Spawn;
+        use sea_orm_migration::MigratorTrait;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+
+        let campaign_id = CampaignId::generate();
+        let db_writer = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: campaign_id.clone(),
+            conn: conn.clone(),
+        });
+
+        // Kill the writer up front so every flush `ask` fails (ActorNotRunning).
+        db_writer.stop_gracefully().await.unwrap();
+        db_writer.wait_for_shutdown_with_result(|_| ()).await;
+
+        let toc = TocActor::spawn(TocActorArgs {
+            campaign_id,
+            db_reader: conn.clone(),
+            db_writer,
+            debounce_duration: Duration::from_millis(30),
+        });
+        toc.wait_for_startup().await;
+
+        // A server-side ToC mutation marks dirty and schedules a doomed flush.
+        // AddThingNode touches only the in-memory doc, so no backing row needed.
+        toc.ask(AddThingNode {
+            thing_id: ThingId::generate(),
+            title: "Korgath".into(),
+            visibility: Status::GmOnly,
+            parent: None,
+        })
+        .await
+        .expect("add thing node");
+
+        // Let the debounce fire and the flush fail against the dead writer.
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        assert!(
+            toc.ask(InspectDirty).await.unwrap(),
+            "a failed flush must leave the actor dirty"
+        );
+
+        toc.stop_gracefully().await.unwrap();
+        toc.wait_for_shutdown_with_result(|_| ()).await;
     }
 }

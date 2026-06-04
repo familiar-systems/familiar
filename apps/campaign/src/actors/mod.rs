@@ -15,6 +15,7 @@
 //! Future: AgentConversation, RelationshipGraph, CampaignVocabulary.
 
 pub mod database_writer;
+pub mod persist;
 pub mod registry;
 pub mod supervisor;
 pub mod thing;

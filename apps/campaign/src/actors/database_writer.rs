@@ -249,15 +249,21 @@ impl Message<WriteTocSnapshot> for DatabaseWriteActor {
             .map(|r| r.id.clone().unwrap().into())
             .collect();
 
+        // Prune-then-upsert is a full-snapshot replace; it must be atomic so a
+        // failed upsert can't leave stale rows pruned but unreplaced. One
+        // transaction wraps both; an early return drops `txn`, rolling back the
+        // prune. The per-statement `tracing::error!` logging is retained.
+        let txn = self.conn.begin().await?;
+
         if keep_ids.is_empty() {
-            if let Err(e) = toc_entries::Entity::delete_many().exec(&self.conn).await {
+            if let Err(e) = toc_entries::Entity::delete_many().exec(&txn).await {
                 tracing::error!(error = %e, "failed to delete toc entries");
                 return Err(e);
             }
         } else {
             if let Err(e) = toc_entries::Entity::delete_many()
                 .filter(toc_entries::Column::Id.is_not_in(keep_ids))
-                .exec(&self.conn)
+                .exec(&txn)
                 .await
             {
                 tracing::error!(error = %e, "failed to prune stale toc entries");
@@ -276,7 +282,7 @@ impl Message<WriteTocSnapshot> for DatabaseWriteActor {
                         ])
                         .to_owned(),
                 )
-                .exec(&self.conn)
+                .exec(&txn)
                 .await
             {
                 tracing::error!(row_count, error = %e, "failed to upsert toc entries");
@@ -284,6 +290,7 @@ impl Message<WriteTocSnapshot> for DatabaseWriteActor {
             }
         }
 
+        txn.commit().await?;
         tracing::debug!(row_count, "toc snapshot written");
         Ok(())
     }
@@ -318,16 +325,21 @@ impl Message<WriteThingBlocks> for DatabaseWriteActor {
         let block_count = msg.blocks.len();
         tracing::debug!(block_count, "writing thing blocks");
 
-        // Delete all existing blocks for this thing, then insert the new set.
+        // Delete-then-insert is a full-snapshot replace, so it must be atomic:
+        // the delete truncates every block for this Thing, and a failed insert
+        // would otherwise leave the table empty with no in-memory copy to
+        // recover from (this flush also runs on actor stop, as the Loro doc is
+        // torn down). One transaction; an error before commit rolls back the
+        // delete. Mirrors `DbCreateThing`.
+        let txn = self.conn.begin().await?;
+
         blocks::Entity::delete_many()
             .filter(blocks::Column::ThingId.eq(ThingIdCol::from(msg.thing_id.clone())))
-            .exec(&self.conn)
+            .exec(&txn)
             .await?;
 
         if !msg.blocks.is_empty() {
-            blocks::Entity::insert_many(msg.blocks)
-                .exec(&self.conn)
-                .await?;
+            blocks::Entity::insert_many(msg.blocks).exec(&txn).await?;
         }
 
         if let Some(name) = msg.name_sync {
@@ -338,10 +350,11 @@ impl Message<WriteThingBlocks> for DatabaseWriteActor {
                     things::Column::UpdatedAt,
                     sea_orm::sea_query::Expr::value(Utc::now()),
                 )
-                .exec(&self.conn)
+                .exec(&txn)
                 .await?;
         }
 
+        txn.commit().await?;
         tracing::debug!(block_count, "thing blocks written");
         Ok(())
     }
@@ -618,5 +631,148 @@ mod tests {
         let block_rows = blocks::Entity::find().all(&conn).await.unwrap();
         assert_eq!(block_rows.len(), 1, "block row inserted");
         assert_eq!(block_rows[0].content, b"hello");
+    }
+
+    /// A `WriteThingBlocks` whose insert fails must not destroy the blocks it
+    /// was meant to replace. The handler deletes the Thing's existing blocks
+    /// before inserting the new set; without a transaction a failed insert
+    /// leaves the table truncated (the catastrophic case, since this runs on
+    /// flush-on-stop while the in-memory Loro doc is being torn down).
+    #[tokio::test]
+    async fn write_thing_blocks_failed_insert_preserves_existing_rows() {
+        use familiar_systems_campaign_shared::id::BlockId;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        let now = Utc::now();
+        let thing_id = ThingId::generate();
+        let thing_id_col = ThingIdCol::from(thing_id.clone());
+
+        // FK parent: blocks.thing_id -> things.id.
+        things::ActiveModel {
+            id: Set(thing_id_col.clone()),
+            name: Set("Korgath".into()),
+            status: Set(StatusCol::GmOnly),
+            prototype_id: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&conn)
+        .await
+        .expect("seed thing");
+
+        // One pre-existing block a correct (transactional) write must preserve.
+        blocks::ActiveModel {
+            id: Set(BlockIdCol::from(BlockId::generate())),
+            thing_id: Set(thing_id_col.clone()),
+            status: Set(StatusCol::GmOnly),
+            ordering: Set(0),
+            content: Set(b"original".to_vec()),
+            section: Set(SECTION_CONTENT.to_string()),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&conn)
+        .await
+        .expect("seed existing block");
+
+        // A doomed snapshot: two rows share one primary key, so `insert_many`
+        // fails as a unit (PK uniqueness, no FK dependency). The handler has
+        // already deleted the existing block by then.
+        let dup_id = BlockId::generate();
+        let doomed = vec![
+            blocks::ActiveModel {
+                id: Set(BlockIdCol::from(dup_id.clone())),
+                thing_id: Set(thing_id_col.clone()),
+                status: Set(StatusCol::GmOnly),
+                ordering: Set(0),
+                content: Set(b"new-a".to_vec()),
+                section: Set(SECTION_CONTENT.to_string()),
+                created_at: Set(now),
+                updated_at: Set(now),
+            },
+            blocks::ActiveModel {
+                id: Set(BlockIdCol::from(dup_id.clone())),
+                thing_id: Set(thing_id_col.clone()),
+                status: Set(StatusCol::GmOnly),
+                ordering: Set(1),
+                content: Set(b"new-b".to_vec()),
+                section: Set(SECTION_CONTENT.to_string()),
+                created_at: Set(now),
+                updated_at: Set(now),
+            },
+        ];
+
+        actor
+            .ask(WriteThingBlocks {
+                thing_id: thing_id.clone(),
+                blocks: doomed,
+                name_sync: None,
+            })
+            .await
+            .expect_err("duplicate-PK insert must fail");
+
+        // The original block survives: the failed write rolled back its delete.
+        let rows = blocks::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(rows.len(), 1, "existing block must survive a failed write");
+        assert_eq!(rows[0].content, b"original");
+    }
+
+    /// A `WriteTocSnapshot` whose insert fails must leave the prior rows intact.
+    /// The handler prunes stale rows before upserting; without a transaction a
+    /// failed upsert leaves a partially-applied snapshot (pruned but not
+    /// rewritten).
+    #[tokio::test]
+    async fn write_toc_snapshot_failed_insert_preserves_existing_rows() {
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        // A stale folder row a correct snapshot prune would remove, but a
+        // *failed* snapshot must leave untouched.
+        toc_entries::ActiveModel {
+            id: Set("old".to_string()),
+            thing_id: Set(None),
+            folder_title: Set(Some("Stale Folder".into())),
+            visibility: Set(StatusCol::GmOnly),
+            parent_id: Set(None),
+            position: Set(0),
+        }
+        .insert(&conn)
+        .await
+        .expect("seed stale toc row");
+
+        // Keep-set is just "new"; its thing_id points at a Thing that doesn't
+        // exist, so the upsert trips the FK (foreign_keys are ON) and fails.
+        // The prune deletes "old" first.
+        let ghost = ThingId::generate();
+        let rows = vec![toc_entries::ActiveModel {
+            id: Set("new".to_string()),
+            thing_id: Set(Some(ThingIdCol::from(ghost))),
+            folder_title: Set(None),
+            visibility: Set(StatusCol::GmOnly),
+            parent_id: Set(None),
+            position: Set(0),
+        }];
+
+        actor
+            .ask(WriteTocSnapshot { rows })
+            .await
+            .expect_err("FK violation must fail the upsert");
+
+        // The stale row survives: the failed write rolled back its prune.
+        let surviving = toc_entries::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(surviving.len(), 1, "stale row must survive a failed write");
+        assert_eq!(surviving[0].id, "old");
     }
 }

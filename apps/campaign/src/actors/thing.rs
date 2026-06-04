@@ -4,8 +4,9 @@
 //! joins a Thing room (`ThingInit::Restore`, reconstructing a `LoroThingDoc`
 //! from block rows in SQLite), or at creation time (`ThingInit::New`, where the
 //! actor builds its doc and persists its own genesis row). Either way the actor
-//! is the sole mutator of its Thing. Self-evicts when all subscribers leave and
-//! an idle timer fires.
+//! is the sole mutator of its Thing. Born vacating, it self-evicts once it has
+//! no subscribers and an idle timer fires, so a room that is never joined does
+//! not leak resident until campaign drain.
 
 use std::time::Duration;
 
@@ -23,6 +24,7 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 
 use crate::actors::database_writer::{DatabaseWriteActor, DbCreateThing, WriteThingBlocks};
+use crate::actors::persist::{Persist, PersistError, PersistNow};
 use crate::domain::crdt::doc::CrdtDoc;
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
@@ -39,12 +41,28 @@ pub struct ThingActor {
     doc_room: room::Room<LoroThingDoc>,
     db_writer: ActorRef<DatabaseWriteActor>,
     self_ref: ActorRef<ThingActor>,
-    dirty: bool,
+    /// Whether the doc has unpersisted edits and, if so, the armed flush timer.
+    /// See [`Persist`]; the timer is inseparable from dirtiness by construction.
+    persist: Persist,
     debounce_duration: Duration,
-    persist_timer: Option<tokio::task::JoinHandle<()>>,
-    idle_timer: Option<tokio::task::JoinHandle<()>>,
+    /// Whether the room has subscribers and, if not, the armed eviction timer.
+    occupancy: Occupancy,
     idle_timeout: Duration,
     fragmenter: BatchFragmenter,
+}
+
+/// Whether a Thing room currently has subscribers.
+///
+/// `Occupied`: at least one client is connected; no eviction is scheduled.
+/// `Vacating`: no clients are connected and an idle timer is counting down to
+/// self-eviction. The timer is inseparable from vacancy, so "vacant but never
+/// evicting" (a resident-actor leak) is unrepresentable. The subscriber set
+/// itself lives in [`Room`](room::Room); this only tracks the eviction timer.
+///
+/// TODO: Consider moving to actors/occupancy.rs once conversations arrive.
+enum Occupancy {
+    Occupied,
+    Vacating(tokio::task::JoinHandle<()>),
 }
 
 pub struct ThingActorArgs {
@@ -139,19 +157,24 @@ impl Actor for ThingActor {
 
         let doc_room = room::Room::new(doc);
 
-        Ok(Self {
+        // Born vacating: a freshly spawned room has no subscribers yet. The
+        // imminent `ClientJoin` (room-join path) cancels the timer; if no join
+        // ever arrives (e.g. a Thing created via the API but never opened), the
+        // actor still self-evicts instead of leaking resident until drain.
+        let mut the_self = Self {
             campaign_id: args.campaign_id,
             thing_id: args.thing_id,
             doc_room,
             db_writer: args.db_writer,
             self_ref: actor_ref,
-            dirty: false,
+            persist: Persist::new(),
             debounce_duration: args.debounce_duration,
-            persist_timer: None,
-            idle_timer: None,
+            occupancy: Occupancy::Occupied,
             idle_timeout: args.idle_timeout,
             fragmenter: BatchFragmenter::new(250 * 1024),
-        })
+        };
+        the_self.schedule_idle_eviction();
+        Ok(the_self)
     }
 
     #[tracing::instrument(
@@ -163,10 +186,17 @@ impl Actor for ThingActor {
         _actor_ref: WeakActorRef<Self>,
         reason: ActorStopReason,
     ) -> Result<(), Self::Error> {
-        tracing::debug!(?reason, dirty = self.dirty, "thing actor stopping");
+        tracing::debug!(
+            ?reason,
+            dirty = self.persist.is_dirty(),
+            "thing actor stopping"
+        );
 
-        if self.dirty {
-            if let Err(err) = self.persist_now().await {
+        // Last-ditch flush. We are stopping, so there is nothing to reschedule:
+        // if this errors the recent edits are lost (logged). See `persist`'s
+        // module docs on why eviction is not gated on persistence health.
+        if self.persist.is_dirty() {
+            if let Err(err) = self.flush().await {
                 tracing::error!(error=%err, "failed to persist thing on stop");
             }
         } else {
@@ -193,10 +223,7 @@ impl Message<room_actor::ClientJoin> for ThingActor {
         msg: room_actor::ClientJoin,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        if let Some(handle) = self.idle_timer.take() {
-            tracing::trace!("cancelling idle timer");
-            handle.abort();
-        }
+        self.mark_occupied();
         let capability = match msg.role {
             CampaignRole::Gm => room_actor::Capability::Write,
             CampaignRole::Player => room_actor::Capability::Read,
@@ -259,12 +286,12 @@ impl Message<room_actor::ClientUpdate> for ThingActor {
             .apply_updates(msg.client, &msg.updates)
             .inspect_err(|e| tracing::warn!(error = ?e, "failed to apply client updates"))?;
         if old_version != ack.version {
-            self.dirty = true;
             tracing::trace!(
                 version_bytes = ack.version.0.len(),
                 "doc advanced, scheduling persist"
             );
-            self.schedule_persist();
+            self.persist
+                .schedule(&self.self_ref, self.debounce_duration);
         }
         let room_id = format!("thing:{}", self.thing_id.0);
         let frames = encode_broadcast(
@@ -280,44 +307,42 @@ impl Message<room_actor::ClientUpdate> for ThingActor {
 }
 
 // ---------------------------------------------------------------------------
-// PersistNow
+// Persistence & occupancy timers
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
-struct PersistNow;
-
 impl ThingActor {
-    fn schedule_persist(&mut self) {
-        tracing::trace!(debounce = ?self.debounce_duration, "scheduling persist");
-        if let Some(handle) = self.persist_timer.take() {
-            handle.abort();
+    /// The room has a subscriber again: cancel any pending idle eviction.
+    fn mark_occupied(&mut self) {
+        if let Occupancy::Vacating(timer) = &self.occupancy {
+            tracing::trace!("cancelling idle eviction");
+            timer.abort();
         }
-        let self_ref = self.self_ref.clone();
-        let duration = self.debounce_duration;
-        self.persist_timer = Some(tokio::spawn(async move {
-            tokio::time::sleep(duration).await;
-            let _ = self_ref.tell(PersistNow).send().await;
-        }));
+        self.occupancy = Occupancy::Occupied;
     }
 
+    /// The room has no subscribers: arm idle self-eviction. Aborts any prior
+    /// timer so only one is ever live.
     fn schedule_idle_eviction(&mut self) {
         tracing::trace!(timeout = ?self.idle_timeout, "scheduling idle eviction");
-        if let Some(handle) = self.idle_timer.take() {
-            handle.abort();
+        if let Occupancy::Vacating(timer) = &self.occupancy {
+            timer.abort();
         }
         let self_ref = self.self_ref.clone();
         let timeout = self.idle_timeout;
-        self.idle_timer = Some(tokio::spawn(async move {
+        self.occupancy = Occupancy::Vacating(tokio::spawn(async move {
             tokio::time::sleep(timeout).await;
             let _ = self_ref.tell(IdleEvict).send().await;
         }));
     }
 
+    /// Serialize the doc to block rows and write them durably, awaiting the
+    /// commit (`ask`, not `tell`). The error is returned so the caller keeps the
+    /// actor dirty and retries; this never silently clears dirtiness.
     #[tracing::instrument(
         skip_all,
         fields(campaign_id = %self.campaign_id.0, thing_id = %self.thing_id.0),
     )]
-    async fn persist_now(&mut self) -> Result<(), sea_orm::DbErr> {
+    async fn flush(&mut self) -> Result<(), PersistError> {
         let extracted = self.doc_room.doc().extract_blocks();
         let title = self.doc_room.doc().read_title();
         let now = Utc::now();
@@ -353,27 +378,21 @@ impl ThingActor {
         let block_count = block_rows.len();
         tracing::debug!(block_count, "persisting thing blocks");
 
-        if let Err(err) = self
-            .db_writer
-            .tell(WriteThingBlocks {
+        self.db_writer
+            .ask(WriteThingBlocks {
                 thing_id: self.thing_id.clone(),
                 blocks: block_rows,
                 name_sync: title,
             })
-            .await
-        {
-            tracing::error!(error=%err, "failed to send thing blocks to database");
-        } else {
-            tracing::debug!(block_count, "thing blocks enqueued for write");
-        }
+            .await?;
 
-        self.dirty = false;
+        tracing::debug!(block_count, "thing blocks written");
         Ok(())
     }
 }
 
 impl Message<PersistNow> for ThingActor {
-    type Reply = Result<(), sea_orm::DbErr>;
+    type Reply = ();
 
     #[tracing::instrument(
         skip_all,
@@ -384,11 +403,12 @@ impl Message<PersistNow> for ThingActor {
         _: PersistNow,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        tracing::trace!(dirty = self.dirty, "persist timer fired");
-        if self.dirty {
-            self.persist_now().await?;
+        if !self.persist.is_dirty() {
+            return;
         }
-        Ok(())
+        let result = self.flush().await;
+        self.persist
+            .after_flush(result, &self.self_ref, self.debounce_duration);
     }
 }
 
@@ -575,5 +595,43 @@ mod tests {
         actor.wait_for_startup().await;
         actor.stop_gracefully().await.unwrap();
         actor.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    /// A freshly spawned room is born vacating: with no client ever joining, the
+    /// idle timer must still fire and self-evict, rather than leaking the actor
+    /// resident until campaign drain.
+    #[tokio::test]
+    async fn born_vacating_self_evicts_without_a_join() {
+        let conn = setup_db().await;
+        let thing_id = ThingId::generate();
+        insert_thing(&thing_id, "Unopened")
+            .insert(&conn)
+            .await
+            .unwrap();
+
+        let campaign_id = CampaignId::generate();
+        let db_writer =
+            DatabaseWriteActor::spawn(crate::actors::database_writer::DatabaseWriteActorArgs {
+                campaign_id: campaign_id.clone(),
+                conn: conn.clone(),
+            });
+
+        let actor = ThingActor::spawn(ThingActorArgs {
+            campaign_id,
+            thing_id,
+            db_reader: conn,
+            db_writer,
+            init: ThingInit::Restore,
+            debounce_duration: Duration::from_secs(60),
+            idle_timeout: Duration::from_millis(40),
+        });
+        actor.wait_for_startup().await;
+
+        // No client joins; the born-vacating idle timer should evict it.
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        assert!(
+            !actor.is_alive(),
+            "an un-joined thing self-evicts when idle"
+        );
     }
 }
