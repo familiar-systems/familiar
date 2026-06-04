@@ -63,8 +63,29 @@ export type RoomSnapshot<T> =
   | { status: "reconnecting"; view: T }
   | { status: "error"; message: string };
 
+// The room's transport lifecycle, from acquire to a live (or failed) join. A
+// room starts `joining` (a doc exists, but no socket-level room yet), reaches
+// `bound` once the server-version handoff completes, or ends `failed` if the
+// join errors. `bound` is the only state that owns a `room` and (for derived
+// rooms) the doc subscription, so the room object and its subscription always
+// travel together: there is no representable "joined but roomless" state to keep
+// consistent by hand, and consumers of the binding get the room's lifetime
+// guarantees from the variant rather than from a flag. `bound` spans both the
+// "joined" and "reconnecting" snapshots - a socket drop keeps the room object
+// alive while the doc is preserved, so the lifecycle does not regress to
+// `joining`. Same shape as the server's `Persist`/`Occupancy` enums.
+type Binding =
+  | { kind: "joining" }
+  | { kind: "bound"; room: LoroWebsocketClientRoom; docUnsub: (() => void) | null }
+  | { kind: "failed" };
+
 // Internal bookkeeping for one room. A ref-counted registry is inherently
-// mutable; the discriminated union lives in the public `snapshot` field instead.
+// mutable; the public-facing discriminated union lives in `snapshot`, the
+// transport-facing one in `binding`. They stay separate: `snapshot` must be a
+// stable reference for useSyncExternalStore and carries the `reconnecting`
+// sub-state and the view `T`, neither of which `binding` has. `refCount` and
+// `leaveTimer` are an orthogonal lifetime concern (a counter and a debounce
+// timer), not part of the join-state product, so they remain plain fields.
 interface RoomHandle<T> {
   readonly roomId: string;
   // Created once and reused for the room's life, including across reconnects
@@ -75,13 +96,8 @@ interface RoomHandle<T> {
   // ToC's derived tree needs it; a Thing room's view is the stable doc itself.
   readonly derived: boolean;
   refCount: number;
-  // The initial sync has completed. Gates the library's onStatusChange so its
-  // first Connecting/Joined (emitted during our own join) does not pre-empt the
-  // explicit waitForReachingServerVersion handoff.
-  joined: boolean;
-  room: LoroWebsocketClientRoom | null;
+  binding: Binding;
   snapshot: RoomSnapshot<T>;
-  docUnsub: (() => void) | null;
   leaveTimer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -153,8 +169,10 @@ export class LoroClientManager {
     if (!this.client) return;
     for (const handle of this.rooms.values()) {
       if (handle.leaveTimer != null) clearTimeout(handle.leaveTimer);
-      handle.docUnsub?.();
-      if (handle.room) void handle.room.destroy().catch(() => {});
+      if (handle.binding.kind === "bound") {
+        handle.binding.docUnsub?.();
+        void handle.binding.room.destroy().catch(() => {});
+      }
     }
     this.rooms.clear();
     this.client.destroy();
@@ -191,10 +209,8 @@ export class LoroClientManager {
       select,
       derived,
       refCount,
-      joined: false,
-      room: null,
+      binding: { kind: "joining" },
       snapshot: JOINING,
-      docUnsub: null,
       leaveTimer: null,
     };
     this.rooms.set(roomId, handle);
@@ -246,25 +262,36 @@ export class LoroClientManager {
       // against fully-synced content (no empty-doc flash).
       await room.waitForReachingServerVersion();
 
+      // The join is asynchronous, so by the time it completes the handle it was
+      // started for may have been superseded: a debounced teardown can clear the
+      // map and a re-acquire can install a fresh handle (with its own doc) under
+      // the same roomId. The room must be committed only to the exact handle that
+      // requested it. Identity is the key, not refCount, because a replacement
+      // handle also carries refCount > 0; binding to anything but `wanted` would
+      // attach this room (wired to `wanted.doc`) to a handle whose own doc would
+      // then never receive updates.
       const current = this.room<T>(roomId);
-      if (!current || current.refCount <= 0) {
-        // Released while joining; drop it so a re-acquire is fresh.
+      if (current !== wanted || wanted.refCount <= 0) {
         void room.destroy().catch(() => {});
-        if (current && current.refCount <= 0) this.rooms.delete(roomId);
+        // Only reap the slot if WE are the released occupant; never touch a newer
+        // handle that has taken our place.
+        if (current === wanted && wanted.refCount <= 0) this.rooms.delete(roomId);
         return;
       }
 
-      current.room = room;
-      current.joined = true;
-      if (current.derived) {
-        current.docUnsub = current.doc.subscribe(() => this.recompute(roomId));
-      }
-      current.snapshot = { status: "joined", view: current.select(current.doc) };
+      const docUnsub = wanted.derived
+        ? wanted.doc.subscribe(() => this.recompute(roomId))
+        : null;
+      wanted.binding = { kind: "bound", room, docUnsub };
+      wanted.snapshot = { status: "joined", view: wanted.select(wanted.doc) };
       this.notify(roomId);
     } catch (err) {
-      const current = this.rooms.get(roomId);
-      if (current) {
-        current.snapshot = { status: "error", message: errMessage(err) };
+      // Same identity rule on the failure path: a join that rejects after its
+      // handle was superseded reports the error only if that handle is still the
+      // live one, never onto the handle that replaced it.
+      if (this.room<T>(roomId) === wanted) {
+        wanted.binding = { kind: "failed" };
+        wanted.snapshot = { status: "error", message: errMessage(err) };
         this.notify(roomId);
       }
     }
@@ -281,14 +308,15 @@ export class LoroClientManager {
   }
 
   /**
-   * Fold loro-websocket's per-room status into the snapshot. Only after the
-   * initial join (see `joined`): the library emits Connecting/Joined during our
-   * own join(), which the explicit sync handoff already owns. Reconnecting and
+   * Fold loro-websocket's per-room status into the snapshot. Only once the room
+   * is `bound`: the library emits Connecting/Joined during our own join(), which
+   * the explicit waitForReachingServerVersion handoff already owns, so folding
+   * before the handoff would let that first status pre-empt it. Reconnecting and
    * Disconnected both surface as "reconnecting" (socket down, doc preserved).
    */
   private onRoomStatus(roomId: string, status: RoomJoinStatusValue): void {
     const handle = this.rooms.get(roomId);
-    if (!handle || !handle.joined) return;
+    if (!handle || handle.binding.kind !== "bound") return;
     switch (status) {
       case "reconnecting":
       case "disconnected":
@@ -315,12 +343,14 @@ export class LoroClientManager {
   private leaveRoom(roomId: string): void {
     const handle = this.rooms.get(roomId);
     if (!handle) return;
-    if (handle.snapshot.status !== "joined" && handle.snapshot.status !== "reconnecting") return;
+    // `bound` is exactly the joined-or-reconnecting state this debounced leave was
+    // scheduled for; a still-joining or failed room has no room object to drop.
+    if (handle.binding.kind !== "bound") return;
     this.rooms.delete(roomId);
-    handle.docUnsub?.();
+    handle.binding.docUnsub?.();
     // room.destroy() leaves the room and removes it from the client's dedup table
     // within a microtask, before any later navigation's re-acquire.
-    if (handle.room) void handle.room.destroy().catch(() => {});
+    void handle.binding.room.destroy().catch(() => {});
     this.notify(roomId);
   }
 
@@ -385,7 +415,7 @@ export class LoroClientManager {
    */
   moveTocNode = (node: TreeID, parent: TreeID | null, index: number): void => {
     const handle = this.room<TocTreeNode[]>(TOC_CONTAINER);
-    if (!handle?.joined) return;
+    if (handle?.binding.kind !== "bound") return;
     applyTocMove(handle.doc, node, parent, index);
   };
 }

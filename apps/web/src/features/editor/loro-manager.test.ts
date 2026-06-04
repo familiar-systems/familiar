@@ -38,6 +38,21 @@ interface AdaptorLike {
 // imports) can reference them. The registry lets tests inspect what the manager
 // did to the socket.
 const mock = vi.hoisted(() => {
+  interface Deferred<T> {
+    promise: Promise<T>;
+    resolve: (value: T) => void;
+    reject: (reason: unknown) => void;
+  }
+  function deferred<T>(): Deferred<T> {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
   interface JoinCall {
     roomId: string;
     adaptor: AdaptorLike;
@@ -46,16 +61,27 @@ const mock = vi.hoisted(() => {
 
   class MockRoom {
     destroyed = false;
+    // Controllable server-version handoff. Ungated rooms pre-resolve (the marker
+    // write in join() already landed the "server snapshot", so the manager mounts
+    // against synced content). A gated room stays pending so a test can resolve or
+    // reject it LATE, modelling a join that completes after a teardown +
+    // re-acquire has already replaced its handle (the join-identity race).
+    readonly serverVersion = deferred<void>();
     constructor(
       readonly client: MockClient,
       readonly key: string,
       readonly roomId: string,
       readonly onStatusChange: ((s: string) => void) | undefined,
-    ) {}
-    // Resolves immediately: the marker write below already landed the "server
-    // snapshot", so the manager mounts against synced content.
+    ) {
+      if (registry.gateNextRoom) {
+        registry.gateNextRoom = false;
+        registry.gatedRooms.push(this);
+      } else {
+        this.serverVersion.resolve();
+      }
+    }
     waitForReachingServerVersion(): Promise<void> {
-      return Promise.resolve();
+      return this.serverVersion.promise;
     }
     leave(): Promise<void> {
       return Promise.resolve();
@@ -119,12 +145,27 @@ const mock = vi.hoisted(() => {
     }
   }
 
-  const registry = { instances: [] as MockClient[] };
+  const registry = {
+    instances: [] as MockClient[],
+    // When set, the next room built by join() stays pending (gated) instead of
+    // pre-resolving its server-version handoff. Consumed (reset to false) by the
+    // room that claims it, so only one room is gated per arm.
+    gateNextRoom: false,
+    gatedRooms: [] as MockRoom[],
+  };
   return {
     MockClient,
     instances: registry.instances,
+    get gatedRooms(): MockRoom[] {
+      return registry.gatedRooms;
+    },
+    armServerGate(): void {
+      registry.gateNextRoom = true;
+    },
     reset(): void {
       registry.instances.length = 0;
+      registry.gatedRooms.length = 0;
+      registry.gateNextRoom = false;
     },
   };
 });
@@ -313,6 +354,64 @@ describe("LoroClientManager thing rooms", () => {
     const recovered = m.getThingState(THING_A);
     expect(recovered.status).toBe("joined");
     if (recovered.status === "joined") expect(recovered.view).toBe(doc); // same doc throughout
+  });
+
+  // A join is asynchronous, so the handle it was started for can be superseded
+  // before it completes: a debounced teardown clears the rooms map and a
+  // re-acquire installs a fresh handle (its own doc) under the same roomId. A
+  // join that finishes after that must commit its room only to the handle that
+  // requested it, and discard the room otherwise - binding it onto the newer
+  // handle would leave that handle's own doc orphaned and rendering empty.
+  // refCount cannot distinguish the two handles (both have refCount > 0); handle
+  // identity can.
+  it("a late-resolving stale join does not hijack a re-acquired handle", async () => {
+    const m = makeManager();
+    m.connect();
+    mock.armServerGate(); // freeze this join at its server-version handoff
+    m.acquireThing(THING_A); // handle A; join A suspends mid-flight
+    await flushMicro();
+    const roomA = mock.gatedRooms[0];
+    expect(roomA).toBeDefined();
+
+    m.close(); // debounced teardown clears the map under the in-flight join A
+    await vi.advanceTimersByTimeAsync(PAST_DEBOUNCE_MS);
+    m.connect(); // remount: a fresh socket
+    m.acquireThing(THING_A); // handle B, a NEW doc for the same room
+    await flushMicro();
+    expectSyncedThing(m, THING_A); // B joined on its own room/doc
+
+    roomA?.serverVersion.resolve(); // join A finally resolves, too late
+    await flushMicro();
+
+    // The guard recognises A's room as stale and destroys it instead of binding
+    // it onto B. Without it, A's room (wired to A's doc) would overwrite B's, and
+    // B's own doc would be orphaned -> the editor renders an empty doc forever.
+    expect(roomA?.destroyed).toBe(true);
+    expectSyncedThing(m, THING_A); // B is still the joined, synced room
+  });
+
+  it("a late-rejecting stale join does not stamp error onto a re-acquired handle", async () => {
+    const m = makeManager();
+    m.connect();
+    mock.armServerGate();
+    m.acquireThing(THING_A);
+    await flushMicro();
+    const roomA = mock.gatedRooms[0];
+    expect(roomA).toBeDefined();
+
+    m.close();
+    await vi.advanceTimersByTimeAsync(PAST_DEBOUNCE_MS);
+    m.connect();
+    m.acquireThing(THING_A);
+    await flushMicro();
+    expectSyncedThing(m, THING_A);
+
+    roomA?.serverVersion.reject(new Error("stale join failed"));
+    await flushMicro();
+
+    // The catch path carries the same identity guard: a stale rejection must not
+    // flip the handle that replaced us into the error state.
+    expect(m.getThingState(THING_A).status).toBe("joined");
   });
 });
 
