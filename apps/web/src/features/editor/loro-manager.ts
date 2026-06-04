@@ -279,9 +279,7 @@ export class LoroClientManager {
         return;
       }
 
-      const docUnsub = wanted.derived
-        ? wanted.doc.subscribe(() => this.recompute(roomId))
-        : null;
+      const docUnsub = wanted.derived ? wanted.doc.subscribe(() => this.recompute(roomId)) : null;
       wanted.binding = { kind: "bound", room, docUnsub };
       wanted.snapshot = { status: "joined", view: wanted.select(wanted.doc) };
       this.notify(roomId);
