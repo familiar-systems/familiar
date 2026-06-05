@@ -32,6 +32,13 @@ export interface paths {
      *     the same `campaign_id`. The order (write `create_attempts` first, then
      *     call shard, then write `campaigns`) is what makes retries safe; see
      *     the long form in the design doc.
+     *
+     *     Crucially, the token is *not* a "done" marker. Every step after the token
+     *     claim is idempotent (shard create + lease are idempotent on `campaign_id`;
+     *     the platform inserts are `INSERT … ON CONFLICT DO NOTHING`), so a retry
+     *     after a partial failure re-drives the missing steps and converges to a
+     *     complete campaign. A benign duplicate of an already-complete campaign is
+     *     detected by the GM membership row (the last write) and short-circuits.
      */
     post: operations["create_campaign"];
     delete?: never;
