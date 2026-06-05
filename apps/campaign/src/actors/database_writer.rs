@@ -1,36 +1,44 @@
-//! `DatabaseActor`: single owner of the per-campaign sea-orm write
+//! `DatabaseWriteActor`: single owner of the per-campaign sea-orm write
 //! connection.
 //!
 //! Every write to the campaign DB flows through this actor's mailbox.
 
 use chrono::Utc;
 use familiar_systems_app_shared::id::CampaignId;
-use kameo::message::{Context, Message};
-use kameo::prelude::Actor;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
+use kameo::prelude::{Actor, Context, Message};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    TransactionTrait,
+};
 
-use crate::entities::campaign_metadata;
+use familiar_systems_campaign_shared::loro::thing::SECTION_CONTENT;
 
-pub struct DatabaseActor {
+use crate::domain::thing::NewThing;
+use crate::entities::columns::{BlockIdCol, StatusCol};
+use crate::entities::{blocks, campaign_metadata, things, toc_entries};
+
+pub struct DatabaseWriteActor {
     campaign_id: CampaignId,
     conn: DatabaseConnection,
 }
 
-pub struct DatabaseActorArgs {
+pub struct DatabaseWriteActorArgs {
     pub campaign_id: CampaignId,
     pub conn: DatabaseConnection,
 }
 
-impl Actor for DatabaseActor {
-    type Args = DatabaseActorArgs;
+impl Actor for DatabaseWriteActor {
+    type Args = DatabaseWriteActorArgs;
     type Error = std::convert::Infallible;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %args.campaign_id.0),
+    )]
     async fn on_start(
         args: Self::Args,
         _actor_ref: kameo::actor::ActorRef<Self>,
     ) -> Result<Self, Self::Error> {
-        let _span =
-            tracing::info_span!("database_actor", campaign_id = %args.campaign_id.0).entered();
         tracing::debug!("database actor started");
         Ok(Self {
             campaign_id: args.campaign_id,
@@ -38,12 +46,16 @@ impl Actor for DatabaseActor {
         })
     }
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn on_stop(
         &mut self,
         _actor_ref: kameo::actor::WeakActorRef<Self>,
         _reason: kameo::error::ActorStopReason,
     ) -> Result<(), Self::Error> {
-        tracing::debug!(campaign_id = %self.campaign_id.0, "database actor stopped");
+        tracing::debug!("database actor stopped");
         Ok(())
     }
 }
@@ -79,9 +91,13 @@ pub struct PatchCampaignResult {
     pub wizard_just_completed: bool,
 }
 
-impl Message<PatchCampaignMetadata> for DatabaseActor {
+impl Message<PatchCampaignMetadata> for DatabaseWriteActor {
     type Reply = Result<PatchCampaignResult, PatchCampaignError>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         msg: PatchCampaignMetadata,
@@ -129,6 +145,46 @@ impl Message<PatchCampaignMetadata> for DatabaseActor {
 }
 
 // ---------------------------------------------------------------------------
+// DbSetLandingPage
+// ---------------------------------------------------------------------------
+
+/// Point `campaign_metadata.home_thing_id` at a Thing. Partial update: touches
+/// only `home_thing_id` and `updated_at`, leaving every other field as-is. No
+/// existence check: the sole caller (the genesis seed) passes a just-committed
+/// Thing, and the FK (`ON DELETE SET NULL`) keeps the pointer honest over the
+/// Thing's lifetime. Reuses [`PatchCampaignError`]; the only failure modes are
+/// a missing metadata row or a DB error.
+#[derive(Debug, Clone)]
+pub struct DbSetLandingPage {
+    pub thing_id: ThingId,
+}
+
+impl Message<DbSetLandingPage> for DatabaseWriteActor {
+    type Reply = Result<(), PatchCampaignError>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.thing_id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: DbSetLandingPage,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let existing = campaign_metadata::Entity::find_by_id(campaign_metadata::METADATA_ROW_ID)
+            .one(&self.conn)
+            .await?
+            .ok_or(PatchCampaignError::NoMetadataRow)?;
+
+        let mut am: campaign_metadata::ActiveModel = existing.into();
+        am.home_thing_id = Set(Some(ThingIdCol::from(msg.thing_id)));
+        am.updated_at = Set(Utc::now());
+        am.update(&self.conn).await?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // GetMetadata
 // ---------------------------------------------------------------------------
 
@@ -145,9 +201,13 @@ pub enum MetadataError {
     ActorUnavailable,
 }
 
-impl Message<GetMetadata> for DatabaseActor {
+impl Message<GetMetadata> for DatabaseWriteActor {
     type Reply = Result<campaign_metadata::Model, MetadataError>;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(
         &mut self,
         _: GetMetadata,
@@ -161,6 +221,256 @@ impl Message<GetMetadata> for DatabaseActor {
 }
 
 // ---------------------------------------------------------------------------
+// WriteTocSnapshot
+// ---------------------------------------------------------------------------
+
+pub struct WriteTocSnapshot {
+    pub rows: Vec<toc_entries::ActiveModel>,
+}
+
+impl Message<WriteTocSnapshot> for DatabaseWriteActor {
+    type Reply = Result<(), sea_orm::DbErr>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: WriteTocSnapshot,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let row_count = msg.rows.len();
+        tracing::debug!(row_count, "writing toc snapshot");
+
+        let keep_ids: Vec<sea_orm::Value> = msg
+            .rows
+            .iter()
+            .map(|r| r.id.clone().unwrap().into())
+            .collect();
+
+        // Prune-then-upsert is a full-snapshot replace; it must be atomic so a
+        // failed upsert can't leave stale rows pruned but unreplaced. One
+        // transaction wraps both; an early return drops `txn`, rolling back the
+        // prune. The per-statement `tracing::error!` logging is retained.
+        let txn = self.conn.begin().await?;
+
+        if keep_ids.is_empty() {
+            if let Err(e) = toc_entries::Entity::delete_many().exec(&txn).await {
+                tracing::error!(error = %e, "failed to delete toc entries");
+                return Err(e);
+            }
+        } else {
+            if let Err(e) = toc_entries::Entity::delete_many()
+                .filter(toc_entries::Column::Id.is_not_in(keep_ids))
+                .exec(&txn)
+                .await
+            {
+                tracing::error!(error = %e, "failed to prune stale toc entries");
+                return Err(e);
+            }
+
+            if let Err(e) = toc_entries::Entity::insert_many(msg.rows)
+                .on_conflict(
+                    sea_orm::sea_query::OnConflict::column(toc_entries::Column::Id)
+                        .update_columns([
+                            toc_entries::Column::ThingId,
+                            toc_entries::Column::FolderTitle,
+                            toc_entries::Column::Visibility,
+                            toc_entries::Column::ParentId,
+                            toc_entries::Column::Position,
+                        ])
+                        .to_owned(),
+                )
+                .exec(&txn)
+                .await
+            {
+                tracing::error!(row_count, error = %e, "failed to upsert toc entries");
+                return Err(e);
+            }
+        }
+
+        txn.commit().await?;
+        tracing::debug!(row_count, "toc snapshot written");
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WriteThingBlocks
+// ---------------------------------------------------------------------------
+
+use familiar_systems_campaign_shared::id::ThingId;
+
+use crate::entities::columns::ThingIdCol;
+
+pub struct WriteThingBlocks {
+    pub thing_id: ThingId,
+    pub blocks: Vec<blocks::ActiveModel>,
+    pub name_sync: Option<String>,
+}
+
+impl Message<WriteThingBlocks> for DatabaseWriteActor {
+    type Reply = Result<(), sea_orm::DbErr>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.thing_id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: WriteThingBlocks,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let block_count = msg.blocks.len();
+        tracing::debug!(block_count, "writing thing blocks");
+
+        let thing_id_col = ThingIdCol::from(msg.thing_id.clone());
+
+        // The live block ids in this snapshot; everything else for the Thing is
+        // stale and gets pruned. `flush` always `Set`s the id, so the unwrap is
+        // total (same idiom as `WriteTocSnapshot`).
+        let keep_ids: Vec<sea_orm::Value> = msg
+            .blocks
+            .iter()
+            .map(|b| b.id.clone().unwrap().into())
+            .collect();
+
+        // Prune-then-upsert is a full-snapshot replace; it must be atomic so a
+        // failed upsert can't leave the Thing's blocks pruned but unreplaced (this
+        // flush also runs on actor stop, as the Loro doc is torn down). One
+        // transaction wraps both; an early return drops `txn`, rolling back the
+        // prune. Upsert rather than delete-then-insert so a block's `created_at`
+        // survives edits: the row is updated in place and `CreatedAt` is left out
+        // of the conflict-update set below. Mirrors `WriteTocSnapshot`.
+        let txn = self.conn.begin().await?;
+
+        if msg.blocks.is_empty() {
+            // No live blocks: drop every block for this Thing.
+            blocks::Entity::delete_many()
+                .filter(blocks::Column::ThingId.eq(thing_id_col.clone()))
+                .exec(&txn)
+                .await?;
+        } else {
+            // Prune blocks absent from the new snapshot. Scoped to this Thing:
+            // unlike `toc_entries` (a per-campaign singleton table), `blocks` is
+            // shared across all Things, so an unscoped `NOT IN` would delete other
+            // Things' rows. `is_not_in` binds one parameter per live block; a Thing
+            // with enough blocks to exceed `SQLITE_MAX_VARIABLE_NUMBER` would fail
+            // here -- the same bound `WriteTocSnapshot` already accepts (page block
+            // counts are bounded in practice).
+            blocks::Entity::delete_many()
+                .filter(blocks::Column::ThingId.eq(thing_id_col.clone()))
+                .filter(blocks::Column::Id.is_not_in(keep_ids))
+                .exec(&txn)
+                .await?;
+
+            // Upsert the snapshot. `CreatedAt` is deliberately omitted from the
+            // update set so an existing block keeps its original creation time; the
+            // `created_at = now` that `flush` stamps only takes effect on the insert
+            // (new-block) path. `ThingId`/`Section` are constant per block.
+            blocks::Entity::insert_many(msg.blocks)
+                .on_conflict(
+                    sea_orm::sea_query::OnConflict::column(blocks::Column::Id)
+                        .update_columns([
+                            blocks::Column::Status,
+                            blocks::Column::Ordering,
+                            blocks::Column::Content,
+                            blocks::Column::UpdatedAt,
+                        ])
+                        .to_owned(),
+                )
+                .exec(&txn)
+                .await?;
+        }
+
+        if let Some(name) = msg.name_sync {
+            things::Entity::update_many()
+                .filter(things::Column::Id.eq(thing_id_col))
+                .col_expr(things::Column::Name, sea_orm::sea_query::Expr::value(name))
+                .col_expr(
+                    things::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::value(Utc::now()),
+                )
+                .exec(&txn)
+                .await?;
+        }
+
+        txn.commit().await?;
+        tracing::debug!(block_count, "thing blocks written");
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DbCreateThing (genesis write)
+// ---------------------------------------------------------------------------
+
+/// Persist a brand-new Thing: its `things` row plus any seeded `blocks`, in a
+/// single transaction. Invoked once, from the `ThingActor`'s genesis path
+/// (`ThingInit::New`), so the actor that owns the Thing owns its birth write.
+/// Replies with the persisted row (timestamps stamped here, at the write edge).
+pub struct DbCreateThing {
+    pub new_thing: NewThing,
+}
+
+impl Message<DbCreateThing> for DatabaseWriteActor {
+    type Reply = Result<things::Model, sea_orm::DbErr>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.new_thing.id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: DbCreateThing,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let nt = msg.new_thing;
+        let thing_id_col = ThingIdCol::from(nt.id.clone());
+        let block_count = nt.blocks.len();
+        let now = Utc::now();
+
+        tracing::debug!(block_count, "creating thing");
+
+        let txn = self.conn.begin().await?;
+
+        let model = things::ActiveModel {
+            id: Set(thing_id_col.clone()),
+            name: Set(nt.name),
+            status: Set(StatusCol::from(nt.status)),
+            prototype_id: Set(nt.prototype_id.map(ThingIdCol::from)),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&txn)
+        .await?;
+
+        if !nt.blocks.is_empty() {
+            let block_rows: Vec<blocks::ActiveModel> = nt
+                .blocks
+                .into_iter()
+                .map(|b| blocks::ActiveModel {
+                    id: Set(BlockIdCol::from(b.id)),
+                    thing_id: Set(thing_id_col.clone()),
+                    status: Set(StatusCol::from(b.status)),
+                    ordering: Set(b.ordering),
+                    content: Set(b.content),
+                    section: Set(SECTION_CONTENT.to_string()),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                })
+                .collect();
+            blocks::Entity::insert_many(block_rows).exec(&txn).await?;
+        }
+
+        txn.commit().await?;
+        tracing::debug!(block_count, "thing created");
+        Ok(model)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Ping (health check / test)
 // ---------------------------------------------------------------------------
 
@@ -170,9 +480,13 @@ pub struct Ping;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, kameo::Reply)]
 pub struct Pong;
 
-impl Message<Ping> for DatabaseActor {
+impl Message<Ping> for DatabaseWriteActor {
     type Reply = Pong;
 
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
     async fn handle(&mut self, _: Ping, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
         Pong
     }
@@ -186,7 +500,7 @@ mod tests {
     use kameo::actor::Spawn;
     use sea_orm_migration::MigratorTrait;
 
-    async fn spawn_with_migrations() -> (kameo::actor::ActorRef<DatabaseActor>, CampaignId) {
+    async fn spawn_with_migrations() -> (kameo::actor::ActorRef<DatabaseWriteActor>, CampaignId) {
         db::register_sqlite_vec();
         let conn = db::connect("sqlite::memory:")
             .await
@@ -204,6 +518,7 @@ mod tests {
             tagline: Set(None),
             game_system: Set(None),
             content_locale: Set(None),
+            home_thing_id: Set(None),
             wizard_completed_at: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
@@ -212,7 +527,7 @@ mod tests {
         .await
         .expect("seed metadata");
 
-        let actor = DatabaseActor::spawn(DatabaseActorArgs {
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
             campaign_id: campaign_id.clone(),
             conn,
         });
@@ -317,5 +632,272 @@ mod tests {
         let (actor, _) = spawn_with_migrations().await;
         actor.stop_gracefully().await.expect("stop_gracefully");
         actor.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    #[tokio::test]
+    async fn create_thing_inserts_row_and_blocks_atomically() {
+        use crate::domain::thing::{NewBlock, NewThing};
+        use familiar_systems_campaign_shared::id::{BlockId, ThingId};
+        use familiar_systems_campaign_shared::status::Status;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        let thing_id = ThingId::generate();
+        let model = actor
+            .ask(DbCreateThing {
+                new_thing: NewThing {
+                    id: thing_id.clone(),
+                    name: "Korgath".into(),
+                    status: Status::GmOnly,
+                    prototype_id: None,
+                    blocks: vec![NewBlock {
+                        id: BlockId::generate(),
+                        ordering: 0,
+                        content: b"hello".to_vec(),
+                        status: Status::GmOnly,
+                    }],
+                },
+            })
+            .await
+            .expect("create thing");
+        assert_eq!(model.name, "Korgath");
+
+        let things = things::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(things.len(), 1, "thing row inserted");
+        let block_rows = blocks::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(block_rows.len(), 1, "block row inserted");
+        assert_eq!(block_rows[0].content, b"hello");
+    }
+
+    /// A `WriteThingBlocks` whose upsert fails must not destroy the blocks it
+    /// was meant to replace. The handler prunes the Thing's stale blocks before
+    /// upserting the new set; without a transaction a failed upsert leaves the
+    /// blocks pruned but unreplaced (the catastrophic case, since this runs on
+    /// flush-on-stop while the in-memory Loro doc is being torn down).
+    #[tokio::test]
+    async fn write_thing_blocks_failed_insert_preserves_existing_rows() {
+        use familiar_systems_campaign_shared::id::BlockId;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        let now = Utc::now();
+        let thing_id = ThingId::generate();
+        let thing_id_col = ThingIdCol::from(thing_id.clone());
+
+        // FK parent: blocks.thing_id -> things.id.
+        things::ActiveModel {
+            id: Set(thing_id_col.clone()),
+            name: Set("Korgath".into()),
+            status: Set(StatusCol::GmOnly),
+            prototype_id: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&conn)
+        .await
+        .expect("seed thing");
+
+        // One pre-existing block a correct (transactional) write must preserve.
+        blocks::ActiveModel {
+            id: Set(BlockIdCol::from(BlockId::generate())),
+            thing_id: Set(thing_id_col.clone()),
+            status: Set(StatusCol::GmOnly),
+            ordering: Set(0),
+            content: Set(b"original".to_vec()),
+            section: Set(SECTION_CONTENT.to_string()),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&conn)
+        .await
+        .expect("seed existing block");
+
+        // A doomed snapshot: one row whose `thing_id` points at a Thing that
+        // doesn't exist, so the upsert trips the FK (foreign_keys are ON) and
+        // fails as a unit. The handler has already pruned the existing block by
+        // then. (A duplicate-PK batch no longer suffices to force failure:
+        // `ON CONFLICT DO UPDATE` would resolve the conflict instead of erroring.)
+        let ghost = ThingId::generate();
+        let doomed = vec![blocks::ActiveModel {
+            id: Set(BlockIdCol::from(BlockId::generate())),
+            thing_id: Set(ThingIdCol::from(ghost)),
+            status: Set(StatusCol::GmOnly),
+            ordering: Set(0),
+            content: Set(b"new-a".to_vec()),
+            section: Set(SECTION_CONTENT.to_string()),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }];
+
+        actor
+            .ask(WriteThingBlocks {
+                thing_id: thing_id.clone(),
+                blocks: doomed,
+                name_sync: None,
+            })
+            .await
+            .expect_err("FK-violating upsert must fail");
+
+        // The original block survives: the failed write rolled back its prune.
+        let rows = blocks::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(rows.len(), 1, "existing block must survive a failed write");
+        assert_eq!(rows[0].content, b"original");
+    }
+
+    /// `created_at` survives edits, and blocks dropped from a later snapshot are
+    /// pruned. The upsert path updates an existing row in place (omitting
+    /// `CreatedAt` from the conflict-update set, so the original creation time is
+    /// kept) while the `NOT IN` prune removes blocks absent from the new snapshot.
+    /// Regression test for "created_at reset to now on every flush" (#2 in the PR
+    /// review): an editor flushes a Thing's blocks repeatedly, and `created_at`
+    /// must not be clobbered each time.
+    #[tokio::test]
+    async fn write_thing_blocks_preserves_created_at_and_prunes_dropped() {
+        use familiar_systems_campaign_shared::id::BlockId;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        let thing_id = ThingId::generate();
+        let thing_id_col = ThingIdCol::from(thing_id.clone());
+
+        // Fixed whole-second timestamps so the SQLite text round-trip is exact and
+        // the test is deterministic (no `Utc::now()` sub-second flake).
+        let t0 = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+        let t1 = chrono::DateTime::from_timestamp(1_700_000_060, 0).unwrap();
+
+        // FK parent: blocks.thing_id -> things.id.
+        things::ActiveModel {
+            id: Set(thing_id_col.clone()),
+            name: Set("Korgath".into()),
+            status: Set(StatusCol::GmOnly),
+            prototype_id: Set(None),
+            created_at: Set(t0),
+            updated_at: Set(t0),
+        }
+        .insert(&conn)
+        .await
+        .expect("seed thing");
+
+        let kept = BlockId::generate();
+        let dropped = BlockId::generate();
+        let row =
+            |id: &BlockId, ord: i64, body: &[u8], ts: chrono::DateTime<Utc>| blocks::ActiveModel {
+                id: Set(BlockIdCol::from(id.clone())),
+                thing_id: Set(thing_id_col.clone()),
+                status: Set(StatusCol::GmOnly),
+                ordering: Set(ord),
+                content: Set(body.to_vec()),
+                section: Set(SECTION_CONTENT.to_string()),
+                created_at: Set(ts),
+                updated_at: Set(ts),
+            };
+
+        // First flush: two blocks, both stamped t0.
+        actor
+            .ask(WriteThingBlocks {
+                thing_id: thing_id.clone(),
+                blocks: vec![row(&kept, 0, b"v1", t0), row(&dropped, 1, b"d1", t0)],
+                name_sync: None,
+            })
+            .await
+            .expect("first flush");
+
+        // Second flush: `kept` is edited and carries a *later* created_at (as a
+        // real flush would, stamping `now`); `dropped` is gone from the snapshot.
+        actor
+            .ask(WriteThingBlocks {
+                thing_id: thing_id.clone(),
+                blocks: vec![row(&kept, 0, b"v2", t1)],
+                name_sync: None,
+            })
+            .await
+            .expect("second flush");
+
+        let rows = blocks::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(
+            rows.len(),
+            1,
+            "block dropped from the snapshot must be pruned"
+        );
+        let b = &rows[0];
+        assert_eq!(b.content, b"v2", "surviving block has the latest content");
+        assert_eq!(
+            b.created_at, t0,
+            "created_at must be preserved across the edit, not reset to the flush time"
+        );
+        assert_eq!(
+            b.updated_at, t1,
+            "updated_at must advance to the latest flush"
+        );
+    }
+
+    /// A `WriteTocSnapshot` whose insert fails must leave the prior rows intact.
+    /// The handler prunes stale rows before upserting; without a transaction a
+    /// failed upsert leaves a partially-applied snapshot (pruned but not
+    /// rewritten).
+    #[tokio::test]
+    async fn write_toc_snapshot_failed_insert_preserves_existing_rows() {
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        // A stale folder row a correct snapshot prune would remove, but a
+        // *failed* snapshot must leave untouched.
+        toc_entries::ActiveModel {
+            id: Set("old".to_string()),
+            thing_id: Set(None),
+            folder_title: Set(Some("Stale Folder".into())),
+            visibility: Set(StatusCol::GmOnly),
+            parent_id: Set(None),
+            position: Set(0),
+        }
+        .insert(&conn)
+        .await
+        .expect("seed stale toc row");
+
+        // Keep-set is just "new"; its thing_id points at a Thing that doesn't
+        // exist, so the upsert trips the FK (foreign_keys are ON) and fails.
+        // The prune deletes "old" first.
+        let ghost = ThingId::generate();
+        let rows = vec![toc_entries::ActiveModel {
+            id: Set("new".to_string()),
+            thing_id: Set(Some(ThingIdCol::from(ghost))),
+            folder_title: Set(None),
+            visibility: Set(StatusCol::GmOnly),
+            parent_id: Set(None),
+            position: Set(0),
+        }];
+
+        actor
+            .ask(WriteTocSnapshot { rows })
+            .await
+            .expect_err("FK violation must fail the upsert");
+
+        // The stale row survives: the failed write rolled back its prune.
+        let surviving = toc_entries::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(surviving.len(), 1, "stale row must survive a failed write");
+        assert_eq!(surviving[0].id, "old");
     }
 }

@@ -41,6 +41,16 @@ export function campaignPath(path: string): string {
   return campaignBase + path.replace(/^\//, "");
 }
 
+// Absolute ws://-or-wss:// URL for a campaign-server WebSocket (CRDT sync).
+// Reuses campaignPath so the per-PR preview prefix is preserved, swaps to the
+// ws scheme, and makes the URL absolute (WebSocket needs a full URL). The auth
+// token rides in the query string because the WS upgrade can't carry an
+// Authorization header. Browser-only (reads window.location).
+export function wsUrl(path: string): string {
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}${campaignPath(path)}`;
+}
+
 export function catalogPath(path: string): string {
   return catalogBase + path.replace(/^\//, "");
 }

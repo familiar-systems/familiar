@@ -7,7 +7,7 @@ node = "24"
 # missing from this CSV. The toolchain lives under ~/.rustup, not under
 # ~/.local/share/mise. Do NOT add a rust-toolchain.toml — RUSTUP_TOOLCHAIN
 # beats it in rustup's precedence chain, so the file would be a no-op.
-rust = { version = "latest", profile = 'default', components = "rust-analyzer,rust-src" }
+rust = { version = "1.96.0", profile = 'default', components = "rust-analyzer,rust-src" }
 python = "3.14"
 uv = "latest"
 actionlint = "latest"
@@ -84,8 +84,8 @@ fi
 uv sync
 """
 
-[tasks."setup:e2e"]
-description = "Install Playwright's browser binary (chromium) for apps/web e2e tests"
+[tasks."setup:playwright"]
+description = "Install Playwright's browser binary (chromium), shared by both apps/web browser tiers (web:integration and e2e)"
 depends = ["setup:ts"]
 # Playwright pins exact browser revisions per @playwright/test version, so
 # we let Playwright manage the install itself instead of mise tracking the
@@ -95,8 +95,8 @@ run = "pnpm --filter @familiar-systems/web exec playwright install chromium"
 # --- check ---
 
 [tasks.check]
-description = "Run all checks in parallel (format:check, lint, typecheck, test, e2e)"
-depends = ["format:check", "lint", "typecheck", "test", "e2e"]
+description = "Run all checks in parallel (format:check, lint, typecheck, test, web:integration)"
+depends = ["format:check", "lint", "typecheck", "test", "web:integration"]
 
 # --- dev ---
 
@@ -132,7 +132,13 @@ description = "Platform server (port 3000). dev-ui mounts Scalar at /api/docs."
 # task and the data directory only matters in dev. Fresh worktrees don't
 # inherit the directory; SQLite's `mode=rwc` creates the file but not the
 # parent. Cheap enough to run every dev start.
-run = ["mkdir -p data", "cargo run -p familiar-systems-platform --features dev-ui"]
+run = [
+  "mkdir -p data data/logs",
+  # Tee the JSON logs (stdout) to a fresh per-run file so they can be jq'd after
+  # the fact; cargo's compile output (stderr) stays console-only, keeping the
+  # file clean JSONL. `tee` without -a truncates on each dev start.
+  "cargo run -p familiar-systems-platform --features dev-ui | tee data/logs/platform.jsonl",
+]
 # CORS origin is the app-apex front door, not the marketing apex. The SPA
 # lives on app.localhost:8080 and any browser fetch from it to /api/* is
 # same-origin, so no preflight fires; this entry is defense-in-depth for
@@ -145,7 +151,11 @@ description = "Campaign server (port 3001)"
 # CAMPAIGN_DATA_DIR is set per task and the parent must exist before the
 # binary writes into it. Local-dev uses 3001 to avoid colliding with
 # dev:platform's 3000; the container default (Dockerfile + cluster) is 3000.
-run = ["mkdir -p data/dev-campaigns", "cargo run -p familiar-systems-campaign"]
+run = [
+  "mkdir -p data/dev-campaigns data/logs",
+  # See dev:platform: tee stdout JSON to a fresh per-run file for jq.
+  "cargo run -p familiar-systems-campaign | tee data/logs/campaign.jsonl",
+]
 env = { CAMPAIGN_STORAGE_BACKEND = "local", PORT = "3001", HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", CAMPAIGN_DATA_DIR = "data/dev-campaigns", PLATFORM_URL = "http://localhost:3000", CAMPAIGN_IDLE_TIMEOUT_SECS = "60", CAMPAIGN_EVICTION_CHECK_INTERVAL_SECS = "15", RUST_LOG = "info,familiar_systems_campaign=debug" }
 
 [tasks."dev:proxy"]
@@ -184,8 +194,14 @@ depends = ["test:*"]
 [tasks."test:ts"]
 run = "pnpm test"
 sources = [
-  "apps/**/*.{ts,tsx,js,jsx}",
-  "packages/**/*.{ts,tsx,js,jsx}",
+  "apps/**/*.ts",
+  "apps/**/*.tsx",
+  "apps/**/*.js",
+  "apps/**/*.jsx",
+  "packages/**/*.ts",
+  "packages/**/*.tsx",
+  "packages/**/*.js",
+  "packages/**/*.jsx",
   "apps/**/package.json",
   "packages/**/package.json",
   "package.json",
@@ -194,6 +210,8 @@ sources = [
   "vitest.config.*",
   "apps/**/vitest.config.*",
   "packages/**/vitest.config.*",
+  "!**/node_modules/**",
+  "!**/dist/**",
 ]
 
 # test:rust lives in .mise/tasks/test/rust (file task, shellcheck-able).
@@ -207,19 +225,21 @@ sources = [
   "workers/whisperx/uv.lock",
 ]
 
-# --- e2e ---
+# --- integration ---
 
-[tasks.e2e]
-description = "Browser E2E tests for apps/web (run `mise run setup:e2e` once before first use)"
+[tasks."web:integration"]
+description = "Frontend integration tests for apps/web (browser + mocked backends; run `mise run setup:playwright` once first)"
 # Deliberately not under `test:*`: Playwright spins up a Vite dev server
 # and chromium per run, which would slow `mise run test` (the inner-loop
 # command) and require browser binaries on every fresh worktree. `mise
-# run check` includes this task, so PR-ready verification still covers
-# the full browser flow; CI runs `check`, so e2e fires on every PR.
-run = "pnpm --filter @familiar-systems/web e2e"
+# run check` includes this task, so local PR-ready verification still
+# covers the full browser flow; CI runs it as a dedicated, path-filtered
+# `integration` job in .github/workflows/_ci.yml.
+run = "pnpm --filter @familiar-systems/web integration"
 sources = [
-  "apps/web/src/**/*.{ts,tsx}",
-  "apps/web/e2e/**/*.ts",
+  "apps/web/src/**/*.ts",
+  "apps/web/src/**/*.tsx",
+  "apps/web/integration/**/*.ts",
   "apps/web/playwright.config.ts",
   "apps/web/package.json",
   "pnpm-lock.yaml",
@@ -234,8 +254,15 @@ depends = ["lint:*"]
 [tasks."lint:ts"]
 run = "pnpm lint"
 sources = [
-  "apps/**/*.{ts,tsx,js,jsx,astro}",
-  "packages/**/*.{ts,tsx,js,jsx}",
+  "apps/**/*.ts",
+  "apps/**/*.tsx",
+  "apps/**/*.js",
+  "apps/**/*.jsx",
+  "apps/**/*.astro",
+  "packages/**/*.ts",
+  "packages/**/*.tsx",
+  "packages/**/*.js",
+  "packages/**/*.jsx",
   "apps/**/package.json",
   "packages/**/package.json",
   "package.json",
@@ -245,6 +272,8 @@ sources = [
   "apps/**/tsconfig*.json",
   "packages/**/tsconfig*.json",
   ".oxlintrc.json",
+  "!**/node_modules/**",
+  "!**/dist/**",
 ]
 
 [tasks."lint:rust"]
@@ -299,10 +328,7 @@ run = [
   "check-jsonschema --schemafile content/.schemas/systems-schema.json content/systems.yaml",
   "check-jsonschema --schemafile content/.schemas/starter-content-schema.json content/templates/**/*.yaml",
 ]
-sources = [
-  "content/**/*.yaml",
-  "content/.schemas/*.json",
-]
+sources = ["content/**/*.yaml", "content/.schemas/*.json"]
 
 [tasks."lint:k8s"]
 description = "Build and validate Kustomize overlays (prod + preview) against Kubernetes schemas"
@@ -375,11 +401,28 @@ depends = ["format:check:*"]
 [tasks."format:check:ts"]
 run = "pnpm format:check"
 sources = [
-  "apps/**/*.{ts,tsx,js,jsx,astro,json,md,css,html}",
-  "packages/**/*.{ts,tsx,js,jsx,json,md,css,html}",
+  "apps/**/*.ts",
+  "apps/**/*.tsx",
+  "apps/**/*.js",
+  "apps/**/*.jsx",
+  "apps/**/*.astro",
+  "apps/**/*.json",
+  "apps/**/*.md",
+  "apps/**/*.css",
+  "apps/**/*.html",
+  "packages/**/*.ts",
+  "packages/**/*.tsx",
+  "packages/**/*.js",
+  "packages/**/*.jsx",
+  "packages/**/*.json",
+  "packages/**/*.md",
+  "packages/**/*.css",
+  "packages/**/*.html",
   "package.json",
   "pnpm-lock.yaml",
   ".oxfmtrc.json",
+  "!**/node_modules/**",
+  "!**/dist/**",
 ]
 
 [tasks."format:check:rust"]
@@ -411,8 +454,15 @@ depends = ["typecheck:*"]
 [tasks."typecheck:ts"]
 run = "pnpm typecheck"
 sources = [
-  "apps/**/*.{ts,tsx,js,jsx,astro}",
-  "packages/**/*.{ts,tsx,js,jsx}",
+  "apps/**/*.ts",
+  "apps/**/*.tsx",
+  "apps/**/*.js",
+  "apps/**/*.jsx",
+  "apps/**/*.astro",
+  "packages/**/*.ts",
+  "packages/**/*.tsx",
+  "packages/**/*.js",
+  "packages/**/*.jsx",
   "apps/**/package.json",
   "packages/**/package.json",
   "package.json",
@@ -422,6 +472,8 @@ sources = [
   "apps/**/tsconfig*.json",
   "packages/**/tsconfig*.json",
   "apps/web/tsr.config.json",
+  "!**/node_modules/**",
+  "!**/dist/**",
 ]
 
 [tasks."typecheck:rust"]
@@ -449,11 +501,7 @@ sources = [
 [tasks."typecheck:infra"]
 dir = "infra/tofu"
 run = "uv run basedpyright"
-sources = [
-  "infra/tofu/**/*.py",
-  "infra/tofu/pyproject.toml",
-  "infra/tofu/uv.lock",
-]
+sources = ["infra/tofu/**/*.py", "infra/tofu/pyproject.toml", "infra/tofu/uv.lock"]
 
 # --- generate ---
 

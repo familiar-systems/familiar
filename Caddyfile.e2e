@@ -1,0 +1,42 @@
+# Reverse proxy for the full-stack e2e smoke test (`.mise/tasks/e2e`).
+#
+# Same routing shape as Caddyfile.dev, on an isolated port block so a running
+# `mise run dev` never collides with a test run. The browser reaches it as:
+#
+#   http://app.localhost:18080/            -> Vite SPA           (port 15173)
+#   http://app.localhost:18080/api/*       -> platform server    (port 13000)
+#   http://app.localhost:18080/campaign/*  -> campaign server    (port 13001)
+#   http://app.localhost:18080/catalog/*   -> campaign server    (port 13001)
+#
+# Why `:18080` (a port-only address, no host) instead of `http://app.localhost`:
+# it binds the port on all loopback addresses and matches any Host, so both the
+# curl readiness probe (127.0.0.1) and the browser (app.localhost, which
+# resolves to loopback) reach Caddy regardless of IPv4/IPv6 resolution order.
+# A port-only address also serves plain HTTP (no host name -> no auto-HTTPS /
+# local CA prompt). Upstreams are pinned to 127.0.0.1, not localhost, to match
+# where the servers actually listen: the Rust servers bind 0.0.0.0 (IPv4) and
+# Vite is launched with --host 127.0.0.1. `localhost` upstreams risk resolving
+# to ::1, where nothing listens. WebSockets (Vite HMR, campaign Loro sync at
+# /campaign/<id>/ws) upgrade automatically through `reverse_proxy` in Caddy v2.
+
+:18080 {
+	# Platform API: strip /api so the backend sees /me, /health, etc.
+	handle_path /api/* {
+		reverse_proxy 127.0.0.1:13000
+	}
+
+	# Campaign shard: forward with /campaign prefix intact.
+	handle /campaign/* {
+		reverse_proxy 127.0.0.1:13001
+	}
+
+	# Catalog: campaign-tier, prefix intact.
+	handle /catalog/* {
+		reverse_proxy 127.0.0.1:13001
+	}
+
+	# SPA catch-all (last; longer prefixes above match first).
+	handle {
+		reverse_proxy 127.0.0.1:15173
+	}
+}

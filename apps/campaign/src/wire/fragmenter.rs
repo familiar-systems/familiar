@@ -37,6 +37,10 @@ impl BatchFragmenter {
         Self { fragment_size }
     }
 
+    pub fn fragment_size(&self) -> usize {
+        self.fragment_size
+    }
+
     pub fn fragment(&self, update: Vec<u8>) -> FragmentPlan {
         if update.len() <= self.fragment_size {
             return FragmentPlan::Single { update };

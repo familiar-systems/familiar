@@ -1,8 +1,34 @@
 {
-  "enabledPlugins": {
-    "typescript-lsp@claude-plugins-official": true
-  },
   "permissions": {
-    "deny": ["Read(./**/.envrc)", "Read(./**/.env)"]
+    "deny": [
+      "Read(./**/.envrc)",
+      "Read(./**/.env)"
+    ],
+    "allow": [
+      "Bash(cargo test *)",
+      "Bash(cargo check *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo doc *)",
+      "Bash(mise run check)",
+      "Bash(mise run test)",
+      "Bash(mise run test:ts)",
+      "Bash(mise run typecheck)",
+      "Bash(mise run typecheck:ts)",
+      "Bash(mise run lint)",
+      "Bash(mise run lint:ts)",
+      "Bash(mise run format:check)",
+      "Bash(mise run format)",
+      "Bash(cargo fmt)",
+      "Bash(cargo fmt *)",
+      "Bash(mise ls *)",
+      "Bash(mise ls-remote *)",
+      "Bash(mise env *)",
+      "Bash(mise settings get *)",
+      "Bash(gh search *)"
+    ]
+  },
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true
   }
 }

@@ -63,3 +63,34 @@ pub struct InitFailedRequest {
 pub struct HeartbeatRequest {
     pub campaigns: Vec<CampaignId>,
 }
+
+// ---------------------------------------------------------------------------
+// Campaign membership
+// ---------------------------------------------------------------------------
+
+/// Functional role within a campaign.
+///
+/// Owner is a billing concern (orthogonal to permissions) and does not
+/// appear here. An owner who is a player has player-level permissions;
+/// an owner who is a GM has GM-level permissions.
+///
+/// The initial capability mapping is GM -> Write, Player -> Read for all
+/// rooms. TODO: per-Thing write access for players (some pages are
+/// player-editable) will refine this at the room-actor level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CampaignRole {
+    Gm,
+    Player,
+}
+
+/// Response from `GET /internal/platform/campaign/{id}/membership/{user_id}`.
+///
+/// **Owner: platform tier.** Called by the campaign tier at WebSocket
+/// upgrade time to verify that a user is a member of a campaign and
+/// retrieve their functional role. Returns 200 + body if a member,
+/// 404 if not.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MembershipResponse {
+    pub role: CampaignRole,
+}

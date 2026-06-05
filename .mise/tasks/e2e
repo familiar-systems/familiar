@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+#MISE description="Full-stack e2e smoke test: boots real platform+campaign+web+Caddy on an isolated port block (only Hanko stubbed), runs the Playwright smoke flow, then asserts the campaign SQLite. Run `mise run setup:playwright` once first."
+#
+# Not in `mise run check`: this compiles the Rust servers and boots ~5
+# processes (minutes, not seconds). Run it deliberately, or wire it into CI as
+# its own job. It coexists with a running `mise run dev` because it uses a
+# dedicated port block (13000/13001/15173/18080/19100), never dev's
+# (3000/3001/5173/8080). No `#MISE sources` on purpose: an e2e run should never
+# be cache-skipped.
+#
+# Auth: the real servers and the browser both POST tokens to a stub
+# /sessions/validate (apps/web/e2e/support/mock-hanko.mjs); the spec seeds the
+# `hanko` cookie. Steps 1-8 (the browser flow) live in smoke.spec.ts; steps 9
+# (graceful shutdown) and 10 (SQLite assertion) live here.
+
+set -euo pipefail
+# Job control so each background server gets its own process group; that lets
+# `kill -- -$pid` take down the whole tree (pnpm -> vite -> esbuild children),
+# leaving no orphan holding a port for the next run.
+set -m
+
+cd "${MISE_PROJECT_ROOT:-$(git rev-parse --show-toplevel)}"
+
+# ---- isolated port block (never the dev ports) ----
+PF=13000     # platform
+CG=13001     # campaign
+WEB=15173    # vite
+PROXY=18080  # caddy app apex
+HKP=19100    # mock Hanko
+HK="http://127.0.0.1:${HKP}"
+APP="http://app.localhost:${PROXY}"
+TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+
+# Shared platform<->campaign internal bearer comes from mise [env]; fail loud
+# if the task wasn't launched through mise.
+: "${INTERNAL_BEARER_PRIMARY:?must be set (mise [env] provides it; run via 'mise run e2e')}"
+
+# ---- helpers ----
+port_busy() {
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && {
+    exec 3>&- 3<&-
+    return 0
+  } || return 1
+}
+
+wait_for() { # wait_for <name> <curl args...>
+  local name="$1"
+  shift
+  local tries=120 # 120 * 0.5s = 60s
+  while ((tries-- > 0)); do
+    if curl -fsS -o /dev/null --max-time 2 "$@"; then return 0; fi
+    sleep 0.5
+  done
+  echo "FAIL: $name did not become ready (${*})" >&2
+  return 1
+}
+
+dump_logs() { # tail every server log (the trap deletes $TESTDIR on exit)
+  echo "---- last 30 lines of each server log ----" >&2
+  for f in platform campaign web caddy mock-hanko; do
+    echo "== $f ==" >&2
+    tail -n 30 "$LOGS/$f.log" 2>/dev/null >&2 || true
+  done
+}
+
+# ---- pre-flight: refuse to run if any e2e port is taken ----
+for p in "$PF" "$CG" "$WEB" "$PROXY" "$HKP"; do
+  if port_busy "$p"; then
+    echo "FAIL: port $p is in use. This is the e2e port block" >&2
+    echo "      (13000/13001/15173/18080/19100), not dev's. Stop whatever holds" >&2
+    echo "      $p (another e2e run?) and retry." >&2
+    exit 1
+  fi
+done
+
+# ---- throwaway data dirs (never touches ./data) ----
+TESTDIR="$(mktemp -d)"
+CAMPAIGN_DATA_DIR="$TESTDIR/campaigns"
+LOGS="$TESTDIR/logs"
+mkdir -p "$CAMPAIGN_DATA_DIR" "$LOGS"
+
+PIDS=()
+cleanup() {
+  for pid in "${PIDS[@]:-}"; do kill -TERM "-$pid" 2>/dev/null || true; done
+  sleep 1
+  for pid in "${PIDS[@]:-}"; do kill -KILL "-$pid" 2>/dev/null || true; done
+  rm -rf "$TESTDIR" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+# ---- build once so the readiness timeout covers startup, not compilation ----
+echo "==> building servers + DB-assertion example"
+cargo build -p familiar-systems-platform -p familiar-systems-campaign
+cargo build -p familiar-systems-campaign --example smoke_assert_db
+
+# ---- launch the stack ----
+echo "==> mock Hanko    :$HKP"
+node apps/web/e2e/support/mock-hanko.mjs "$HKP" >"$LOGS/mock-hanko.log" 2>&1 &
+PIDS+=("$!")
+
+echo "==> platform      :$PF"
+HANKO_API_URL="$HK" \
+  DATABASE_URL="sqlite://$TESTDIR/platform.db?mode=rwc" \
+  PORT="$PF" \
+  CORS_ORIGINS="$APP" \
+  CAMPAIGN_SHARD_URL="http://localhost:$CG" \
+  RUST_LOG="${RUST_LOG:-info}" \
+  "$TARGET_DIR/debug/familiar-systems-platform" >"$LOGS/platform.log" 2>&1 &
+PIDS+=("$!")
+
+echo "==> campaign      :$CG"
+CAMPAIGN_STORAGE_BACKEND=local \
+  PORT="$CG" \
+  HANKO_API_URL="$HK" \
+  CAMPAIGN_DATA_DIR="$CAMPAIGN_DATA_DIR" \
+  PLATFORM_URL="http://localhost:$PF" \
+  CAMPAIGN_IDLE_TIMEOUT_SECS=3600 \
+  CAMPAIGN_EVICTION_CHECK_INTERVAL_SECS=3600 \
+  RUST_LOG="${RUST_LOG:-info}" \
+  "$TARGET_DIR/debug/familiar-systems-campaign" >"$LOGS/campaign.log" 2>&1 &
+CAMPAIGN_PID="$!"
+PIDS+=("$CAMPAIGN_PID")
+
+echo "==> web (vite)    :$WEB"
+# --host 127.0.0.1: vite defaults to binding `localhost`, which resolves to ::1
+# on this stack; pin IPv4 so the Caddy upstream and the readiness probe (both
+# 127.0.0.1) actually reach it.
+VITE_HANKO_API_URL="$HK" \
+  VITE_SITE_URL="$APP" \
+  pnpm --filter @familiar-systems/web exec vite --host 127.0.0.1 --port "$WEB" --strictPort \
+  >"$LOGS/web.log" 2>&1 &
+PIDS+=("$!")
+
+echo "==> caddy         app.localhost:$PROXY"
+caddy run --config Caddyfile.e2e --adapter caddyfile >"$LOGS/caddy.log" 2>&1 &
+PIDS+=("$!")
+
+# ---- readiness ----
+echo "==> waiting for readiness"
+wait_for "platform" "http://127.0.0.1:$PF/health" || { dump_logs; exit 1; }
+wait_for "campaign" "http://127.0.0.1:$CG/health" || { dump_logs; exit 1; }
+wait_for "web" "http://127.0.0.1:$WEB/" || { dump_logs; exit 1; }
+# Caddy binds `:18080` (any host), so the loopback IP probe reaches it; this
+# also proves the /api -> platform proxy path end to end.
+wait_for "proxy" "http://127.0.0.1:$PROXY/api/health" || { dump_logs; exit 1; }
+
+# ---- steps 1-8: the browser flow ----
+echo "==> running Playwright smoke spec"
+rc=0
+pnpm --filter @familiar-systems/web e2e || rc=$?
+
+# ---- step 9: graceful campaign shutdown so room actors flush to SQLite ----
+echo "==> shutting campaign down (graceful flush)"
+(
+  sleep 30
+  kill -KILL "-$CAMPAIGN_PID" 2>/dev/null
+) &
+watchdog=$!
+kill -TERM "-$CAMPAIGN_PID" 2>/dev/null || true
+wait "$CAMPAIGN_PID" 2>/dev/null || true
+kill "$watchdog" 2>/dev/null || true
+
+# ---- step 10: assert the persisted campaign SQLite ----
+echo "==> asserting campaign SQLite"
+rc2=0
+shopt -s nullglob
+dbs=("$CAMPAIGN_DATA_DIR"/*.db)
+shopt -u nullglob
+if ((${#dbs[@]} == 0)); then
+  echo "FAIL: no campaign .db in $CAMPAIGN_DATA_DIR (campaign creation failed?)" >&2
+  rc2=1
+else
+  "$TARGET_DIR/debug/examples/smoke_assert_db" "${dbs[0]}" || rc2=$?
+fi
+
+# ---- verdict ----
+echo
+if ((rc == 0 && rc2 == 0)); then
+  echo "==> e2e PASSED"
+  exit 0
+fi
+echo "==> e2e FAILED (playwright rc=$rc, db-assert rc=$rc2)" >&2
+dump_logs
+exit 1

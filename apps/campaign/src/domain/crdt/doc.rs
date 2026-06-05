@@ -16,7 +16,7 @@ impl Snapshot {
 }
 
 /// Newtype for an encoded CRDT version vector.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VersionVector(pub Vec<u8>);
 
 impl VersionVector {

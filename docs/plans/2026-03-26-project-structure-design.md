@@ -3,7 +3,7 @@
 **Status:** Implemented
 **Date:** 2026-03-26
 **Supersedes:** [Project Structure Design (SPA)](../archive/plans/2026-02-14-project-structure-spa-design.md) -- same SPA decision, fundamentally different backend architecture (TypeScript full-stack to Rust server + TypeScript frontend + Python ML workers)
-**Related decisions:** [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Infrastructure](./2026-05-23-infrastructure.md), [Deployment Architecture](./2026-03-30-deployment-architecture.md), [Public site design](./2026-02-20-public-site-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](./2026-02-20-templates-as-prototype-pages.md), [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)
+**Related decisions:** [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Infrastructure](./2026-05-23-infrastructure.md), [Deployment Architecture](./2026-03-30-deployment-architecture.md), [Public site design](./2026-02-20-public-site-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as prototype pages](./2026-02-20-templates-as-prototype-pages.md), [SQLite decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)
 
 ---
 
@@ -13,9 +13,9 @@ familiar.systems is a web application with five workloads that have **different 
 
 1. **Public site** (Astro) -- static HTML for the landing page, blog, and public campaign showcase. No server process. Deploy = upload new files.
 2. **Frontend** (Vite + React SPA) -- the authenticated application. Static files served from a CDN or file server.
-3. **Platform** (Rust: Axum) -- authentication, campaign CRUD, routing table, discover endpoint. Talks to platform.db. Stateless HTTP, rarely changes.
-4. **Campaign server** (Rust: Axum + kameo) -- actor hierarchy, WebSocket collaboration (Loro CRDTs via loro-dev/protocol), AI agent conversations, serialization compiler, job dispatch. Talks to per-campaign libSQL files. Campaign-pinned: all traffic for a given campaign routes to the same server. Changes frequently.
-5. **Workers** -- job processors, language-agnostic. Today: Python ML workers (faster-whisper, pyannote) on GPU infrastructure. Deployed as k8s Jobs, dispatched by the campaign server. Job state tracked in platform.db.
+3. **Platform** (Rust: Axum) -- authentication, campaign CRUD, routing table. Talks to platform.db. Stateless HTTP, rarely changes.
+4. **Campaign server** (Rust: Axum + kameo) -- actor hierarchy, WebSocket collaboration (Loro CRDTs via loro-dev/protocol), AI agent conversations, serialization compiler, job dispatch. Talks to per-campaign SQLite files. Campaign-pinned: all traffic for a given campaign routes to the same server. Changes frequently.
+5. **Workers** -- job processors, language-agnostic. Today: a Python ML worker (WhisperX) on GPU infrastructure. Deployed as k8s Jobs, dispatched by the campaign server. Job state tracked in platform.db.
 
 ### Why five targets, not one backend
 
@@ -23,11 +23,11 @@ The [superseded design](../archive/plans/2026-02-14-project-structure-spa-design
 
 The platform/campaign split re-introduces a process boundary, but at a different seam. The old split was functional (API vs collaboration vs worker). The new split is by deployment lifecycle:
 
-**The platform barely changes.** It's CRUD on a SQLite file: auth, campaign listing, routing table, discover. Once written, it goes weeks without a deploy. Restarting it is transparent to users.
+**The platform barely changes.** It's CRUD on a SQLite file: auth, campaign listing, routing table. Once written, it goes weeks without a deploy. Restarting it is transparent to users.
 
 **The campaign server changes constantly.** It's where all the complexity lives: the actor hierarchy, CRDT sync, the serialization compiler, AI conversations. It ships daily. Restarting it disconnects active editing sessions.
 
-**Coupling them means the stable service restarts every time the volatile one ships.** Login breaks, campaign discovery breaks, the routing table drops. With the split, a campaign server deploy or crash produces "I can't open my campaign," not "the site is down."
+**Coupling them means the stable service restarts every time the volatile one ships.** Login breaks, campaign listing breaks, the routing table drops. With the split, a campaign server deploy or crash produces "I can't open my campaign," not "the site is down."
 
 **The network boundary prevents invisible coupling.** Without it, six months of development creates shortcuts: the campaign server reading platform.db directly, importing platform-internal types, sharing in-process state. The eventual split becomes an archaeological dig. With the boundary from day one, the Cargo workspace's crate boundaries enforce separation at compile time, and the HTTP interface is always exercised.
 
@@ -37,7 +37,7 @@ See [Deployment Architecture](./2026-03-30-deployment-architecture.md) for the f
 
 ### Why SPA over SSR
 
-Unchanged from the superseded design. familiar.systems's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. SSR would produce HTML that React immediately takes over -- compute spent on an HTML shell the user never sees without JavaScript. The campaign checkout model makes SSR worse: the server would block the page render waiting for the libSQL file to download from object storage. The SPA loads instantly from CDN and handles the async checkout gracefully. See the [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
+Unchanged from the superseded design. familiar.systems's content is entirely behind authentication (no SEO), and the centerpiece is a TipTap editor that is inherently client-rendered. SSR would produce HTML that React immediately takes over -- compute spent on an HTML shell the user never sees without JavaScript. The campaign checkout model makes SSR worse: the server would block the page render waiting for the SQLite file to download from object storage. The SPA loads instantly from CDN and handles the async checkout gracefully. See the [SPA vs SSR analysis](../archive/plans/2026-02-14-spa-vs-ssr-design.md) for the full evaluation.
 
 ### Decisions
 
@@ -49,7 +49,7 @@ Unchanged from the superseded design. familiar.systems's content is entirely beh
 | Server                 | Rust: Axum + kameo actors                                   | [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) |
 | CRDTs                  | Loro + loro-dev/protocol                                    | [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md)               |
 | ProseMirror binding    | loro-prosemirror                                            | [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md)               |
-| Database               | libSQL (database-per-campaign), Turso Database upgrade path | [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)                |
+| Database               | SQLite (database-per-campaign, via `sea-orm` + `sqlx-sqlite`) | [SQLite decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)              |
 | API contract           | ts-rs (type generation) + utoipa (OpenAPI)                  | This document                                                                              |
 | Public site            | Astro (static site generator)                               | [Public site design](./2026-02-20-public-site-design.md)                                   |
 | Monorepo orchestration | mise                                                        | This document                                                                              |
@@ -66,11 +66,11 @@ familiar/
 ├── apps/
 │   ├── site/              # Astro -- landing page, blog, public campaign pages
 │   ├── web/               # Vite + React SPA (behind auth)
-│   ├── platform/          # Rust binary: Axum (auth, CRUD, routing table, discover)
+│   ├── platform/          # Rust binary: Axum (auth, CRUD, routing table)
 │   └── campaign/          # Rust binary: Axum + kameo (actors, collab, AI, compiler)
 ├── crates/
-│   ├── app-shared/        # Rust library: IDs, auth, libSQL helpers (platform + campaign)
-│   ├── campaign-shared/   # Rust library: Loro wrappers, ToC/Thing schema, CrdtDoc trait, status (campaign only)
+│   ├── app-shared/        # Rust library: IDs, auth, internal bearer middleware (platform + campaign)
+│   ├── campaign-shared/   # Rust library: Loro schema constants + ts-rs types, ToC/Thing schema, status (campaign only)
 │   ├── fs-id/             # Rust utility: branded-ID inner types and traits
 │   └── fs-id-macros/      # Rust utility: #[fs_id] proc-macro for typed ID newtypes
 ├── packages/
@@ -78,8 +78,8 @@ familiar/
 │   ├── types-campaign/    # @familiar-systems/types-campaign -- generated from campaign-shared via ts-rs
 │   └── editor/            # @familiar-systems/editor -- TipTap schema + custom extensions
 ├── workers/               # Job processors (language-agnostic)
-│   ├── pyproject.toml     # Python ML workers today (faster-whisper, pyannote)
-│   └── src/
+│   ├── ruff.toml          # Shared Python lint config
+│   └── whisperx/          # Python ML worker today (WhisperX); managed by uv
 ├── tooling/
 │   ├── tsconfig/          # Shared TypeScript compiler configs
 │   │   ├── base.json
@@ -167,7 +167,7 @@ packages/types-app/
 
 ### `@familiar-systems/types-campaign` -- Campaign-scoped types
 
-Generated from `crates/campaign-shared/`. Contains campaign-scoped IDs (ThingId, BlockId, SessionId, JournalId, SuggestionId, ConversationId) and document schema types (TocEntry, TocEntryKind, ThingHandle). The platform server never uses these types.
+Generated from `crates/campaign-shared/`. Contains campaign-scoped IDs (ThingId, BlockId, SessionId, SuggestionId, ConversationId) and document schema types (TocEntry, TocEntryKind, TocSuggestion, ThingHandle). The platform server never uses these types.
 
 ```
 packages/types-campaign/
@@ -230,7 +230,7 @@ Handles everything before a campaign opens:
 - **Authentication** -- Hanko JWT verification. User identity, profiles, session management.
 - **Campaign CRUD** -- create, list, delete, transfer ownership. Metadata lives in platform.db.
 - **Routing table** -- maps campaign ID to campaign server address. Lease-based: each checkout is a lease with a heartbeat.
-- **Checkout endpoint** -- `POST /api/campaigns/:id/checkout` returns `{ ws_url: "wss://{apex}/campaign/:id/ws", api_base: "https://{apex}/campaign/:id" }`. The SPA calls this to acquire access to a campaign. URLs are **shard-agnostic**: they carry `campaign_id` but never a `shard_id` - ingress-layer routing resolves the owning shard. See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture).
+- **Implicit checkout** -- `GET /api/campaigns/{id}` fetches the campaign and ensures it is checked out on a shard (the platform calls `PUT /internal/campaign/{id}/lease` pod-to-pod); the lease acquisition is invisible to the caller. There is no separate checkout endpoint and no `{ ws_url, api_base }` response body. The SPA derives campaign URLs by path convention (`/campaign/{id}/ws`, `/campaign/{id}/...`), which are **shard-agnostic** - they carry `campaign_id` but never a `shard_id`; ingress-layer routing resolves the owning shard. See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture).
 - **Campaign server health monitoring** -- receives heartbeats, tracks load, detects failed leases.
 
 Talks to **platform.db**: users, campaigns, subscriptions, the routing table. Stateless HTTP; traffic is bursty, short-lived requests.
@@ -241,7 +241,7 @@ Handles everything after a campaign is checked out:
 
 - **WebSocket collaboration** -- Loro CRDTs synced via loro-dev/protocol. Room-based multiplexing: multiple Thing pages, ToC, and agent conversation streams share one WebSocket per campaign per client.
 - **Campaign-scoped REST** -- entity queries, suggestion review, conversation messages. The SPA calls the campaign server directly for these (not through the platform).
-- **Campaign checkout/checkin** -- downloads libSQL files from object storage, opens them on local disk, spawns actor trees. Single-server ownership via lease-based routing.
+- **Campaign checkout/checkin** -- downloads SQLite files from object storage, opens them on local disk, spawns actor trees. Single-server ownership via lease-based routing.
 - **Actor lifecycle** -- CampaignSupervisor, ThingActor, TocActor, RelationshipGraph, UserSession, AgentConversation. Independent async tasks with per-actor persistence and eviction.
 - **AI agent conversations** -- AgentConversation actors connect to LLM inference (Nebius), run the serialization compiler, route compiled suggestions to ThingActors.
 - **Job dispatch** -- dispatches audio processing to workers (k8s Jobs on GPU infrastructure), receives structured transcripts, routes them to actors for entity extraction and journal drafting.
@@ -250,13 +250,13 @@ Talks to **campaigns/\*.db**: one file per campaign. Block records, entity data,
 
 ### `crates/app-shared/` -- the cross-service crate
 
-Types and infrastructure that cross the platform/campaign boundary: IDs (CampaignId, UserId), trait-based interfaces (`RoutingTable`, etc.), auth (JWT validation shared between both services), and libSQL helpers. Both platform and campaign depend on this crate. The campaign server communicates with the platform exclusively through traits with a single `Remote*` implementation (HTTP calls). There is no `Local` implementation. The network boundary is always present, even in development.
+Types and infrastructure that cross the platform/campaign boundary: IDs (CampaignId, UserId), auth (Hanko JWT validation shared by both services), and the internal bearer middleware. Both platform and campaign depend on this crate. Cross-service calls go through concrete HTTP clients - `PlatformInternalClient` (campaign -> platform) and `CampaignInternalClient` (platform -> campaign) - not a trait abstraction. The network boundary is always present, even in development.
 
 The litmus test: **does the platform server need this type?** If yes, it belongs in `app-shared`. If only the campaign server uses it, it belongs in `campaign-shared`.
 
 ### `crates/campaign-shared/` -- the campaign-only crate
 
-Campaign-scoped types and infrastructure that the platform server never touches. Contains the Loro document layer (CrdtDoc trait, typed wrappers for Thing and ToC documents, ProseMirror interop conventions), campaign-scoped IDs (ThingId, BlockId, SessionId, JournalId, SuggestionId, ConversationId), view status types (GmOnly, Known, Retconned), and WebSocket notification types. Only the campaign server depends on this crate.
+Campaign-scoped types the platform server never touches: Loro schema constants and ts-rs-exported types (ToC/Thing container and key names, `TocEntry`, `ThingHandle`), ProseMirror interop conventions, onboarding DTOs, campaign-scoped IDs (ThingId, BlockId, SessionId, SuggestionId, ConversationId), view status types (GmOnly, Known, Retconned), and WebSocket notification types. The concrete Loro doc wrappers (`LoroThingDoc`, `LoroTocDoc`) and the `CrdtDoc` trait are app-local in `apps/campaign` (`src/loro/`, `src/domain/crdt/`), not here. Only the campaign server depends on this crate.
 
 ### Utility crates
 
@@ -267,9 +267,9 @@ Smaller cross-cutting libraries used by both shared crates live alongside them u
 Both shared crates and both binaries contribute to type generation:
 
 - **ts-rs** -- Rust structs derive `#[derive(TS)]` with a per-type `#[ts(export_to = "...")]` attribute that routes each type to the correct package. Types in `crates/app-shared/` export to `packages/types-app/src/generated/`; types in `crates/campaign-shared/` export to `packages/types-campaign/src/generated/`. Service-specific request/response types in each binary's crate target whichever package is appropriate.
-- **utoipa** -- Route handlers are annotated with `#[utoipa::path(...)]`. Both the platform and campaign server generate OpenAPI specs. The SPA consumes both: `lib/api.ts` for platform calls, campaign-scoped REST uses the URL from the discover endpoint.
+- **utoipa** -- Route handlers are annotated with `#[utoipa::path(...)]`. Both the platform and campaign server generate OpenAPI specs. The SPA consumes both: `lib/api.ts` for platform calls, campaign-scoped REST uses path-convention URLs (`/campaign/{id}/...`).
 
-See [libSQL decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md) for the database architecture.
+See [SQLite decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md) for the database architecture.
 
 ---
 
@@ -279,10 +279,10 @@ Audio processing is compute-heavy Python work that runs on GPU infrastructure (N
 
 ```
 workers/
-├── pyproject.toml         # Managed by uv
-└── src/
-    ├── transcribe.py      # faster-whisper: audio -> timestamped transcript
-    └── diarize.py         # pyannote: speaker attribution on transcript
+├── ruff.toml                       # Shared Python lint config
+└── whisperx/                       # WhisperX worker: transcription + diarization in one pipeline
+    ├── pyproject.toml              # Managed by uv
+    └── src/familiar_systems_whisperx/
 ```
 
 Workers are stateless k8s Jobs. The campaign server dispatches them with audio file references; job state is tracked in platform.db. Workers return structured transcripts with speaker attribution and timestamps. The campaign server routes results to actors for the campaign-scoped stages (entity extraction, journal drafting, suggestion creation) that require the campaign graph. See [Deployment Architecture](./2026-03-30-deployment-architecture.md) for the job dispatch model and deferred design decisions.
@@ -352,7 +352,7 @@ apps/web/
 
 Static files. In development, `vite dev` serves files with HMR and proxies platform API requests. In production, `vite build` outputs content-hashed chunks -- upload to CDN or serve with nginx.
 
-`lib/api.ts` is a typed fetch client generated from the OpenAPI specs (via utoipa). This replaces the tRPC client from the superseded design. The SPA uses it for platform calls; campaign-scoped REST uses the URL returned by the discover endpoint. `lib/collab.ts` configures the loro-prosemirror binding for CRDT sync with the campaign server.
+`lib/api.ts` is a typed fetch client generated from the OpenAPI specs (via utoipa). This replaces the tRPC client from the superseded design. The SPA uses it for platform calls; campaign-scoped REST uses path-convention URLs (`/campaign/{id}/...`). `lib/collab.ts` configures the loro-prosemirror binding for CRDT sync with the campaign server.
 
 **Depends on:** `@familiar-systems/types-app`, `@familiar-systems/types-campaign`, `@familiar-systems/editor`, `react`, `loro-prosemirror`, `vite`
 
@@ -411,7 +411,7 @@ This sets the base to `packages/`. Each Rust type's `#[ts(export_to = "...")]` a
 │   static     │ │    (SPA)     │ │   (platform)    │
 └──────────────┘ │    static    │ │    :3000        │
                  └──────────────┘ └────────┬────────┘
-                                           │ discover
+                                           │ lease (PUT)
                                            ▼
                                   ┌─────────────────┐
                                   │      c1.        │
@@ -423,7 +423,7 @@ This sets the base to `packages/`. Each Rust type's `#[ts(export_to = "...")]` a
                                   └────────┬────────┘
                                          │
                                   ┌──────┴──────┐
-                                  │ libSQL files │
+                                  │ SQLite files │
                                   │  (/data/)    │
                                   └─────────────┘
 ```
@@ -435,7 +435,7 @@ Traefik (via k3s Ingress) routes by path prefix within each of two apexes per en
 - `app.familiar.systems/api/` -> platform pod (port 3000, HTTP) via `StripPrefix` middleware
 - `app.familiar.systems/campaign/{campaign_id}/` -> campaign server pod (port 3001, HTTP + WebSocket) via `StripPrefix` middleware
 
-See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture) for the authoritative URL contract. The SPA talks to the platform for login, campaign listing, and checkout. The checkout endpoint returns a shard-agnostic URL. The SPA opens that URL directly; ingress routes `/campaign/{id}/*` to the owning shard. The platform is never in the CRDT hot path.
+See [app-server PRD §URL architecture](./2026-04-11-app-server-prd.md#url-architecture) for the authoritative URL contract. The SPA talks to the platform for login and campaign listing; `GET /api/campaigns/{id}` triggers the implicit lease. The SPA then opens path-convention campaign URLs directly; ingress routes `/campaign/{id}/*` to the owning shard. The platform is never in the CRDT hot path.
 
 Workers run on separate GPU infrastructure (Nebius) as k8s Jobs, not as persistent services. They are not exposed to the internet. See [Deployment Architecture](./2026-03-30-deployment-architecture.md) for the job dispatch model and service topology, and [Infrastructure](./2026-05-23-infrastructure.md) for cluster configuration.
 
@@ -457,7 +457,7 @@ Contributors open the marketing apex at `http://localhost:8080/` and the app ape
 
 See [Deployment Architecture §One topology everywhere](./2026-03-30-deployment-architecture.md#one-topology-everywhere) and [app-server PRD §Deployment targets](./2026-04-11-app-server-prd.md#deployment-targets) for the full per-environment detail.
 
-No Docker database container needed. libSQL files on disk. `:memory:` databases for tests.
+No Docker database container needed. SQLite files on disk. `:memory:` databases for tests.
 
 ---
 
@@ -478,7 +478,7 @@ Maximum strictness, no exceptions. TypeScript types are erased at runtime -- Zod
 
 ## Design Principles
 
-**All backend logic is Rust.** Two binaries (platform and campaign server) and two shared crates, all in one Cargo workspace. Actor isolation handles concurrency within the campaign server; process isolation handles deployment lifecycles between services. There is no TypeScript server code. The crate split mirrors the deployment boundary: `app-shared` holds types both servers need; `campaign-shared` holds campaign-only concerns (Loro, ToC, status). The litmus test: "does the platform server need this type?" If yes, `app-shared`. If no, `campaign-shared`.
+**All backend logic is Rust.** Two binaries (platform and campaign server) and two shared crates, all in one Cargo workspace. Actor isolation handles concurrency within the campaign server; process isolation handles deployment lifecycles between services. There is no TypeScript server code. The crate split mirrors the deployment boundary: `app-shared` holds types both servers need; `campaign-shared` holds campaign-only concerns (Loro schema constants, ToC, status). The litmus test: "does the platform server need this type?" If yes, `app-shared`. If no, `campaign-shared`.
 
 **Three TypeScript packages, no more.** `@familiar-systems/types-app` (platform-level types, generated from `app-shared`), `@familiar-systems/types-campaign` (campaign-scoped types, generated from `campaign-shared`), and `@familiar-systems/editor` (TipTap schema). If you're writing domain logic, database queries, or AI orchestration, it's Rust in `crates/` or `apps/`. The superseded design's `@familiar-systems/db`, `@familiar-systems/auth`, `@familiar-systems/ai`, and `@familiar-systems/queue` are gone.
 

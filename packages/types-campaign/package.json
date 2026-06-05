@@ -14,7 +14,8 @@
     "format:check": "oxfmt --check ."
   },
   "dependencies": {
-    "@familiar-systems/types-app": "workspace:*"
+    "@familiar-systems/types-app": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",

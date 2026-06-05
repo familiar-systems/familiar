@@ -6,20 +6,22 @@
 //! `familiar_systems_campaign_shared::loro::toc`. The wrapper below is the
 //! Rust-side read/write interface against that schema.
 
+use serde::Serialize;
 use std::borrow::Cow;
 
-use familiar_systems_campaign_shared::id::{JournalId, ThingId};
+use familiar_systems_campaign_shared::id::{ConversationId, ThingId};
 use familiar_systems_campaign_shared::loro::toc::{
-    CONTAINER_META, CONTAINER_TOC, KEY_JOURNAL_ID, KEY_KIND, KEY_LANDING_PAGE_ID, KEY_THING_ID,
-    KEY_TITLE, KIND_JOURNAL, KIND_TEXT, KIND_THING, TocEntry,
+    CONTAINER_TOC, KEY_CONVERSATION_ID, KEY_KIND, KEY_THING_ID, KEY_TITLE, KEY_VISIBILITY,
+    KIND_FOLDER, KIND_SUGGESTION, KIND_THING, TocEntry,
 };
+use familiar_systems_campaign_shared::status::Status;
 use loro::{LoroDoc, LoroMap, LoroTree, LoroValue, TreeID, ValueOrContainer};
 
 use crate::domain::crdt::doc::{CrdtDoc, DocError, Snapshot, VersionVector};
 
 /// A node in the ToC tree, as read from the LoroDoc.
 /// Contains the entry data and its children (recursive).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct TocTreeNode {
     pub tree_id: TreeID,
     pub entry: TocEntry,
@@ -32,13 +34,13 @@ pub struct TocTreeNode {
 ///
 /// ```text
 /// LoroDoc root:
-///   "meta" (LoroMap)
-///     "landingPageId": string
 ///   "toc" (LoroTree, fractional index enabled)
 ///     Node metadata (LoroMap per node):
-///       "kind": "text" | "thing" | "journal"
+///       "kind": "folder" | "thing" | "suggestion"
 ///       "title": string
-///       "thingId" | "journalId": string (variant-specific)
+///       "visibility": "gmOnly" | "known" | "retconned"
+///       "thingId": string          (Thing only)
+///       "conversationId": string   (Suggestion only)
 /// ```
 pub struct LoroTocDoc {
     doc: LoroDoc,
@@ -46,13 +48,11 @@ pub struct LoroTocDoc {
 
 #[allow(clippy::new_without_default)]
 impl LoroTocDoc {
-    /// Create a new empty ToC document with initialized containers.
+    /// Create a new empty ToC document with its tree container initialized.
     pub fn new() -> Self {
         let doc = LoroDoc::new();
-        // Initialize containers so they exist from the start.
-        // Avoids the concurrent insert_container hazard.
-        let meta = doc.get_map(CONTAINER_META);
-        meta.insert(KEY_LANDING_PAGE_ID, "").unwrap();
+        // Initialize the tree up front so it exists from the start, avoiding the
+        // concurrent insert_container hazard.
         let tree = doc.get_tree(CONTAINER_TOC);
         tree.enable_fractional_index(0);
         Self { doc }
@@ -67,10 +67,6 @@ impl LoroTocDoc {
     }
 
     // -- Private helpers --
-
-    fn meta(&self) -> LoroMap {
-        self.doc.get_map(CONTAINER_META)
-    }
 
     fn tree(&self) -> LoroTree {
         self.doc.get_tree(CONTAINER_TOC)
@@ -87,53 +83,113 @@ impl LoroTocDoc {
             .map_err(|e| format!("failed to export toc update: {e}"))
     }
 
+    fn read_status(meta: &LoroMap) -> Option<Status> {
+        match meta.get(KEY_VISIBILITY)? {
+            ValueOrContainer::Value(LoroValue::String(s)) => Status::from_loro_str(&s),
+            _ => None,
+        }
+    }
+
     /// Write a `TocEntry` into a tree node's metadata map.
+    ///
+    /// TODO: Inline suggestions (`TocSuggestion`) on Folder/Thing entries are
+    /// not written here. They need their own read/write path, likely as a
+    /// LoroList sub-container on each node's metadata map. During an active
+    /// session the CRDT is authoritative for suggestion state; on checkout
+    /// they are hydrated from SQLite by the TocActor.
     fn write_entry_to_meta(meta: &LoroMap, entry: &TocEntry) {
         match entry {
-            TocEntry::Text { title } => {
-                meta.insert(KEY_KIND, KIND_TEXT).unwrap();
+            TocEntry::Folder {
+                title, visibility, ..
+            } => {
+                meta.insert(KEY_KIND, KIND_FOLDER).unwrap();
                 meta.insert(KEY_TITLE, title.as_str()).unwrap();
+                meta.insert(KEY_VISIBILITY, visibility.as_loro_str())
+                    .unwrap();
             }
-            TocEntry::Thing { title, thing_id } => {
+            TocEntry::Thing {
+                title,
+                thing_id,
+                visibility,
+                ..
+            } => {
                 meta.insert(KEY_KIND, KIND_THING).unwrap();
                 meta.insert(KEY_TITLE, title.as_str()).unwrap();
-                meta.insert(KEY_THING_ID, thing_id.0.as_str()).unwrap();
+                meta.insert(KEY_THING_ID, thing_id.0.to_string()).unwrap();
+                meta.insert(KEY_VISIBILITY, visibility.as_loro_str())
+                    .unwrap();
             }
-            TocEntry::Journal { title, journal_id } => {
-                meta.insert(KEY_KIND, KIND_JOURNAL).unwrap();
-                meta.insert(KEY_TITLE, title.as_str()).unwrap();
-                meta.insert(KEY_JOURNAL_ID, journal_id.0.as_str()).unwrap();
+            TocEntry::Suggestion {
+                conversation_id,
+                title,
+                visibility,
+            } => {
+                meta.insert(KEY_KIND, KIND_SUGGESTION).unwrap();
+                if let Some(t) = title {
+                    meta.insert(KEY_TITLE, t.as_str()).unwrap();
+                }
+                meta.insert(KEY_CONVERSATION_ID, conversation_id.0.to_string().as_str())
+                    .unwrap();
+                meta.insert(KEY_VISIBILITY, visibility.as_loro_str())
+                    .unwrap();
             }
         }
     }
 
     /// Read a `TocEntry` from a tree node's metadata map.
+    /// Inline suggestions are not read here (see TODO on `write_entry_to_meta`).
     fn read_entry_from_meta(meta: &LoroMap) -> Option<TocEntry> {
         let kind = match meta.get(KEY_KIND)? {
             ValueOrContainer::Value(LoroValue::String(s)) => s.to_string(),
             _ => return None,
         };
-        let title = match meta.get(KEY_TITLE)? {
-            ValueOrContainer::Value(LoroValue::String(s)) => s.to_string(),
-            _ => return None,
-        };
+        let visibility = Self::read_status(meta)?;
         match kind.as_str() {
-            KIND_TEXT => Some(TocEntry::Text { title }),
-            KIND_THING => {
-                let thing_id = match meta.get(KEY_THING_ID)? {
-                    ValueOrContainer::Value(LoroValue::String(s)) => ThingId(s.to_string().into()),
+            KIND_FOLDER => {
+                let title = match meta.get(KEY_TITLE)? {
+                    ValueOrContainer::Value(LoroValue::String(s)) => s.to_string(),
                     _ => return None,
                 };
-                Some(TocEntry::Thing { title, thing_id })
+                Some(TocEntry::Folder {
+                    title,
+                    visibility,
+                    suggestions: Vec::new(),
+                })
             }
-            KIND_JOURNAL => {
-                let journal_id = match meta.get(KEY_JOURNAL_ID)? {
+            KIND_THING => {
+                let title = match meta.get(KEY_TITLE)? {
+                    ValueOrContainer::Value(LoroValue::String(s)) => s.to_string(),
+                    _ => return None,
+                };
+                let thing_id = match meta.get(KEY_THING_ID)? {
                     ValueOrContainer::Value(LoroValue::String(s)) => {
-                        JournalId(s.to_string().into())
+                        ThingId::from(ulid::Ulid::from_string(&s).ok()?)
                     }
                     _ => return None,
                 };
-                Some(TocEntry::Journal { title, journal_id })
+                Some(TocEntry::Thing {
+                    title,
+                    thing_id,
+                    visibility,
+                    suggestions: Vec::new(),
+                })
+            }
+            KIND_SUGGESTION => {
+                let title = match meta.get(KEY_TITLE) {
+                    Some(ValueOrContainer::Value(LoroValue::String(s))) => Some(s.to_string()),
+                    _ => None,
+                };
+                let conversation_id = match meta.get(KEY_CONVERSATION_ID)? {
+                    ValueOrContainer::Value(LoroValue::String(s)) => {
+                        ConversationId(ulid::Ulid::from_string(&s).ok()?)
+                    }
+                    _ => return None,
+                };
+                Some(TocEntry::Suggestion {
+                    conversation_id,
+                    title,
+                    visibility,
+                })
             }
             _ => None,
         }
@@ -232,30 +288,30 @@ impl LoroTocDoc {
         self.read_children(&tree, None)
     }
 
+    /// Find the `TreeID` of the node representing `thing_id`, if it appears
+    /// anywhere in the tree. Used to resolve a parent Thing for placement.
+    pub fn find_thing_node(&self, thing_id: &ThingId) -> Option<TreeID> {
+        fn search(nodes: &[TocTreeNode], target: &ThingId) -> Option<TreeID> {
+            for node in nodes {
+                if let TocEntry::Thing { thing_id: id, .. } = &node.entry
+                    && id == target
+                {
+                    return Some(node.tree_id);
+                }
+                if let Some(found) = search(&node.children, target) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        search(&self.read_tree(), thing_id)
+    }
+
     /// Read a single entry by TreeID.
     pub fn read_entry(&self, node: TreeID) -> Option<TocEntry> {
         let tree = self.tree();
         let meta = tree.get_meta(node).ok()?;
         Self::read_entry_from_meta(&meta)
-    }
-
-    // -- Metadata methods --
-
-    /// Get the current landing page ID.
-    pub fn landing_page_id(&self) -> Option<String> {
-        let meta = self.meta();
-        match meta.get(KEY_LANDING_PAGE_ID)? {
-            ValueOrContainer::Value(LoroValue::String(s)) if !s.is_empty() => Some(s.to_string()),
-            _ => None,
-        }
-    }
-
-    /// Set the landing page ID. Returns delta bytes for broadcasting.
-    pub fn set_landing_page(&mut self, page_id: &str) -> Result<Vec<u8>, String> {
-        let meta = self.meta();
-        self.with_delta(|| {
-            meta.insert(KEY_LANDING_PAGE_ID, page_id).unwrap();
-        })
     }
 }
 
@@ -297,6 +353,25 @@ mod tests {
     use super::*;
     use familiar_systems_campaign_shared::loro::toc::TocEntryKind;
 
+    fn folder(title: &str) -> TocEntry {
+        TocEntry::Folder {
+            title: title.to_string(),
+            visibility: Status::Known,
+            suggestions: Vec::new(),
+        }
+    }
+
+    fn thing(title: &str) -> (TocEntry, ThingId) {
+        let thing_id = ThingId::generate();
+        let entry = TocEntry::Thing {
+            title: title.to_string(),
+            thing_id: thing_id.clone(),
+            visibility: Status::Known,
+            suggestions: Vec::new(),
+        };
+        (entry, thing_id)
+    }
+
     #[test]
     fn new_toc_has_empty_tree() {
         let doc = LoroTocDoc::new();
@@ -305,11 +380,9 @@ mod tests {
     }
 
     #[test]
-    fn add_text_entry_at_root() {
+    fn add_folder_at_root() {
         let mut doc = LoroTocDoc::new();
-        let entry = TocEntry::Text {
-            title: "Chapter 1".to_string(),
-        };
+        let entry = folder("Chapter 1");
         let (delta, _id) = doc.add_entry(None, &entry).unwrap();
         assert!(!delta.is_empty());
 
@@ -320,50 +393,73 @@ mod tests {
     }
 
     #[test]
-    fn add_thing_entry_with_target() {
+    fn add_thing_entry() {
         let mut doc = LoroTocDoc::new();
-        let entry = TocEntry::Thing {
-            title: "Korgath the Destroyer".to_string(),
-            thing_id: ThingId("abc123".to_string().into()),
-        };
+        let (entry, expected_id) = thing("Korgath the Destroyer");
         let (_, _) = doc.add_entry(None, &entry).unwrap();
 
         let tree = doc.read_tree();
         assert_eq!(tree[0].entry.kind(), TocEntryKind::Thing);
         if let TocEntry::Thing { thing_id, .. } = &tree[0].entry {
-            assert_eq!(thing_id.0.as_str(), "abc123");
+            assert_eq!(*thing_id, expected_id);
         } else {
             panic!("expected Thing variant");
         }
     }
 
     #[test]
-    fn add_journal_entry() {
+    fn add_suggestion_entry() {
         let mut doc = LoroTocDoc::new();
-        let entry = TocEntry::Journal {
-            title: "Session 5 Notes".to_string(),
-            journal_id: JournalId("j001".to_string().into()),
+        let entry = TocEntry::Suggestion {
+            conversation_id: ConversationId(ulid::Ulid::new()),
+            title: Some("Proposed NPC".to_string()),
+            visibility: Status::GmOnly,
         };
         let (_, _) = doc.add_entry(None, &entry).unwrap();
 
         let tree = doc.read_tree();
-        assert_eq!(tree[0].entry.kind(), TocEntryKind::Journal);
+        assert_eq!(tree[0].entry.kind(), TocEntryKind::Suggestion);
+        assert_eq!(tree[0].entry.title(), Some("Proposed NPC"));
+    }
+
+    #[test]
+    fn suggestion_without_title() {
+        let mut doc = LoroTocDoc::new();
+        let entry = TocEntry::Suggestion {
+            conversation_id: ConversationId(ulid::Ulid::new()),
+            title: None,
+            visibility: Status::GmOnly,
+        };
+        let (_, _) = doc.add_entry(None, &entry).unwrap();
+
+        let tree = doc.read_tree();
+        assert_eq!(tree[0].entry.title(), None);
+    }
+
+    #[test]
+    fn visibility_round_trips() {
+        let mut doc = LoroTocDoc::new();
+        for status in [Status::GmOnly, Status::Known, Status::Retconned] {
+            let entry = TocEntry::Folder {
+                title: format!("{status:?}"),
+                visibility: status,
+                suggestions: Vec::new(),
+            };
+            doc.add_entry(None, &entry).unwrap();
+        }
+
+        let tree = doc.read_tree();
+        assert_eq!(tree[0].entry.visibility(), &Status::GmOnly);
+        assert_eq!(tree[1].entry.visibility(), &Status::Known);
+        assert_eq!(tree[2].entry.visibility(), &Status::Retconned);
     }
 
     #[test]
     fn nested_entries() {
         let mut doc = LoroTocDoc::new();
-
-        let parent_entry = TocEntry::Text {
-            title: "Act I".to_string(),
-        };
-        let (_, parent_id) = doc.add_entry(None, &parent_entry).unwrap();
-
-        let child_entry = TocEntry::Thing {
-            title: "The Dragon's Lair".to_string(),
-            thing_id: ThingId("xyz".to_string().into()),
-        };
-        let (_, _child_id) = doc.add_entry(Some(parent_id), &child_entry).unwrap();
+        let (_, parent_id) = doc.add_entry(None, &folder("Act I")).unwrap();
+        let (child_entry, _) = thing("The Dragon's Lair");
+        doc.add_entry(Some(parent_id), &child_entry).unwrap();
 
         let tree = doc.read_tree();
         assert_eq!(tree.len(), 1, "one root node");
@@ -372,16 +468,23 @@ mod tests {
     }
 
     #[test]
+    fn find_thing_node_locates_nested_thing() {
+        let mut doc = LoroTocDoc::new();
+        let (_, folder_id) = doc.add_entry(None, &folder("Act I")).unwrap();
+        let (thing_entry, thing_id) = thing("The Dragon's Lair");
+        let (_, tree_id) = doc.add_entry(Some(folder_id), &thing_entry).unwrap();
+
+        assert_eq!(doc.find_thing_node(&thing_id), Some(tree_id));
+        assert!(
+            doc.find_thing_node(&ThingId::generate()).is_none(),
+            "absent thing resolves to None"
+        );
+    }
+
+    #[test]
     fn remove_entry() {
         let mut doc = LoroTocDoc::new();
-        let (_, id) = doc
-            .add_entry(
-                None,
-                &TocEntry::Text {
-                    title: "Temp".to_string(),
-                },
-            )
-            .unwrap();
+        let (_, id) = doc.add_entry(None, &folder("Temp")).unwrap();
 
         let delta = doc.remove_entry(id).unwrap();
         assert!(!delta.is_empty());
@@ -393,19 +496,9 @@ mod tests {
     #[test]
     fn update_entry() {
         let mut doc = LoroTocDoc::new();
-        let (_, id) = doc
-            .add_entry(
-                None,
-                &TocEntry::Text {
-                    title: "Draft".to_string(),
-                },
-            )
-            .unwrap();
+        let (_, id) = doc.add_entry(None, &folder("Draft")).unwrap();
 
-        let updated = TocEntry::Thing {
-            title: "Final".to_string(),
-            thing_id: ThingId("t1".to_string().into()),
-        };
+        let (updated, _) = thing("Final");
         doc.update_entry(id, &updated).unwrap();
 
         let entry = doc.read_entry(id).unwrap();
@@ -413,55 +506,90 @@ mod tests {
     }
 
     #[test]
-    fn landing_page() {
-        let mut doc = LoroTocDoc::new();
-        assert!(doc.landing_page_id().is_none());
-
-        doc.set_landing_page("page1").unwrap();
-        assert_eq!(doc.landing_page_id(), Some("page1".to_string()));
-    }
-
-    #[test]
     fn snapshot_round_trip() {
         let mut doc = LoroTocDoc::new();
-        doc.add_entry(
-            None,
-            &TocEntry::Text {
-                title: "A".to_string(),
-            },
-        )
-        .unwrap();
-        doc.set_landing_page("lp1").unwrap();
+        doc.add_entry(None, &folder("A")).unwrap();
 
         let snapshot = doc.export_snapshot().unwrap();
         let doc2 = LoroTocDoc::from_snapshot(&snapshot).unwrap();
 
         let tree = doc2.read_tree();
         assert_eq!(tree.len(), 1);
-        assert_eq!(tree[0].entry.title(), "A");
-        assert_eq!(doc2.landing_page_id(), Some("lp1".to_string()));
+        assert_eq!(tree[0].entry.title(), Some("A"));
     }
 
+    /// Proves that a client doc stays converged with a server doc across
+    /// a realistic sequence of mutations, each applied as a broadcast delta.
+    /// This is the contract the TocActor relies on: every public mutation
+    /// returns a delta, and applying that delta to a clone reproduces the
+    /// full state.
     #[test]
-    fn delta_can_be_applied_to_another_doc() {
+    fn server_client_convergence_across_mutation_sequence() {
+        macro_rules! apply {
+            ($server:expr, $client:expr, $delta:expr) => {{
+                $client.apply_updates(&[$delta]).unwrap();
+                assert_eq!(
+                    $server.debug_value(),
+                    $client.debug_value(),
+                    "docs diverged after applying delta"
+                );
+            }};
+        }
+
         let mut server = LoroTocDoc::new();
         let snapshot = server.export_snapshot().unwrap();
-
         let mut client = LoroTocDoc::from_snapshot(&snapshot).unwrap();
 
-        let (delta, _) = server
-            .add_entry(
-                None,
-                &TocEntry::Text {
-                    title: "Synced".to_string(),
-                },
-            )
-            .unwrap();
+        // 1. Add two root-level entries: a folder and a thing.
+        let (delta, folder_id) = server.add_entry(None, &folder("Act I")).unwrap();
+        apply!(server, client, delta);
 
-        client.apply_updates(&[delta]).unwrap();
+        let (thing_entry, _thing_id) = thing("The Iron Citadel");
+        let (delta, thing_node_id) = server.add_entry(None, &thing_entry).unwrap();
+        apply!(server, client, delta);
 
-        let tree = client.read_tree();
-        assert_eq!(tree.len(), 1);
-        assert_eq!(tree[0].entry.title(), "Synced");
+        assert_eq!(server.read_tree().len(), 2);
+
+        // 2. Move the thing under the folder.
+        let delta = server.move_entry(thing_node_id, Some(folder_id)).unwrap();
+        apply!(server, client, delta);
+
+        let tree = server.read_tree();
+        assert_eq!(tree.len(), 1, "only the folder at root");
+        assert_eq!(tree[0].children.len(), 1, "thing is now a child");
+        assert_eq!(tree[0].children[0].entry, thing_entry);
+
+        // 3. Add a second child and reorder it before the first.
+        let (sibling_entry, _) = thing("The Shattered Gate");
+        let (delta, sibling_id) = server.add_entry(Some(folder_id), &sibling_entry).unwrap();
+        apply!(server, client, delta);
+
+        let delta = server.move_before(sibling_id, thing_node_id).unwrap();
+        apply!(server, client, delta);
+
+        let children = &server.read_tree()[0].children;
+        assert_eq!(children[0].entry, sibling_entry, "sibling moved first");
+        assert_eq!(children[1].entry, thing_entry, "original thing second");
+
+        // 4. Update an entry's metadata.
+        let updated = TocEntry::Folder {
+            title: "Act I: The Beginning".to_string(),
+            visibility: Status::GmOnly,
+            suggestions: Vec::new(),
+        };
+        let delta = server.update_entry(folder_id, &updated).unwrap();
+        apply!(server, client, delta);
+
+        assert_eq!(server.read_entry(folder_id).unwrap(), updated);
+
+        // 5. Remove an entry.
+        let delta = server.remove_entry(sibling_id).unwrap();
+        apply!(server, client, delta);
+
+        let tree = server.read_tree();
+        assert_eq!(tree[0].children.len(), 1, "sibling removed");
+
+        // Final: full read_tree equality (not just debug_value).
+        assert_eq!(server.read_tree(), client.read_tree());
     }
 }

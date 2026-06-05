@@ -4,9 +4,9 @@
 //! pre-installed as a default header so call sites don't have to remember it.
 
 use familiar_systems_app_shared::campaigns::internal::{
-    HeartbeatRequest, InitFailedRequest, PatchCampaignMirror,
+    CampaignRole, HeartbeatRequest, InitFailedRequest, MembershipResponse, PatchCampaignMirror,
 };
-use familiar_systems_app_shared::id::CampaignId;
+use familiar_systems_app_shared::id::{CampaignId, UserId};
 use reqwest::{Client, header};
 use std::sync::Arc;
 
@@ -110,6 +110,32 @@ impl PlatformInternalClient {
             Err(PlatformInternalError::Status {
                 status: resp.status(),
             })
+        }
+    }
+
+    /// `GET /internal/platform/campaign/{id}/membership/{user_id}`: check
+    /// whether a user is a member of a campaign and retrieve their role.
+    ///
+    /// Called at WebSocket upgrade time (once per connection). Returns
+    /// `Ok(Some(role))` if the user is a member, `Ok(None)` on 404 (not
+    /// a member), `Err` on transport or unexpected status.
+    pub async fn check_membership(
+        &self,
+        campaign_id: &str,
+        user_id: &UserId,
+    ) -> Result<Option<CampaignRole>, PlatformInternalError> {
+        let url = format!(
+            "{}/internal/platform/campaign/{}/membership/{}",
+            self.inner.base_url, campaign_id, user_id.0
+        );
+        let resp = self.inner.http.get(&url).send().await?;
+        match resp.status() {
+            status if status.is_success() => {
+                let body: MembershipResponse = resp.json().await?;
+                Ok(Some(body.role))
+            }
+            reqwest::StatusCode::NOT_FOUND => Ok(None),
+            status => Err(PlatformInternalError::Status { status }),
         }
     }
 

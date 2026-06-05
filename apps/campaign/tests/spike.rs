@@ -49,7 +49,8 @@ async fn things_and_blocks_round_trip_branded_types() {
             thing_id: Set(thing_id.clone().into()),
             status: Set(status.into()),
             ordering: Set(i as i64),
-            body: Set(format!("paragraph {i}")),
+            content: Set(format!("paragraph {i}").into_bytes()),
+            section: Set("content".to_string()),
             created_at: Set(now),
             updated_at: Set(now),
         }

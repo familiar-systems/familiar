@@ -1,9 +1,9 @@
 use familiar_systems_app_shared::auth::HankoSessionValidator;
 use familiar_systems_platform::{
-    clients::campaign_internal::CampaignInternalClient, config::Config, migrations::Migrator,
+    clients::campaign_internal::CampaignInternalClient, config::Config, db, migrations::Migrator,
     routes::serve_router, state::AppState,
 };
-use sea_orm::{Database, DatabaseConnection};
+use sea_orm::DatabaseConnection;
 use sea_orm_migration::MigratorTrait;
 use std::sync::{Arc, Once};
 use wiremock::MockServer;
@@ -43,7 +43,7 @@ pub async fn spawn_app() -> TestApp {
     // don't care can ignore it; an unmounted endpoint returns 404, which
     // exercises the failure path naturally.
     let campaign = MockServer::start().await;
-    let db = Database::connect("sqlite::memory:").await.unwrap();
+    let db = db::connect("sqlite::memory:").await.unwrap();
     Migrator::up(&db, None).await.unwrap();
 
     let bearer = "test-internal-bearer".to_string();

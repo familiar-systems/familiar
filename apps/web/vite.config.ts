@@ -2,6 +2,7 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import wasm from "vite-plugin-wasm";
 
 // VITE_BASE_PATH matches the SPA's path prefix on the deployed app apex.
 // Dev and prod: "/". Preview: "/pr-${PR_NUMBER}/".
@@ -17,9 +18,18 @@ const basePath = process.env.VITE_BASE_PATH ?? "/";
 // tanstackRouter must come before react(): the plugin transforms route
 // files into typed exports the React plugin then compiles. Order matters,
 // per TanStack's docs.
+//
+// wasm() lets Vite/Rollup load loro-crdt, which ships as a WebAssembly module
+// (the Loro CRDT used by the editor's sync). Without it the build fails on the
+// .wasm import.
 export default defineConfig({
   base: basePath,
-  plugins: [tanstackRouter({ target: "react", autoCodeSplitting: true }), react(), tailwindcss()],
+  plugins: [
+    tanstackRouter({ target: "react", autoCodeSplitting: true }),
+    react(),
+    tailwindcss(),
+    wasm(),
+  ],
   server: {
     port: 5173,
   },

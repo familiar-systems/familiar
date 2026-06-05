@@ -11,8 +11,10 @@ pub struct Model {
     pub thing_id: ThingIdCol,
     pub status: StatusCol,
     pub ordering: i64,
+    #[sea_orm(column_type = "Blob")]
+    pub content: Vec<u8>,
     #[sea_orm(column_type = "Text")]
-    pub body: String,
+    pub section: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

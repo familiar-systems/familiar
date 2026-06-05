@@ -19,6 +19,55 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ── Change detection (gates the browser-test jobs) ──────
+  # Path-filters `integration` and `e2e` so they don't burn minutes on PRs
+  # they can't affect. Lives here, not in the callers, so it covers both
+  # pull_request and push-to-main uniformly. Mirrors the deploy-gating
+  # `paths` job in ci_cd_preview.yml (same action, same checkout trade-off).
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      # integration mocks the backend and boots only Vite, so an allowlist of
+      # frontend sources is exact: any_changed == 'true' -> run it.
+      frontend: ${{ steps.frontend.outputs.any_changed }}
+      # e2e boots the whole stack and is a blocking gate, so it uses a denylist:
+      # only_changed == 'true' means EVERY changed file is in the irrelevant
+      # set, the one case we skip. Anything else (a new crate, content/, the
+      # harness, mise.toml, ...) runs e2e by default - an allowlist false-skip
+      # would let a regression merge green.
+      e2e_skippable: ${{ steps.e2e.outputs.only_changed }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Full history so changed-files diffs locally; with
+          # persist-credentials:false it can't deepen a shallow clone to reach
+          # the base. Same trade-off as ci_cd_preview.yml's paths job.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect frontend-affecting changes
+        id: frontend
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        with:
+          files: |
+            apps/web/**
+            packages/**
+            tooling/tsconfig/**
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+
+      - name: Detect stack-irrelevant changes
+        id: e2e
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        with:
+          # Trees the e2e harness never boots; a PR confined to these skips e2e.
+          files: |
+            apps/site/**
+            workers/**
+            infra/**
+            docs/**
+            **/*.md
+
   # ── TypeScript ──────────────────────────────────────────
   ts:
     runs-on: ubuntu-latest
@@ -128,7 +177,13 @@ jobs:
         run: mise run generate-types
 
       - name: verify generated artifacts are clean
-        run: git diff --exit-code
+        # Exclude mise.lock: `mise run` provisions the toolchain as a side
+        # effect and rewrites the lock's [tools.rust.options] block (rust
+        # components/profile, resolved from mise.toml). That churn is not a
+        # generated-type artifact, so policing it here false-fails the gate on
+        # every run. The diff still catches real ts-rs / OpenAPI drift in every
+        # other path.
+        run: git diff --exit-code -- . ':(exclude)mise.lock'
 
   # ── Python ──────────────────────────────────────────────
   python:
@@ -261,6 +316,141 @@ jobs:
       - name: lint
         run: mise run lint:content
 
+  # ── Integration (Playwright, mocked backends) ────────────
+  # Real browser, but Hanko + /me + every backend call are route-mocked and
+  # only Vite boots. Path-filtered to frontend changes. Retries are 0 (see
+  # playwright.config.ts) - a flaky test is a useless test, so a red here is
+  # a real red.
+  integration:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install_args: "node npm:pnpm"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+
+      - name: Resolve tool versions
+        id: versions
+        shell: bash
+        run: |
+          {
+            echo "node=$(mise current node)"
+            echo "pnpm=$(mise current 'npm:pnpm')"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+        with:
+          version: ${{ steps.versions.outputs.pnpm }}
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ steps.versions.outputs.node }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Browsers are versioned per @playwright/test release. Exact key keeps
+      # the cache fresh on a lock bump; restore-keys still seeds the most
+      # recent browser cache, so `playwright install` is a no-op when the
+      # revision is unchanged.
+      - name: Cache Playwright browser
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          # Per-job key: integration and e2e run in parallel, so a shared key
+          # makes them race to save the same cache on a cold miss (harmless but
+          # noisy). Separate lanes; the browser is small relative to the cache.
+          key: playwright-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-integration-${{ runner.os }}-
+
+      - name: Install Playwright chromium
+        run: pnpm --filter @familiar-systems/web exec playwright install chromium
+
+      - name: Integration tests
+        run: mise run web:integration
+
+  # ── End-to-end (Playwright, real stack) ──────────────────
+  # Boots real platform + campaign + Vite + Caddy on an isolated port block
+  # (only Hanko stubbed), runs the smoke flow, then SIGTERMs the campaign and
+  # asserts the persisted SQLite - the one test that proves the CRDT
+  # round-trip survives to disk. Needs no secrets (mock Hanko, /tmp SQLite,
+  # local storage backend), so it belongs in this secret-free reusable body.
+  # Rust setup mirrors the `rust` job (dtolnay is the sole installer; see its
+  # note) but on a separate `rust-e2e` cache lane: it builds debug binaries +
+  # the smoke_assert_db example, distinct artifacts from clippy that would
+  # otherwise race the rust job on a shared cache key.
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.e2e_skippable != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        with:
+          install_args: "node npm:pnpm caddy"
+          cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
+
+      - name: Resolve tool versions
+        id: versions
+        shell: bash
+        run: |
+          {
+            echo "node=$(mise current node)"
+            echo "pnpm=$(mise current 'npm:pnpm')"
+            echo "rust=$(mise current rust)"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-04-25
+        with:
+          toolchain: ${{ steps.versions.outputs.rust }}
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          shared-key: rust-e2e
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-all-crates: true
+
+      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+        with:
+          version: ${{ steps.versions.outputs.pnpm }}
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ steps.versions.outputs.node }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browser
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          # Own lane (see the integration job) so the two parallel jobs don't
+          # race to save the same cache key on a cold miss.
+          key: playwright-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-e2e-${{ runner.os }}-
+
+      # Idempotent on a cache hit; required on a cold miss. The e2e cache lane
+      # is independent of integration's, so it cannot borrow that job's browser
+      # install - e2e must install chromium itself or `mise run e2e` launches
+      # against a missing executable.
+      - name: Install Playwright chromium
+        run: pnpm --filter @familiar-systems/web exec playwright install chromium
+
+      - name: End-to-end smoke
+        run: mise run e2e
+
   # ── Dependency review (PR only) ─────────────────────────
   # Catches PRs that introduce known-vulnerable npm/cargo/pip deps. The
   # underlying API is free on public repos and gated behind GHAS on private
@@ -283,9 +473,14 @@ jobs:
           fail-on-severity: moderate
 
   # ── Gate ────────────────────────────────────────────────
+  # The single required status check. Fails only on a real `failure`/
+  # `cancelled`; a `skipped` result passes - which is exactly how the
+  # path-filtered jobs (integration, e2e) and the PR-only dep-review stay
+  # green when they don't run. A blocking test that is sometimes skipped is
+  # the whole point of the `changes` gate above.
   ci-ok:
     if: always()
-    needs: [ts, rust, python, infra, k8s, content, dep-review]
+    needs: [changes, ts, rust, python, infra, k8s, content, integration, e2e, dep-review]
     runs-on: ubuntu-latest
     steps:
       - run: |

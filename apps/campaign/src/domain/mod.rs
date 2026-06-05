@@ -2,3 +2,4 @@
 //! (no kameo, no Loro wrappers, no SQL).
 
 pub mod crdt;
+pub mod thing;

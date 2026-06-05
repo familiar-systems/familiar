@@ -2,7 +2,7 @@ use crate::openapi::api_router;
 use crate::state::AppState;
 use axum::{
     Router, middleware,
-    routing::{post, put},
+    routing::{get, post, put},
 };
 use familiar_systems_app_shared::middleware::internal_auth::require_internal_bearer;
 
@@ -33,7 +33,13 @@ fn internal_router(state: AppState) -> Router {
 /// preview) and forward the service prefix intact.
 pub fn serve_router(state: AppState) -> Router {
     let (public, _openapi) = api_router().split_for_parts();
+
+    let ws_router = Router::new()
+        .route("/campaign/{id}/ws", get(crate::ws::upgrade::ws_upgrade))
+        .with_state(state.clone());
+
     public
         .with_state(state.clone())
         .merge(internal_router(state))
+        .merge(ws_router)
 }

@@ -116,6 +116,66 @@
         }
       }
     },
+    "/campaign/{id}/things": {
+      "post": {
+        "tags": ["things"],
+        "operationId": "create_thing",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateThingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Thing created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThingResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Caller is not a GM of this campaign"
+          },
+          "404": {
+            "description": "Campaign not on this shard"
+          },
+          "422": {
+            "description": "Parent thing not found in the table of contents"
+          },
+          "500": {
+            "description": "Creation failed"
+          },
+          "501": {
+            "description": "Creating from a template is not yet supported"
+          },
+          "503": {
+            "description": "Server restarting or platform unreachable"
+          }
+        }
+      }
+    },
     "/catalog/systems": {
       "get": {
         "tags": ["catalog"],
@@ -208,6 +268,17 @@
           "game_system": {
             "type": ["string", "null"]
           },
+          "home_thing_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThingId",
+                "description": "The campaign's home / landing-page Thing (\"Campaign Base Camp\"), seeded\nat creation. The client opens this as the campaign's home base. Absent\nonly in the brief window before the async seed completes."
+              }
+            ]
+          },
           "name": {
             "type": "string"
           },
@@ -236,6 +307,48 @@
             "items": {
               "$ref": "#/components/schemas/SystemEntry"
             }
+          }
+        }
+      },
+      "CreateThingRequest": {
+        "type": "object",
+        "description": "Create a new Thing in a campaign.\n\n`name` is required; everything else is optional. A missing `status` defaults\nto `gmOnly` (the domain default for new content). `parent` places the Thing\nin the table of contents: omitted appends it at the ToC root; `Some(id)`\nnests it as the last child of that Thing's ToC node. `from_template_id` is\naccepted but not yet implemented (the server returns 501).",
+        "required": ["name"],
+        "properties": {
+          "from_template_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThingId",
+                "description": "Template to clone from. Not yet supported; a value here yields 501."
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThingId",
+                "description": "Parent Thing to nest under in the table of contents. `None` => ToC root.\nFIXME this should probably the ID of the ToC block and not a ThingID.\nThis would let us nest things under, say, a Folder."
+              }
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Status"
+              }
+            ]
           }
         }
       },
@@ -281,6 +394,11 @@
             "description": "When true, validates all required fields are present and sets\n`wizard_completed_at`. Returns 409 if the wizard was already\ncompleted. Subsequent PATCHes without this flag update metadata\nwithout touching the wizard timestamp."
           }
         }
+      },
+      "Status": {
+        "type": "string",
+        "description": "Visibility status for campaign content. The CRDT syncs all content to all\nclients regardless of status; consumers (the browser UI, AI conversations)\nfilter what they surface based on the user's role.\nSee: docs/plans/2026-02-22-ai-prd.md",
+        "enum": ["gmOnly", "known", "retconned"]
       },
       "SystemEntry": {
         "type": "object",
@@ -328,6 +446,45 @@
           "slug": {
             "type": "string",
             "description": "`<system-id>/<template-name>` slug, e.g. `common/npc`."
+          }
+        }
+      },
+      "ThingId": {
+        "type": "string",
+        "format": "ulid",
+        "description": "Uniquely identifies a thing (NPC, location, item, etc.).\nULID for compact URLs (26 chars) and B-tree-friendly insert ordering."
+      },
+      "ThingResponse": {
+        "type": "object",
+        "description": "A created Thing, returned with `201 Created`.",
+        "required": ["id", "name", "status", "created_at", "updated_at"],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "RFC 3339 timestamp."
+          },
+          "id": {
+            "$ref": "#/components/schemas/ThingId"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prototype_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThingId"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "RFC 3339 timestamp."
           }
         }
       }

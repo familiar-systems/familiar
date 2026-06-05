@@ -3,6 +3,11 @@ packages:
   - packages/*
   - tooling/*
 catalog:
+  # Headless drag-and-drop for the table-of-contents tree (apps/web). Owns no
+  # data: the tree lives in the Loro doc, dnd-kit only reports drop targets.
+  "@dnd-kit/core": ^6.3.1
+  "@dnd-kit/sortable": ^10.0.0
+  "@dnd-kit/utilities": ^3.2.2
   "@tailwindcss/vite": ^4.2.4
   "@types/react": ^19
   "@types/react-dom": ^19
@@ -12,16 +17,72 @@ catalog:
   tailwindcss: ^4.2.4
   tailwindcss-animate: ^1.0.7
   typescript: ^6
+  # Editor stack (shared between packages/editor and apps/web). The TipTap v3
+  # packages pin each other exactly and release in lockstep, so a single caret
+  # resolves them consistently. loro-crdt tracks the campaign server's loro
+  # 1.x; prosemirror-* match what @tiptap/pm pulls (also forced via overrides
+  # below) so there is exactly one ProseMirror instance in the bundle.
+  "@tiptap/core": ^3
+  "@tiptap/pm": ^3
+  "@tiptap/react": ^3
+  "@tiptap/extension-document": ^3
+  "@tiptap/extension-paragraph": ^3
+  "@tiptap/extension-heading": ^3
+  "@tiptap/extension-text": ^3
+  "@tiptap/extension-unique-id": ^3
+  loro-crdt: ~1.10.2
+  loro-prosemirror: ^0.4.3
+  loro-websocket: ^0.6.2
+  loro-adaptors: ^0.6.1
+  prosemirror-model: ^1.24.1
+  prosemirror-state: ^1.4.3
+  prosemirror-view: ^1.38.1
+  ulidx: ^2.4.1
 minimumReleaseAge: 10080
 allowBuilds:
   esbuild: true
   sharp: true
+# Local workarounds for upstream Loro rough edges. Versions are pinned exactly so
+# a bump fails loudly instead of silently dropping a patch. Remove once fixed
+# upstream (0.4.3 is currently the latest loro-prosemirror release).
+#
+# loro-prosemirror carries two changes:
+#  1. Its setTimeout(0) sync-plugin init can wipe a synced doc (and broadcast the
+#     empty state to the server) if a transaction lands before init completes under
+#     React StrictMode's dev double-mount (loro-dev/loro-prosemirror#77).
+#  2. KNOWN BUG, suppressed not fixed (loro-dev/loro-prosemirror#78,
+#     https://github.com/loro-dev/loro-prosemirror/issues/78). It maps
+#     ProseMirror nodes to Loro containers by object identity; PM nodes are
+#     immutable, so the mapping goes stale on any edit that mints a new node
+#     object (notably the blockId stamp on Enter). Position<->Loro-cursor
+#     conversion then misses. Today this app wires only the sync + undo plugins,
+#     so the only reachable symptom is the undo plugin's best-effort selection
+#     snapshot logging console.error("Cannot find the loroNode") (it returns
+#     undefined, which the caller handles; synced content and block ids are
+#     unaffected). We drop that log ONLY to keep the dev console clean while
+#     presence is not yet built. The SAME conversion powers multiplayer cursor
+#     presence (LoroCursorPlugin), where the bug corrupts remote cursors (they
+#     jump to end-of-doc on concurrent edits, per #78). MUST be properly fixed
+#     (resolve position<->container by tree path, not object identity) BEFORE
+#     wiring presence -- and this suppression removed then. See the breadcrumb in
+#     packages/editor/src/loro-extension.ts.
+#
+# loro-websocket's fire-and-forget connect() surfaces an "Uncaught (in promise)
+# Disconnected" when StrictMode unmount calls close() (loro-dev/protocol#58).
+patchedDependencies:
+  loro-prosemirror@0.4.3: patches/loro-prosemirror@0.4.3.patch
+  loro-websocket@0.6.2: patches/loro-websocket@0.6.2.patch
 overrides:
   vite: ^7
   uuid: ^14
   yaml: ^2.8.3
   fast-uri: ^3.1.2
   fast-xml-builder: ^1.1.7
+  # Force a single ProseMirror instance across @tiptap/pm and loro-prosemirror;
+  # two copies of prosemirror-model silently break `instanceof` checks.
+  prosemirror-model: ^1.24.1
+  prosemirror-state: ^1.4.3
+  prosemirror-view: ^1.38.1
   "@tanstack/react-router": 1.169.2
   "@tanstack/router-cli": 1.166.43
   "@tanstack/router-plugin": 1.167.35

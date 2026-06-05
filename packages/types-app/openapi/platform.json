@@ -42,7 +42,7 @@
       "post": {
         "tags": ["campaigns"],
         "summary": "`POST /api/campaigns`: mint a CampaignId, ask the campaign tier to\ninitialize per-campaign state, write the routing row, return the id.",
-        "description": "Idempotent on `idempotency_token`: a retry with the same token returns\nthe same `campaign_id`. The order (write `create_attempts` first, then\ncall shard, then write `campaigns`) is what makes retries safe; see\nthe long form in the design doc.",
+        "description": "Idempotent on `idempotency_token`: a retry with the same token returns\nthe same `campaign_id`. The order (write `create_attempts` first, then\ncall shard, then write `campaigns`) is what makes retries safe; see\nthe long form in the design doc.\n\nCrucially, the token is *not* a \"done\" marker. Every step after the token\nclaim is idempotent (shard create + lease are idempotent on `campaign_id`;\nthe platform inserts are `INSERT … ON CONFLICT DO NOTHING`), so a retry\nafter a partial failure re-drives the missing steps and converges to a\ncomplete campaign. A benign duplicate of an already-complete campaign is\ndetected by the GM membership row (the last write) and short-circuits.",
         "operationId": "create_campaign",
         "requestBody": {
           "content": {

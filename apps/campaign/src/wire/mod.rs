@@ -29,5 +29,6 @@
 //!   reassembly timeout the reference impl leaves unimplemented.
 
 pub mod assembler;
+pub mod broadcast;
 pub mod fragmenter;
 pub mod reassembly;
