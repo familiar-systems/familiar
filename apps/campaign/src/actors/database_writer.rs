@@ -325,26 +325,68 @@ impl Message<WriteThingBlocks> for DatabaseWriteActor {
         let block_count = msg.blocks.len();
         tracing::debug!(block_count, "writing thing blocks");
 
-        // Delete-then-insert is a full-snapshot replace, so it must be atomic:
-        // the delete truncates every block for this Thing, and a failed insert
-        // would otherwise leave the table empty with no in-memory copy to
-        // recover from (this flush also runs on actor stop, as the Loro doc is
-        // torn down). One transaction; an error before commit rolls back the
-        // delete. Mirrors `DbCreateThing`.
+        let thing_id_col = ThingIdCol::from(msg.thing_id.clone());
+
+        // The live block ids in this snapshot; everything else for the Thing is
+        // stale and gets pruned. `flush` always `Set`s the id, so the unwrap is
+        // total (same idiom as `WriteTocSnapshot`).
+        let keep_ids: Vec<sea_orm::Value> = msg
+            .blocks
+            .iter()
+            .map(|b| b.id.clone().unwrap().into())
+            .collect();
+
+        // Prune-then-upsert is a full-snapshot replace; it must be atomic so a
+        // failed upsert can't leave the Thing's blocks pruned but unreplaced (this
+        // flush also runs on actor stop, as the Loro doc is torn down). One
+        // transaction wraps both; an early return drops `txn`, rolling back the
+        // prune. Upsert rather than delete-then-insert so a block's `created_at`
+        // survives edits: the row is updated in place and `CreatedAt` is left out
+        // of the conflict-update set below. Mirrors `WriteTocSnapshot`.
         let txn = self.conn.begin().await?;
 
-        blocks::Entity::delete_many()
-            .filter(blocks::Column::ThingId.eq(ThingIdCol::from(msg.thing_id.clone())))
-            .exec(&txn)
-            .await?;
+        if msg.blocks.is_empty() {
+            // No live blocks: drop every block for this Thing.
+            blocks::Entity::delete_many()
+                .filter(blocks::Column::ThingId.eq(thing_id_col.clone()))
+                .exec(&txn)
+                .await?;
+        } else {
+            // Prune blocks absent from the new snapshot. Scoped to this Thing:
+            // unlike `toc_entries` (a per-campaign singleton table), `blocks` is
+            // shared across all Things, so an unscoped `NOT IN` would delete other
+            // Things' rows. `is_not_in` binds one parameter per live block; a Thing
+            // with enough blocks to exceed `SQLITE_MAX_VARIABLE_NUMBER` would fail
+            // here -- the same bound `WriteTocSnapshot` already accepts (page block
+            // counts are bounded in practice).
+            blocks::Entity::delete_many()
+                .filter(blocks::Column::ThingId.eq(thing_id_col.clone()))
+                .filter(blocks::Column::Id.is_not_in(keep_ids))
+                .exec(&txn)
+                .await?;
 
-        if !msg.blocks.is_empty() {
-            blocks::Entity::insert_many(msg.blocks).exec(&txn).await?;
+            // Upsert the snapshot. `CreatedAt` is deliberately omitted from the
+            // update set so an existing block keeps its original creation time; the
+            // `created_at = now` that `flush` stamps only takes effect on the insert
+            // (new-block) path. `ThingId`/`Section` are constant per block.
+            blocks::Entity::insert_many(msg.blocks)
+                .on_conflict(
+                    sea_orm::sea_query::OnConflict::column(blocks::Column::Id)
+                        .update_columns([
+                            blocks::Column::Status,
+                            blocks::Column::Ordering,
+                            blocks::Column::Content,
+                            blocks::Column::UpdatedAt,
+                        ])
+                        .to_owned(),
+                )
+                .exec(&txn)
+                .await?;
         }
 
         if let Some(name) = msg.name_sync {
             things::Entity::update_many()
-                .filter(things::Column::Id.eq(ThingIdCol::from(msg.thing_id.clone())))
+                .filter(things::Column::Id.eq(thing_id_col))
                 .col_expr(things::Column::Name, sea_orm::sea_query::Expr::value(name))
                 .col_expr(
                     things::Column::UpdatedAt,
@@ -633,10 +675,10 @@ mod tests {
         assert_eq!(block_rows[0].content, b"hello");
     }
 
-    /// A `WriteThingBlocks` whose insert fails must not destroy the blocks it
-    /// was meant to replace. The handler deletes the Thing's existing blocks
-    /// before inserting the new set; without a transaction a failed insert
-    /// leaves the table truncated (the catastrophic case, since this runs on
+    /// A `WriteThingBlocks` whose upsert fails must not destroy the blocks it
+    /// was meant to replace. The handler prunes the Thing's stale blocks before
+    /// upserting the new set; without a transaction a failed upsert leaves the
+    /// blocks pruned but unreplaced (the catastrophic case, since this runs on
     /// flush-on-stop while the in-memory Loro doc is being torn down).
     #[tokio::test]
     async fn write_thing_blocks_failed_insert_preserves_existing_rows() {
@@ -682,32 +724,22 @@ mod tests {
         .await
         .expect("seed existing block");
 
-        // A doomed snapshot: two rows share one primary key, so `insert_many`
-        // fails as a unit (PK uniqueness, no FK dependency). The handler has
-        // already deleted the existing block by then.
-        let dup_id = BlockId::generate();
-        let doomed = vec![
-            blocks::ActiveModel {
-                id: Set(BlockIdCol::from(dup_id.clone())),
-                thing_id: Set(thing_id_col.clone()),
-                status: Set(StatusCol::GmOnly),
-                ordering: Set(0),
-                content: Set(b"new-a".to_vec()),
-                section: Set(SECTION_CONTENT.to_string()),
-                created_at: Set(now),
-                updated_at: Set(now),
-            },
-            blocks::ActiveModel {
-                id: Set(BlockIdCol::from(dup_id.clone())),
-                thing_id: Set(thing_id_col.clone()),
-                status: Set(StatusCol::GmOnly),
-                ordering: Set(1),
-                content: Set(b"new-b".to_vec()),
-                section: Set(SECTION_CONTENT.to_string()),
-                created_at: Set(now),
-                updated_at: Set(now),
-            },
-        ];
+        // A doomed snapshot: one row whose `thing_id` points at a Thing that
+        // doesn't exist, so the upsert trips the FK (foreign_keys are ON) and
+        // fails as a unit. The handler has already pruned the existing block by
+        // then. (A duplicate-PK batch no longer suffices to force failure:
+        // `ON CONFLICT DO UPDATE` would resolve the conflict instead of erroring.)
+        let ghost = ThingId::generate();
+        let doomed = vec![blocks::ActiveModel {
+            id: Set(BlockIdCol::from(BlockId::generate())),
+            thing_id: Set(ThingIdCol::from(ghost)),
+            status: Set(StatusCol::GmOnly),
+            ordering: Set(0),
+            content: Set(b"new-a".to_vec()),
+            section: Set(SECTION_CONTENT.to_string()),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }];
 
         actor
             .ask(WriteThingBlocks {
@@ -716,12 +748,105 @@ mod tests {
                 name_sync: None,
             })
             .await
-            .expect_err("duplicate-PK insert must fail");
+            .expect_err("FK-violating upsert must fail");
 
-        // The original block survives: the failed write rolled back its delete.
+        // The original block survives: the failed write rolled back its prune.
         let rows = blocks::Entity::find().all(&conn).await.unwrap();
         assert_eq!(rows.len(), 1, "existing block must survive a failed write");
         assert_eq!(rows[0].content, b"original");
+    }
+
+    /// `created_at` survives edits, and blocks dropped from a later snapshot are
+    /// pruned. The upsert path updates an existing row in place (omitting
+    /// `CreatedAt` from the conflict-update set, so the original creation time is
+    /// kept) while the `NOT IN` prune removes blocks absent from the new snapshot.
+    /// Regression test for "created_at reset to now on every flush" (#2 in the PR
+    /// review): an editor flushes a Thing's blocks repeatedly, and `created_at`
+    /// must not be clobbered each time.
+    #[tokio::test]
+    async fn write_thing_blocks_preserves_created_at_and_prunes_dropped() {
+        use familiar_systems_campaign_shared::id::BlockId;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        let thing_id = ThingId::generate();
+        let thing_id_col = ThingIdCol::from(thing_id.clone());
+
+        // Fixed whole-second timestamps so the SQLite text round-trip is exact and
+        // the test is deterministic (no `Utc::now()` sub-second flake).
+        let t0 = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+        let t1 = chrono::DateTime::from_timestamp(1_700_000_060, 0).unwrap();
+
+        // FK parent: blocks.thing_id -> things.id.
+        things::ActiveModel {
+            id: Set(thing_id_col.clone()),
+            name: Set("Korgath".into()),
+            status: Set(StatusCol::GmOnly),
+            prototype_id: Set(None),
+            created_at: Set(t0),
+            updated_at: Set(t0),
+        }
+        .insert(&conn)
+        .await
+        .expect("seed thing");
+
+        let kept = BlockId::generate();
+        let dropped = BlockId::generate();
+        let row =
+            |id: &BlockId, ord: i64, body: &[u8], ts: chrono::DateTime<Utc>| blocks::ActiveModel {
+                id: Set(BlockIdCol::from(id.clone())),
+                thing_id: Set(thing_id_col.clone()),
+                status: Set(StatusCol::GmOnly),
+                ordering: Set(ord),
+                content: Set(body.to_vec()),
+                section: Set(SECTION_CONTENT.to_string()),
+                created_at: Set(ts),
+                updated_at: Set(ts),
+            };
+
+        // First flush: two blocks, both stamped t0.
+        actor
+            .ask(WriteThingBlocks {
+                thing_id: thing_id.clone(),
+                blocks: vec![row(&kept, 0, b"v1", t0), row(&dropped, 1, b"d1", t0)],
+                name_sync: None,
+            })
+            .await
+            .expect("first flush");
+
+        // Second flush: `kept` is edited and carries a *later* created_at (as a
+        // real flush would, stamping `now`); `dropped` is gone from the snapshot.
+        actor
+            .ask(WriteThingBlocks {
+                thing_id: thing_id.clone(),
+                blocks: vec![row(&kept, 0, b"v2", t1)],
+                name_sync: None,
+            })
+            .await
+            .expect("second flush");
+
+        let rows = blocks::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(
+            rows.len(),
+            1,
+            "block dropped from the snapshot must be pruned"
+        );
+        let b = &rows[0];
+        assert_eq!(b.content, b"v2", "surviving block has the latest content");
+        assert_eq!(
+            b.created_at, t0,
+            "created_at must be preserved across the edit, not reset to the flush time"
+        );
+        assert_eq!(
+            b.updated_at, t1,
+            "updated_at must advance to the latest flush"
+        );
     }
 
     /// A `WriteTocSnapshot` whose insert fails must leave the prior rows intact.

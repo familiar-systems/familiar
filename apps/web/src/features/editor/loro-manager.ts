@@ -53,6 +53,26 @@ import type { LoroWebsocketClientRoom, RoomJoinStatusValue } from "loro-websocke
 import { moveTocNode as applyTocMove, readTocTree } from "../toc/toc-doc";
 import type { TocTreeNode } from "../toc/toc-doc";
 
+// A room's terminal failure. The two kinds are the two places a room can die: the
+// initial join rejecting (we hold the actual error), versus a live room the library
+// has terminally given up on (its status callback hands us no cause).
+// TODO: surface these to users directly; today they only get stringified via
+// roomErrorMessage().
+export type RoomError =
+  | { kind: "join_failed"; detail: string } // initial join rejected (auth, server JoinError, ...)
+  | { kind: "connection_lost" }; // a live room terminally errored / gave up reconnecting
+
+// TODO: replace this flat mapping with per-kind UI (retry on connection_lost, a
+// distinct "couldn't open" message on join_failed).
+export function roomErrorMessage(error: RoomError): string {
+  switch (error.kind) {
+    case "join_failed":
+      return error.detail;
+    case "connection_lost":
+      return "Connection lost.";
+  }
+}
+
 // Public, referentially-stable snapshot read by useSyncExternalStore. `view` is
 // the room's projection of its doc (a LoroDoc for Thing rooms, a TocTreeNode[]
 // for the ToC). `reconnecting` carries the last-known view while the socket
@@ -61,7 +81,7 @@ export type RoomSnapshot<T> =
   | { status: "joining" }
   | { status: "joined"; view: T }
   | { status: "reconnecting"; view: T }
-  | { status: "error"; message: string };
+  | { status: "error"; error: RoomError };
 
 // The room's transport lifecycle, from acquire to a live (or failed) join. A
 // room starts `joining` (a doc exists, but no socket-level room yet), reaches
@@ -169,10 +189,7 @@ export class LoroClientManager {
     if (!this.client) return;
     for (const handle of this.rooms.values()) {
       if (handle.leaveTimer != null) clearTimeout(handle.leaveTimer);
-      if (handle.binding.kind === "bound") {
-        handle.binding.docUnsub?.();
-        void handle.binding.room.destroy().catch(() => {});
-      }
+      this.destroyBinding(handle.binding);
     }
     this.rooms.clear();
     this.client.destroy();
@@ -190,6 +207,23 @@ export class LoroClientManager {
     return this.rooms.get(roomId) as RoomHandle<T> | undefined;
   }
 
+  // The single owner of transport teardown: every path that drops a handle from
+  // `rooms` or abandons a room in place routes through here, so a removed room can
+  // never leak its room object or (for derived rooms) its doc subscription. Only
+  // `bound` holds those; room.destroy() is idempotent and safe after the socket is
+  // gone.
+  private destroyBinding(binding: Binding): void {
+    switch (binding.kind) {
+      case "bound":
+        binding.docUnsub?.();
+        void binding.room.destroy().catch(() => {});
+        return;
+      case "joining":
+      case "failed":
+        return;
+    }
+  }
+
   /** Ref-counted acquire. Idempotent; retries after a failed join. */
   private acquire<T>(roomId: string, select: (doc: LoroDocType) => T, derived: boolean): void {
     const existing = this.rooms.get(roomId);
@@ -202,6 +236,9 @@ export class LoroClientManager {
       return;
     }
     // New room, or a re-acquire after a failed join: (re)start from scratch.
+    // Tear down the errored handle's binding before overwriting it, so the room +
+    // doc subscription don't leak when the map entry is replaced.
+    if (existing) this.destroyBinding(existing.binding);
     const refCount = (existing?.refCount ?? 0) + 1;
     const handle: RoomHandle<T> = {
       roomId,
@@ -231,7 +268,9 @@ export class LoroClientManager {
         handle.leaveTimer = setTimeout(() => this.leaveRoom(roomId), LEAVE_DEBOUNCE_MS);
         break;
       case "error":
-        // Nothing joined to tear down; drop it so a future acquire is fresh.
+        // Drop the handle so a future acquire is fresh; destroyBinding releases
+        // anything a terminal onRoomStatus left bound (no-op once it set `failed`).
+        this.destroyBinding(handle.binding);
         this.rooms.delete(roomId);
         break;
       case "joining":
@@ -289,7 +328,10 @@ export class LoroClientManager {
       // live one, never onto the handle that replaced it.
       if (this.room<T>(roomId) === wanted) {
         wanted.binding = { kind: "failed" };
-        wanted.snapshot = { status: "error", message: errMessage(err) };
+        wanted.snapshot = {
+          status: "error",
+          error: { kind: "join_failed", detail: errMessage(err) },
+        };
         this.notify(roomId);
       }
     }
@@ -309,15 +351,21 @@ export class LoroClientManager {
    * Fold loro-websocket's per-room status into the snapshot. Only once the room
    * is `bound`: the library emits Connecting/Joined during our own join(), which
    * the explicit waitForReachingServerVersion handoff already owns, so folding
-   * before the handoff would let that first status pre-empt it. Reconnecting and
-   * Disconnected both surface as "reconnecting" (socket down, doc preserved).
+   * before the handoff would let that first status pre-empt it. Once a terminal
+   * status sets the binding to `failed`, the `bound` guard makes every later
+   * status a no-op.
+   *
+   * `reconnecting` is the only transient state (socket down, doc preserved, library
+   * auto-rejoining). `error` and `disconnected` are both terminal: the library only
+   * emits them once it has stopped trying (cleanupRoom on error; reconnect disabled
+   * on disconnected), so they tear the room down and fail closed rather than show a
+   * "reconnecting" spinner that can never resolve.
    */
   private onRoomStatus(roomId: string, status: RoomJoinStatusValue): void {
     const handle = this.rooms.get(roomId);
     if (!handle || handle.binding.kind !== "bound") return;
     switch (status) {
       case "reconnecting":
-      case "disconnected":
         if (handle.snapshot.status !== "reconnecting") {
           handle.snapshot = { status: "reconnecting", view: handle.select(handle.doc) };
           this.notify(roomId);
@@ -330,7 +378,13 @@ export class LoroClientManager {
         }
         break;
       case "error":
-        handle.snapshot = { status: "error", message: "Connection lost." };
+      case "disconnected":
+        // Release the live room + doc subscription and mark the binding `failed`,
+        // so the release/acquire paths see no live binding behind an error snapshot.
+        // The status carries no cause, hence the parameterless connection_lost.
+        this.destroyBinding(handle.binding);
+        handle.binding = { kind: "failed" };
+        handle.snapshot = { status: "error", error: { kind: "connection_lost" } };
         this.notify(roomId);
         break;
       case "connecting":
@@ -340,15 +394,14 @@ export class LoroClientManager {
 
   private leaveRoom(roomId: string): void {
     const handle = this.rooms.get(roomId);
-    if (!handle) return;
-    // `bound` is exactly the joined-or-reconnecting state this debounced leave was
-    // scheduled for; a still-joining or failed room has no room object to drop.
-    if (handle.binding.kind !== "bound") return;
+    // refCount > 0 means a re-acquire installed a fresh handle under our id without
+    // cancelling this timer (the error-rebuild path leaves it pending): never tear
+    // down a room someone still wants. Otherwise destroyBinding drops the room +
+    // doc subscription, removing it from the client's dedup table within a
+    // microtask, before any later navigation's re-acquire.
+    if (!handle || handle.refCount > 0) return;
     this.rooms.delete(roomId);
-    handle.binding.docUnsub?.();
-    // room.destroy() leaves the room and removes it from the client's dedup table
-    // within a microtask, before any later navigation's re-acquire.
-    void handle.binding.room.destroy().catch(() => {});
+    this.destroyBinding(handle.binding);
     this.notify(roomId);
   }
 

@@ -4,10 +4,9 @@ use axum::{
 };
 use familiar_systems_app_shared::auth::HankoSessionValidator;
 use familiar_systems_platform::{
-    clients::campaign_internal::CampaignInternalClient, config::Config, routes::serve_router,
+    clients::campaign_internal::CampaignInternalClient, config::Config, db, routes::serve_router,
     state::AppState,
 };
-use sea_orm::Database;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -21,7 +20,7 @@ async fn make_app() -> axum::Router {
         internal_bearer_secondary: None,
         campaign_shard_url: "http://127.0.0.1:0".into(),
     });
-    let db = Database::connect(&config.database_url).await.unwrap();
+    let db = db::connect(&config.database_url).await.unwrap();
     let validator = Arc::new(HankoSessionValidator::new(&config.hanko_api_url));
     let campaign_internal = CampaignInternalClient::new(
         config.campaign_shard_url.clone(),

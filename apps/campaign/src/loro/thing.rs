@@ -47,16 +47,25 @@ impl LoroThingDoc {
     ///
     /// `block_blobs` must be pre-sorted by ordering. Each blob is the
     /// opaque JSON produced by `block_codec::serialize_block`.
-    pub fn from_blocks(name: &str, status: &Status, block_blobs: &[Vec<u8>]) -> Self {
+    ///
+    /// Returns the doc alongside any [`SkippedBlock`](block_codec::SkippedBlock)s
+    /// that could not be reconstructed. Restore is best-effort per block, so a
+    /// single corrupt blob is dropped (and reported for the caller to log)
+    /// rather than panicking and leaving the Thing un-openable.
+    pub fn from_blocks(
+        name: &str,
+        status: &Status,
+        block_blobs: &[Vec<u8>],
+    ) -> (Self, Vec<block_codec::SkippedBlock>) {
         let this = Self::new();
         let meta = this.meta();
         meta.insert(KEY_TITLE, name).unwrap();
         meta.insert(KEY_STATUS, status.as_loro_str()).unwrap();
 
         let content = this.content();
-        block_codec::restore_content(&content, block_blobs);
+        let skipped = block_codec::restore_content(&content, block_blobs);
 
-        this
+        (this, skipped)
     }
 
     /// Restore from a Loro binary snapshot (used only for CrdtDoc trait,
@@ -165,7 +174,7 @@ mod tests {
 
     #[test]
     fn from_blocks_populates_meta() {
-        let doc = LoroThingDoc::from_blocks("Korgath", &Status::Known, &[]);
+        let (doc, _) = LoroThingDoc::from_blocks("Korgath", &Status::Known, &[]);
         assert_eq!(doc.read_title(), Some("Korgath".to_string()));
         assert_eq!(doc.read_status(), Some(Status::Known));
     }
@@ -185,7 +194,7 @@ mod tests {
         }))
         .unwrap();
 
-        let doc =
+        let (doc, _) =
             LoroThingDoc::from_blocks("Iron Citadel", &Status::GmOnly, &[heading_blob, para_blob]);
 
         let deep: serde_json::Value = doc.debug_value().unwrap();
@@ -197,7 +206,7 @@ mod tests {
 
     #[test]
     fn from_blocks_empty() {
-        let doc = LoroThingDoc::from_blocks("Empty Thing", &Status::GmOnly, &[]);
+        let (doc, _) = LoroThingDoc::from_blocks("Empty Thing", &Status::GmOnly, &[]);
         let blocks = doc.extract_blocks();
         assert!(blocks.is_empty());
     }
@@ -211,12 +220,12 @@ mod tests {
         }))
         .unwrap();
 
-        let doc =
+        let (doc, _) =
             LoroThingDoc::from_blocks("Test", &Status::Known, std::slice::from_ref(&heading_blob));
         let extracted = doc.extract_blocks();
         assert_eq!(extracted.len(), 1);
 
-        let doc2 =
+        let (doc2, _) =
             LoroThingDoc::from_blocks("Test", &Status::Known, &[extracted[0].content.clone()]);
 
         assert_eq!(doc.debug_value(), doc2.debug_value());
@@ -225,7 +234,7 @@ mod tests {
     #[test]
     fn read_status_all_variants() {
         for status in [Status::GmOnly, Status::Known, Status::Retconned] {
-            let doc = LoroThingDoc::from_blocks("Test", &status, &[]);
+            let (doc, _) = LoroThingDoc::from_blocks("Test", &status, &[]);
             assert_eq!(doc.read_status(), Some(status));
         }
     }
@@ -239,7 +248,7 @@ mod tests {
         }))
         .unwrap();
 
-        let doc = LoroThingDoc::from_blocks("Snap", &Status::Known, &[heading_blob]);
+        let (doc, _) = LoroThingDoc::from_blocks("Snap", &Status::Known, &[heading_blob]);
         let snapshot = doc.export_snapshot().unwrap();
         let doc2 = LoroThingDoc::from_snapshot(&snapshot).unwrap();
 
@@ -249,7 +258,7 @@ mod tests {
 
     #[test]
     fn convergence_after_client_updates() {
-        let doc = LoroThingDoc::from_blocks("Server", &Status::GmOnly, &[]);
+        let (doc, _) = LoroThingDoc::from_blocks("Server", &Status::GmOnly, &[]);
         let snapshot = doc.export_snapshot().unwrap();
 
         // Simulate a client that received the snapshot and adds content

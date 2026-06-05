@@ -8,6 +8,7 @@ import type { ThingId } from "@familiar-systems/types-campaign";
 import { EditorContent, useEditor } from "@tiptap/react";
 import type { ContainerID, LoroDoc } from "loro-crdt";
 
+import { roomErrorMessage } from "./loro-manager";
 import { useThingDoc } from "./useThingDoc";
 
 interface HomeEditorProps {
@@ -20,7 +21,7 @@ export function HomeEditor({ thingId }: HomeEditorProps): React.ReactElement {
   if (state.status === "error") {
     return (
       <section className="mx-auto w-full max-w-3xl px-8 pt-24">
-        <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>
+        <p className="text-sm text-red-700 dark:text-red-400">{roomErrorMessage(state.error)}</p>
       </section>
     );
   }

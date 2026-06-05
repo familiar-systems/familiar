@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { useLoroManager } from "../editor/LoroManagerProvider";
+import type { RoomError } from "../editor/loro-manager";
 import type { TocTreeNode } from "./toc-doc";
 
 export type TocSnapshot =
@@ -15,7 +16,7 @@ export type TocSnapshot =
   // Socket dropped while the tree is open: keep showing the last-known tree with
   // an indicator rather than collapsing back to the loading state.
   | { status: "reconnecting"; tree: TocTreeNode[] }
-  | { status: "error"; message: string };
+  | { status: "error"; error: RoomError };
 
 /**
  * Pin the campaign's ToC room for the lifetime of the calling component. Mounted
@@ -44,7 +45,7 @@ export function useToc(): TocSnapshot {
       case "reconnecting":
         return { status: "reconnecting", tree: snapshot.view };
       case "error":
-        return { status: "error", message: snapshot.message };
+        return { status: "error", error: snapshot.error };
     }
   }, [snapshot]);
 }

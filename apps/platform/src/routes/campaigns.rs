@@ -22,7 +22,8 @@ use familiar_systems_app_shared::{
 };
 use fs_id::Nanoid;
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, sea_query::OnConflict,
+    ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+    sea_query::OnConflict,
 };
 
 /// `POST /api/campaigns`: mint a CampaignId, ask the campaign tier to
@@ -32,6 +33,13 @@ use sea_orm::{
 /// the same `campaign_id`. The order (write `create_attempts` first, then
 /// call shard, then write `campaigns`) is what makes retries safe; see
 /// the long form in the design doc.
+///
+/// Crucially, the token is *not* a "done" marker. Every step after the token
+/// claim is idempotent (shard create + lease are idempotent on `campaign_id`;
+/// the platform inserts are `INSERT … ON CONFLICT DO NOTHING`), so a retry
+/// after a partial failure re-drives the missing steps and converges to a
+/// complete campaign. A benign duplicate of an already-complete campaign is
+/// detected by the GM membership row (the last write) and short-circuits.
 #[utoipa::path(
     post,
     path = "/campaigns",
@@ -49,27 +57,16 @@ pub async fn create_campaign(
     State(state): State<AppState>,
     Json(body): Json<CreateCampaignRequest>,
 ) -> Result<Json<CreateCampaignResponse>, AppError> {
-    // Step 1: idempotency probe. If we have a record for this token, return
-    // the previously minted campaign_id without doing any work.
-    if let Some(existing) = create_attempts::Entity::find_by_id(body.idempotency_token.clone())
-        .one(&state.db)
-        .await?
-    {
-        return Ok(Json(CreateCampaignResponse {
-            campaign_id: CampaignId::new(Nanoid(existing.campaign_id)),
-        }));
-    }
-
-    // Step 2: mint a fresh id.
-    let campaign_id = CampaignId::generate();
     let user_id = UserId(user.id);
-    let shard_url = state.config.campaign_shard_url.clone();
     let now = Utc::now();
 
-    // Step 3: claim the idempotency token. INSERT OR IGNORE so a concurrent
-    // racer who beat us writes their (token, campaign_id) and we re-read
-    // theirs. After this point, every retry of the same logical call
-    // resolves to the same campaign_id.
+    // Step 1: claim-or-recover the idempotency token. INSERT OR IGNORE so a
+    // concurrent racer who beat us keeps their (token, campaign_id); we then
+    // re-read to learn the authoritative id. Token-first is deliberate: it
+    // dedupes concurrent requests and pins the campaign_id before the shard
+    // call, so a retry never mints a second shard campaign. (`create_attempts`
+    // has no FK to `campaigns` precisely because it is written first.)
+    let campaign_id = CampaignId::generate();
     create_attempts::Entity::insert(create_attempts::ActiveModel {
         idempotency_token: Set(body.idempotency_token.clone()),
         campaign_id: Set(campaign_id.0.0.clone()),
@@ -90,7 +87,24 @@ pub async fn create_campaign(
         .ok_or_else(|| AppError::Internal("idempotency record vanished after upsert".into()))?;
     let resolved_campaign_id = CampaignId::new(Nanoid(resolved.campaign_id));
 
-    // Step 4a: create the campaign on the shard. Idempotent on campaign_id.
+    // Step 2: completeness fast-path. The GM membership row is the *last*
+    // write of a successful create, so its presence proves every prior step
+    // (shard create, lease, routing row) finished. A benign duplicate of a
+    // fully-provisioned campaign returns here without re-touching the shard.
+    // If it is absent the token was claimed by an attempt that then died
+    // mid-flight; fall through and re-drive the (idempotent) provisioning to
+    // heal it, rather than returning a stale success for a dead campaign.
+    if campaign_members::Entity::find_by_id((resolved_campaign_id.0.0.clone(), user.id))
+        .one(&state.db)
+        .await?
+        .is_some()
+    {
+        return Ok(Json(CreateCampaignResponse {
+            campaign_id: resolved_campaign_id,
+        }));
+    }
+
+    // Step 3a: create the campaign on the shard. Idempotent on campaign_id.
     state
         .campaign_internal
         .create_campaign(&resolved_campaign_id, &user_id)
@@ -104,7 +118,7 @@ pub async fn create_campaign(
             }
         })?;
 
-    // Step 4b: acquire the lease (ensure it's checked out). For a just-created
+    // Step 3b: acquire the lease (ensure it's checked out). For a just-created
     // campaign this is already true; the call is here for uniformity with the
     // cold-checkout flow.
     state
@@ -120,7 +134,17 @@ pub async fn create_campaign(
             }
         })?;
 
-    // Step 5: routing row. INSERT OR IGNORE on PK so retries no-op.
+    // Step 4: routing row + GM seed, committed atomically. One transaction so
+    // a crash between them can never leave a routing row (campaign visible in
+    // the owner's hub) without its membership row (every WS upgrade / Thing
+    // create would 403 the owner). With the resume path above, the only
+    // partial states are "nothing platform-side yet" (next retry heals) or
+    // "complete". `campaigns` is inserted before `campaign_members` so the FK
+    // ordering is correct once the platform DB enforces foreign keys. Both are
+    // INSERT OR IGNORE so a re-drive after a partial failure no-ops cleanly.
+    let shard_url = state.config.campaign_shard_url.clone();
+    let txn = state.db.begin().await?;
+
     campaigns::Entity::insert(campaigns::ActiveModel {
         id: Set(resolved_campaign_id.0.0.clone()),
         owner_user_id: Set(user.id),
@@ -140,14 +164,13 @@ pub async fn create_campaign(
             .to_owned(),
     )
     .do_nothing()
-    .exec(&state.db)
+    .exec(&txn)
     .await?;
 
-    // Step 6: seed creator as GM. INSERT OR IGNORE so retries no-op.
     campaign_members::Entity::insert(campaign_members::ActiveModel {
         campaign_id: Set(resolved_campaign_id.0.0.clone()),
         user_id: Set(user.id),
-        role: Set("gm".to_string()),
+        role: Set(campaign_members::CampaignRole::Gm),
         created_at: Set(now),
     })
     .on_conflict(
@@ -159,8 +182,10 @@ pub async fn create_campaign(
         .to_owned(),
     )
     .do_nothing()
-    .exec(&state.db)
+    .exec(&txn)
     .await?;
+
+    txn.commit().await?;
 
     if let Ok(mut cache) = state.loaded_cache.write() {
         cache.insert(resolved_campaign_id.clone());

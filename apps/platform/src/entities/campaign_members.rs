@@ -4,11 +4,13 @@ use uuid::Uuid;
 
 /// Membership link between a user and a campaign.
 ///
-/// Composite primary key `(campaign_id, user_id)`. The `role` column
-/// stores `"gm"` or `"player"`, mapped to [`CampaignRole`] at the
-/// handler boundary.
+/// Composite primary key `(campaign_id, user_id)`. The `role` column is a
+/// [`CampaignRole`], persisted as `"gm"` / `"player"` text and guarded at the
+/// DB level by `CHECK (role IN ('gm','player'))` (see the create migration).
+/// It converts into the wire-facing [app `CampaignRole`] at the handler
+/// boundary.
 ///
-/// [`CampaignRole`]: familiar_systems_app_shared::campaigns::internal::CampaignRole
+/// [app `CampaignRole`]: familiar_systems_app_shared::campaigns::internal::CampaignRole
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "campaign_members")]
 pub struct Model {
@@ -16,8 +18,34 @@ pub struct Model {
     pub campaign_id: String,
     #[sea_orm(primary_key, auto_increment = false)]
     pub user_id: Uuid,
-    pub role: String,
+    pub role: CampaignRole,
     pub created_at: DateTime<Utc>,
+}
+
+/// A member's functional role but for ORM internal usage.
+///
+/// Must have a 1:1 mapping in a few places:
+///
+/// 1. Here (obviously)
+/// 2. [`CampaignRole`](familiar_systems_app_shared::campaigns::internal::CampaignRole)
+/// 3. Migrations overall, specifically:
+///    a. [`m20260528_000001_create_campaign_members`](crate::migrations::m20260528_000001_create_campaign_members)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
+pub enum CampaignRole {
+    #[sea_orm(string_value = "gm")]
+    Gm,
+    #[sea_orm(string_value = "player")]
+    Player,
+}
+
+impl From<CampaignRole> for familiar_systems_app_shared::campaigns::internal::CampaignRole {
+    fn from(role: CampaignRole) -> Self {
+        match role {
+            CampaignRole::Gm => Self::Gm,
+            CampaignRole::Player => Self::Player,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

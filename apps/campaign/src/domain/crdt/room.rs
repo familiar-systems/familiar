@@ -77,9 +77,19 @@ impl<D: CrdtDoc> Room<D> {
         from: ClientId,
         updates: &[Vec<u8>],
     ) -> Result<(Broadcast, AckPayload), UpdateError> {
-        if let Some(sub) = self.subscribers.get(&from)
-            && sub.capability == Capability::Read
-        {
+        // Fail closed: only a registered Write subscriber may apply updates. An
+        // absent `from` (never joined, or a ref to a different actor instance)
+        // is rejected, not silently applied. Server-originated edits bypass
+        // this path (they go through `doc_mut()`), so the only legitimate
+        // caller here is a joined GM/Write client.
+        let authorized = matches!(
+            self.subscribers.get(&from),
+            Some(Subscriber {
+                capability: Capability::Write,
+                ..
+            })
+        );
+        if !authorized {
             return Err(UpdateError::Unauthorized);
         }
 
@@ -120,5 +130,85 @@ impl<D: CrdtDoc> Room<D> {
 
     pub fn subscriber_count(&self) -> usize {
         self.subscribers.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::crdt::doc::{DocError, Snapshot, VersionVector};
+
+    /// Minimal in-memory [`CrdtDoc`] that records how many times
+    /// `apply_updates` ran. Keeps these tests about the authorization guard
+    /// rather than Loro byte encoding, and lets each case assert the doc is
+    /// left untouched when a write is rejected.
+    #[derive(Default)]
+    struct StubDoc {
+        applied: usize,
+    }
+
+    impl CrdtDoc for StubDoc {
+        fn version(&self) -> VersionVector {
+            VersionVector(Vec::new())
+        }
+        fn apply_updates(&mut self, _updates: &[Vec<u8>]) -> Result<(), DocError> {
+            self.applied += 1;
+            Ok(())
+        }
+        fn export_snapshot(&self) -> Result<Snapshot, DocError> {
+            Ok(Snapshot(Vec::new()))
+        }
+        fn import_snapshot(&mut self, _data: &Snapshot) -> Result<(), DocError> {
+            Ok(())
+        }
+    }
+
+    fn join(room: &mut Room<StubDoc>, client: ClientId, capability: Capability) {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        room.on_join(client, tx, capability).expect("join");
+    }
+
+    /// The fail-closed core (REVIEW.md #4): a `from` absent from the subscriber
+    /// set is rejected, and the rejection happens before the doc is touched.
+    #[test]
+    fn apply_updates_rejects_unknown_sender_without_touching_doc() {
+        let mut room = Room::new(StubDoc::default());
+        // Someone else holds the room; the sender below never joined.
+        join(&mut room, ClientId::new(1), Capability::Write);
+
+        let result = room.apply_updates(ClientId::new(99), &[vec![0u8]]);
+
+        assert!(matches!(result, Err(UpdateError::Unauthorized)));
+        assert_eq!(
+            room.doc().applied,
+            0,
+            "a rejected write must not reach the doc"
+        );
+    }
+
+    /// Regression guard for the original behavior the fail-closed rewrite must
+    /// preserve: a known Read (player) subscriber cannot write.
+    #[test]
+    fn apply_updates_rejects_read_subscriber() {
+        let mut room = Room::new(StubDoc::default());
+        let client = ClientId::new(1);
+        join(&mut room, client, Capability::Read);
+
+        let result = room.apply_updates(client, &[vec![0u8]]);
+
+        assert!(matches!(result, Err(UpdateError::Unauthorized)));
+        assert_eq!(room.doc().applied, 0);
+    }
+
+    #[test]
+    fn apply_updates_accepts_write_subscriber() {
+        let mut room = Room::new(StubDoc::default());
+        let client = ClientId::new(1);
+        join(&mut room, client, Capability::Write);
+
+        let result = room.apply_updates(client, &[vec![0u8]]);
+
+        assert!(result.is_ok());
+        assert_eq!(room.doc().applied, 1);
     }
 }

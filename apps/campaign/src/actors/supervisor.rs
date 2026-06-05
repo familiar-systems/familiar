@@ -12,12 +12,13 @@
 //! into its map.
 
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
-use kameo::actor::{ActorRef, Spawn, WeakActorRef};
+use kameo::actor::{ActorId, ActorRef, Spawn, WeakActorRef};
 use kameo::error::{ActorStopReason, SendError};
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
@@ -181,6 +182,9 @@ impl Actor for CampaignSupervisor {
                     })
                     .await
                 {
+                    // What happens if this fails to land correctly? Nothing, really.
+                    // Users can still always make their own home pages and other new pages.
+                    // Well, at least when setting a new home page lands - that's still a TODO!
                     Ok(thing) => {
                         let thing_id = ThingId::from(thing.id);
                         if let Err(e) = seed_ref.ask(SetLandingPage { thing_id }).await {
@@ -269,6 +273,52 @@ impl Actor for CampaignSupervisor {
             "supervisor stopped"
         );
         Ok(())
+    }
+
+    // The supervisor is `link`ed to two kinds of siblings (kameo links are
+    // bidirectional): its parent `CampaignRegistry` and each child `ThingActor`
+    // it spawns. This handler fires for both, so it must tell them apart and
+    // react differently. Children are linked *after* insertion into `things`, so
+    // a dead sibling whose id is still in the map is necessarily a child.
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
+    async fn on_link_died(
+        &mut self,
+        _actor_ref: WeakActorRef<Self>,
+        id: ActorId,
+        reason: ActorStopReason,
+    ) -> Result<ControlFlow<ActorStopReason>, Self::Error> {
+        // A child ThingActor died (idle self-evict, drain, or panic). Prune its
+        // entry and keep running: a single room going away (or even crashing)
+        // must not take down the whole campaign and every other room. Each Thing
+        // is in `things` when its one-shot link_died fires (linked after insert;
+        // `on_stop`'s drain is terminal), so a hit here means "child".
+        let before = self.things.len();
+        self.things.retain(|_, actor| actor.id() != id);
+        if self.things.len() != before {
+            tracing::debug!(
+                ?reason,
+                thing_count = self.things.len(),
+                "thing actor removed from supervisor via link_died"
+            );
+            return Ok(ControlFlow::Continue(()));
+        }
+
+        // No map entry matched: the only other sibling is the registry parent.
+        // Preserve kameo's default propagation so an abnormal registry death
+        // still tears the supervisor down (-> `on_stop` flush + DB release),
+        // while a normal one is benign.
+        match &reason {
+            ActorStopReason::Normal | ActorStopReason::SupervisorRestart => {
+                Ok(ControlFlow::Continue(()))
+            }
+            _ => Ok(ControlFlow::Break(ActorStopReason::LinkDied {
+                id,
+                reason: Box::new(reason),
+            })),
+        }
     }
 }
 
@@ -467,7 +517,7 @@ impl Message<CreateThing> for CampaignSupervisor {
     async fn handle(
         &mut self,
         msg: CreateThing,
-        _ctx: &mut Context<Self, Self::Reply>,
+        ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.last_activity = Instant::now();
 
@@ -515,7 +565,10 @@ impl Message<CreateThing> for CampaignSupervisor {
             tracing::error!("thing actor died during genesis");
             return Err(CreateThingError::Genesis);
         }
-        self.things.insert(thing_id.clone(), actor);
+        self.things.insert(thing_id.clone(), actor.clone());
+        // Link after insert so `on_link_died` prunes this entry when the actor
+        // self-evicts on idle (see the handler for the after-insert rationale).
+        ctx.actor_ref().clone().link(&actor).await;
 
         // Place it in the live ToC. Best-effort: a failure here leaves a valid
         // Thing that `restore_toc` re-surfaces at the root on the next checkout.
@@ -646,6 +699,7 @@ impl CampaignSupervisor {
     async fn ensure_thing_actor(
         &mut self,
         thing_id: ThingId,
+        supervisor_ref: ActorRef<Self>,
     ) -> Result<ActorRef<ThingActor>, JoinRoomError> {
         if let Some(actor) = self.things.get(&thing_id)
             && actor.is_alive()
@@ -679,6 +733,9 @@ impl CampaignSupervisor {
         });
 
         self.things.insert(thing_id, actor.clone());
+        // Link after insert so `on_link_died` prunes this entry when the actor
+        // self-evicts on idle (see the handler for the after-insert rationale).
+        supervisor_ref.link(&actor).await;
         Ok(actor)
     }
 }
@@ -690,11 +747,7 @@ impl Message<JoinRoom> for CampaignSupervisor {
         skip_all,
         fields(campaign_id = %self.campaign_id.0, room_id = %msg.room_id),
     )]
-    async fn handle(
-        &mut self,
-        msg: JoinRoom,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) -> Self::Reply {
+    async fn handle(&mut self, msg: JoinRoom, ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
         self.last_activity = Instant::now();
         match msg.room_id.as_str() {
             "toc" => Ok(RoomHandle::Toc(self.toc.clone())),
@@ -703,7 +756,9 @@ impl Message<JoinRoom> for CampaignSupervisor {
                 let ulid = ulid::Ulid::from_string(id_str)
                     .map_err(|_| JoinRoomError::UnknownRoom(msg.room_id.clone()))?;
                 let thing_id = ThingId::from(ulid);
-                let actor = self.ensure_thing_actor(thing_id).await?;
+                let actor = self
+                    .ensure_thing_actor(thing_id, ctx.actor_ref().clone())
+                    .await?;
                 Ok(RoomHandle::Thing(actor))
             }
             _ => Err(JoinRoomError::UnknownRoom(msg.room_id)),
@@ -752,6 +807,25 @@ impl Message<GetStopCause> for CampaignSupervisor {
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.stop_cause
+    }
+}
+
+/// Test-only probe for the private `things` map: is this Thing still tracked?
+/// Lets eviction tests assert pruning without exposing the map.
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub struct ContainsThing(pub ThingId);
+
+#[cfg(test)]
+impl Message<ContainsThing> for CampaignSupervisor {
+    type Reply = bool;
+
+    async fn handle(
+        &mut self,
+        ContainsThing(id): ContainsThing,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.things.contains_key(&id)
     }
 }
 
@@ -895,6 +969,76 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
         actor_ref.wait_for_shutdown_with_result(|_| ()).await;
         assert!(actor_ref.ask(Ping).await.is_err());
+    }
+
+    /// A ThingActor that stops (idle self-eviction, or any stop) must be pruned
+    /// from the supervisor's `things` map via the `link` + `on_link_died` edge,
+    /// not left as a dead `ActorRef` until the next join of the same id.
+    /// Drives the terminal effect directly with `stop_gracefully` (a `Normal`
+    /// stop, same as `IdleEvict -> ctx.stop`) so the test is deterministic and
+    /// needs no real idle wait.
+    #[tokio::test]
+    async fn evicted_thing_actor_is_pruned_from_map() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let store = store_in(tmp.path());
+        let args = fast_args(CampaignId::generate(), store, 60_000, 60_000);
+        let supervisor = CampaignSupervisor::spawn(args);
+        supervisor.wait_for_startup().await;
+
+        // Create a Thing: it is inserted into `things` and linked.
+        let model = supervisor
+            .ask(CreateThing {
+                name: "Ephemeral".to_string(),
+                status: Some(Status::GmOnly),
+                parent: None,
+                seed_blocks: vec![],
+            })
+            .await
+            .unwrap();
+        let thing_id = ThingId::from(model.id.clone());
+        assert!(
+            supervisor
+                .ask(ContainsThing(thing_id.clone()))
+                .await
+                .unwrap(),
+            "newly created thing should be tracked",
+        );
+
+        // Join to obtain the live actor ref (returns the same in-map actor),
+        // then stop it.
+        let handle = supervisor
+            .ask(JoinRoom {
+                room_id: format!("thing:{}", thing_id.0),
+            })
+            .await
+            .unwrap();
+        let RoomHandle::Thing(actor) = handle else {
+            panic!("expected a Thing room handle");
+        };
+        actor.stop_gracefully().await.unwrap();
+        actor.wait_for_shutdown_with_result(|_| ()).await;
+
+        // link_died is delivered after the actor terminates; poll until pruned.
+        let mut pruned = false;
+        for _ in 0..50 {
+            if !supervisor
+                .ask(ContainsThing(thing_id.clone()))
+                .await
+                .unwrap()
+            {
+                pruned = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(
+            pruned,
+            "dead thing actor should be pruned from the supervisor map"
+        );
+
+        supervisor.stop_gracefully().await.unwrap();
+        supervisor.wait_for_shutdown_with_result(|_| ()).await;
     }
 
     /// Poll the campaign's SQLite file (the seed runs in a spawned task after

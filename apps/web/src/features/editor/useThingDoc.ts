@@ -11,6 +11,7 @@ import type { ContainerID, LoroDoc as LoroDocType } from "loro-crdt";
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { useLoroManager } from "./LoroManagerProvider";
+import type { RoomError } from "./loro-manager";
 
 export type ThingDocState =
   | { status: "connecting" }
@@ -18,7 +19,7 @@ export type ThingDocState =
   // Socket dropped while the doc is open: keep editing (edits buffer locally) and
   // let the editor show a reconnecting indicator rather than tearing down.
   | { status: "reconnecting"; doc: LoroDocType; containerId: ContainerID }
-  | { status: "error"; message: string };
+  | { status: "error"; error: RoomError };
 
 export function useThingDoc(thingId: ThingId): ThingDocState {
   const manager = useLoroManager();
@@ -59,7 +60,7 @@ export function useThingDoc(thingId: ThingId): ThingDocState {
           containerId: contentContainerId(snapshot.view),
         };
       case "error":
-        return { status: "error", message: snapshot.message };
+        return { status: "error", error: snapshot.error };
     }
   }, [snapshot]);
 }

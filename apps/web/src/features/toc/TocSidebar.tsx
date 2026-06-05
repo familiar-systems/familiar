@@ -13,6 +13,7 @@ import { Plus } from "lucide-react";
 import { useState } from "react";
 
 import { useLoroManager } from "../editor/LoroManagerProvider";
+import { roomErrorMessage } from "../editor/loro-manager";
 import { TocTree } from "./TocTree";
 import { useToc } from "./useToc";
 import { useCreatePage } from "./useCreatePage";
@@ -135,7 +136,11 @@ function SidebarBody({
         <p className="px-2 py-2 text-sm text-muted-foreground">Opening table of contents...</p>
       );
     case "error":
-      return <p className="px-2 py-2 text-sm text-red-700 dark:text-red-400">{snapshot.message}</p>;
+      return (
+        <p className="px-2 py-2 text-sm text-red-700 dark:text-red-400">
+          {roomErrorMessage(snapshot.error)}
+        </p>
+      );
     case "reconnecting":
     case "ready": {
       const reconnecting = snapshot.status === "reconnecting";

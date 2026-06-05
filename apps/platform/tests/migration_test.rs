@@ -1,9 +1,9 @@
-use familiar_systems_platform::migrations::Migrator;
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, Statement};
+use familiar_systems_platform::{db, migrations::Migrator};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use sea_orm_migration::MigratorTrait;
 
 async fn fresh_db() -> DatabaseConnection {
-    let db = Database::connect("sqlite::memory:").await.unwrap();
+    let db = db::connect("sqlite::memory:").await.unwrap();
     Migrator::up(&db, None).await.unwrap();
     db
 }
@@ -68,7 +68,7 @@ async fn migrator_creates_campaigns_table_with_owner_fk_and_mirror_columns() {
 }
 
 #[tokio::test]
-async fn migrator_creates_campaign_members_table_with_composite_pk_and_fks() {
+async fn migrator_creates_campaign_members_table_with_composite_pk_fks_and_role_check() {
     let db = fresh_db().await;
     let sql = table_ddl(&db, "campaign_members").await;
     let lower = sql.to_lowercase();
@@ -83,6 +83,10 @@ async fn migrator_creates_campaign_members_table_with_composite_pk_and_fks() {
     assert_eq!(
         fk_count, 2,
         "expected 2 FKs (campaigns + users), found {fk_count}: {sql}"
+    );
+    assert!(
+        lower.contains("check") && lower.contains("'gm'") && lower.contains("'player'"),
+        "role must carry a CHECK pinning it to gm/player: {sql}"
     );
 }
 

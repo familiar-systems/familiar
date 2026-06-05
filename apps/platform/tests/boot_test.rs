@@ -1,9 +1,8 @@
 use familiar_systems_app_shared::auth::HankoSessionValidator;
 use familiar_systems_platform::{
-    clients::campaign_internal::CampaignInternalClient, config::Config, migrations::Migrator,
+    clients::campaign_internal::CampaignInternalClient, config::Config, db, migrations::Migrator,
     routes::serve_router, state::AppState,
 };
-use sea_orm::Database;
 use sea_orm_migration::MigratorTrait;
 use std::sync::Arc;
 
@@ -18,7 +17,7 @@ async fn boot_migrates_and_serves_health() {
         internal_bearer_secondary: None,
         campaign_shard_url: "http://127.0.0.1:0".into(),
     });
-    let db = Database::connect(&config.database_url).await.unwrap();
+    let db = db::connect(&config.database_url).await.unwrap();
     Migrator::up(&db, None).await.unwrap();
     let validator = Arc::new(HankoSessionValidator::new(&config.hanko_api_url));
     let campaign_internal = CampaignInternalClient::new(

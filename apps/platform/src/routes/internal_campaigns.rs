@@ -17,7 +17,7 @@ use axum::{
 };
 use chrono::Utc;
 use familiar_systems_app_shared::campaigns::internal::{
-    CampaignRole, HeartbeatRequest, InitFailedRequest, MembershipResponse, PatchCampaignMirror,
+    HeartbeatRequest, InitFailedRequest, MembershipResponse, PatchCampaignMirror,
 };
 use familiar_systems_app_shared::id::CampaignId;
 use fs_id::Nanoid;
@@ -171,19 +171,7 @@ pub async fn check_membership(
         return Err(StatusCode::NOT_FOUND);
     };
 
-    let role = match member.role.as_str() {
-        "gm" => CampaignRole::Gm,
-        "player" => CampaignRole::Player,
-        other => {
-            tracing::error!(
-                campaign_id = %campaign_id,
-                user_id = %user_id,
-                role = %other,
-                "unknown role in campaign_members table"
-            );
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
-
-    Ok(Json(MembershipResponse { role }))
+    Ok(Json(MembershipResponse {
+        role: member.role.into(),
+    }))
 }

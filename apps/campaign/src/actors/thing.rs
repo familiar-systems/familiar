@@ -131,7 +131,19 @@ impl Actor for ThingActor {
                 let status: Status = thing_row.status.into();
                 let blobs: Vec<Vec<u8>> = block_rows.into_iter().map(|b| b.content).collect();
                 tracing::info!(block_count = blobs.len(), ?status, "thing actor restored");
-                LoroThingDoc::from_blocks(&thing_row.name, &status, &blobs)
+                let (doc, skipped) = LoroThingDoc::from_blocks(&thing_row.name, &status, &blobs);
+                // A dropped block means a corrupt `content` blob slipped past the
+                // serialize path -- it should never happen, so log the offending
+                // bytes in full for triage. The Thing still opens without it.
+                for sb in &skipped {
+                    tracing::error!(
+                        ordering = sb.ordering,
+                        blob = %String::from_utf8_lossy(&sb.blob),
+                        error = %sb.reason,
+                        "corrupt block dropped during thing restore; this should never happen",
+                    );
+                }
+                doc
             }
             ThingInit::New {
                 name,
@@ -144,7 +156,10 @@ impl Actor for ThingActor {
                 let new_thing = build_new_thing(args.thing_id.clone(), name, status, seed_blocks);
                 let blobs: Vec<Vec<u8>> =
                     new_thing.blocks.iter().map(|b| b.content.clone()).collect();
-                let doc = LoroThingDoc::from_blocks(&new_thing.name, &new_thing.status, &blobs);
+                // Seed blobs are freshly serialized here, so none can be malformed;
+                // discard the (always-empty) skip report.
+                let (doc, _) =
+                    LoroThingDoc::from_blocks(&new_thing.name, &new_thing.status, &blobs);
 
                 if let Err(e) = args.db_writer.ask(DbCreateThing { new_thing }).await {
                     tracing::error!(error = %e, "thing genesis write failed");

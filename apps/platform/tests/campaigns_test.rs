@@ -1,8 +1,9 @@
 mod common;
 
-use familiar_systems_platform::entities::{campaigns, create_attempts};
+use familiar_systems_platform::entities::{campaign_members, campaigns, create_attempts};
 use sea_orm::EntityTrait;
 use serde_json::json;
+use uuid::Uuid;
 use wiremock::{
     Mock, ResponseTemplate,
     matchers::{header, method, path, path_regex},
@@ -149,6 +150,93 @@ async fn shard_failure_returns_5xx_and_writes_no_routing_row() {
     // Routing row was never written.
     let all = campaigns::Entity::find().all(&app.db).await.unwrap();
     assert_eq!(all.len(), 0, "no routing row on shard failure");
+}
+
+/// Regression for REVIEW.md #1: a failure *after* the idempotency token is
+/// claimed must not lock the owner out. The first attempt dies in the shard
+/// call (the token row is already written by then); the retry with the same
+/// token must re-drive the idempotent provisioning and leave the owner seeded
+/// as GM, rather than short-circuiting to a stale success for a dead campaign.
+#[tokio::test]
+async fn partial_failure_then_retry_heals_membership() {
+    let app = common::spawn_app().await;
+    common::mock_hanko_user(&app, SUB, "heal@ex.com").await;
+    let client = reqwest::Client::new();
+    let body = json!({ "idempotency_token": TOKEN });
+
+    // Phase 1: the shard create returns 500. Scoped, so the mock is removed
+    // when the guard drops at the end of this block (leaving the field clear
+    // for the healthy mocks below).
+    {
+        let _guard = Mock::given(method("POST"))
+            .and(path("/internal/campaign"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount_as_scoped(&app.campaign)
+            .await;
+
+        let r1 = client
+            .post(format!("{}/campaigns", app.base_url))
+            .header("authorization", "Bearer test-token")
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            r1.status().is_server_error(),
+            "first attempt should 5xx when the shard create fails, got {}",
+            r1.status()
+        );
+    }
+
+    // The token was claimed, but the campaign is incomplete: the failed
+    // attempt seeded no membership.
+    let attempt = create_attempts::Entity::find_by_id(TOKEN.to_string())
+        .one(&app.db)
+        .await
+        .unwrap()
+        .expect("token is claimed even though the create failed");
+    let members = campaign_members::Entity::find().all(&app.db).await.unwrap();
+    assert!(
+        members.is_empty(),
+        "a failed attempt must not seed any membership"
+    );
+
+    // Phase 2: shard is healthy now; retry with the same token.
+    mock_campaign_create_and_lease_ok(&app).await;
+    let r2 = client
+        .post(format!("{}/campaigns", app.base_url))
+        .header("authorization", "Bearer test-token")
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r2.status().as_u16(), 200, "retry should succeed");
+    let id2 = r2.json::<serde_json::Value>().await.unwrap()["campaign_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        id2, attempt.campaign_id,
+        "retry must resolve to the originally claimed campaign_id"
+    );
+
+    // The owner is now seeded as GM and the routing row exists: the campaign
+    // is usable (check_membership returns gm, so the WS upgrade succeeds).
+    let owner = Uuid::parse_str(SUB).unwrap();
+    let member = campaign_members::Entity::find_by_id((id2.clone(), owner))
+        .one(&app.db)
+        .await
+        .unwrap()
+        .expect("GM membership row should exist after the healing retry");
+    assert_eq!(member.role, campaign_members::CampaignRole::Gm);
+    assert!(
+        campaigns::Entity::find_by_id(id2)
+            .one(&app.db)
+            .await
+            .unwrap()
+            .is_some(),
+        "routing row should exist after the healing retry"
+    );
 }
 
 #[tokio::test]

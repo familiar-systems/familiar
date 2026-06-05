@@ -194,8 +194,14 @@ depends = ["test:*"]
 [tasks."test:ts"]
 run = "pnpm test"
 sources = [
-  "apps/**/*.{ts,tsx,js,jsx}",
-  "packages/**/*.{ts,tsx,js,jsx}",
+  "apps/**/*.ts",
+  "apps/**/*.tsx",
+  "apps/**/*.js",
+  "apps/**/*.jsx",
+  "packages/**/*.ts",
+  "packages/**/*.tsx",
+  "packages/**/*.js",
+  "packages/**/*.jsx",
   "apps/**/package.json",
   "packages/**/package.json",
   "package.json",
@@ -204,6 +210,8 @@ sources = [
   "vitest.config.*",
   "apps/**/vitest.config.*",
   "packages/**/vitest.config.*",
+  "!**/node_modules/**",
+  "!**/dist/**",
 ]
 
 # test:rust lives in .mise/tasks/test/rust (file task, shellcheck-able).
@@ -229,7 +237,8 @@ description = "Frontend integration tests for apps/web (browser + mocked backend
 # `integration` job in .github/workflows/_ci.yml.
 run = "pnpm --filter @familiar-systems/web integration"
 sources = [
-  "apps/web/src/**/*.{ts,tsx}",
+  "apps/web/src/**/*.ts",
+  "apps/web/src/**/*.tsx",
   "apps/web/integration/**/*.ts",
   "apps/web/playwright.config.ts",
   "apps/web/package.json",
@@ -245,8 +254,15 @@ depends = ["lint:*"]
 [tasks."lint:ts"]
 run = "pnpm lint"
 sources = [
-  "apps/**/*.{ts,tsx,js,jsx,astro}",
-  "packages/**/*.{ts,tsx,js,jsx}",
+  "apps/**/*.ts",
+  "apps/**/*.tsx",
+  "apps/**/*.js",
+  "apps/**/*.jsx",
+  "apps/**/*.astro",
+  "packages/**/*.ts",
+  "packages/**/*.tsx",
+  "packages/**/*.js",
+  "packages/**/*.jsx",
   "apps/**/package.json",
   "packages/**/package.json",
   "package.json",
@@ -256,6 +272,8 @@ sources = [
   "apps/**/tsconfig*.json",
   "packages/**/tsconfig*.json",
   ".oxlintrc.json",
+  "!**/node_modules/**",
+  "!**/dist/**",
 ]
 
 [tasks."lint:rust"]
@@ -383,11 +401,28 @@ depends = ["format:check:*"]
 [tasks."format:check:ts"]
 run = "pnpm format:check"
 sources = [
-  "apps/**/*.{ts,tsx,js,jsx,astro,json,md,css,html}",
-  "packages/**/*.{ts,tsx,js,jsx,json,md,css,html}",
+  "apps/**/*.ts",
+  "apps/**/*.tsx",
+  "apps/**/*.js",
+  "apps/**/*.jsx",
+  "apps/**/*.astro",
+  "apps/**/*.json",
+  "apps/**/*.md",
+  "apps/**/*.css",
+  "apps/**/*.html",
+  "packages/**/*.ts",
+  "packages/**/*.tsx",
+  "packages/**/*.js",
+  "packages/**/*.jsx",
+  "packages/**/*.json",
+  "packages/**/*.md",
+  "packages/**/*.css",
+  "packages/**/*.html",
   "package.json",
   "pnpm-lock.yaml",
   ".oxfmtrc.json",
+  "!**/node_modules/**",
+  "!**/dist/**",
 ]
 
 [tasks."format:check:rust"]
@@ -419,8 +454,15 @@ depends = ["typecheck:*"]
 [tasks."typecheck:ts"]
 run = "pnpm typecheck"
 sources = [
-  "apps/**/*.{ts,tsx,js,jsx,astro}",
-  "packages/**/*.{ts,tsx,js,jsx}",
+  "apps/**/*.ts",
+  "apps/**/*.tsx",
+  "apps/**/*.js",
+  "apps/**/*.jsx",
+  "apps/**/*.astro",
+  "packages/**/*.ts",
+  "packages/**/*.tsx",
+  "packages/**/*.js",
+  "packages/**/*.jsx",
   "apps/**/package.json",
   "packages/**/package.json",
   "package.json",
@@ -430,6 +472,8 @@ sources = [
   "apps/**/tsconfig*.json",
   "packages/**/tsconfig*.json",
   "apps/web/tsr.config.json",
+  "!**/node_modules/**",
+  "!**/dist/**",
 ]
 
 [tasks."typecheck:rust"]

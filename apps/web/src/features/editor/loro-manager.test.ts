@@ -1,8 +1,7 @@
-// Safety net for LoroClientManager's lifecycle: the StrictMode connect/close
-// races and the empty-doc regression the last two commits fixed. Written first,
-// against the CURRENT behavior, so the refactor that follows (stop the socket
-// swap, then unify ToC + Thing into one room abstraction) is a refactor under
-// green rather than a rewrite on faith.
+// loro-websocket is not built for React's StrictMode (synchronous mount/unmount/
+// remount) or for navigation that races joins against leaves. LoroClientManager is
+// the container that consumes loro-websocket safely; these tests validate that
+// container under StrictMode and the related race conditions.
 //
 // Vitest runs in the node environment here (no jsdom; see apps/web/vitest.config.ts
 // and the sibling toc-doc.test.ts), so we drive the manager AS A CLASS with a
@@ -463,5 +462,124 @@ describe("LoroClientManager ToC room", () => {
     const id: TreeID = tree.createNode().id;
 
     expect(() => m.moveTocNode(id, null, 0)).not.toThrow();
+  });
+});
+
+// A terminally-errored room must release its websocket room + doc subscription and
+// fail closed, never linger `bound` behind an error snapshot (where a later
+// release/acquire drops the handle and leaks both). loro-websocket signals terminal
+// two ways: `error`, and `disconnected` once it has given up reconnecting; both land
+// here. These tests pin that teardown.
+describe("LoroClientManager terminal room errors", () => {
+  const thingKey = "%LOR" + "thing:" + THING_A;
+
+  it("tears the room down when a bound room terminally errors", async () => {
+    const m = makeManager();
+    m.connect();
+    m.acquireThing(THING_A);
+    await flushMicro();
+    expectSyncedThing(m, THING_A);
+    const room = mock.instances.at(-1)?.rooms.get(thingKey);
+    expect(room?.destroyed).toBe(false);
+
+    room?.fireStatus("error");
+
+    expect(room?.destroyed).toBe(true);
+    const snap = m.getThingState(THING_A);
+    expect(snap.status).toBe("error");
+    if (snap.status === "error") expect(snap.error.kind).toBe("connection_lost");
+  });
+
+  it("treats a terminal disconnected like an error, not a perpetual reconnect", async () => {
+    const m = makeManager();
+    m.connect();
+    m.acquireThing(THING_A);
+    await flushMicro();
+    const room = mock.instances.at(-1)?.rooms.get(thingKey);
+
+    room?.fireStatus("disconnected");
+
+    expect(room?.destroyed).toBe(true);
+    const snap = m.getThingState(THING_A);
+    expect(snap.status).toBe("error");
+    if (snap.status === "error") expect(snap.error.kind).toBe("connection_lost");
+  });
+
+  it("a terminal error is final: a later status does not revive the room", async () => {
+    const m = makeManager();
+    m.connect();
+    m.acquireThing(THING_A);
+    await flushMicro();
+    const room = mock.instances.at(-1)?.rooms.get(thingKey);
+    room?.fireStatus("error");
+    expect(m.getThingState(THING_A).status).toBe("error");
+
+    room?.fireStatus("joined"); // binding is `failed` now, so onRoomStatus ignores it
+    expect(m.getThingState(THING_A).status).toBe("error");
+  });
+
+  it("releasing an errored room drops the handle so the next acquire is fresh", async () => {
+    const m = makeManager();
+    m.connect();
+    m.acquireThing(THING_A);
+    await flushMicro();
+    const room = mock.instances.at(-1)?.rooms.get(thingKey);
+    room?.fireStatus("error");
+
+    m.releaseThing(THING_A);
+    expect(m.getThingState(THING_A).status).toBe("joining"); // handle gone
+
+    m.acquireThing(THING_A);
+    await flushMicro();
+    expectSyncedThing(m, THING_A); // rebuilt on a fresh room + doc
+    expect(room?.destroyed).toBe(true); // old room never leaked
+  });
+
+  it("re-acquiring over an errored room tears the old room down (no leak)", async () => {
+    // A pinned room (the ToC) can't release, so recovery is a fresh acquire over the
+    // errored handle. The overwrite must not strand the old room.
+    const m = makeManager();
+    m.connect();
+    m.acquireThing(THING_A);
+    await flushMicro();
+    const first = mock.instances.at(-1)?.rooms.get(thingKey);
+    first?.fireStatus("error");
+    expect(first?.destroyed).toBe(true);
+
+    m.acquireThing(THING_A);
+    await flushMicro();
+    expectSyncedThing(m, THING_A);
+  });
+
+  it("severs the doc subscription when a derived (ToC) room errors", async () => {
+    // The derived ToC view subscribes to its doc; a terminal error must call that
+    // docUnsub, not only destroy the room. LoroAdaptor subscribes via
+    // subscribeLocalUpdates, so a spy on doc.subscribe catches only OUR derived sub.
+    const realSubscribe = LoroDoc.prototype.subscribe;
+    const unsubs: ReturnType<typeof vi.fn>[] = [];
+    const spy = vi.spyOn(LoroDoc.prototype, "subscribe").mockImplementation(function (
+      this: LoroDoc,
+      ...args: Parameters<LoroDoc["subscribe"]>
+    ) {
+      const tracked = vi.fn(realSubscribe.apply(this, args));
+      unsubs.push(tracked);
+      return tracked;
+    });
+    try {
+      const m = makeManager();
+      m.connect();
+      m.acquireToc();
+      await flushMicro();
+      expect(m.getTocSnapshot().status).toBe("joined");
+      expect(unsubs).toHaveLength(1); // exactly the derived ToC subscription
+
+      const tocRoom = mock.instances.at(-1)?.rooms.get("%LOR" + TOC_CONTAINER);
+      tocRoom?.fireStatus("error");
+
+      expect(tocRoom?.destroyed).toBe(true);
+      expect(unsubs[0]).toHaveBeenCalledTimes(1); // docUnsub fired; no subscription leak
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

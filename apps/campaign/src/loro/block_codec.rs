@@ -45,14 +45,46 @@ pub fn empty_paragraph_blob(block_id: &BlockId) -> Vec<u8> {
 
 // ── Restore: JSON blob -> Loro ──────────────────────────────────────────────
 
+/// Why a block (or one of its children) could not be reconstructed.
+///
+/// Restore is best-effort: rather than panicking on a malformed blob (which,
+/// running inside `ThingActor::on_start`, would crash-loop the actor and make
+/// the Thing un-openable), the offending block is dropped and surfaced through
+/// [`SkippedBlock`].
+///
+/// TODO let users know about it
+#[derive(Debug, thiserror::Error)]
+pub enum RestoreError {
+    #[error("block content is not valid JSON: {0}")]
+    InvalidJson(#[source] serde_json::Error),
+    #[error("block node is not a JSON object")]
+    NotAnObject,
+    #[error("loro insert failed: {0}")]
+    Loro(#[from] loro::LoroError),
+}
+
+/// A block that could not be reconstructed during restore.
+///
+/// Carries the offending blob verbatim so the caller can log it in full for
+/// triage. This should never happen in practice -- the serialize path only ever
+/// emits well-formed blobs -- so when it does we want the exact bytes, not a
+/// summary.
+pub struct SkippedBlock {
+    pub ordering: usize,
+    pub blob: Vec<u8>,
+    pub reason: RestoreError,
+}
+
 /// Reconstruct a ProseMirror node from a JSON blob into a Loro children list.
 ///
 /// The blob must be an object with `nodeName`, `attributes`, and `children`
-/// keys (the format produced by `serialize_block`).
-pub fn restore_block(parent_list: &LoroList, pos: usize, blob: &[u8]) {
+/// keys (the format produced by `serialize_block`). The JSON-parse and
+/// object-shape checks run before any insert, so a malformed blob fails before
+/// touching `parent_list` (nothing half-inserted).
+fn restore_block(parent_list: &LoroList, pos: usize, blob: &[u8]) -> Result<(), RestoreError> {
     let json: serde_json::Value =
-        serde_json::from_slice(blob).expect("block content must be valid JSON");
-    restore_node(parent_list, pos, &json);
+        serde_json::from_slice(blob).map_err(RestoreError::InvalidJson)?;
+    restore_node(parent_list, pos, &json)
 }
 
 /// Recursively create a Loro node from a JSON value.
@@ -60,46 +92,57 @@ pub fn restore_block(parent_list: &LoroList, pos: usize, blob: &[u8]) {
 /// Convention: in a `children` array, a JSON string is a `LoroText`,
 /// an object with `nodeName` is a nested `LoroMap`. This matches the
 /// output of `get_deep_value` on a loro-prosemirror document.
-fn restore_node(parent_list: &LoroList, pos: usize, json: &serde_json::Value) {
-    let obj = json
-        .as_object()
-        .expect("ProseMirror node must be a JSON object");
+fn restore_node(
+    parent_list: &LoroList,
+    pos: usize,
+    json: &serde_json::Value,
+) -> Result<(), RestoreError> {
+    let obj = json.as_object().ok_or(RestoreError::NotAnObject)?;
 
-    let node = parent_list
-        .insert_container(pos, LoroMap::new())
-        .expect("insert block node");
+    let node = parent_list.insert_container(pos, LoroMap::new())?;
 
     if let Some(name) = obj.get(NODE_NAME_KEY).and_then(|v| v.as_str()) {
-        node.insert(NODE_NAME_KEY, name).unwrap();
+        node.insert(NODE_NAME_KEY, name)?;
     }
 
     if let Some(attrs) = obj.get(ATTRIBUTES_KEY).and_then(|v| v.as_object()) {
-        let attrs_map = node
-            .insert_container(ATTRIBUTES_KEY, LoroMap::new())
-            .unwrap();
+        let attrs_map = node.insert_container(ATTRIBUTES_KEY, LoroMap::new())?;
         for (k, v) in attrs {
-            attrs_map.insert(k.as_str(), json_to_loro_value(v)).unwrap();
+            attrs_map.insert(k.as_str(), json_to_loro_value(v))?;
         }
     }
 
     if let Some(children) = obj.get(CHILDREN_KEY).and_then(|v| v.as_array()) {
-        let children_list = node
-            .insert_container(CHILDREN_KEY, LoroList::new())
-            .unwrap();
-        restore_children(&children_list, children);
+        let children_list = node.insert_container(CHILDREN_KEY, LoroList::new())?;
+        restore_children(&children_list, children)?;
     }
+
+    Ok(())
 }
 
 /// Populate a children LoroList from a JSON array.
-fn restore_children(list: &LoroList, children: &[serde_json::Value]) {
-    for (i, child) in children.iter().enumerate() {
+///
+/// A child is either a `LoroText` (JSON string) or a nested node (JSON object).
+/// Anything else is structurally invalid ProseMirror; we skip it and keep the
+/// surrounding children rather than failing the whole block. `pos` is a write
+/// cursor that advances only on a real insert, so a skipped element re-packs
+/// positions instead of leaving a gap -- a gap would push the next
+/// `insert_container` past the list end and error.
+fn restore_children(list: &LoroList, children: &[serde_json::Value]) -> Result<(), RestoreError> {
+    let mut pos = 0;
+    for child in children {
         if let Some(s) = child.as_str() {
-            let text = list.insert_container(i, LoroText::new()).unwrap();
-            text.insert(0, s).unwrap();
+            let text = list.insert_container(pos, LoroText::new())?;
+            text.insert(0, s)?;
+            pos += 1;
         } else if child.is_object() {
-            restore_node(list, i, child);
+            restore_node(list, pos, child)?;
+            pos += 1;
+        } else {
+            tracing::warn!(child = %child, "skipped non-text, non-node child during block restore");
         }
     }
+    Ok(())
 }
 
 /// Convert a JSON value to a LoroValue for map insertion.
@@ -173,11 +216,20 @@ fn read_block_id(block_map: &LoroMap) -> Option<BlockId> {
     Ulid::from_string(&raw).ok().map(BlockId::from)
 }
 
-/// Initialize a content LoroMap as a ProseMirror document root and
-/// populate it with blocks restored from their JSON blobs.
+/// Initialize a content LoroMap as a ProseMirror document root and populate it
+/// with blocks restored from their JSON blobs.
+///
+/// Best-effort per block: a blob that cannot be reconstructed (not valid JSON,
+/// not a node object) is dropped and returned in the [`SkippedBlock`] report
+/// rather than panicking, so one corrupt row cannot make the Thing un-openable.
+/// `pos` is a write cursor advanced only on a successful insert, so a dropped
+/// block does not skew the positions of the blocks after it.
 ///
 /// The blobs must be in the correct order (by `ordering`).
-pub fn restore_content(content_map: &LoroMap, blobs: &[Vec<u8>]) {
+pub fn restore_content(content_map: &LoroMap, blobs: &[Vec<u8>]) -> Vec<SkippedBlock> {
+    // The doc root is a fresh, attached container and these keys are fixed, so
+    // these inserts cannot fail; a panic here would be a Loro-internal bug, not
+    // bad data.
     content_map.insert(NODE_NAME_KEY, "doc").unwrap();
     content_map
         .insert_container(ATTRIBUTES_KEY, LoroMap::new())
@@ -185,9 +237,20 @@ pub fn restore_content(content_map: &LoroMap, blobs: &[Vec<u8>]) {
     let children = content_map
         .insert_container(CHILDREN_KEY, LoroList::new())
         .unwrap();
-    for (i, blob) in blobs.iter().enumerate() {
-        restore_block(&children, i, blob);
+
+    let mut skipped = Vec::new();
+    let mut pos = 0;
+    for (ordering, blob) in blobs.iter().enumerate() {
+        match restore_block(&children, pos, blob) {
+            Ok(()) => pos += 1,
+            Err(reason) => skipped.push(SkippedBlock {
+                ordering,
+                blob: blob.clone(),
+                reason,
+            }),
+        }
     }
+    skipped
 }
 
 #[cfg(test)]
@@ -372,5 +435,88 @@ mod tests {
         let blocks = extract_blocks(&content);
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].id, None);
+    }
+
+    // ── Restore hardening (REVIEW.md #3) ─────────────────────────────────────
+
+    fn paragraph_blob(text: &str) -> Vec<u8> {
+        serde_json::to_vec(&json!({
+            NODE_NAME_KEY: "paragraph",
+            ATTRIBUTES_KEY: {},
+            CHILDREN_KEY: [text],
+        }))
+        .unwrap()
+    }
+
+    /// A child that is neither a string nor a node object (here, a number) is
+    /// skipped and the surrounding children re-pack, instead of skewing the
+    /// insert position and panicking on the out-of-bounds `insert_container`.
+    #[test]
+    fn scalar_child_skipped_and_positions_repack() {
+        let blob = serde_json::to_vec(&json!({
+            NODE_NAME_KEY: "paragraph",
+            ATTRIBUTES_KEY: {},
+            CHILDREN_KEY: ["a", 42, "b"],
+        }))
+        .unwrap();
+
+        let doc = LoroDoc::new();
+        let content = doc.get_map("content");
+        let skipped = restore_content(&content, &[blob]);
+
+        // The block itself restored fine; only the scalar child was dropped.
+        assert!(skipped.is_empty());
+        let deep: serde_json::Value = content.get_deep_value().into();
+        assert_eq!(deep[CHILDREN_KEY][0][CHILDREN_KEY], json!(["a", "b"]));
+    }
+
+    /// A blob that is not valid JSON is dropped (reported), and the blocks
+    /// around it survive contiguous -- a dropped block must not skew the
+    /// positions of the blocks after it.
+    #[test]
+    fn corrupt_json_block_skipped_and_survivors_contiguous() {
+        let garbage = b"this is not json".to_vec();
+
+        let doc = LoroDoc::new();
+        let content = doc.get_map("content");
+        let skipped = restore_content(
+            &content,
+            &[
+                paragraph_blob("one"),
+                garbage.clone(),
+                paragraph_blob("two"),
+            ],
+        );
+
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].ordering, 1);
+        assert_eq!(skipped[0].blob, garbage);
+        assert!(matches!(skipped[0].reason, RestoreError::InvalidJson(_)));
+
+        let deep: serde_json::Value = content.get_deep_value().into();
+        let children = deep[CHILDREN_KEY].as_array().unwrap();
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[0][CHILDREN_KEY], json!(["one"]));
+        assert_eq!(children[1][CHILDREN_KEY], json!(["two"]));
+    }
+
+    /// A blob that is valid JSON but not a node object (a bare scalar) is
+    /// dropped; the good block still lands at position 0.
+    #[test]
+    fn non_object_block_skipped() {
+        let not_a_node = serde_json::to_vec(&json!(42)).unwrap();
+
+        let doc = LoroDoc::new();
+        let content = doc.get_map("content");
+        let skipped = restore_content(&content, &[not_a_node, paragraph_blob("ok")]);
+
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].ordering, 0);
+        assert!(matches!(skipped[0].reason, RestoreError::NotAnObject));
+
+        let deep: serde_json::Value = content.get_deep_value().into();
+        let children = deep[CHILDREN_KEY].as_array().unwrap();
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0][CHILDREN_KEY], json!(["ok"]));
     }
 }
