@@ -23,7 +23,7 @@
     "@familiar-systems/types-app": "workspace:*",
     "@familiar-systems/types-campaign": "workspace:*",
     "@tailwindcss/vite": "catalog:",
-    "@tanstack/react-router": "^1.169.2",
+    "@tanstack/react-router": "^1.170.9",
     "@teamhanko/hanko-elements": "^2.6.0",
     "@tiptap/core": "catalog:",
     "@tiptap/react": "catalog:",
@@ -36,13 +36,13 @@
     "react-dom": "catalog:",
     "tailwindcss": "catalog:",
     "tailwindcss-animate": "catalog:",
-    "zod": "^4.3.6"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",
     "@playwright/test": "^1.60.0",
-    "@tanstack/router-cli": "^1.166.43",
-    "@tanstack/router-plugin": "^1.167.35",
+    "@tanstack/router-cli": "^1.167.11",
+    "@tanstack/router-plugin": "^1.168.12",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^5",
@@ -50,6 +50,6 @@
     "typescript": "catalog:",
     "vite": "^7",
     "vite-plugin-wasm": "^3.6.0",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.7"
   }
 }
