@@ -3,7 +3,7 @@ import type { ConversationId } from "../id/ConversationId";
 import type { ProposedChange } from "./ProposedChange";
 
 /**
- * An inline suggestion on an existing content entry (Folder or Thing).
+ * An inline suggestion on an existing content entry (Folder or Page).
  */
 export type TocSuggestion =
   | { schema: "change"; conversationId: ConversationId; proposed: ProposedChange }

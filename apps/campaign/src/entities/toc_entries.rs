@@ -1,6 +1,6 @@
 //! Relational persistence for the Table of Contents tree.
 //!
-//! The ToC is a nested tree of Folders and Things backed by a LoroTree CRDT
+//! The ToC is a nested tree of Folders and Pages backed by a LoroTree CRDT
 //! during an active session. This table is the at-rest source of truth:
 //! on checkout, `restore_toc` rebuilds the CRDT from these rows; on
 //! writeback, `snapshot_toc` replaces all rows from the current CRDT state.
@@ -15,23 +15,23 @@
 //! timestamps because the table is a positional index, not an entity
 //! with lifecycle.
 //!
-//! ## Invariant: exactly one of `thing_id` / `folder_title` is non-null
+//! ## Invariant: exactly one of `page_id` / `folder_title` is non-null
 //!
-//! A row is either a Thing pointer (thing_id set, folder_title null) or a
-//! Folder (folder_title set, thing_id null). The application enforces this
+//! A row is either a Page pointer (page_id set, folder_title null) or a
+//! Folder (folder_title set, page_id null). The application enforces this
 //! in `snapshot_toc`; sea-orm entities can't express CHECK constraints, so
 //! it is not enforced at the DB level.
 //!
-//! ## Thing titles are not stored here
+//! ## Page titles are not stored here
 //!
-//! Thing entries derive their display title from `things.name` via a join
-//! during restore. This avoids drift between the ToC and the Thing's own
+//! Page entries derive their display title from `pages.name` via a join
+//! during restore. This avoids drift between the ToC and the Page's own
 //! name. Only Folder titles live in this table (folders have no other home
 //! for their name).
 
 use sea_orm::entity::prelude::*;
 
-use crate::entities::columns::{StatusCol, ThingIdCol};
+use crate::entities::columns::{PageIdCol, StatusCol};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "toc_entries")]
@@ -40,12 +40,12 @@ pub struct Model {
     /// Not referenced by anything outside this table.
     #[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
     pub id: String,
-    /// FK to `things.id`. Non-null for Thing entries; null for Folders.
-    /// CASCADE delete: if a Thing is removed from the DB between sessions,
+    /// FK to `pages.id`. Non-null for Page entries; null for Folders.
+    /// CASCADE delete: if a Page is removed from the DB between sessions,
     /// its ToC row disappears automatically.
-    pub thing_id: Option<ThingIdCol>,
-    /// Display title for Folder entries only. Null when `thing_id` is set
-    /// (Thing titles come from `things.name` on restore).
+    pub page_id: Option<PageIdCol>,
+    /// Display title for Folder entries only. Null when `page_id` is set
+    /// (Page titles come from `pages.name` on restore).
     #[sea_orm(column_type = "Text")]
     pub folder_title: Option<String>,
     pub visibility: StatusCol,
@@ -61,17 +61,17 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::things::Entity",
-        from = "Column::ThingId",
-        to = "super::things::Column::Id",
+        belongs_to = "super::pages::Entity",
+        from = "Column::PageId",
+        to = "super::pages::Column::Id",
         on_delete = "Cascade"
     )]
-    Thing,
+    Page,
 }
 
-impl Related<super::things::Entity> for Entity {
+impl Related<super::pages::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Thing.def()
+        Relation::Page.def()
     }
 }
 

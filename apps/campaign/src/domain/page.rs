@@ -1,22 +1,23 @@
-//! Pure builder for bringing a new Thing into existence.
+//! Pure builder for bringing a new Page into existence.
 //!
 //! This is the "service" in the functional-core / imperative-shell sense: a
 //! pure function that composes the domain values to persist, with all effects
 //! (id minting, the clock, the database, the live CRDT doc) pushed to the
-//! edges. It does NOT write anything. The `ThingActor`'s genesis path consumes
-//! the [`NewThing`] it returns: the actor persists it (via `DbCreateThing`) and
-//! builds its own `LoroThingDoc`.
+//! edges. It does NOT write anything. The `PageActor`'s genesis path consumes
+//! the [`NewPage`] it returns: the actor persists it (via `DbCreatePage`) and
+//! builds its own `LoroPageDoc`.
 //!
 //! Keeping creation logic here, and routing the write through the owning actor,
-//! is deliberate: a `ThingActor` is the single-threaded consistency boundary
-//! for a Thing, so every mutation flows through it. A direct write around the
+//! is deliberate: a `PageActor` is the single-threaded consistency boundary
+//! for a Page, so every mutation flows through it. A direct write around the
 //! actor would drift its in-memory CRDT doc from the database the moment the
-//! Thing has live subscribers.
+//! Page has live subscribers.
 
-use familiar_systems_campaign_shared::id::{BlockId, ThingId};
+use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 
-/// A block to persist as part of a new Thing. A neutral domain value with no
+/// A block to persist as part of a new Page. A neutral domain value with no
 /// sea-orm dependency; the `DatabaseWriteActor` maps it to a `blocks::ActiveModel`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewBlock {
@@ -26,27 +27,31 @@ pub struct NewBlock {
     pub status: Status,
 }
 
-/// The complete description of a Thing to bring into existence. Produced by
-/// [`build_new_thing`] and handed to the `ThingActor` genesis path.
+/// The complete description of a Page to bring into existence. Produced by
+/// [`build_new_page`] and handed to the `PageActor` genesis path.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewThing {
-    pub id: ThingId,
+pub struct NewPage {
+    pub id: PageId,
     pub name: String,
     pub status: Status,
+    /// What kind of page this is. `build_new_page` always produces `Entity`
+    /// today; the `template` kind has no creation path until template
+    /// instantiation lands (which will set it here alongside `prototype_id`).
+    pub kind: PageKind,
     /// Lineage back to the template this was cloned from, if any. `None` until
     /// template instantiation lands.
-    pub prototype_id: Option<ThingId>,
+    pub prototype_id: Option<PageId>,
     pub blocks: Vec<NewBlock>,
 }
 
-/// Build the description of a new Thing.
+/// Build the description of a new Page.
 ///
 /// Pure: no I/O, no clock, no RNG. The id, status, and `seed_blocks` are inputs
 /// so the function is deterministic and unit-testable. This is the kernel the
-/// future AI `create_thing` suggestion path will reuse.
+/// future AI `create_page` suggestion path will reuse.
 ///
-/// `seed_blocks` is the Thing's initial content. Most callers pass `vec![]`
-/// (an empty Thing whose content is added later through the editor); the
+/// `seed_blocks` is the Page's initial content. Most callers pass `vec![]`
+/// (an empty Page whose content is added later through the editor); the
 /// campaign home-page seed passes one empty paragraph so the page opens as a
 /// schema-valid, editable document. The block ids are minted by the caller (an
 /// effect) and embedded in the block content as `attributes.blockId`, keeping
@@ -56,16 +61,20 @@ pub struct NewThing {
 /// blocks are cloned into `seed_blocks` at the call edge — deep-copy each
 /// block's content, mint a fresh `BlockId`, reset `ordering` — and this sets
 /// `prototype_id` for lineage.
-pub fn build_new_thing(
-    id: ThingId,
+pub fn build_new_page(
+    id: PageId,
     name: String,
     status: Status,
     seed_blocks: Vec<NewBlock>,
-) -> NewThing {
-    NewThing {
+) -> NewPage {
+    NewPage {
         id,
         name,
         status,
+        // Everything created today is authored world content. Template creation
+        // (the only other current kind) is not wired yet; when it lands it sets
+        // `kind: Template` and `prototype_id` here.
+        kind: PageKind::Entity,
         prototype_id: None,
         blocks: seed_blocks,
     }
@@ -76,15 +85,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_thing_has_no_blocks_and_no_prototype() {
-        let id = ThingId::generate();
-        let new_thing = build_new_thing(id.clone(), "Korgath".to_string(), Status::GmOnly, vec![]);
+    fn empty_page_has_no_blocks_and_no_prototype() {
+        let id = PageId::generate();
+        let new_page = build_new_page(id.clone(), "Korgath".to_string(), Status::GmOnly, vec![]);
 
-        assert_eq!(new_thing.id, id);
-        assert_eq!(new_thing.name, "Korgath");
-        assert_eq!(new_thing.status, Status::GmOnly);
-        assert_eq!(new_thing.prototype_id, None);
-        assert!(new_thing.blocks.is_empty());
+        assert_eq!(new_page.id, id);
+        assert_eq!(new_page.name, "Korgath");
+        assert_eq!(new_page.status, Status::GmOnly);
+        assert_eq!(new_page.prototype_id, None);
+        assert!(new_page.blocks.is_empty());
     }
 
     #[test]
@@ -95,8 +104,8 @@ mod tests {
             content: b"seed".to_vec(),
             status: Status::GmOnly,
         };
-        let nt = build_new_thing(
-            ThingId::generate(),
+        let nt = build_new_page(
+            PageId::generate(),
             "Home".to_string(),
             Status::Known,
             vec![block.clone()],
@@ -107,7 +116,7 @@ mod tests {
     #[test]
     fn status_is_carried_through() {
         for status in [Status::GmOnly, Status::Known, Status::Retconned] {
-            let nt = build_new_thing(ThingId::generate(), "X".to_string(), status, vec![]);
+            let nt = build_new_page(PageId::generate(), "X".to_string(), status, vec![]);
             assert_eq!(nt.status, status);
         }
     }

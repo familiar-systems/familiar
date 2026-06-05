@@ -1,9 +1,9 @@
-//! `POST /campaign/{id}/things` -- create a Thing.
+//! `POST /campaign/{id}/pages` -- create a Page.
 //!
 //! GM-only. The handler is the imperative shell: it authenticates, authorizes
 //! (campaign membership with the `Gm` role, checked on the platform tier), and
-//! hands a `CreateThing` command to the campaign supervisor. The supervisor
-//! spawns the owning `ThingActor`, which persists the Thing's genesis and
+//! hands a `CreatePage` command to the campaign supervisor. The supervisor
+//! spawns the owning `PageActor`, which persists the Page's genesis and
 //! places it in the table of contents. `from_template_id` is accepted but not
 //! yet implemented.
 
@@ -17,50 +17,50 @@ use kameo::error::SendError;
 
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
-use familiar_systems_campaign_shared::document::things::{CreateThingRequest, ThingResponse};
-use familiar_systems_campaign_shared::id::{BlockId, ThingId};
+use familiar_systems_campaign_shared::document::pages::{CreatePageRequest, PageResponse};
+use familiar_systems_campaign_shared::id::{BlockId, PageId};
 use familiar_systems_campaign_shared::status::Status;
 use fs_id::Nanoid;
 
 use crate::actors::registry::GetCampaign;
-use crate::actors::supervisor::{CreateThing, CreateThingError};
-use crate::domain::thing::NewBlock;
+use crate::actors::supervisor::{CreatePage, CreatePageError};
+use crate::domain::page::NewBlock;
 use crate::loro::block_codec;
 use crate::middleware::auth::AuthenticatedUser;
 use crate::state::AppState;
 
 #[utoipa::path(
     post,
-    path = "/campaign/{id}/things",
-    tag = "things",
+    path = "/campaign/{id}/pages",
+    tag = "pages",
     params(
         ("id" = String, Path, description = "Campaign ID"),
     ),
-    request_body = CreateThingRequest,
+    request_body = CreatePageRequest,
     responses(
-        (status = CREATED, description = "Thing created", body = ThingResponse),
+        (status = CREATED, description = "Page created", body = PageResponse),
         // 4XX
         (status = UNAUTHORIZED, description = "Missing or invalid session"),
         (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
         (status = NOT_FOUND, description = "Campaign not on this shard"),
         // 5XX
-        (status = UNPROCESSABLE_ENTITY, description = "Parent thing not found in the table of contents"),
+        (status = UNPROCESSABLE_ENTITY, description = "Parent page not found in the table of contents"),
         (status = NOT_IMPLEMENTED, description = "Creating from a template is not yet supported"),
         (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
         (status = INTERNAL_SERVER_ERROR, description = "Creation failed"),
     ),
 )]
-pub async fn create_thing(
+pub async fn create_page(
     user: AuthenticatedUser,
     State(state): State<AppState>,
     Path(campaign_id): Path<String>,
-    Json(req): Json<CreateThingRequest>,
+    Json(req): Json<CreatePageRequest>,
 ) -> impl IntoResponse {
     // Templates do not exist yet; refuse rather than store a dangling lineage.
     if req.from_template_id.is_some() {
         return (
             StatusCode::NOT_IMPLEMENTED,
-            "Creating a Thing from a template is not yet supported.",
+            "Creating a Page from a template is not yet supported.",
         )
             .into_response();
     }
@@ -84,7 +84,7 @@ pub async fn create_thing(
         Ok(Some(CampaignRole::Gm)) => {}
         Ok(Some(_)) | Ok(None) => return StatusCode::FORBIDDEN.into_response(),
         Err(e) => {
-            tracing::warn!(error = %e, "membership check failed during create_thing");
+            tracing::warn!(error = %e, "membership check failed during create_page");
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }
     }
@@ -102,7 +102,7 @@ pub async fn create_thing(
     }];
 
     match supervisor
-        .ask(CreateThing {
+        .ask(CreatePage {
             name: req.name,
             status: req.status,
             parent: req.parent,
@@ -111,27 +111,28 @@ pub async fn create_thing(
         .await
     {
         Ok(model) => {
-            let resp = ThingResponse {
-                id: ThingId::from(model.id),
+            let resp = PageResponse {
+                id: PageId::from(model.id),
                 name: model.name,
                 status: model.status.into(),
-                prototype_id: model.prototype_id.map(ThingId::from),
+                kind: model.kind.into(),
+                prototype_id: model.prototype_id.map(PageId::from),
                 created_at: model.created_at.to_rfc3339(),
                 updated_at: model.updated_at.to_rfc3339(),
             };
             (StatusCode::CREATED, Json(resp)).into_response()
         }
-        Err(SendError::HandlerError(CreateThingError::ParentNotFound)) => (
+        Err(SendError::HandlerError(CreatePageError::ParentNotFound)) => (
             StatusCode::UNPROCESSABLE_ENTITY,
-            "Parent thing not found in the table of contents.",
+            "Parent page not found in the table of contents.",
         )
             .into_response(),
         Err(SendError::HandlerError(e)) => {
-            tracing::error!(error = %e, "create thing failed");
+            tracing::error!(error = %e, "create page failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
         Err(e) => {
-            tracing::error!(error = %e, "supervisor unreachable during create thing");
+            tracing::error!(error = %e, "supervisor unreachable during create page");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }

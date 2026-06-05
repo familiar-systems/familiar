@@ -15,13 +15,13 @@
 import {
   TOC_CONTAINER,
   TOC_KEY_KIND,
-  TOC_KEY_THING_ID,
+  TOC_KEY_PAGE_ID,
   TOC_KEY_TITLE,
   TOC_KEY_VISIBILITY,
-  TOC_KIND_THING,
-  thingIdSchema,
+  TOC_KIND_PAGE,
+  pageIdSchema,
 } from "@familiar-systems/types-campaign";
-import type { ThingId } from "@familiar-systems/types-campaign";
+import type { PageId } from "@familiar-systems/types-campaign";
 import { LoroDoc } from "loro-crdt";
 import type { LoroDoc as LoroDocType, TreeID } from "loro-crdt";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -178,8 +178,8 @@ const { LoroClientManager } = await import("./loro-manager");
 // LEAVE_DEBOUNCE_MS in the manager is 100; advance past it to fire a leave.
 const PAST_DEBOUNCE_MS = 150;
 
-const THING_A = thingIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FAV");
-const THING_B = "01BX5ZZKBKACTAV9WEVGEMMVRZ";
+const PAGE_A = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FAV");
+const PAGE_B = "01BX5ZZKBKACTAV9WEVGEMMVRZ";
 
 // Flush the manager's promise chains (waitConnected -> join ->
 // waitForReachingServerVersion). Fake timers do not touch microtasks, so
@@ -193,23 +193,23 @@ function makeManager(): InstanceType<typeof LoroClientManager> {
   return new LoroClientManager("ws://test/ws");
 }
 
-function addThingNode(doc: LoroDocType, title: string, thingId: string): void {
+function addPageNode(doc: LoroDocType, title: string, pageId: string): void {
   const tree = doc.getTree(TOC_CONTAINER);
   if (!tree.isFractionalIndexEnabled()) tree.enableFractionalIndex(0);
   const node = tree.createNode();
-  node.data.set(TOC_KEY_KIND, TOC_KIND_THING);
+  node.data.set(TOC_KEY_KIND, TOC_KIND_PAGE);
   node.data.set(TOC_KEY_TITLE, title);
-  node.data.set(TOC_KEY_THING_ID, thingId);
+  node.data.set(TOC_KEY_PAGE_ID, pageId);
   node.data.set(TOC_KEY_VISIBILITY, "gmOnly");
 }
 
-// The doc the manager bound for a Thing room, asserted joined + synced. A Thing
+// The doc the manager bound for a Page room, asserted joined + synced. A Page
 // room's view is the LoroDoc itself.
-function expectSyncedThing(
+function expectSyncedPage(
   manager: InstanceType<typeof LoroClientManager>,
-  id: ThingId,
+  id: PageId,
 ): LoroDocType {
-  const state = manager.getThingState(id);
+  const state = manager.getPageState(id);
   expect(state.status).toBe("joined");
   if (state.status !== "joined") throw new Error("unreachable");
   expect(state.view.getMap("__synced__").get("ok")).toBe(true);
@@ -226,14 +226,14 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("LoroClientManager thing rooms", () => {
-  it("joins a Thing room after connect and exposes the synced doc", async () => {
+describe("LoroClientManager page rooms", () => {
+  it("joins a Page room after connect and exposes the synced doc", async () => {
     const m = makeManager();
     m.connect();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
 
-    expectSyncedThing(m, THING_A);
+    expectSyncedPage(m, PAGE_A);
   });
 
   it("survives a StrictMode connect -> close -> connect cycle on one socket", async () => {
@@ -242,15 +242,15 @@ describe("LoroClientManager thing rooms", () => {
     // calls, then settle: the manager must converge on one joined room over a
     // single, never-torn-down client.
     const m = makeManager();
-    m.acquireThing(THING_A); // child effect fires before the provider's connect
+    m.acquirePage(PAGE_A); // child effect fires before the provider's connect
     m.connect();
-    m.releaseThing(THING_A);
+    m.releasePage(PAGE_A);
     m.close();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     m.connect();
     await flushMicro();
 
-    expectSyncedThing(m, THING_A);
+    expectSyncedPage(m, PAGE_A);
     expect(mock.instances).toHaveLength(1); // the debounced teardown was cancelled
     expect(mock.instances[0]?.destroyed).toBe(false);
   });
@@ -260,97 +260,97 @@ describe("LoroClientManager thing rooms", () => {
     // resumed joins target the surviving socket and collide on the library dedup;
     // the manager must expose the WIRED (non-empty) doc, never the deduped loser's.
     const m = makeManager();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     m.connect();
-    m.releaseThing(THING_A);
+    m.releasePage(PAGE_A);
     m.close();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     m.connect();
     await flushMicro();
 
-    const doc = expectSyncedThing(m, THING_A);
+    const doc = expectSyncedPage(m, PAGE_A);
     expect(doc.getMap("__synced__").get("ok")).toBe(true);
   });
 
   it("deep link: acquire before connect reaches joined (lazy socket)", async () => {
     // React fires child effects before parent effects, so a reload straight onto a
-    // Thing URL runs acquireThing before the provider's connect(). The acquire
+    // Page URL runs acquirePage before the provider's connect(). The acquire
     // lazily opens the socket, so the join completes without waiting for connect().
     const m = makeManager();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    expectSyncedThing(m, THING_A);
+    expectSyncedPage(m, PAGE_A);
 
     // A later connect() is idempotent and reuses the same socket.
     m.connect();
     await flushMicro();
-    expectSyncedThing(m, THING_A);
+    expectSyncedPage(m, PAGE_A);
     expect(mock.instances).toHaveLength(1);
   });
 
   it("coalesces a release immediately followed by a re-acquire (debounced leave)", async () => {
     const m = makeManager();
     m.connect();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    const doc = expectSyncedThing(m, THING_A);
+    const doc = expectSyncedPage(m, PAGE_A);
 
-    m.releaseThing(THING_A); // schedules a debounced leave
-    m.acquireThing(THING_A); // cancels it before it fires
+    m.releasePage(PAGE_A); // schedules a debounced leave
+    m.acquirePage(PAGE_A); // cancels it before it fires
     await vi.advanceTimersByTimeAsync(PAST_DEBOUNCE_MS);
     await flushMicro();
 
-    const after = expectSyncedThing(m, THING_A);
+    const after = expectSyncedPage(m, PAGE_A);
     expect(after).toBe(doc); // same doc retained, no teardown
-    const room = mock.instances.at(-1)?.rooms.get("%LOR" + "thing:" + THING_A);
+    const room = mock.instances.at(-1)?.rooms.get("%LOR" + "page:" + PAGE_A);
     expect(room?.destroyed).toBe(false);
   });
 
   it("tears the room down when a release is not followed by a re-acquire", async () => {
     const m = makeManager();
     m.connect();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    const room = mock.instances.at(-1)?.rooms.get("%LOR" + "thing:" + THING_A);
+    const room = mock.instances.at(-1)?.rooms.get("%LOR" + "page:" + PAGE_A);
 
-    m.releaseThing(THING_A);
+    m.releasePage(PAGE_A);
     await vi.advanceTimersByTimeAsync(PAST_DEBOUNCE_MS);
     await flushMicro();
 
     expect(room?.destroyed).toBe(true);
-    expect(m.getThingState(THING_A).status).toBe("joining"); // back to the default
+    expect(m.getPageState(PAGE_A).status).toBe("joining"); // back to the default
   });
 
   it("tears the socket down after close() when no reconnect follows", async () => {
     const m = makeManager();
     m.connect();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    expectSyncedThing(m, THING_A);
+    expectSyncedPage(m, PAGE_A);
 
     m.close(); // genuine unmount: no connect() follows to cancel the teardown
     await vi.advanceTimersByTimeAsync(PAST_DEBOUNCE_MS);
     await flushMicro();
 
     expect(mock.instances[0]?.destroyed).toBe(true);
-    expect(m.getThingState(THING_A).status).toBe("joining"); // reset to default
+    expect(m.getPageState(PAGE_A).status).toBe("joining"); // reset to default
   });
 
   it("surfaces a reconnecting status without dropping the doc", async () => {
     const m = makeManager();
     m.connect();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    const doc = expectSyncedThing(m, THING_A);
+    const doc = expectSyncedPage(m, PAGE_A);
 
-    const room = mock.instances.at(-1)?.rooms.get("%LOR" + "thing:" + THING_A);
+    const room = mock.instances.at(-1)?.rooms.get("%LOR" + "page:" + PAGE_A);
     room?.fireStatus("reconnecting");
-    const reconnecting = m.getThingState(THING_A);
+    const reconnecting = m.getPageState(PAGE_A);
     expect(reconnecting.status).toBe("reconnecting");
     if (reconnecting.status === "reconnecting") expect(reconnecting.view).toBe(doc);
 
     room?.fireStatus("joined");
-    const recovered = m.getThingState(THING_A);
+    const recovered = m.getPageState(PAGE_A);
     expect(recovered.status).toBe("joined");
     if (recovered.status === "joined") expect(recovered.view).toBe(doc); // same doc throughout
   });
@@ -367,7 +367,7 @@ describe("LoroClientManager thing rooms", () => {
     const m = makeManager();
     m.connect();
     mock.armServerGate(); // freeze this join at its server-version handoff
-    m.acquireThing(THING_A); // handle A; join A suspends mid-flight
+    m.acquirePage(PAGE_A); // handle A; join A suspends mid-flight
     await flushMicro();
     const roomA = mock.gatedRooms[0];
     expect(roomA).toBeDefined();
@@ -375,9 +375,9 @@ describe("LoroClientManager thing rooms", () => {
     m.close(); // debounced teardown clears the map under the in-flight join A
     await vi.advanceTimersByTimeAsync(PAST_DEBOUNCE_MS);
     m.connect(); // remount: a fresh socket
-    m.acquireThing(THING_A); // handle B, a NEW doc for the same room
+    m.acquirePage(PAGE_A); // handle B, a NEW doc for the same room
     await flushMicro();
-    expectSyncedThing(m, THING_A); // B joined on its own room/doc
+    expectSyncedPage(m, PAGE_A); // B joined on its own room/doc
 
     roomA?.serverVersion.resolve(); // join A finally resolves, too late
     await flushMicro();
@@ -386,14 +386,14 @@ describe("LoroClientManager thing rooms", () => {
     // it onto B. Without it, A's room (wired to A's doc) would overwrite B's, and
     // B's own doc would be orphaned -> the editor renders an empty doc forever.
     expect(roomA?.destroyed).toBe(true);
-    expectSyncedThing(m, THING_A); // B is still the joined, synced room
+    expectSyncedPage(m, PAGE_A); // B is still the joined, synced room
   });
 
   it("a late-rejecting stale join does not stamp error onto a re-acquired handle", async () => {
     const m = makeManager();
     m.connect();
     mock.armServerGate();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
     const roomA = mock.gatedRooms[0];
     expect(roomA).toBeDefined();
@@ -401,16 +401,16 @@ describe("LoroClientManager thing rooms", () => {
     m.close();
     await vi.advanceTimersByTimeAsync(PAST_DEBOUNCE_MS);
     m.connect();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    expectSyncedThing(m, THING_A);
+    expectSyncedPage(m, PAGE_A);
 
     roomA?.serverVersion.reject(new Error("stale join failed"));
     await flushMicro();
 
     // The catch path carries the same identity guard: a stale rejection must not
     // flip the handle that replaced us into the error state.
-    expect(m.getThingState(THING_A).status).toBe("joined");
+    expect(m.getPageState(PAGE_A).status).toBe("joined");
   });
 });
 
@@ -441,7 +441,7 @@ describe("LoroClientManager ToC room", () => {
     expect(tocJoin).toBeDefined();
     const tocDoc = tocJoin?.adaptor.getDoc();
     if (!tocDoc) throw new Error("no toc doc");
-    addThingNode(tocDoc, "Korgath", THING_B);
+    addPageNode(tocDoc, "Korgath", PAGE_B);
     tocDoc.commit();
     await flushMicro();
 
@@ -449,7 +449,7 @@ describe("LoroClientManager ToC room", () => {
     expect(snap.status).toBe("joined");
     if (snap.status !== "joined") throw new Error("unreachable");
     expect(snap.view).toHaveLength(1);
-    expect(snap.view[0]?.entry).toMatchObject({ kind: "thing", title: "Korgath" });
+    expect(snap.view[0]?.entry).toMatchObject({ kind: "page", title: "Korgath" });
   });
 
   it("moveTocNode is a no-op before the ToC room has joined", () => {
@@ -471,21 +471,21 @@ describe("LoroClientManager ToC room", () => {
 // two ways: `error`, and `disconnected` once it has given up reconnecting; both land
 // here. These tests pin that teardown.
 describe("LoroClientManager terminal room errors", () => {
-  const thingKey = "%LOR" + "thing:" + THING_A;
+  const pageKey = "%LOR" + "page:" + PAGE_A;
 
   it("tears the room down when a bound room terminally errors", async () => {
     const m = makeManager();
     m.connect();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    expectSyncedThing(m, THING_A);
-    const room = mock.instances.at(-1)?.rooms.get(thingKey);
+    expectSyncedPage(m, PAGE_A);
+    const room = mock.instances.at(-1)?.rooms.get(pageKey);
     expect(room?.destroyed).toBe(false);
 
     room?.fireStatus("error");
 
     expect(room?.destroyed).toBe(true);
-    const snap = m.getThingState(THING_A);
+    const snap = m.getPageState(PAGE_A);
     expect(snap.status).toBe("error");
     if (snap.status === "error") expect(snap.error.kind).toBe("connection_lost");
   });
@@ -493,14 +493,14 @@ describe("LoroClientManager terminal room errors", () => {
   it("treats a terminal disconnected like an error, not a perpetual reconnect", async () => {
     const m = makeManager();
     m.connect();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    const room = mock.instances.at(-1)?.rooms.get(thingKey);
+    const room = mock.instances.at(-1)?.rooms.get(pageKey);
 
     room?.fireStatus("disconnected");
 
     expect(room?.destroyed).toBe(true);
-    const snap = m.getThingState(THING_A);
+    const snap = m.getPageState(PAGE_A);
     expect(snap.status).toBe("error");
     if (snap.status === "error") expect(snap.error.kind).toBe("connection_lost");
   });
@@ -508,30 +508,30 @@ describe("LoroClientManager terminal room errors", () => {
   it("a terminal error is final: a later status does not revive the room", async () => {
     const m = makeManager();
     m.connect();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    const room = mock.instances.at(-1)?.rooms.get(thingKey);
+    const room = mock.instances.at(-1)?.rooms.get(pageKey);
     room?.fireStatus("error");
-    expect(m.getThingState(THING_A).status).toBe("error");
+    expect(m.getPageState(PAGE_A).status).toBe("error");
 
     room?.fireStatus("joined"); // binding is `failed` now, so onRoomStatus ignores it
-    expect(m.getThingState(THING_A).status).toBe("error");
+    expect(m.getPageState(PAGE_A).status).toBe("error");
   });
 
   it("releasing an errored room drops the handle so the next acquire is fresh", async () => {
     const m = makeManager();
     m.connect();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    const room = mock.instances.at(-1)?.rooms.get(thingKey);
+    const room = mock.instances.at(-1)?.rooms.get(pageKey);
     room?.fireStatus("error");
 
-    m.releaseThing(THING_A);
-    expect(m.getThingState(THING_A).status).toBe("joining"); // handle gone
+    m.releasePage(PAGE_A);
+    expect(m.getPageState(PAGE_A).status).toBe("joining"); // handle gone
 
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    expectSyncedThing(m, THING_A); // rebuilt on a fresh room + doc
+    expectSyncedPage(m, PAGE_A); // rebuilt on a fresh room + doc
     expect(room?.destroyed).toBe(true); // old room never leaked
   });
 
@@ -540,15 +540,15 @@ describe("LoroClientManager terminal room errors", () => {
     // errored handle. The overwrite must not strand the old room.
     const m = makeManager();
     m.connect();
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    const first = mock.instances.at(-1)?.rooms.get(thingKey);
+    const first = mock.instances.at(-1)?.rooms.get(pageKey);
     first?.fireStatus("error");
     expect(first?.destroyed).toBe(true);
 
-    m.acquireThing(THING_A);
+    m.acquirePage(PAGE_A);
     await flushMicro();
-    expectSyncedThing(m, THING_A);
+    expectSyncedPage(m, PAGE_A);
   });
 
   it("severs the doc subscription when a derived (ToC) room errors", async () => {

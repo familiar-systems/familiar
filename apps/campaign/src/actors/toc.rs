@@ -1,5 +1,5 @@
 use familiar_systems_app_shared::id::CampaignId;
-use familiar_systems_campaign_shared::id::ThingId;
+use familiar_systems_campaign_shared::id::PageId;
 use familiar_systems_campaign_shared::loro::toc::TocEntry;
 use familiar_systems_campaign_shared::status::Status;
 use kameo::actor::{ActorRef, WeakActorRef};
@@ -17,8 +17,8 @@ use crate::actors::persist::{Persist, PersistError, PersistNow};
 use crate::domain::crdt::doc::CrdtDoc;
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
-use crate::entities::columns::{StatusCol, ThingIdCol};
-use crate::entities::{things, toc_entries};
+use crate::entities::columns::{PageIdCol, StatusCol};
+use crate::entities::{pages, toc_entries};
 use crate::loro::toc::{LoroTocDoc, TocTreeNode};
 use crate::wire::broadcast::encode_broadcast;
 use crate::wire::fragmenter::BatchFragmenter;
@@ -33,7 +33,7 @@ use crate::wire::fragmenter::BatchFragmenter;
 /// For agents, it backs the `ls` command.
 ///
 /// TODO: Suggestion hydration on checkout. The restore path should:
-/// 1. Rebuild the LoroTree from SQLite with structural entries (Folder/Thing).
+/// 1. Rebuild the LoroTree from SQLite with structural entries (Folder/Page).
 ///    This gives clients a fast first paint.
 /// 2. Query SQLite for pending suggestions on this campaign's ToC.
 /// 3. Apply them as CRDT updates: inline suggestions (change/delete) go into
@@ -51,10 +51,10 @@ pub struct TocActor {
     /// restore, extended when new nodes are created during the session,
     /// consumed by `snapshot_toc` to produce upsert-friendly rows.
     id_map: HashMap<TreeID, String>,
-    /// Thing IDs currently known to the campaign. Used by `snapshot_toc`
-    /// to filter out dangling references. Updated as Things are
+    /// Page IDs currently known to the campaign. Used by `snapshot_toc`
+    /// to filter out dangling references. Updated as Pages are
     /// created/deleted during the session.
-    known_things: HashSet<ThingId>,
+    known_pages: HashSet<PageId>,
     db_writer: ActorRef<DatabaseWriteActor>,
     self_ref: ActorRef<TocActor>,
     /// Whether the doc has unpersisted edits and, if so, the armed flush timer.
@@ -87,23 +87,23 @@ impl Actor for TocActor {
             .await
             .inspect_err(|e| tracing::error!(error = %e, "failed to query toc_entries"))?;
 
-        let thing_rows = things::Entity::find()
+        let page_rows = pages::Entity::find()
             .all(&args.db_reader)
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "failed to query things"))?;
+            .inspect_err(|e| tracing::error!(error = %e, "failed to query pages"))?;
 
         tracing::debug!(
             toc_entries = toc_rows.len(),
-            things = thing_rows.len(),
+            pages = page_rows.len(),
             "restoring toc"
         );
 
-        let things_map: HashMap<ThingId, ThingInfo> = thing_rows
+        let pages_map: HashMap<PageId, PageInfo> = page_rows
             .into_iter()
             .map(|t| {
                 (
-                    ThingId::from(t.id),
-                    ThingInfo {
+                    PageId::from(t.id),
+                    PageInfo {
                         name: t.name,
                         status: t.status.into(),
                     },
@@ -111,13 +111,13 @@ impl Actor for TocActor {
             })
             .collect();
 
-        let known_things: HashSet<ThingId> = things_map.keys().cloned().collect();
-        let (doc, id_map, dirty) = restore_toc(toc_rows, &things_map);
+        let known_pages: HashSet<PageId> = pages_map.keys().cloned().collect();
+        let (doc, id_map, dirty) = restore_toc(toc_rows, &pages_map);
         let doc_room = room::Room::new(doc);
 
         tracing::debug!(
             tree_size = id_map.len(),
-            known_things = known_things.len(),
+            known_pages = known_pages.len(),
             dirty,
             "toc actor started"
         );
@@ -126,7 +126,7 @@ impl Actor for TocActor {
             campaign_id: args.campaign_id,
             doc_room,
             id_map,
-            known_things,
+            known_pages,
             db_writer: args.db_writer,
             self_ref: actor_ref,
             persist: Persist::new(),
@@ -180,8 +180,8 @@ impl Message<room_actor::ClientJoin> for TocActor {
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         use familiar_systems_app_shared::campaigns::internal::CampaignRole;
-        // TODO: per-Thing write access for players. When ThingActor lands,
-        // the mapping here should check Thing-level permissions, not just
+        // TODO: per-Page write access for players. When PageActor lands,
+        // the mapping here should check Page-level permissions, not just
         // the campaign role.
         let capability = match msg.role {
             CampaignRole::Gm => room_actor::Capability::Write,
@@ -237,82 +237,82 @@ impl Message<room_actor::ClientUpdate> for TocActor {
 }
 
 // ---------------------------------------------------------------------------
-// Thing-node mutations (server-initiated, from CampaignSupervisor::CreateThing)
+// Page-node mutations (server-initiated, from CampaignSupervisor::CreatePage)
 // ---------------------------------------------------------------------------
 
-/// Resolve a Thing's ToC node, if present. The supervisor uses this to
+/// Resolve a Page's ToC node, if present. The supervisor uses this to
 /// validate a requested parent placement before any write happens.
 #[derive(Debug, Clone)]
-pub struct ResolveThingNode(pub ThingId);
+pub struct ResolvePageNode(pub PageId);
 
-impl Message<ResolveThingNode> for TocActor {
+impl Message<ResolvePageNode> for TocActor {
     type Reply = Option<TreeID>;
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.0.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %msg.0.0),
     )]
     async fn handle(
         &mut self,
-        msg: ResolveThingNode,
+        msg: ResolvePageNode,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        self.doc_room.doc().find_thing_node(&msg.0)
+        self.doc_room.doc().find_page_node(&msg.0)
     }
 }
 
-/// Insert a Thing node into the live ToC and broadcast the change. Sent once
-/// per Thing creation, after the genesis row is committed. Appends at the ToC
+/// Insert a Page node into the live ToC and broadcast the change. Sent once
+/// per Page creation, after the genesis row is committed. Appends at the ToC
 /// root when `parent` is `None`, otherwise as the last child of the parent
-/// Thing's node. A `parent` that no longer resolves (a rare race after the
+/// Page's node. A `parent` that no longer resolves (a rare race after the
 /// supervisor's pre-check) falls back to the root with a warning, rather than
-/// failing a Thing that is already persisted.
+/// failing a Page that is already persisted.
 #[derive(Debug, Clone)]
-pub struct AddThingNode {
-    pub thing_id: ThingId,
+pub struct AddPageNode {
+    pub page_id: PageId,
     pub title: String,
     pub visibility: Status,
-    pub parent: Option<ThingId>,
+    pub parent: Option<PageId>,
 }
 
-impl Message<AddThingNode> for TocActor {
+impl Message<AddPageNode> for TocActor {
     type Reply = Result<(), String>;
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.thing_id.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %msg.page_id.0),
     )]
     async fn handle(
         &mut self,
-        msg: AddThingNode,
+        msg: AddPageNode,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         let parent_tree = match &msg.parent {
             None => None,
             Some(parent_id) => {
-                let resolved = self.doc_room.doc().find_thing_node(parent_id);
+                let resolved = self.doc_room.doc().find_page_node(parent_id);
                 if resolved.is_none() {
                     tracing::warn!(
                         parent = %parent_id.0,
-                        "parent thing node not found in toc; appending at root"
+                        "parent page node not found in toc; appending at root"
                     );
                 }
                 resolved
             }
         };
 
-        let entry = TocEntry::Thing {
+        let entry = TocEntry::Page {
             title: msg.title,
-            thing_id: msg.thing_id.clone(),
+            page_id: msg.page_id.clone(),
             visibility: msg.visibility,
             suggestions: Vec::new(),
         };
 
         let delta = self.doc_room.doc_mut().add_entry(parent_tree, &entry)?.0;
 
-        // Track the new Thing so `snapshot_toc` doesn't treat its node as a
+        // Track the new Page so `snapshot_toc` doesn't treat its node as a
         // dangling reference and drop it on the next persist.
-        self.known_things.insert(msg.thing_id);
+        self.known_pages.insert(msg.page_id);
 
         let frames = encode_broadcast(
             loro_protocol::CrdtType::Loro,
@@ -341,7 +341,7 @@ impl TocActor {
         fields(campaign_id = %self.campaign_id.0),
     )]
     async fn flush(&mut self) -> Result<(), PersistError> {
-        let rows = snapshot_toc(self.doc_room.doc(), &mut self.id_map, &self.known_things);
+        let rows = snapshot_toc(self.doc_room.doc(), &mut self.id_map, &self.known_pages);
         let row_count = rows.len();
         tracing::debug!(row_count, "persisting toc snapshot");
 
@@ -377,8 +377,8 @@ impl Message<PersistNow> for TocActor {
 // Persistence: snapshot & restore
 // ---------------------------------------------------------------------------
 
-/// Info about a Thing needed during ToC restore (title and visibility).
-pub struct ThingInfo {
+/// Info about a Page needed during ToC restore (title and visibility).
+pub struct PageInfo {
     pub name: String,
     pub status: Status,
 }
@@ -390,16 +390,16 @@ pub struct ThingInfo {
 /// inserted into `id_map` for future cycles). This makes the output
 /// suitable for `INSERT OR REPLACE` rather than full-table replacement.
 ///
-/// Skips `TocEntry::Suggestion` entries (deferred) and `TocEntry::Thing`
-/// entries whose `thing_id` is not in `known_things` (dangling references).
+/// Skips `TocEntry::Suggestion` entries (deferred) and `TocEntry::Page`
+/// entries whose `page_id` is not in `known_pages` (dangling references).
 pub fn snapshot_toc(
     doc: &LoroTocDoc,
     id_map: &mut HashMap<TreeID, String>,
-    known_things: &HashSet<ThingId>,
+    known_pages: &HashSet<PageId>,
 ) -> Vec<toc_entries::ActiveModel> {
     let tree = doc.read_tree();
     let mut rows = Vec::new();
-    collect_rows(&tree, None, id_map, known_things, &mut rows);
+    collect_rows(&tree, None, id_map, known_pages, &mut rows);
     rows
 }
 
@@ -407,18 +407,18 @@ fn collect_rows(
     nodes: &[TocTreeNode],
     parent_row_id: Option<String>,
     id_map: &mut HashMap<TreeID, String>,
-    known_things: &HashSet<ThingId>,
+    known_pages: &HashSet<PageId>,
     out: &mut Vec<toc_entries::ActiveModel>,
 ) {
     let mut position: i32 = 0;
     for node in nodes {
-        let (thing_id, folder_title) = match &node.entry {
+        let (page_id, folder_title) = match &node.entry {
             TocEntry::Folder { title, .. } => (None, Some(title.clone())),
-            TocEntry::Thing { thing_id, .. } => {
-                if !known_things.contains(thing_id) {
+            TocEntry::Page { page_id, .. } => {
+                if !known_pages.contains(page_id) {
                     continue;
                 }
-                (Some(ThingIdCol::from(thing_id.clone())), None)
+                (Some(PageIdCol::from(page_id.clone())), None)
             }
             TocEntry::Suggestion { .. } => continue,
         };
@@ -432,7 +432,7 @@ fn collect_rows(
 
         out.push(toc_entries::ActiveModel {
             id: Set(row_id.clone()),
-            thing_id: Set(thing_id),
+            page_id: Set(page_id),
             folder_title: Set(folder_title),
             visibility: Set(visibility),
             parent_id: Set(parent_row_id.clone()),
@@ -440,25 +440,25 @@ fn collect_rows(
         });
         position += 1;
 
-        collect_rows(&node.children, Some(row_id), id_map, known_things, out);
+        collect_rows(&node.children, Some(row_id), id_map, known_pages, out);
     }
 }
 
-/// Rebuild a `LoroTocDoc` from persisted rows and the current Things in the DB.
+/// Rebuild a `LoroTocDoc` from persisted rows and the current Pages in the DB.
 ///
 /// Entries are inserted in topological order (parents before children, siblings
-/// by position). Thing titles come from the `things` map, not from the
+/// by position). Page titles come from the `pages` map, not from the
 /// toc_entries table, so they're always fresh.
 ///
 /// Returns `(doc, id_map, dirty)`:
 /// - `id_map`: the `TreeID -> row ID` mapping for future snapshots.
-/// - `dirty`: true when orphan Things were appended (caller should writeback).
+/// - `dirty`: true when orphan Pages were appended (caller should writeback).
 ///
-/// Any Thing present in `things` but not referenced by any toc_entry is an
+/// Any Page present in `pages` but not referenced by any toc_entry is an
 /// orphan: appended to root with its own visibility.
 pub fn restore_toc(
     entries: Vec<toc_entries::Model>,
-    things: &HashMap<ThingId, ThingInfo>,
+    pages: &HashMap<PageId, PageInfo>,
 ) -> (LoroTocDoc, HashMap<TreeID, String>, bool) {
     let mut doc = LoroTocDoc::new();
     let sorted = topological_sort(entries);
@@ -468,7 +468,7 @@ pub fn restore_toc(
     // TreeID -> row_id returned for future snapshots
     let mut tree_to_row: HashMap<TreeID, String> = HashMap::new();
 
-    let mut referenced_things: HashSet<ThingId> = HashSet::new();
+    let mut referenced_pages: HashSet<PageId> = HashSet::new();
 
     for entry in &sorted {
         let parent_tree_id = entry
@@ -477,13 +477,13 @@ pub fn restore_toc(
             .and_then(|pid| row_to_tree.get(pid))
             .copied();
 
-        let toc_entry = match row_to_entry(entry, things) {
+        let toc_entry = match row_to_entry(entry, pages) {
             Some(e) => e,
             None => continue,
         };
 
-        if let Some(ref tid) = entry.thing_id {
-            referenced_things.insert(ThingId::from(tid.clone()));
+        if let Some(ref tid) = entry.page_id {
+            referenced_pages.insert(PageId::from(tid.clone()));
         }
 
         let (_, tree_id) = doc
@@ -494,11 +494,11 @@ pub fn restore_toc(
     }
 
     let mut dirty = false;
-    for (thing_id, info) in things {
-        if !referenced_things.contains(thing_id) {
-            let entry = TocEntry::Thing {
+    for (page_id, info) in pages {
+        if !referenced_pages.contains(page_id) {
+            let entry = TocEntry::Page {
                 title: info.name.clone(),
-                thing_id: thing_id.clone(),
+                page_id: page_id.clone(),
                 visibility: info.status,
                 suggestions: Vec::new(),
             };
@@ -514,20 +514,17 @@ pub fn restore_toc(
 }
 
 /// Convert a toc_entry row into a `TocEntry`.
-/// Returns `None` for Thing entries whose thing_id is missing from the map
+/// Returns `None` for Page entries whose page_id is missing from the map
 /// (deleted between writeback and restore).
-fn row_to_entry(
-    row: &toc_entries::Model,
-    things: &HashMap<ThingId, ThingInfo>,
-) -> Option<TocEntry> {
+fn row_to_entry(row: &toc_entries::Model, pages: &HashMap<PageId, PageInfo>) -> Option<TocEntry> {
     let visibility: Status = row.visibility.into();
 
-    if let Some(ref thing_id_col) = row.thing_id {
-        let thing_id = ThingId::from(thing_id_col.clone());
-        let info = things.get(&thing_id)?;
-        Some(TocEntry::Thing {
+    if let Some(ref page_id_col) = row.page_id {
+        let page_id = PageId::from(page_id_col.clone());
+        let info = pages.get(&page_id)?;
+        Some(TocEntry::Page {
             title: info.name.clone(),
-            thing_id,
+            page_id,
             visibility,
             suggestions: Vec::new(),
         })
@@ -582,6 +579,7 @@ fn topological_sort(entries: Vec<toc_entries::Model>) -> Vec<toc_entries::Model>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entities::columns::PageKindCol;
     use familiar_systems_campaign_shared::loro::toc::TocEntryKind;
 
     /// Test-only probe: ask the actor whether it currently holds unpersisted
@@ -608,21 +606,21 @@ mod tests {
         }
     }
 
-    fn make_thing(title: &str) -> (TocEntry, ThingId) {
-        let thing_id = ThingId::generate();
-        let entry = TocEntry::Thing {
+    fn make_page(title: &str) -> (TocEntry, PageId) {
+        let page_id = PageId::generate();
+        let entry = TocEntry::Page {
             title: title.to_string(),
-            thing_id: thing_id.clone(),
+            page_id: page_id.clone(),
             visibility: Status::Known,
             suggestions: Vec::new(),
         };
-        (entry, thing_id)
+        (entry, page_id)
     }
 
     fn active_to_model(am: toc_entries::ActiveModel) -> toc_entries::Model {
         toc_entries::Model {
             id: am.id.unwrap(),
-            thing_id: am.thing_id.unwrap(),
+            page_id: am.page_id.unwrap(),
             folder_title: am.folder_title.unwrap(),
             visibility: am.visibility.unwrap(),
             parent_id: am.parent_id.unwrap(),
@@ -630,17 +628,17 @@ mod tests {
         }
     }
 
-    fn thing_info(name: &str, status: Status) -> ThingInfo {
-        ThingInfo {
+    fn page_info(name: &str, status: Status) -> PageInfo {
+        PageInfo {
             name: name.to_string(),
             status,
         }
     }
 
-    fn things_map(items: &[(ThingId, &str, Status)]) -> HashMap<ThingId, ThingInfo> {
+    fn pages_map(items: &[(PageId, &str, Status)]) -> HashMap<PageId, PageInfo> {
         items
             .iter()
-            .map(|(id, name, status)| (id.clone(), thing_info(name, *status)))
+            .map(|(id, name, status)| (id.clone(), page_info(name, *status)))
             .collect()
     }
 
@@ -668,18 +666,18 @@ mod tests {
         let mut doc = LoroTocDoc::new();
         doc.add_entry(None, &make_folder("Act I")).unwrap();
 
-        let (thing_entry, thing_id) = make_thing("The Iron Citadel");
-        doc.add_entry(None, &thing_entry).unwrap();
+        let (page_entry, page_id) = make_page("The Iron Citadel");
+        doc.add_entry(None, &page_entry).unwrap();
 
-        let things = things_map(&[(thing_id.clone(), "The Iron Citadel", Status::Known)]);
-        let known: HashSet<ThingId> = things.keys().cloned().collect();
+        let pages = pages_map(&[(page_id.clone(), "The Iron Citadel", Status::Known)]);
+        let known: HashSet<PageId> = pages.keys().cloned().collect();
 
         let mut id_map = HashMap::new();
         let rows = snapshot_toc(&doc, &mut id_map, &known);
         assert_eq!(rows.len(), 2);
 
         let models: Vec<_> = rows.into_iter().map(active_to_model).collect();
-        let (restored, _, dirty) = restore_toc(models, &things);
+        let (restored, _, dirty) = restore_toc(models, &pages);
         assert!(!dirty);
 
         let original = doc.read_tree();
@@ -694,28 +692,28 @@ mod tests {
         let mut doc = LoroTocDoc::new();
         let (_, folder_id) = doc.add_entry(None, &make_folder("Act I")).unwrap();
 
-        let (child1, tid1) = make_thing("The Dragon's Lair");
+        let (child1, tid1) = make_page("The Dragon's Lair");
         doc.add_entry(Some(folder_id), &child1).unwrap();
 
-        let (child2, tid2) = make_thing("The Crystal Cave");
+        let (child2, tid2) = make_page("The Crystal Cave");
         let (_, child2_id) = doc.add_entry(Some(folder_id), &child2).unwrap();
 
-        let (grandchild, tid3) = make_thing("The Hidden Alcove");
+        let (grandchild, tid3) = make_page("The Hidden Alcove");
         doc.add_entry(Some(child2_id), &grandchild).unwrap();
 
-        let things = things_map(&[
+        let pages = pages_map(&[
             (tid1, "The Dragon's Lair", Status::Known),
             (tid2, "The Crystal Cave", Status::Known),
             (tid3, "The Hidden Alcove", Status::Known),
         ]);
-        let known: HashSet<ThingId> = things.keys().cloned().collect();
+        let known: HashSet<PageId> = pages.keys().cloned().collect();
 
         let mut id_map = HashMap::new();
         let rows = snapshot_toc(&doc, &mut id_map, &known);
         assert_eq!(rows.len(), 4);
 
         let models: Vec<_> = rows.into_iter().map(active_to_model).collect();
-        let (restored, _, dirty) = restore_toc(models, &things);
+        let (restored, _, dirty) = restore_toc(models, &pages);
         assert!(!dirty);
 
         let orig = doc.read_tree();
@@ -736,14 +734,14 @@ mod tests {
         );
     }
 
-    // -- Dangling thing_id test --
+    // -- Dangling page_id test --
 
     #[test]
-    fn snapshot_drops_dangling_thing_entries() {
+    fn snapshot_drops_dangling_page_entries() {
         let mut doc = LoroTocDoc::new();
         doc.add_entry(None, &make_folder("Keeper")).unwrap();
 
-        let (dangling, _) = make_thing("Ghost Entry");
+        let (dangling, _) = make_page("Ghost Entry");
         doc.add_entry(None, &dangling).unwrap();
 
         let mut id_map = HashMap::new();
@@ -760,12 +758,12 @@ mod tests {
     #[test]
     fn snapshot_preserves_sibling_positions_after_filtering() {
         let mut doc = LoroTocDoc::new();
-        let (thing_a, tid_a) = make_thing("Alpha");
-        let (thing_b, _) = make_thing("Dangling Beta");
-        let (thing_c, tid_c) = make_thing("Gamma");
-        doc.add_entry(None, &thing_a).unwrap();
-        doc.add_entry(None, &thing_b).unwrap();
-        doc.add_entry(None, &thing_c).unwrap();
+        let (page_a, tid_a) = make_page("Alpha");
+        let (page_b, _) = make_page("Dangling Beta");
+        let (page_c, tid_c) = make_page("Gamma");
+        doc.add_entry(None, &page_a).unwrap();
+        doc.add_entry(None, &page_b).unwrap();
+        doc.add_entry(None, &page_c).unwrap();
 
         let mut known = HashSet::new();
         known.insert(tid_a.clone());
@@ -782,38 +780,38 @@ mod tests {
     // -- Orphan detection tests --
 
     #[test]
-    fn orphan_things_appended_to_root() {
-        let orphan_id = ThingId::generate();
-        let things = things_map(&[(orphan_id.clone(), "Lost Artifact", Status::GmOnly)]);
+    fn orphan_pages_appended_to_root() {
+        let orphan_id = PageId::generate();
+        let pages = pages_map(&[(orphan_id.clone(), "Lost Artifact", Status::GmOnly)]);
 
-        let (doc, id_map, dirty) = restore_toc(Vec::new(), &things);
+        let (doc, id_map, dirty) = restore_toc(Vec::new(), &pages);
         assert!(dirty);
         assert_eq!(id_map.len(), 1, "orphan gets an entry in the id_map");
 
         let tree = doc.read_tree();
         assert_eq!(tree.len(), 1);
-        assert_eq!(tree[0].entry.kind(), TocEntryKind::Thing);
+        assert_eq!(tree[0].entry.kind(), TocEntryKind::Page);
         assert_eq!(tree[0].entry.title(), Some("Lost Artifact"));
         assert_eq!(*tree[0].entry.visibility(), Status::GmOnly);
     }
 
     #[test]
-    fn orphan_inherits_thing_visibility() {
-        let id = ThingId::generate();
-        let things = things_map(&[(id.clone(), "Public NPC", Status::Known)]);
+    fn orphan_inherits_page_visibility() {
+        let id = PageId::generate();
+        let pages = pages_map(&[(id.clone(), "Public NPC", Status::Known)]);
 
-        let (doc, _, _) = restore_toc(Vec::new(), &things);
+        let (doc, _, _) = restore_toc(Vec::new(), &pages);
         assert_eq!(*doc.read_tree()[0].entry.visibility(), Status::Known);
     }
 
     // -- Restore edge cases --
 
     #[test]
-    fn restore_skips_entries_with_deleted_things() {
-        let stale_thing_id = ThingIdCol::from(ThingId::generate());
+    fn restore_skips_entries_with_deleted_pages() {
+        let stale_page_id = PageIdCol::from(PageId::generate());
         let row = toc_entries::Model {
             id: ulid::Ulid::new().to_string(),
-            thing_id: Some(stale_thing_id),
+            page_id: Some(stale_page_id),
             folder_title: None,
             visibility: StatusCol::Known,
             parent_id: None,
@@ -823,7 +821,7 @@ mod tests {
         let (doc, id_map, dirty) = restore_toc(vec![row], &HashMap::new());
         assert!(doc.read_tree().is_empty(), "stale entry is skipped");
         assert!(id_map.is_empty(), "skipped entry has no id_map entry");
-        assert!(!dirty, "no orphans because the thing is gone entirely");
+        assert!(!dirty, "no orphans because the page is gone entirely");
     }
 
     #[test]
@@ -833,7 +831,7 @@ mod tests {
 
         let child = toc_entries::Model {
             id: child_id.clone(),
-            thing_id: None,
+            page_id: None,
             folder_title: Some("Child".to_string()),
             visibility: StatusCol::Known,
             parent_id: Some(parent_id.clone()),
@@ -841,7 +839,7 @@ mod tests {
         };
         let parent = toc_entries::Model {
             id: parent_id.clone(),
-            thing_id: None,
+            page_id: None,
             folder_title: Some("Parent".to_string()),
             visibility: StatusCol::Known,
             parent_id: None,
@@ -858,7 +856,7 @@ mod tests {
     fn topological_sort_drops_entries_with_invalid_parents() {
         let orphan_row = toc_entries::Model {
             id: ulid::Ulid::new().to_string(),
-            thing_id: None,
+            page_id: None,
             folder_title: Some("Lost".to_string()),
             visibility: StatusCol::Known,
             parent_id: Some("nonexistent".to_string()),
@@ -894,11 +892,11 @@ mod tests {
     fn snapshot_reuses_ids_from_restore() {
         let mut doc = LoroTocDoc::new();
         doc.add_entry(None, &make_folder("Stable")).unwrap();
-        let (thing_entry, tid) = make_thing("Also Stable");
-        doc.add_entry(None, &thing_entry).unwrap();
+        let (page_entry, tid) = make_page("Also Stable");
+        doc.add_entry(None, &page_entry).unwrap();
 
-        let things = things_map(&[(tid.clone(), "Also Stable", Status::Known)]);
-        let known: HashSet<ThingId> = things.keys().cloned().collect();
+        let pages = pages_map(&[(tid.clone(), "Also Stable", Status::Known)]);
+        let known: HashSet<PageId> = pages.keys().cloned().collect();
 
         // First snapshot: generates fresh IDs.
         let mut id_map = HashMap::new();
@@ -908,7 +906,7 @@ mod tests {
 
         // Restore from those rows, get a new id_map.
         let models: Vec<_> = rows1.into_iter().map(active_to_model).collect();
-        let (restored, mut restored_id_map, _) = restore_toc(models, &things);
+        let (restored, mut restored_id_map, _) = restore_toc(models, &pages);
 
         // Second snapshot on the restored doc: should reuse the same row IDs.
         let rows2 = snapshot_toc(&restored, &mut restored_id_map, &known);
@@ -962,14 +960,14 @@ mod tests {
         );
     }
 
-    // -- Actor: AddThingNode --
+    // -- Actor: AddPageNode --
 
-    /// Proves the critical `known_things` wiring: a node added via
-    /// `AddThingNode` survives `snapshot_toc` (which drops Thing entries not in
-    /// `known_things`) and is persisted. Forced through `on_stop` rather than
+    /// Proves the critical `known_pages` wiring: a node added via
+    /// `AddPageNode` survives `snapshot_toc` (which drops Page entries not in
+    /// `known_pages`) and is persisted. Forced through `on_stop` rather than
     /// the debounce timer for determinism.
     #[tokio::test]
-    async fn add_thing_node_tracks_known_thing_and_persists() {
+    async fn add_page_node_tracks_known_page_and_persists() {
         use crate::actors::database_writer::{DatabaseWriteActor, DatabaseWriteActorArgs, Ping};
         use crate::db;
         use crate::migrations::Migrator;
@@ -996,15 +994,16 @@ mod tests {
         });
         toc.wait_for_startup().await;
 
-        // Insert the backing Thing row so the toc_entries FK is satisfied. The
+        // Insert the backing Page row so the toc_entries FK is satisfied. The
         // running TocActor doesn't know about it yet (startup already read the
-        // things table), which is exactly the create-time situation.
-        let thing_id = ThingId::generate();
+        // pages table), which is exactly the create-time situation.
+        let page_id = PageId::generate();
         let now = Utc::now();
-        things::ActiveModel {
-            id: Set(ThingIdCol::from(thing_id.clone())),
+        pages::ActiveModel {
+            id: Set(PageIdCol::from(page_id.clone())),
             name: Set("Korgath".into()),
             status: Set(StatusCol::from(Status::GmOnly)),
+            kind: Set(PageKindCol::Entity),
             prototype_id: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
@@ -1013,14 +1012,14 @@ mod tests {
         .await
         .unwrap();
 
-        toc.ask(AddThingNode {
-            thing_id: thing_id.clone(),
+        toc.ask(AddPageNode {
+            page_id: page_id.clone(),
             title: "Korgath".into(),
             visibility: Status::GmOnly,
             parent: None,
         })
         .await
-        .expect("add thing node");
+        .expect("add page node");
 
         // Stopping flushes the dirty doc through on_stop -> WriteTocSnapshot.
         toc.stop_gracefully().await.unwrap();
@@ -1029,11 +1028,11 @@ mod tests {
         db_writer.ask(Ping).await.unwrap();
 
         let rows = toc_entries::Entity::find().all(&conn).await.unwrap();
-        assert_eq!(rows.len(), 1, "the new thing's toc entry was persisted");
+        assert_eq!(rows.len(), 1, "the new page's toc entry was persisted");
         assert_eq!(
-            rows[0].thing_id.clone().map(ThingId::from),
-            Some(thing_id),
-            "persisted entry points at the created thing"
+            rows[0].page_id.clone().map(PageId::from),
+            Some(page_id),
+            "persisted entry points at the created page"
         );
     }
 
@@ -1073,15 +1072,15 @@ mod tests {
         toc.wait_for_startup().await;
 
         // A server-side ToC mutation marks dirty and schedules a doomed flush.
-        // AddThingNode touches only the in-memory doc, so no backing row needed.
-        toc.ask(AddThingNode {
-            thing_id: ThingId::generate(),
+        // AddPageNode touches only the in-memory doc, so no backing row needed.
+        toc.ask(AddPageNode {
+            page_id: PageId::generate(),
             title: "Korgath".into(),
             visibility: Status::GmOnly,
             parent: None,
         })
         .await
-        .expect("add thing node");
+        .expect("add page node");
 
         // Let the debounce fire and the flush fail against the dead writer.
         tokio::time::sleep(Duration::from_millis(150)).await;

@@ -6,14 +6,14 @@
 
 import { z } from "zod";
 
-import type { ThingId } from "./generated/id/ThingId";
+import type { PageId } from "./generated/id/PageId";
 
 /**
  * Validates a string as a ULID (26 Crockford-base32 chars) and brands it as
- * `ThingId`. The alphabet is loose (any 26 alphanumerics) to accept whatever
+ * `PageId`. The alphabet is loose (any 26 alphanumerics) to accept whatever
  * the server's ULID encoder emits; tighten later if needed.
  */
-export const thingIdSchema = z
+export const pageIdSchema = z
   .string()
-  .regex(/^[0-9A-Za-z]{26}$/, "thing id must be a ULID")
-  .transform((s) => s as ThingId);
+  .regex(/^[0-9A-Za-z]{26}$/, "page id must be a ULID")
+  .transform((s) => s as PageId);

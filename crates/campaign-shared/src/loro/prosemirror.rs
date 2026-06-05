@@ -1,7 +1,7 @@
 //! ProseMirror/Loro convention constants.
 //!
 //! `loro-prosemirror` maps ProseMirror nodes to Loro containers using these keys.
-//! The Rust side (LoroThingDoc) must use the same constants to read and write
+//! The Rust side (LoroPageDoc) must use the same constants to read and write
 //! ProseMirror-compatible LoroDoc trees.
 //!
 //! If `loro-prosemirror` changes these conventions, the Rust side must change too.
@@ -30,7 +30,7 @@ pub const ATTR_BLOCK_ID: &str = "blockId";
 // -- Custom familiar.systems node type names --
 // These must match the TipTap node specs in `packages/editor/`.
 
-/// Inline mention node. Attrs: `thingId` (ThingId), `label` (display name cache).
+/// Inline mention node. Attrs: `pageId` (PageId), `label` (display name cache).
 pub const NODE_MENTION: &str = "mention";
 
 /// Suggestion mark applied to a block range.

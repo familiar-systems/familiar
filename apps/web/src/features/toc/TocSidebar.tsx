@@ -6,7 +6,7 @@
 // persists across navigation between pages.
 
 import type { CampaignId } from "@familiar-systems/types-app";
-import type { ThingId } from "@familiar-systems/types-campaign";
+import type { PageId } from "@familiar-systems/types-campaign";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { TreeID } from "loro-crdt";
 import { Plus } from "lucide-react";
@@ -28,19 +28,19 @@ export function TocSidebar({ campaignId }: TocSidebarProps): React.ReactElement 
   const createPage = useCreatePage(campaignId);
   const snapshot = useToc();
 
-  // The open page comes from the child thing route's param. We read it loosely
-  // (the sidebar sits above that route); it is already URL-validated by the thing
+  // The open page comes from the child page route's param. We read it loosely
+  // (the sidebar sits above that route); it is already URL-validated by the page
   // route's parseParams, so branding it here is safe.
   const params = useParams({ strict: false });
-  const activeThingId: ThingId | null = (params.thingId ?? null) as ThingId | null;
+  const activePageId: PageId | null = (params.pageId ?? null) as PageId | null;
 
-  // undefined = not creating, null = creating at root, ThingId = under that page.
-  const [pendingParent, setPendingParent] = useState<ThingId | null | undefined>(undefined);
+  // undefined = not creating, null = creating at root, PageId = under that page.
+  const [pendingParent, setPendingParent] = useState<PageId | null | undefined>(undefined);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  function goToPage(thingId: ThingId): void {
-    void navigate({ to: "/c/$campaignId/t/$thingId", params: { campaignId, thingId } });
+  function goToPage(pageId: PageId): void {
+    void navigate({ to: "/c/$campaignId/p/$pageId", params: { campaignId, pageId } });
   }
 
   function moveNode(node: TreeID, parent: TreeID | null, index: number): void {
@@ -86,7 +86,7 @@ export function TocSidebar({ campaignId }: TocSidebarProps): React.ReactElement 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         <SidebarBody
           snapshot={snapshot}
-          activeThingId={activeThingId}
+          activePageId={activePageId}
           pendingParent={pendingParent}
           creating={creating}
           onNew={() => setPendingParent(null)}
@@ -107,20 +107,20 @@ export function TocSidebar({ campaignId }: TocSidebarProps): React.ReactElement 
 
 interface SidebarBodyProps {
   snapshot: ReturnType<typeof useToc>;
-  activeThingId: ThingId | null;
-  pendingParent: ThingId | null | undefined;
+  activePageId: PageId | null;
+  pendingParent: PageId | null | undefined;
   creating: boolean;
   onNew: () => void;
-  onNavigate: (thingId: ThingId) => void;
+  onNavigate: (pageId: PageId) => void;
   onMove: (node: TreeID, parent: TreeID | null, index: number) => void;
-  onAddChild: (parent: ThingId) => void;
+  onAddChild: (parent: PageId) => void;
   onSubmitCreate: (name: string) => void;
   onCancelCreate: () => void;
 }
 
 function SidebarBody({
   snapshot,
-  activeThingId,
+  activePageId,
   pendingParent,
   creating,
   onNew,
@@ -168,7 +168,7 @@ function SidebarBody({
           ) : null}
           <TocTree
             tree={snapshot.tree}
-            activeThingId={activeThingId}
+            activePageId={activePageId}
             pendingParent={pendingParent}
             creating={creating}
             onNavigate={onNavigate}

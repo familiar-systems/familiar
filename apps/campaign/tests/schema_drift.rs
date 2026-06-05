@@ -24,7 +24,7 @@
 use std::collections::BTreeSet;
 
 use familiar_systems_campaign::db;
-use familiar_systems_campaign::entities::{blocks, campaign_metadata, things, toc_entries};
+use familiar_systems_campaign::entities::{blocks, campaign_metadata, pages, toc_entries};
 use familiar_systems_campaign::migrations::Migrator;
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DbBackend, EntityName, EntityTrait,
@@ -45,7 +45,7 @@ async fn setup_via_entities() -> DatabaseConnection {
     let backend = db.get_database_backend();
 
     // Apply in FK dependency order: parents before children.
-    apply_entity_schema(&db, &schema, backend, things::Entity).await;
+    apply_entity_schema(&db, &schema, backend, pages::Entity).await;
     apply_entity_schema(&db, &schema, backend, blocks::Entity).await;
     apply_entity_schema(&db, &schema, backend, campaign_metadata::Entity).await;
     apply_entity_schema(&db, &schema, backend, toc_entries::Entity).await;
@@ -215,7 +215,7 @@ async fn schema_matches_entities() {
     );
 
     for table in [
-        things::Entity.table_name(),
+        pages::Entity.table_name(),
         blocks::Entity.table_name(),
         campaign_metadata::Entity.table_name(),
         toc_entries::Entity.table_name(),

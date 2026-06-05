@@ -4,11 +4,12 @@ use sea_orm_migration::prelude::*;
 pub struct Migration;
 
 #[derive(DeriveIden)]
-enum Things {
+enum Pages {
     Table,
     Id,
     Name,
     Status,
+    Kind,
     PrototypeId,
     CreatedAt,
     UpdatedAt,
@@ -20,26 +21,27 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(Things::Table)
+                    .table(Pages::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(Things::Id).text().not_null().primary_key())
-                    .col(ColumnDef::new(Things::Name).text().not_null())
-                    .col(ColumnDef::new(Things::Status).text().not_null())
-                    .col(ColumnDef::new(Things::PrototypeId).text().null())
+                    .col(ColumnDef::new(Pages::Id).text().not_null().primary_key())
+                    .col(ColumnDef::new(Pages::Name).text().not_null())
+                    .col(ColumnDef::new(Pages::Status).text().not_null())
+                    .col(ColumnDef::new(Pages::Kind).text().not_null())
+                    .col(ColumnDef::new(Pages::PrototypeId).text().null())
                     .col(
-                        ColumnDef::new(Things::CreatedAt)
+                        ColumnDef::new(Pages::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(Things::UpdatedAt)
+                        ColumnDef::new(Pages::UpdatedAt)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .from(Things::Table, Things::PrototypeId)
-                            .to(Things::Table, Things::Id),
+                            .from(Pages::Table, Pages::PrototypeId)
+                            .to(Pages::Table, Pages::Id),
                     )
                     .to_owned(),
             )
@@ -48,7 +50,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(Things::Table).to_owned())
+            .drop_table(Table::drop().table(Pages::Table).to_owned())
             .await
     }
 }

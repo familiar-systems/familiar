@@ -46,8 +46,8 @@ impl<'a> EmbeddingsRepo<'a> {
         k: u32,
     ) -> Result<Vec<(BlockId, f32)>, sea_orm::DbErr> {
         // Static fragments only (not user input). The visibility predicate
-        // lives at the Thing level (per docs/plans/2026-02-22-ai-prd.md §2.2);
-        // block-level redaction inside an otherwise-visible thing happens at
+        // lives at the Page level (per docs/plans/2026-02-22-ai-prd.md §2.2);
+        // block-level redaction inside an otherwise-visible page happens at
         // document materialization, not in SQL.
         let status_clause = match viewer {
             ViewerKind::Gm => "",

@@ -174,8 +174,8 @@ async function installMocks(page: Page, state: MockState): Promise<void> {
           content_locale: row.content_locale,
           wizard_completed_at: row.wizard_completed_at,
           // null = no home page set -> index shows the no-home placeholder. A
-          // non-null value must be a ULID (the thing route validates it).
-          home_thing_id: null,
+          // non-null value must be a ULID (the page route validates it).
+          home_page_id: null,
           created_at: row.created_at,
           updated_at: row.updated_at,
         }),
@@ -244,7 +244,7 @@ test("wizard success transitions to initialized campaign view", async ({ page })
         content_locale: row?.content_locale ?? null,
         wizard_completed_at: row?.wizard_completed_at ?? null,
         // No home page in this mock -> index lands on the no-home placeholder.
-        home_thing_id: null,
+        home_page_id: null,
         created_at: row?.created_at ?? new Date().toISOString(),
         updated_at: row?.updated_at ?? new Date().toISOString(),
       }),
@@ -272,7 +272,7 @@ test("wizard success transitions to initialized campaign view", async ({ page })
   await page.getByTestId("wizard-next").click();
 
   // Step 4: seal. Should stay on the campaign, not bounce to hub. The mocked
-  // GET /campaign/{id} carries no home_thing_id, so the index lands on the
+  // GET /campaign/{id} carries no home_page_id, so the index lands on the
   // "no home page" placeholder (the real flow redirects to the home editor,
   // which the full-stack e2e smoke test covers).
   await page.getByTestId("wax-seal").click();

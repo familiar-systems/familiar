@@ -8,13 +8,14 @@ import type {
   CampaignErrorResponse,
   CampaignMetadataResponse,
   CatalogResponse,
-  CreateThingRequest,
+  CreatePageRequest,
+  PageId,
+  PageKind,
+  PageResponse,
   PatchCampaignRequest,
   Status,
   SystemEntry,
   TemplateRef,
-  ThingId,
-  ThingResponse,
 } from "@familiar-systems/types-campaign";
 export interface paths {
   "/campaign/{id}": {
@@ -33,7 +34,7 @@ export interface paths {
     patch: operations["patch_campaign"];
     trace?: never;
   };
-  "/campaign/{id}/things": {
+  "/campaign/{id}/pages": {
     parameters: {
       query?: never;
       header?: never;
@@ -42,7 +43,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    post: operations["create_thing"];
+    post: operations["create_page"];
     delete?: never;
     options?: never;
     head?: never;
@@ -109,15 +110,38 @@ export interface components {
     CampaignMetadataResponse: CampaignMetadataResponse;
     CatalogResponse: CatalogResponse;
     /**
-     * @description Create a new Thing in a campaign.
+     * @description Create a new Page in a campaign.
      *
      *     `name` is required; everything else is optional. A missing `status` defaults
-     *     to `gmOnly` (the domain default for new content). `parent` places the Thing
+     *     to `gmOnly` (the domain default for new content). `parent` places the Page
      *     in the table of contents: omitted appends it at the ToC root; `Some(id)`
-     *     nests it as the last child of that Thing's ToC node. `from_template_id` is
+     *     nests it as the last child of that Page's ToC node. `from_template_id` is
      *     accepted but not yet implemented (the server returns 501).
      */
-    CreateThingRequest: CreateThingRequest;
+    CreatePageRequest: CreatePageRequest;
+    /**
+     * Format: ulid
+     * @description Uniquely identifies a page (NPC, location, item, etc.).
+     *     ULID for compact URLs (26 chars) and B-tree-friendly insert ordering.
+     */
+    PageId: PageId;
+    /**
+     * @description What kind of Page this is: its document *structure* and the systemic actions
+     *     the engine takes for it. A `kind` exists only when pages differ structurally
+     *     (a different Loro schema) or need a systemic action the engine can't infer
+     *     from content; editorial differences (NPC vs Location) live in tags,
+     *     relationships, and template lineage, not here.
+     *     See: docs/plans/2026-03-25-ai-serialization-format-v2.md and issue #155.
+     *
+     *     Only `Entity` and `Template` exist today. `Session` and `Skill` are known
+     *     future cases (the audio pipeline and the agent system) and get added as
+     *     variants when those documents are actually built - each addition makes the
+     *     `match` arms below non-exhaustive, so the compiler points at every site.
+     * @enum {string}
+     */
+    PageKind: PageKind;
+    /** @description A created Page, returned with `201 Created`. */
+    PageResponse: PageResponse;
     PatchCampaignRequest: PatchCampaignRequest;
     /**
      * @description Visibility status for campaign content. The CRDT syncs all content to all
@@ -129,14 +153,6 @@ export interface components {
     Status: Status;
     SystemEntry: SystemEntry;
     TemplateRef: TemplateRef;
-    /**
-     * Format: ulid
-     * @description Uniquely identifies a thing (NPC, location, item, etc.).
-     *     ULID for compact URLs (26 chars) and B-tree-friendly insert ordering.
-     */
-    ThingId: ThingId;
-    /** @description A created Thing, returned with `201 Created`. */
-    ThingResponse: ThingResponse;
   };
   responses: never;
   parameters: never;
@@ -275,7 +291,7 @@ export interface operations {
       };
     };
   };
-  create_thing: {
+  create_page: {
     parameters: {
       query?: never;
       header?: never;
@@ -287,17 +303,17 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["CreateThingRequest"];
+        "application/json": components["schemas"]["CreatePageRequest"];
       };
     };
     responses: {
-      /** @description Thing created */
+      /** @description Page created */
       201: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ThingResponse"];
+          "application/json": components["schemas"]["PageResponse"];
         };
       };
       /** @description Missing or invalid session */
@@ -321,7 +337,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Parent thing not found in the table of contents */
+      /** @description Parent page not found in the table of contents */
       422: {
         headers: {
           [name: string]: unknown;

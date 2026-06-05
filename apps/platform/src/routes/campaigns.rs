@@ -136,7 +136,7 @@ pub async fn create_campaign(
 
     // Step 4: routing row + GM seed, committed atomically. One transaction so
     // a crash between them can never leave a routing row (campaign visible in
-    // the owner's hub) without its membership row (every WS upgrade / Thing
+    // the owner's hub) without its membership row (every WS upgrade / Page
     // create would 403 the owner). With the resume path above, the only
     // partial states are "nothing platform-side yet" (next retry heals) or
     // "complete". `campaigns` is inserted before `campaign_members` so the FK

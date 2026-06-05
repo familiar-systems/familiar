@@ -3,21 +3,21 @@
 //! These are pushed to connected clients over the WebSocket side-channel
 //! (not via CRDT sync).
 
-use crate::id::ThingId;
-use crate::loro::thing::ThingHandle;
+use crate::id::PageId;
+use crate::loro::page::PageHandle;
 
 #[allow(dead_code)]
-struct ThingCreated {
-    id: ThingId,
+struct PageCreated {
+    id: PageId,
 }
 
 pub enum VocabularyNotification {
-    ThingCreated(ThingHandle),
-    ThingRenamed(ThingHandle),
-    ThingUpdated(ThingHandle),
+    PageCreated(PageHandle),
+    PageRenamed(PageHandle),
+    PageUpdated(PageHandle),
 }
 
-pub enum ThingNotification {
+pub enum PageNotification {
     PersistenceDegraded(),
     PersistenceRestored(),
 }

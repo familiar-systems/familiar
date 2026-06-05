@@ -3,20 +3,20 @@
 // Loro binding come from @familiar-systems/editor; this component owns the
 // React/transport wiring and the on-page chrome.
 
-import { BlockId, LoroExtension, NODE_EXTENSIONS, readThingTitle } from "@familiar-systems/editor";
-import type { ThingId } from "@familiar-systems/types-campaign";
+import { BlockId, LoroExtension, NODE_EXTENSIONS, readPageTitle } from "@familiar-systems/editor";
+import type { PageId } from "@familiar-systems/types-campaign";
 import { EditorContent, useEditor } from "@tiptap/react";
 import type { ContainerID, LoroDoc } from "loro-crdt";
 
 import { roomErrorMessage } from "./loro-manager";
-import { useThingDoc } from "./useThingDoc";
+import { usePageDoc } from "./usePageDoc";
 
 interface HomeEditorProps {
-  thingId: ThingId;
+  pageId: PageId;
 }
 
-export function HomeEditor({ thingId }: HomeEditorProps): React.ReactElement {
-  const state = useThingDoc(thingId);
+export function HomeEditor({ pageId }: HomeEditorProps): React.ReactElement {
+  const state = usePageDoc(pageId);
 
   if (state.status === "error") {
     return (
@@ -55,7 +55,7 @@ interface BoundEditorProps {
 // Separate component so `useEditor` runs unconditionally (rules of hooks) and
 // only after the doc has synced. The editor is created once per doc.
 function BoundEditor({ doc, containerId, reconnecting }: BoundEditorProps): React.ReactElement {
-  const title = readThingTitle(doc);
+  const title = readPageTitle(doc);
   const editor = useEditor(
     {
       extensions: [...NODE_EXTENSIONS, BlockId, LoroExtension.configure({ doc, containerId })],

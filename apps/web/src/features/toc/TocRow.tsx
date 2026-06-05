@@ -3,7 +3,7 @@
 // listeners live on the handle (not the whole row) so a plain click still
 // navigates. Presentational only: all state lives in TocTree.
 
-import type { ThingId } from "@familiar-systems/types-campaign";
+import type { PageId } from "@familiar-systems/types-campaign";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { TreeID } from "loro-crdt";
@@ -26,9 +26,9 @@ interface TocRowProps {
   indentWidth: number;
   /** Whether this entry is the page currently open in the editor. */
   active: boolean;
-  onNavigate: (thingId: ThingId) => void;
+  onNavigate: (pageId: PageId) => void;
   onToggleCollapse: (treeId: TreeID) => void;
-  onAddChild: (parent: ThingId) => void;
+  onAddChild: (parent: PageId) => void;
 }
 
 export function TocRow({
@@ -46,7 +46,7 @@ export function TocRow({
 
   const entry = node.entry;
   // Narrow once into a const so the closures below stay type-safe.
-  const thingId: ThingId | null = entry.kind === "thing" ? entry.thingId : null;
+  const pageId: PageId | null = entry.kind === "page" ? entry.pageId : null;
   const gmOnly = entry.visibility === "gmOnly";
 
   return (
@@ -82,10 +82,10 @@ export function TocRow({
 
       <button
         type="button"
-        onClick={() => (thingId !== null ? onNavigate(thingId) : onToggleCollapse(node.treeId))}
+        onClick={() => (pageId !== null ? onNavigate(pageId) : onToggleCollapse(node.treeId))}
         className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
       >
-        {thingId !== null ? (
+        {pageId !== null ? (
           <FileText className="size-4 shrink-0 text-muted-foreground" />
         ) : (
           <Folder className="size-4 shrink-0 text-bronze" />
@@ -97,11 +97,11 @@ export function TocRow({
         <EyeOff className="size-3.5 shrink-0 text-muted-foreground/50" aria-label="GM only" />
       ) : null}
 
-      {thingId !== null ? (
+      {pageId !== null ? (
         <button
           type="button"
           aria-label="Add sub-page"
-          onClick={() => onAddChild(thingId)}
+          onClick={() => onAddChild(pageId)}
           className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100 hover:text-primary"
         >
           <Plus className="size-3.5" />

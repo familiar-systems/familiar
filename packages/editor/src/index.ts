@@ -11,7 +11,7 @@ export {
   NODE_TEXT,
 } from "./schema";
 export { BLOCK_ID_ATTR, BlockId } from "./block-id";
-export { META_CONTAINER, META_TITLE_KEY, readThingTitle } from "./meta";
+export { META_CONTAINER, META_TITLE_KEY, readPageTitle } from "./meta";
 export {
   CONTENT_CONTAINER,
   contentContainerId,

@@ -1,7 +1,7 @@
 pub mod blocks;
 pub mod campaign_metadata;
 pub mod columns;
-pub mod things;
+pub mod pages;
 pub mod toc_entries;
 
 // NOTE: There's no `users` entity here yet. We do need one eventually -

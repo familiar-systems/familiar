@@ -2,9 +2,9 @@
 //!
 //! The ToC is a collaborative, nested tree of entries backed by `LoroTree`.
 //! Each entry is either a `Folder` (organizational container with no page)
-//! or a `Thing` (pointer to a page by `ThingId`). Both can have children.
-//! A Thing can function as a folder (it has children and a page), but a
-//! Folder is not a Thing (no page, no `ThingId`).
+//! or a `Page` (pointer to a page by `PageId`). Both can have children.
+//! A Page can function as a folder (it has children and a page), but a
+//! Folder is not a Page (no page, no `PageId`).
 //!
 //! This module holds only the cross-language schema. The Rust-side
 //! `LoroTocDoc` wrapper that implements `CrdtDoc` lives in
@@ -27,7 +27,7 @@
 //! authoritative for suggestion lifecycle (accept/reject/expire).
 //!
 //! Each entry carries a `schema` discriminant:
-//! - `"content"`: real entry (Folder or Thing) with optional inline
+//! - `"content"`: real entry (Folder or Page) with optional inline
 //!   suggestions (`"change"` / `"delete"`) proposed by conversations.
 //! - `"suggestion"`: a proposed new entry from a conversation, visible
 //!   only to the GM. Carries `conversation_id` and proposed metadata.
@@ -38,7 +38,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::id::{ConversationId, ThingId};
+use crate::id::{ConversationId, PageId};
 use crate::status::Status;
 
 // ── Schema: Loro container names ────────────────────────────────────────────
@@ -50,7 +50,7 @@ pub const CONTAINER_TOC: &str = "toc";
 
 pub const KEY_KIND: &str = "kind";
 pub const KEY_TITLE: &str = "title";
-pub const KEY_THING_ID: &str = "thingId";
+pub const KEY_PAGE_ID: &str = "pageId";
 pub const KEY_VISIBILITY: &str = "visibility";
 pub const KEY_CONVERSATION_ID: &str = "conversationId";
 
@@ -63,7 +63,7 @@ pub const MAX_DEPTH: usize = 3;
 // ── Schema: kind string values ──────────────────────────────────────────────
 
 pub const KIND_FOLDER: &str = "folder";
-pub const KIND_THING: &str = "thing";
+pub const KIND_PAGE: &str = "page";
 pub const KIND_SUGGESTION: &str = "suggestion";
 
 // ── Schema: domain types ────────────────────────────────────────────────────
@@ -75,21 +75,21 @@ pub const KIND_SUGGESTION: &str = "suggestion";
 #[ts(export, export_to = "types-campaign/src/generated/document/")]
 pub enum TocEntryKind {
     Folder,
-    Thing,
+    Page,
     Suggestion,
 }
 
 /// A single ToC entry as a discriminated union.
 ///
 /// Each variant carries only the fields valid for that kind, making invalid
-/// states unrepresentable. A `Thing` can have children (functioning as a
-/// folder with a page), but a `Folder` is not a Thing (organizational
+/// states unrepresentable. A `Page` can have children (functioning as a
+/// folder with a page), but a `Folder` is not a Page (organizational
 /// container only, no page).
 ///
 /// `Suggestion` entries are proposed new entries from AI conversations,
 /// visible only to the GM until accepted or rejected.
 ///
-/// **Loro storage** uses variant-specific keys (`thingId`, `conversationId`).
+/// **Loro storage** uses variant-specific keys (`pageId`, `conversationId`).
 /// Conversion between flat LoroMap fields and this enum happens in `LoroTocDoc`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -102,11 +102,11 @@ pub enum TocEntry {
         #[serde(default)]
         suggestions: Vec<TocSuggestion>,
     },
-    #[serde(rename = "thing")]
-    Thing {
+    #[serde(rename = "page")]
+    Page {
         title: String,
-        #[serde(rename = "thingId")]
-        thing_id: ThingId,
+        #[serde(rename = "pageId")]
+        page_id: PageId,
         visibility: Status,
         #[serde(default)]
         suggestions: Vec<TocSuggestion>,
@@ -121,7 +121,7 @@ pub enum TocEntry {
     },
 }
 
-/// An inline suggestion on an existing content entry (Folder or Thing).
+/// An inline suggestion on an existing content entry (Folder or Page).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "schema", rename_all = "camelCase")]
 #[ts(export, export_to = "types-campaign/src/generated/document/")]
@@ -161,14 +161,14 @@ impl TocEntry {
     pub fn kind(&self) -> TocEntryKind {
         match self {
             Self::Folder { .. } => TocEntryKind::Folder,
-            Self::Thing { .. } => TocEntryKind::Thing,
+            Self::Page { .. } => TocEntryKind::Page,
             Self::Suggestion { .. } => TocEntryKind::Suggestion,
         }
     }
 
     pub fn title(&self) -> Option<&str> {
         match self {
-            Self::Folder { title, .. } | Self::Thing { title, .. } => Some(title),
+            Self::Folder { title, .. } | Self::Page { title, .. } => Some(title),
             Self::Suggestion { title, .. } => title.as_deref(),
         }
     }
@@ -176,7 +176,7 @@ impl TocEntry {
     pub fn visibility(&self) -> &Status {
         match self {
             Self::Folder { visibility, .. }
-            | Self::Thing { visibility, .. }
+            | Self::Page { visibility, .. }
             | Self::Suggestion { visibility, .. } => visibility,
         }
     }

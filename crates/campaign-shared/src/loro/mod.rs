@@ -5,6 +5,6 @@
 //! the `CrdtDoc` trait live in `apps/campaign/src/loro/` because they have
 //! no cross-crate or cross-language consumers.
 
+pub mod page;
 pub mod prosemirror;
-pub mod thing;
 pub mod toc;

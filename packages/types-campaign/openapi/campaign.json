@@ -116,10 +116,10 @@
         }
       }
     },
-    "/campaign/{id}/things": {
+    "/campaign/{id}/pages": {
       "post": {
-        "tags": ["things"],
-        "operationId": "create_thing",
+        "tags": ["pages"],
+        "operationId": "create_page",
         "parameters": [
           {
             "name": "id",
@@ -135,7 +135,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateThingRequest"
+                "$ref": "#/components/schemas/CreatePageRequest"
               }
             }
           },
@@ -143,11 +143,11 @@
         },
         "responses": {
           "201": {
-            "description": "Thing created",
+            "description": "Page created",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ThingResponse"
+                  "$ref": "#/components/schemas/PageResponse"
                 }
               }
             }
@@ -162,7 +162,7 @@
             "description": "Campaign not on this shard"
           },
           "422": {
-            "description": "Parent thing not found in the table of contents"
+            "description": "Parent page not found in the table of contents"
           },
           "500": {
             "description": "Creation failed"
@@ -268,14 +268,14 @@
           "game_system": {
             "type": ["string", "null"]
           },
-          "home_thing_id": {
+          "home_page_id": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/ThingId",
-                "description": "The campaign's home / landing-page Thing (\"Campaign Base Camp\"), seeded\nat creation. The client opens this as the campaign's home base. Absent\nonly in the brief window before the async seed completes."
+                "$ref": "#/components/schemas/PageId",
+                "description": "The campaign's home / landing-page Page (\"Campaign Base Camp\"), seeded\nat creation. The client opens this as the campaign's home base. Absent\nonly in the brief window before the async seed completes."
               }
             ]
           },
@@ -310,9 +310,9 @@
           }
         }
       },
-      "CreateThingRequest": {
+      "CreatePageRequest": {
         "type": "object",
-        "description": "Create a new Thing in a campaign.\n\n`name` is required; everything else is optional. A missing `status` defaults\nto `gmOnly` (the domain default for new content). `parent` places the Thing\nin the table of contents: omitted appends it at the ToC root; `Some(id)`\nnests it as the last child of that Thing's ToC node. `from_template_id` is\naccepted but not yet implemented (the server returns 501).",
+        "description": "Create a new Page in a campaign.\n\n`name` is required; everything else is optional. A missing `status` defaults\nto `gmOnly` (the domain default for new content). `parent` places the Page\nin the table of contents: omitted appends it at the ToC root; `Some(id)`\nnests it as the last child of that Page's ToC node. `from_template_id` is\naccepted but not yet implemented (the server returns 501).",
         "required": ["name"],
         "properties": {
           "from_template_id": {
@@ -321,7 +321,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/ThingId",
+                "$ref": "#/components/schemas/PageId",
                 "description": "Template to clone from. Not yet supported; a value here yields 501."
               }
             ]
@@ -335,8 +335,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/ThingId",
-                "description": "Parent Thing to nest under in the table of contents. `None` => ToC root.\nFIXME this should probably the ID of the ToC block and not a ThingID.\nThis would let us nest things under, say, a Folder."
+                "$ref": "#/components/schemas/PageId",
+                "description": "Parent Page to nest under in the table of contents. `None` => ToC root.\nFIXME this should probably the ID of the ToC block and not a `PageId`.\nThis would let us nest pages under, say, a Folder."
               }
             ]
           },
@@ -349,6 +349,53 @@
                 "$ref": "#/components/schemas/Status"
               }
             ]
+          }
+        }
+      },
+      "PageId": {
+        "type": "string",
+        "format": "ulid",
+        "description": "Uniquely identifies a page (NPC, location, item, etc.).\nULID for compact URLs (26 chars) and B-tree-friendly insert ordering."
+      },
+      "PageKind": {
+        "type": "string",
+        "description": "What kind of Page this is: its document *structure* and the systemic actions\nthe engine takes for it. A `kind` exists only when pages differ structurally\n(a different Loro schema) or need a systemic action the engine can't infer\nfrom content; editorial differences (NPC vs Location) live in tags,\nrelationships, and template lineage, not here.\nSee: docs/plans/2026-03-25-ai-serialization-format-v2.md and issue #155.\n\nOnly `Entity` and `Template` exist today. `Session` and `Skill` are known\nfuture cases (the audio pipeline and the agent system) and get added as\nvariants when those documents are actually built - each addition makes the\n`match` arms below non-exhaustive, so the compiler points at every site.",
+        "enum": ["entity", "template"]
+      },
+      "PageResponse": {
+        "type": "object",
+        "description": "A created Page, returned with `201 Created`.",
+        "required": ["id", "name", "status", "kind", "created_at", "updated_at"],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "RFC 3339 timestamp."
+          },
+          "id": {
+            "$ref": "#/components/schemas/PageId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PageKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prototype_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PageId"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "RFC 3339 timestamp."
           }
         }
       },
@@ -446,45 +493,6 @@
           "slug": {
             "type": "string",
             "description": "`<system-id>/<template-name>` slug, e.g. `common/npc`."
-          }
-        }
-      },
-      "ThingId": {
-        "type": "string",
-        "format": "ulid",
-        "description": "Uniquely identifies a thing (NPC, location, item, etc.).\nULID for compact URLs (26 chars) and B-tree-friendly insert ordering."
-      },
-      "ThingResponse": {
-        "type": "object",
-        "description": "A created Thing, returned with `201 Created`.",
-        "required": ["id", "name", "status", "created_at", "updated_at"],
-        "properties": {
-          "created_at": {
-            "type": "string",
-            "description": "RFC 3339 timestamp."
-          },
-          "id": {
-            "$ref": "#/components/schemas/ThingId"
-          },
-          "name": {
-            "type": "string"
-          },
-          "prototype_id": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ThingId"
-              }
-            ]
-          },
-          "status": {
-            "$ref": "#/components/schemas/Status"
-          },
-          "updated_at": {
-            "type": "string",
-            "description": "RFC 3339 timestamp."
           }
         }
       }

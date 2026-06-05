@@ -4,14 +4,14 @@
 //! actors have flushed their CRDT snapshots to SQLite), it runs this against
 //! the campaign's `.db` file to prove the edits actually persisted:
 //!
-//!   - at least 2 Things exist (the seeded "Campaign Base Camp" home page plus
+//!   - at least 2 Pages exist (the seeded "Campaign Base Camp" home page plus
 //!     the "Test page" the spec created), and
-//!   - each Thing has at least 2 `section = 'content'` blocks (the spec types
+//!   - each Page has at least 2 `section = 'content'` blocks (the spec types
 //!     two paragraphs into each).
 //!
 //! It deliberately reuses the campaign crate's own `db` helpers and sea-orm
 //! entities rather than a separate SQLite reader: same driver/WAL semantics the
-//! server writes with, and a `things`/`blocks` schema change becomes a compile
+//! server writes with, and a `pages`/`blocks` schema change becomes a compile
 //! error here instead of a silently-passing assertion.
 //!
 //! Usage: `cargo run -p familiar-systems-campaign --example smoke_assert_db -- <path-to.db>`
@@ -21,11 +21,11 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use familiar_systems_campaign::db::{connect_readonly, register_sqlite_vec};
-use familiar_systems_campaign::entities::{blocks, things};
+use familiar_systems_campaign::entities::{blocks, pages};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
-const MIN_THINGS: u64 = 2;
-const MIN_CONTENT_BLOCKS_PER_THING: u64 = 2;
+const MIN_PAGES: u64 = 2;
+const MIN_CONTENT_BLOCKS_PER_PAGE: u64 = 2;
 
 #[tokio::main]
 async fn main() {
@@ -55,33 +55,31 @@ async fn main() {
 
     let mut failures: Vec<String> = Vec::new();
 
-    let all_things = things::Entity::find()
+    let all_pages = pages::Entity::find()
         .all(&db)
         .await
-        .unwrap_or_else(|e| fatal(&format!("query things failed: {e}")));
+        .unwrap_or_else(|e| fatal(&format!("query pages failed: {e}")));
 
-    let thing_count = all_things.len() as u64;
-    if thing_count < MIN_THINGS {
-        failures.push(format!(
-            "expected >= {MIN_THINGS} things, found {thing_count}"
-        ));
+    let page_count = all_pages.len() as u64;
+    if page_count < MIN_PAGES {
+        failures.push(format!("expected >= {MIN_PAGES} pages, found {page_count}"));
     }
 
-    for t in &all_things {
+    for t in &all_pages {
         let content_blocks = blocks::Entity::find()
-            .filter(blocks::Column::ThingId.eq(t.id.clone()))
+            .filter(blocks::Column::PageId.eq(t.id.clone()))
             .filter(blocks::Column::Section.eq("content"))
             .count(&db)
             .await
             .unwrap_or_else(|e| fatal(&format!("count blocks for {:?} failed: {e}", t.id)));
 
         println!(
-            "thing {:?} ({}): {content_blocks} content blocks",
+            "page {:?} ({}): {content_blocks} content blocks",
             t.id, t.name
         );
-        if content_blocks < MIN_CONTENT_BLOCKS_PER_THING {
+        if content_blocks < MIN_CONTENT_BLOCKS_PER_PAGE {
             failures.push(format!(
-                "thing {:?} ({}) has {content_blocks} content blocks, expected >= {MIN_CONTENT_BLOCKS_PER_THING}",
+                "page {:?} ({}) has {content_blocks} content blocks, expected >= {MIN_CONTENT_BLOCKS_PER_PAGE}",
                 t.id, t.name
             ));
         }
@@ -89,7 +87,7 @@ async fn main() {
 
     if failures.is_empty() {
         println!(
-            "OK: {thing_count} things, each with >= {MIN_CONTENT_BLOCKS_PER_THING} content blocks"
+            "OK: {page_count} pages, each with >= {MIN_CONTENT_BLOCKS_PER_PAGE} content blocks"
         );
         exit(0);
     }

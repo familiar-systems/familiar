@@ -7,7 +7,7 @@ pub struct Migration;
 enum TocEntries {
     Table,
     Id,
-    ThingId,
+    PageId,
     FolderTitle,
     Visibility,
     ParentId,
@@ -15,7 +15,7 @@ enum TocEntries {
 }
 
 #[derive(DeriveIden)]
-enum Things {
+enum Pages {
     Table,
     Id,
 }
@@ -34,15 +34,15 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(TocEntries::ThingId).text().null())
+                    .col(ColumnDef::new(TocEntries::PageId).text().null())
                     .col(ColumnDef::new(TocEntries::FolderTitle).text().null())
                     .col(ColumnDef::new(TocEntries::Visibility).text().not_null())
                     .col(ColumnDef::new(TocEntries::ParentId).text().null())
                     .col(ColumnDef::new(TocEntries::Position).integer().not_null())
                     .foreign_key(
                         ForeignKey::create()
-                            .from(TocEntries::Table, TocEntries::ThingId)
-                            .to(Things::Table, Things::Id)
+                            .from(TocEntries::Table, TocEntries::PageId)
+                            .to(Pages::Table, Pages::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),

@@ -1,10 +1,10 @@
-//! `ThingActor`: per-Thing CRDT room actor.
+//! `PageActor`: per-Page CRDT room actor.
 //!
 //! Spawned by the `CampaignSupervisor` either lazily, when a client first
-//! joins a Thing room (`ThingInit::Restore`, reconstructing a `LoroThingDoc`
-//! from block rows in SQLite), or at creation time (`ThingInit::New`, where the
+//! joins a Page room (`PageInit::Restore`, reconstructing a `LoroPageDoc`
+//! from block rows in SQLite), or at creation time (`PageInit::New`, where the
 //! actor builds its doc and persists its own genesis row). Either way the actor
-//! is the sole mutator of its Thing. Born vacating, it self-evicts once it has
+//! is the sole mutator of its Page. Born vacating, it self-evicts once it has
 //! no subscribers and an idle timer fires, so a room that is never joined does
 //! not leak resident until campaign drain.
 
@@ -13,8 +13,9 @@ use std::time::Duration;
 use chrono::Utc;
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::CampaignId;
-use familiar_systems_campaign_shared::id::{BlockId, ThingId};
-use familiar_systems_campaign_shared::loro::thing::SECTION_CONTENT;
+use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::loro::page::SECTION_CONTENT;
+use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use kameo::actor::{ActorRef, WeakActorRef};
 use kameo::error::ActorStopReason;
@@ -23,24 +24,24 @@ use kameo::prelude::Actor;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 
-use crate::actors::database_writer::{DatabaseWriteActor, DbCreateThing, WriteThingBlocks};
+use crate::actors::database_writer::{DatabaseWriteActor, DbCreatePage, WritePageBlocks};
 use crate::actors::persist::{Persist, PersistError, PersistNow};
 use crate::domain::crdt::doc::CrdtDoc;
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
-use crate::domain::thing::{NewBlock, build_new_thing};
-use crate::entities::columns::{BlockIdCol, StatusCol, ThingIdCol};
-use crate::entities::{blocks, things};
-use crate::loro::thing::LoroThingDoc;
+use crate::domain::page::{NewBlock, build_new_page};
+use crate::entities::columns::{BlockIdCol, PageIdCol, StatusCol};
+use crate::entities::{blocks, pages};
+use crate::loro::page::LoroPageDoc;
 use crate::wire::broadcast::encode_broadcast;
 use crate::wire::fragmenter::BatchFragmenter;
 
-pub struct ThingActor {
+pub struct PageActor {
     campaign_id: CampaignId,
-    thing_id: ThingId,
-    doc_room: room::Room<LoroThingDoc>,
+    page_id: PageId,
+    doc_room: room::Room<LoroPageDoc>,
     db_writer: ActorRef<DatabaseWriteActor>,
-    self_ref: ActorRef<ThingActor>,
+    self_ref: ActorRef<PageActor>,
     /// Whether the doc has unpersisted edits and, if so, the armed flush timer.
     /// See [`Persist`]; the timer is inseparable from dirtiness by construction.
     persist: Persist,
@@ -51,7 +52,7 @@ pub struct ThingActor {
     fragmenter: BatchFragmenter,
 }
 
-/// Whether a Thing room currently has subscribers.
+/// Whether a Page room currently has subscribers.
 ///
 /// `Occupied`: at least one client is connected; no eviction is scheduled.
 /// `Vacating`: no clients are connected and an idle timer is counting down to
@@ -65,107 +66,118 @@ enum Occupancy {
     Vacating(tokio::task::JoinHandle<()>),
 }
 
-pub struct ThingActorArgs {
+pub struct PageActorArgs {
     pub campaign_id: CampaignId,
-    pub thing_id: ThingId,
+    pub page_id: PageId,
     pub db_reader: DatabaseConnection,
     pub db_writer: ActorRef<DatabaseWriteActor>,
-    /// Whether the actor loads an existing Thing or originates a new one.
-    pub init: ThingInit,
+    /// Whether the actor loads an existing Page or originates a new one.
+    pub init: PageInit,
     pub debounce_duration: Duration,
     pub idle_timeout: Duration,
 }
 
-/// How a `ThingActor` comes into being.
+/// How a `PageActor` comes into being.
 ///
-/// `Restore` loads an existing Thing's blocks from SQLite (the room-join path).
-/// `New` originates a Thing: the actor builds its `LoroThingDoc` and persists
+/// `Restore` loads an existing Page's blocks from SQLite (the room-join path).
+/// `New` originates a Page: the actor builds its `LoroPageDoc` and persists
 /// its own genesis row. Keeping creation inside the actor preserves the
-/// invariant that every write to a Thing flows through its owning actor.
-pub enum ThingInit {
+/// invariant that every write to a Page flows through its owning actor.
+pub enum PageInit {
     Restore,
     New {
         name: String,
         status: Status,
-        /// Initial content blocks: empty (`vec![]`) for a generic new Thing
+        /// Initial content blocks: empty (`vec![]`) for a generic new Page
         /// whose content arrives later through the editor, or one empty
         /// paragraph for the campaign home-page seed (so it opens editable).
         seed_blocks: Vec<NewBlock>,
     },
 }
 
-/// Failure modes for `ThingActor` startup.
+/// Failure modes for `PageActor` startup.
 #[derive(Debug, thiserror::Error)]
-pub enum ThingInitError {
+pub enum PageInitError {
     #[error("database error: {0}")]
     Db(#[from] sea_orm::DbErr),
     #[error("genesis write failed")]
     Genesis,
 }
 
-impl Actor for ThingActor {
-    type Args = ThingActorArgs;
-    type Error = ThingInitError;
+impl Actor for PageActor {
+    type Args = PageActorArgs;
+    type Error = PageInitError;
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %args.campaign_id.0, thing_id = %args.thing_id.0),
+        fields(campaign_id = %args.campaign_id.0, page_id = %args.page_id.0),
     )]
     async fn on_start(args: Self::Args, actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         let doc = match args.init {
-            ThingInit::Restore => {
-                let thing_row = things::Entity::find_by_id(ThingIdCol::from(args.thing_id.clone()))
+            PageInit::Restore => {
+                let page_row = pages::Entity::find_by_id(PageIdCol::from(args.page_id.clone()))
                     .one(&args.db_reader)
                     .await
-                    .inspect_err(|e| tracing::error!(error = %e, "failed to query thing"))?
-                    .expect("ThingActor spawned for a thing that exists in the database");
+                    .inspect_err(|e| tracing::error!(error = %e, "failed to query page"))?
+                    .expect("PageActor spawned for a page that exists in the database");
 
                 let block_rows = blocks::Entity::find()
-                    .filter(blocks::Column::ThingId.eq(ThingIdCol::from(args.thing_id.clone())))
+                    .filter(blocks::Column::PageId.eq(PageIdCol::from(args.page_id.clone())))
                     .filter(blocks::Column::Section.eq(SECTION_CONTENT))
                     .order_by_asc(blocks::Column::Ordering)
                     .all(&args.db_reader)
                     .await
                     .inspect_err(|e| tracing::error!(error = %e, "failed to query blocks"))?;
 
-                let status: Status = thing_row.status.into();
+                let status: Status = page_row.status.into();
+                let kind: PageKind = page_row.kind.into();
                 let blobs: Vec<Vec<u8>> = block_rows.into_iter().map(|b| b.content).collect();
-                tracing::info!(block_count = blobs.len(), ?status, "thing actor restored");
-                let (doc, skipped) = LoroThingDoc::from_blocks(&thing_row.name, &status, &blobs);
+                tracing::info!(
+                    block_count = blobs.len(),
+                    ?status,
+                    ?kind,
+                    "page actor restored"
+                );
+                let (doc, skipped) =
+                    LoroPageDoc::from_blocks(&page_row.name, &status, &kind, &blobs);
                 // A dropped block means a corrupt `content` blob slipped past the
                 // serialize path -- it should never happen, so log the offending
-                // bytes in full for triage. The Thing still opens without it.
+                // bytes in full for triage. The Page still opens without it.
                 for sb in &skipped {
                     tracing::error!(
                         ordering = sb.ordering,
                         blob = %String::from_utf8_lossy(&sb.blob),
                         error = %sb.reason,
-                        "corrupt block dropped during thing restore; this should never happen",
+                        "corrupt block dropped during page restore; this should never happen",
                     );
                 }
                 doc
             }
-            ThingInit::New {
+            PageInit::New {
                 name,
                 status,
                 seed_blocks,
             } => {
                 // The actor owns its own birth: build the doc, then persist the
                 // genesis row through the single-writer. Nothing writes a
-                // Thing's rows around the actor that owns it.
-                let new_thing = build_new_thing(args.thing_id.clone(), name, status, seed_blocks);
+                // Page's rows around the actor that owns it.
+                let new_page = build_new_page(args.page_id.clone(), name, status, seed_blocks);
                 let blobs: Vec<Vec<u8>> =
-                    new_thing.blocks.iter().map(|b| b.content.clone()).collect();
+                    new_page.blocks.iter().map(|b| b.content.clone()).collect();
                 // Seed blobs are freshly serialized here, so none can be malformed;
                 // discard the (always-empty) skip report.
-                let (doc, _) =
-                    LoroThingDoc::from_blocks(&new_thing.name, &new_thing.status, &blobs);
+                let (doc, _) = LoroPageDoc::from_blocks(
+                    &new_page.name,
+                    &new_page.status,
+                    &new_page.kind,
+                    &blobs,
+                );
 
-                if let Err(e) = args.db_writer.ask(DbCreateThing { new_thing }).await {
-                    tracing::error!(error = %e, "thing genesis write failed");
-                    return Err(ThingInitError::Genesis);
+                if let Err(e) = args.db_writer.ask(DbCreatePage { new_page }).await {
+                    tracing::error!(error = %e, "page genesis write failed");
+                    return Err(PageInitError::Genesis);
                 }
-                tracing::info!(?status, "thing actor created");
+                tracing::info!(?status, "page actor created");
                 doc
             }
         };
@@ -174,11 +186,11 @@ impl Actor for ThingActor {
 
         // Born vacating: a freshly spawned room has no subscribers yet. The
         // imminent `ClientJoin` (room-join path) cancels the timer; if no join
-        // ever arrives (e.g. a Thing created via the API but never opened), the
+        // ever arrives (e.g. a Page created via the API but never opened), the
         // actor still self-evicts instead of leaking resident until drain.
         let mut the_self = Self {
             campaign_id: args.campaign_id,
-            thing_id: args.thing_id,
+            page_id: args.page_id,
             doc_room,
             db_writer: args.db_writer,
             self_ref: actor_ref,
@@ -194,7 +206,7 @@ impl Actor for ThingActor {
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %self.thing_id.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %self.page_id.0),
     )]
     async fn on_stop(
         &mut self,
@@ -204,7 +216,7 @@ impl Actor for ThingActor {
         tracing::debug!(
             ?reason,
             dirty = self.persist.is_dirty(),
-            "thing actor stopping"
+            "page actor stopping"
         );
 
         // Last-ditch flush. We are stopping, so there is nothing to reschedule:
@@ -212,10 +224,10 @@ impl Actor for ThingActor {
         // module docs on why eviction is not gated on persistence health.
         if self.persist.is_dirty() {
             if let Err(err) = self.flush().await {
-                tracing::error!(error=%err, "failed to persist thing on stop");
+                tracing::error!(error=%err, "failed to persist page on stop");
             }
         } else {
-            tracing::debug!("thing clean, no snapshot needed on stop");
+            tracing::debug!("page clean, no snapshot needed on stop");
         }
 
         Ok(())
@@ -226,12 +238,12 @@ impl Actor for ThingActor {
 // CRDT Room
 // ---------------------------------------------------------------------------
 
-impl Message<room_actor::ClientJoin> for ThingActor {
+impl Message<room_actor::ClientJoin> for PageActor {
     type Reply = Result<room_actor::JoinResponse, room_actor::JoinError>;
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %self.thing_id.0, client_id = msg.client.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %self.page_id.0, client_id = msg.client.0),
     )]
     async fn handle(
         &mut self,
@@ -254,12 +266,12 @@ impl Message<room_actor::ClientJoin> for ThingActor {
     }
 }
 
-impl Message<room_actor::ClientLeave> for ThingActor {
+impl Message<room_actor::ClientLeave> for PageActor {
     type Reply = ();
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %self.thing_id.0, client_id = msg.client.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %self.page_id.0, client_id = msg.client.0),
     )]
     async fn handle(
         &mut self,
@@ -276,12 +288,12 @@ impl Message<room_actor::ClientLeave> for ThingActor {
     }
 }
 
-impl Message<room_actor::ClientUpdate> for ThingActor {
+impl Message<room_actor::ClientUpdate> for PageActor {
     type Reply = Result<room_actor::AckPayload, room_actor::UpdateError>;
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %self.thing_id.0, client_id = msg.client.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %self.page_id.0, client_id = msg.client.0),
     )]
     async fn handle(
         &mut self,
@@ -308,7 +320,7 @@ impl Message<room_actor::ClientUpdate> for ThingActor {
             self.persist
                 .schedule(&self.self_ref, self.debounce_duration);
         }
-        let room_id = format!("thing:{}", self.thing_id.0);
+        let room_id = format!("page:{}", self.page_id.0);
         let frames = encode_broadcast(
             loro_protocol::CrdtType::Loro,
             &room_id,
@@ -325,7 +337,7 @@ impl Message<room_actor::ClientUpdate> for ThingActor {
 // Persistence & occupancy timers
 // ---------------------------------------------------------------------------
 
-impl ThingActor {
+impl PageActor {
     /// The room has a subscriber again: cancel any pending idle eviction.
     fn mark_occupied(&mut self) {
         if let Occupancy::Vacating(timer) = &self.occupancy {
@@ -355,7 +367,7 @@ impl ThingActor {
     /// actor dirty and retries; this never silently clears dirtiness.
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %self.thing_id.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %self.page_id.0),
     )]
     async fn flush(&mut self) -> Result<(), PersistError> {
         let extracted = self.doc_room.doc().extract_blocks();
@@ -376,7 +388,7 @@ impl ThingActor {
                 });
                 blocks::ActiveModel {
                     id: Set(BlockIdCol::from(block_id)),
-                    thing_id: Set(ThingIdCol::from(self.thing_id.clone())),
+                    page_id: Set(PageIdCol::from(self.page_id.clone())),
                     // Interim default: every block is GM-only until a per-block
                     // visibility control exists (no editor plugin sets status
                     // yet). Status is reset to gm_only on every persist.
@@ -391,27 +403,27 @@ impl ThingActor {
             .collect();
 
         let block_count = block_rows.len();
-        tracing::debug!(block_count, "persisting thing blocks");
+        tracing::debug!(block_count, "persisting page blocks");
 
         self.db_writer
-            .ask(WriteThingBlocks {
-                thing_id: self.thing_id.clone(),
+            .ask(WritePageBlocks {
+                page_id: self.page_id.clone(),
                 blocks: block_rows,
                 name_sync: title,
             })
             .await?;
 
-        tracing::debug!(block_count, "thing blocks written");
+        tracing::debug!(block_count, "page blocks written");
         Ok(())
     }
 }
 
-impl Message<PersistNow> for ThingActor {
+impl Message<PersistNow> for PageActor {
     type Reply = ();
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %self.thing_id.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %self.page_id.0),
     )]
     async fn handle(
         &mut self,
@@ -434,17 +446,17 @@ impl Message<PersistNow> for ThingActor {
 #[derive(Debug, Clone, Copy)]
 struct IdleEvict;
 
-impl Message<IdleEvict> for ThingActor {
+impl Message<IdleEvict> for PageActor {
     type Reply = ();
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %self.thing_id.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %self.page_id.0),
     )]
     async fn handle(&mut self, _: IdleEvict, ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
         let subscriber_count = self.doc_room.subscriber_count();
         if subscriber_count == 0 {
-            tracing::info!("idle evicting thing actor");
+            tracing::info!("idle evicting page actor");
             ctx.stop();
         } else {
             tracing::trace!(
@@ -459,6 +471,7 @@ impl Message<IdleEvict> for ThingActor {
 mod tests {
     use super::*;
     use crate::db;
+    use crate::entities::columns::PageKindCol;
     use crate::migrations::Migrator;
     use familiar_systems_campaign_shared::loro::prosemirror::{
         ATTRIBUTES_KEY, CHILDREN_KEY, NODE_NAME_KEY,
@@ -476,12 +489,13 @@ mod tests {
         conn
     }
 
-    fn insert_thing(thing_id: &ThingId, name: &str) -> things::ActiveModel {
+    fn insert_page(page_id: &PageId, name: &str) -> pages::ActiveModel {
         let now = Utc::now();
-        things::ActiveModel {
-            id: Set(ThingIdCol::from(thing_id.clone())),
+        pages::ActiveModel {
+            id: Set(PageIdCol::from(page_id.clone())),
             name: Set(name.to_string()),
             status: Set(StatusCol::from(Status::GmOnly)),
+            kind: Set(PageKindCol::from(PageKind::Entity)),
             prototype_id: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
@@ -500,8 +514,8 @@ mod tests {
     #[tokio::test]
     async fn starts_with_no_blocks() {
         let conn = setup_db().await;
-        let thing_id = ThingId::generate();
-        insert_thing(&thing_id, "Empty Thing")
+        let page_id = PageId::generate();
+        insert_page(&page_id, "Empty Page")
             .insert(&conn)
             .await
             .unwrap();
@@ -513,12 +527,12 @@ mod tests {
                 conn: conn.clone(),
             });
 
-        let actor = ThingActor::spawn(ThingActorArgs {
+        let actor = PageActor::spawn(PageActorArgs {
             campaign_id,
-            thing_id: thing_id.clone(),
+            page_id: page_id.clone(),
             db_reader: conn,
             db_writer,
-            init: ThingInit::Restore,
+            init: PageInit::Restore,
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
         });
@@ -537,13 +551,13 @@ mod tests {
                 conn: conn.clone(),
             });
 
-        let thing_id = ThingId::generate();
-        let actor = ThingActor::spawn(ThingActorArgs {
+        let page_id = PageId::generate();
+        let actor = PageActor::spawn(PageActorArgs {
             campaign_id,
-            thing_id: thing_id.clone(),
+            page_id: page_id.clone(),
             db_reader: conn.clone(),
             db_writer,
-            init: ThingInit::New {
+            init: PageInit::New {
                 name: "Korgath the Destroyer".into(),
                 status: Status::GmOnly,
                 seed_blocks: vec![],
@@ -555,11 +569,11 @@ mod tests {
         assert!(actor.is_alive(), "genesis should succeed");
 
         // The actor wrote its own birth row.
-        let row = things::Entity::find_by_id(ThingIdCol::from(thing_id.clone()))
+        let row = pages::Entity::find_by_id(PageIdCol::from(page_id.clone()))
             .one(&conn)
             .await
             .unwrap()
-            .expect("genesis thing row exists");
+            .expect("genesis page row exists");
         assert_eq!(row.name, "Korgath the Destroyer");
         assert_eq!(Status::from(row.status), Status::GmOnly);
 
@@ -570,8 +584,8 @@ mod tests {
     #[tokio::test]
     async fn restores_from_blocks() {
         let conn = setup_db().await;
-        let thing_id = ThingId::generate();
-        insert_thing(&thing_id, "Korgath")
+        let page_id = PageId::generate();
+        insert_page(&page_id, "Korgath")
             .insert(&conn)
             .await
             .unwrap();
@@ -579,7 +593,7 @@ mod tests {
         let now = Utc::now();
         blocks::ActiveModel {
             id: Set(BlockIdCol::from(BlockId::generate())),
-            thing_id: Set(ThingIdCol::from(thing_id.clone())),
+            page_id: Set(PageIdCol::from(page_id.clone())),
             status: Set(StatusCol::from(Status::GmOnly)),
             ordering: Set(0),
             content: Set(make_heading_blob("Korgath the Destroyer")),
@@ -598,12 +612,12 @@ mod tests {
                 conn: conn.clone(),
             });
 
-        let actor = ThingActor::spawn(ThingActorArgs {
+        let actor = PageActor::spawn(PageActorArgs {
             campaign_id,
-            thing_id,
+            page_id,
             db_reader: conn,
             db_writer,
-            init: ThingInit::Restore,
+            init: PageInit::Restore,
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
         });
@@ -618,8 +632,8 @@ mod tests {
     #[tokio::test]
     async fn born_vacating_self_evicts_without_a_join() {
         let conn = setup_db().await;
-        let thing_id = ThingId::generate();
-        insert_thing(&thing_id, "Unopened")
+        let page_id = PageId::generate();
+        insert_page(&page_id, "Unopened")
             .insert(&conn)
             .await
             .unwrap();
@@ -631,12 +645,12 @@ mod tests {
                 conn: conn.clone(),
             });
 
-        let actor = ThingActor::spawn(ThingActorArgs {
+        let actor = PageActor::spawn(PageActorArgs {
             campaign_id,
-            thing_id,
+            page_id,
             db_reader: conn,
             db_writer,
-            init: ThingInit::Restore,
+            init: PageInit::Restore,
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_millis(40),
         });
@@ -644,9 +658,6 @@ mod tests {
 
         // No client joins; the born-vacating idle timer should evict it.
         tokio::time::sleep(Duration::from_millis(250)).await;
-        assert!(
-            !actor.is_alive(),
-            "an un-joined thing self-evicts when idle"
-        );
+        assert!(!actor.is_alive(), "an un-joined page self-evicts when idle");
     }
 }

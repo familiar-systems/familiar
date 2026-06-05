@@ -8,12 +8,12 @@
 import {
   TOC_CONTAINER,
   TOC_KEY_KIND,
-  TOC_KEY_THING_ID,
+  TOC_KEY_PAGE_ID,
   TOC_KEY_TITLE,
   TOC_KEY_VISIBILITY,
   TOC_KIND_FOLDER,
-  TOC_KIND_THING,
-  thingIdSchema,
+  TOC_KIND_PAGE,
+  pageIdSchema,
 } from "@familiar-systems/types-campaign";
 import type { Status, TocEntry } from "@familiar-systems/types-campaign";
 import type { LoroDoc, LoroMap, LoroTree, LoroTreeNode, TreeID } from "loro-crdt";
@@ -62,11 +62,11 @@ function readEntry(data: LoroMap): TocEntry | null {
       if (title === null) return null;
       return { kind: "folder", title, visibility, suggestions: [] };
     }
-    case TOC_KIND_THING: {
+    case TOC_KIND_PAGE: {
       const title = asString(data.get(TOC_KEY_TITLE));
-      const rawId = thingIdSchema.safeParse(data.get(TOC_KEY_THING_ID));
+      const rawId = pageIdSchema.safeParse(data.get(TOC_KEY_PAGE_ID));
       if (title === null || !rawId.success) return null;
-      return { kind: "thing", title, thingId: rawId.data, visibility, suggestions: [] };
+      return { kind: "page", title, pageId: rawId.data, visibility, suggestions: [] };
     }
     default:
       // Suggestion entries and any unknown kind: skipped for now.

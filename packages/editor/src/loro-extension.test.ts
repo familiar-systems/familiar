@@ -36,7 +36,7 @@ describe("loro-prosemirror content-wipe guard", () => {
   it("keeps server content when a transaction lands before the sync plugin initialises", () => {
     const schema = getSchema(NODE_EXTENSIONS);
 
-    // A LoroDoc already populated from the server -- the state `useThingDoc`
+    // A LoroDoc already populated from the server -- the state `usePageDoc`
     // reaches via `waitForReachingServerVersion()` before mounting the editor.
     // We seed it by writing a content-bearing PM state straight into the same
     // "content" container the app binds to (the inverse of what the plugin does

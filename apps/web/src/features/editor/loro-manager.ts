@@ -2,10 +2,10 @@
 // over it. This is the "Repo" pattern (from loro-extended / SchoolAI): room
 // join/leave lives here, not in React effects, so the doc + socket lifecycle is
 // decoupled from component mount cycles. React hooks are read-only subscriptions
-// (useThingDoc / useToc via useSyncExternalStore).
+// (usePageDoc / useToc via useSyncExternalStore).
 //
 // Why one socket: no WebSocket handshake + auth + full-snapshot re-pull on every
-// navigation, and it is shared by every room (the ToC and each open Thing).
+// navigation, and it is shared by every room (the ToC and each open Page).
 //
 // ── One room abstraction ─────────────────────────────────────────────────────
 //
@@ -14,9 +14,9 @@
 //   - lifetime: ref-counted with a debounced leave. A "pinned" room (the ToC) is
 //     just a room the layout acquires once and holds for the campaign's life.
 //   - view: what subscribers read, derived from the doc by a `select(doc) => T`.
-//     A Thing room's view is the LoroDoc itself (the editor syncs it through
+//     A Page room's view is the LoroDoc itself (the editor syncs it through
 //     loro-prosemirror); the ToC room's view is the derived tree, recomputed on
-//     every commit/import. So Thing and ToC are two call sites with different
+//     every commit/import. So Page and ToC are two call sites with different
 //     config, not two code paths.
 //
 // ── Lifecycle: one client, never swapped ─────────────────────────────────────
@@ -43,7 +43,7 @@
 // the binding/transport layer and are unaffected by where join/leave is driven.
 
 import { TOC_CONTAINER } from "@familiar-systems/types-campaign";
-import type { ThingId } from "@familiar-systems/types-campaign";
+import type { PageId } from "@familiar-systems/types-campaign";
 import { LoroAdaptor } from "loro-adaptors/loro";
 import type { LoroDoc as LoroDocType, TreeID } from "loro-crdt";
 import { LoroDoc } from "loro-crdt";
@@ -74,7 +74,7 @@ export function roomErrorMessage(error: RoomError): string {
 }
 
 // Public, referentially-stable snapshot read by useSyncExternalStore. `view` is
-// the room's projection of its doc (a LoroDoc for Thing rooms, a TocTreeNode[]
+// the room's projection of its doc (a LoroDoc for Page rooms, a TocTreeNode[]
 // for the ToC). `reconnecting` carries the last-known view while the socket
 // recovers, so consumers keep rendering rather than dropping to a loading state.
 export type RoomSnapshot<T> =
@@ -113,7 +113,7 @@ interface RoomHandle<T> {
   readonly doc: LoroDocType;
   readonly select: (doc: LoroDocType) => T;
   // Whether to subscribe to the doc and recompute the view on every change. The
-  // ToC's derived tree needs it; a Thing room's view is the stable doc itself.
+  // ToC's derived tree needs it; a Page room's view is the stable doc itself.
   readonly derived: boolean;
   refCount: number;
   binding: Binding;
@@ -142,7 +142,7 @@ export class LoroClientManager {
   // Pending debounced teardown; a connect() cancels it (StrictMode remount).
   private closeTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // The room registry. Heterogeneous (Thing rooms view a LoroDoc, the ToC a
+  // The room registry. Heterogeneous (Page rooms view a LoroDoc, the ToC a
   // TocTreeNode[]); see `room()` for how a view type is recovered on read.
   private readonly rooms = new Map<string, RoomHandle<unknown>>();
   // Subscribers per room id. Kept separate from `rooms` so useSyncExternalStore
@@ -424,23 +424,23 @@ export class LoroClientManager {
     this.listeners.get(roomId)?.forEach((l) => l());
   }
 
-  // ---- Thing rooms (useThingDoc-owned) ------------------------------------
+  // ---- Page rooms (usePageDoc-owned) ------------------------------------
 
-  /** Called from useThingDoc's mount effect. The view is the doc itself. */
-  acquireThing(id: ThingId): void {
-    this.acquire(`thing:${id}`, (doc) => doc, false);
+  /** Called from usePageDoc's mount effect. The view is the doc itself. */
+  acquirePage(id: PageId): void {
+    this.acquire(`page:${id}`, (doc) => doc, false);
   }
 
-  /** Called from useThingDoc's cleanup. */
-  releaseThing(id: ThingId): void {
-    this.release(`thing:${id}`);
+  /** Called from usePageDoc's cleanup. */
+  releasePage(id: PageId): void {
+    this.release(`page:${id}`);
   }
 
-  subscribeThingDoc = (id: ThingId, listener: () => void): (() => void) =>
-    this.subscribeRoom(`thing:${id}`, listener);
+  subscribePageDoc = (id: PageId, listener: () => void): (() => void) =>
+    this.subscribeRoom(`page:${id}`, listener);
 
-  getThingState = (id: ThingId): RoomSnapshot<LoroDocType> =>
-    this.room<LoroDocType>(`thing:${id}`)?.snapshot ?? JOINING;
+  getPageState = (id: PageId): RoomSnapshot<LoroDocType> =>
+    this.room<LoroDocType>(`page:${id}`)?.snapshot ?? JOINING;
 
   // ---- ToC room (layout-pinned) -------------------------------------------
 

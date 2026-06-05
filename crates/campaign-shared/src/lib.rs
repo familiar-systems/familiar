@@ -7,11 +7,12 @@
 //!
 //! ## Modules
 //!
-//! - `document`: Document-domain wire types (Thing create request/response).
+//! - `document`: Document-domain wire types (Page create request/response).
 //! - `id`: Branded ID newtypes (ts-rs exported).
 //! - `loro`: Loro doc schema: container/key constants and ts-rs-exported
-//!   entry types (`ThingHandle`, `TocEntry`, etc).
+//!   entry types (`PageHandle`, `TocEntry`, etc).
 //! - `notification`: WebSocket side-channel notification types.
+//! - `page_kind`: The `PageKind` discriminant (entity, template).
 //! - `status`: Campaign view-status enum (GM only, Known, Retconned).
 
 pub mod document;
@@ -19,4 +20,5 @@ pub mod id;
 pub mod loro;
 pub mod notification;
 pub mod onboarding;
+pub mod page_kind;
 pub mod status;

@@ -11,7 +11,7 @@ export * from "./generated/onboarding";
 export type { paths as CampaignPaths } from "./openapi/campaign";
 
 // Runtime-validating schemas for branded IDs (hand-written, not generated).
-export { thingIdSchema } from "./schemas";
+export { pageIdSchema } from "./schemas";
 
 // Hand-written Loro ToC schema constants (mirror the Rust source of truth; see
 // the FIXME in loro/toc.ts).
