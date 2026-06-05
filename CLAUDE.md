@@ -4,7 +4,7 @@
 
 familiar.systems is an AI-assisted campaign notebook for tabletop RPG game masters. It captures session content (audio, notes) and uses AI to assemble a campaign knowledge base (NPCs, locations, items, relationships) as a graph that grows from play.
 
-**Status: Early implementation.** Platform and campaign servers are live (auth, campaign CRUD, creation flow, idle eviction). SPA has hub listing and a 4-step campaign creation wizard. The campaign server has live CRDT collaboration - ToC + Thing room actors, the WebSocket layer, and block/ToC persistence. The client-side editor and the AI system are not yet built.
+**Status: Early implementation.** Platform and campaign servers are live (auth, campaign CRUD, creation flow, idle eviction). SPA has hub listing and a 4-step campaign creation wizard. The campaign server has live CRDT collaboration - ToC + Page room actors, the WebSocket layer, and block/ToC persistence. The client-side editor and the AI system are not yet built.
 
 ## Key Design Documents
 
@@ -18,7 +18,7 @@ Full catalog in `docs/plans/`. Read the **authoritative** structure doc before a
 - `docs/plans/2026-05-04-campaign-actor-domain-design.md` - actor topology, CRDT room model, suggestion model
 - `docs/plans/2026-04-11-app-server-prd.md` - platform server (auth, CRUD, shard coordination, billing)
 - `docs/plans/2026-04-10-entity-relationship-temporal-model.md` - relationship schema + temporal model
-- `docs/plans/2026-02-20-templates-as-prototype-pages.md` - templates are Things (`prototypeId` lineage)
+- `docs/plans/2026-02-20-templates-as-prototype-pages.md` - templates are pages of kind `template` (`prototypeId` lineage)
 - `docs/plans/2026-03-30-deployment-architecture.md` - platform/campaign split, graceful restart, previews
 - `docs/plans/2026-05-23-infrastructure.md` - k3s, OpenTofu, certs, CI/CD
 - `docs/plans/2026-02-20-public-site-design.md` - Astro public site (has drifted; verify against `apps/site`)
@@ -39,10 +39,10 @@ apps/campaign         Rust binary: Axum + kameo (actors, collab, AI, compiler)
 workers/              Job processors, language-agnostic (Python ML in workers/whisperx/)
 
 crates/app-shared       Rust library: IDs, auth (platform + campaign)
-crates/campaign-shared  Rust library: Loro schema constants + ts-rs types (ToC/Thing schema, PM conventions), onboarding DTOs (campaign only)
+crates/campaign-shared  Rust library: Loro schema constants + ts-rs types (ToC/Page schema, PM conventions), onboarding DTOs (campaign only)
 crates/fs-id, fs-id-macros  Rust utility crates: type-safe ID branding (#[fs_id] macro) used by both shared crates
 packages/types-app      @familiar-systems/types-app, generated from app-shared via ts-rs (CampaignId, UserId)
-packages/types-campaign @familiar-systems/types-campaign, generated from campaign-shared via ts-rs (ThingId, BlockId, ThingHandle, TocEntry, ...)
+packages/types-campaign @familiar-systems/types-campaign, generated from campaign-shared via ts-rs (PageId, BlockId, PageHandle, TocEntry, ...)
 packages/editor         @familiar-systems/editor, TipTap/ProseMirror schema + custom extensions (THE shared contract)
 ```
 
@@ -51,7 +51,7 @@ packages/editor         @familiar-systems/editor, TipTap/ProseMirror schema + cu
 - **Dependency direction: `web -> editor -> types-campaign -> types-app`.** The editor depends on campaign types. Campaign types depend on app types. `web` also depends on `types-app` directly (for auth, campaign listing).
 - **`apps/site` depends only on `types-app`.** The public site needs platform-level types only (CampaignId, UserId).
 - **`apps/web` depends on `types-app`, `types-campaign`, and `editor`.** The client/server boundary is enforced by the dependency graph. There is no server-side TypeScript to import.
-- **Each package's `src/index.ts` is its public API.** Import from `@familiar-systems/types-app` or `@familiar-systems/types-campaign`, never from `@familiar-systems/types-campaign/generated/ThingId`.
+- **Each package's `src/index.ts` is its public API.** Import from `@familiar-systems/types-app` or `@familiar-systems/types-campaign`, never from `@familiar-systems/types-campaign/generated/PageId`.
 - **Domain logic is Rust.** Two Rust binaries (platform + campaign server) and two shared crates own all backend logic. TypeScript is frontend-only.
 - **Two shared crates, two type packages, same split.** `app-shared` / `types-app` holds types both servers need (IDs, auth). `campaign-shared` / `types-campaign` holds campaign-only concerns (Loro schema constants and ts-rs types, ToC schema, ProseMirror conventions, onboarding DTOs); the concrete Loro doc wrappers and the `CrdtDoc` trait are app-local in `apps/campaign`. The test: "does the platform server need this type?" If yes, `app-shared`. If no, `campaign-shared`. Both crates export TypeScript types via ts-rs to their corresponding package.
 
@@ -127,11 +127,12 @@ Maximum strictness, no exceptions:
 ## Core Domain Concepts
 
 - **Status** (on nodes, blocks, relationships): `gm_only` → `known` → `retconned`. Default is `gm_only`. Status cascades down (GM-only node = all children GM-only), not up.
-- **Suggestions**: Discriminated union over types (`create_thing`, `update_blocks`, `create_relationship`, `journal_draft`, `contradiction`). Always durable. Auto-reject after ~14 days.
+- **Suggestions**: Discriminated union over types (`create_page`, `update_blocks`, `create_relationship`, `journal_draft`, `contradiction`). Always durable. Auto-reject after ~14 days.
 - **AgentConversation**: Persisted record of AI interactions. Provenance for suggestions. Roles: `gm`, `player`, `system`.
 - **Mentions** (block→node or block→block): Derived automatically, power backlinks and transclusion.
 - **Relationships** (node→node): Authored/curated, carry semantic labels. Freeform vocabulary.
-- **Prototypes (templates)**: A template is a Thing reused as a prototype - no separate `Template` entity. Creating a thing from a template clones the prototype's block structure; `prototypeId?: ThingId` tracks lineage. (An explicit `isTemplate` flag is planned but not yet in the schema; template-ness is currently by convention via `prototype_id`.) Tags are Things connected via `tagged` relationships, not a `tags: string[]` field.
+- **Pages & kinds**: A **Page** is the universal node/document (URL `/p/:id`, LoroDoc-backed). Its `kind` field is a `PageKind` - `entity | template` in code today (`session`/`skill` are future). `entity` = authored world content (NPCs, locations, lore); the AI's extraction/search target. The collective noun "entity" is world content; "page" is any node.
+- **Prototypes (templates)**: A template is a page of kind `template` - no separate `Template` entity. Creating an entity from a template clones the prototype's block structure; `prototypeId?: PageId` tracks lineage. Tags are pages connected via `tagged` relationships, not a `tags: string[]` field.
 
 ## Deployment
 

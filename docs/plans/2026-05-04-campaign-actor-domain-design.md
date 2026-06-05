@@ -9,9 +9,9 @@
 > **What changed from the 2026-03-25 version**
 >
 > - **Trait split.** `CrdtDoc` (data algebra: apply updates, export/import snapshot, version) and `CrdtRoom` (membership, dispatch, broadcast policy) are now separate. The previous draft had only `CrdtRoom`; the spike validated `CrdtDoc` independently and the production design follows.
-> - **Permission filtering moved to the client.** gm_only content is filtered at the TipTap render layer based on a `status` block attribute, not by server-side projection. The server is single-doc per Thing. Loro's wire format does not expose paths cleanly enough to redact subtrees server-side without leaking structure ([investigation](https://github.com/loro-dev/protocol/blob/edf4065da1642ec7e394e555f0e68421427ea701/protocol.md), [`loro::json::redact`](https://github.com/loro-dev/loro/blob/cc587edeb8a777b653e98fd60a17272c0cf34fb0/crates/loro-internal/src/encoding/json_schema.rs#L1455)), and multi-doc projection sacrifices shared cursors and editing simplicity.
-> - **File layout codified.** `apps/campaign/src/domain/crdt/` holds the trait algebras. `apps/campaign/src/loro/` holds concrete `LoroThingDoc` / `LoroTocDoc` impls. `crates/campaign-shared/src/loro/` holds only ts-rs-exported schema types (`ThingHandle`, `TocEntry`, `TocEntryKind`) and key/container constants. The `CrdtDoc` trait is *not* in `campaign-shared` because it has no cross-crate consumer.
-> - **Persistence framed as a service.** Four explicit layers: data algebra (`CrdtDoc`), domain algebra (`CrdtRoom`, `Persistent`), service host (the actor), service implementation (`DatabaseActor`). Three persistence shapes: snapshot (Thing/Toc/Conversation), delta (RelationshipGraph), derived (CampaignVocabulary).
+> - **Permission filtering moved to the client.** gm_only content is filtered at the TipTap render layer based on a `status` block attribute, not by server-side projection. The server is single-doc per Page. Loro's wire format does not expose paths cleanly enough to redact subtrees server-side without leaking structure ([investigation](https://github.com/loro-dev/protocol/blob/edf4065da1642ec7e394e555f0e68421427ea701/protocol.md), [`loro::json::redact`](https://github.com/loro-dev/loro/blob/cc587edeb8a777b653e98fd60a17272c0cf34fb0/crates/loro-internal/src/encoding/json_schema.rs#L1455)), and multi-doc projection sacrifices shared cursors and editing simplicity.
+> - **File layout codified.** `apps/campaign/src/domain/crdt/` holds the trait algebras. `apps/campaign/src/loro/` holds concrete `LoroPageDoc` / `LoroTocDoc` impls. `crates/campaign-shared/src/loro/` holds only ts-rs-exported schema types (`PageHandle`, `TocEntry`, `TocEntryKind`) and key/container constants. The `CrdtDoc` trait is *not* in `campaign-shared` because it has no cross-crate consumer.
+> - **Persistence framed as a service.** Four explicit layers: data algebra (`CrdtDoc`), domain algebra (`CrdtRoom`, `Persistent`), service host (the actor), service implementation (`DatabaseActor`). Three persistence shapes: snapshot (Page/Toc/Conversation), delta (RelationshipGraph), derived (CampaignVocabulary).
 > - **Wire vs domain split.** `CrdtRoom` is wire-format-agnostic: it operates on assembled `Vec<Vec<u8>>` updates and never sees `BatchId`, `Permission`, or fragmentation. Wire-protocol concerns live in [`apps/campaign/src/wire/`](../../apps/campaign/src/wire/) as two pure state machines (`BatchAssembler`, `BatchFragmenter`), composed by the actor. `JoinResponse` carries a domain `Capability` enum mapped to `loro_protocol::Permission` at the wire boundary.
 >
 > Sections not listed above are unchanged from the previous version. Where this doc copies forward verbatim, it does so deliberately - the underlying decisions hold.
@@ -20,7 +20,7 @@
 
 | Dependency               | Role                                                                                                                                                                                                  | Links                                                                                                                                                                                                                                                                                                                                      |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Loro**                 | CRDT library. Each ThingActor, TocActor, and AgentConversation holds a LoroDoc.                                                                                                                       | [loro-dev/loro](https://github.com/loro-dev/loro) · [docs](https://loro.dev/docs)                                                                                                                                                                                                                                                          |
+| **Loro**                 | CRDT library. Each PageActor, TocActor, and AgentConversation holds a LoroDoc.                                                                                                                       | [loro-dev/loro](https://github.com/loro-dev/loro) · [docs](https://loro.dev/docs)                                                                                                                                                                                                                                                          |
 | **loro-dev/protocol**    | Transport-agnostic CRDT sync protocol. Room-based multiplexing, 256KB message limit, fragmentation, ack/error semantics. The wire format between clients and the Rust backend.                        | [repo](https://github.com/loro-dev/protocol) · [protocol spec](https://github.com/loro-dev/protocol/blob/main/protocol.md) · [Rust crate source](https://github.com/loro-dev/protocol/tree/main/rust/loro-protocol/src) · [protocol.rs (message types)](https://github.com/loro-dev/protocol/blob/main/rust/loro-protocol/src/protocol.rs) |
 | **kameo**                | Rust actor framework. Typed actor refs, async message passing, supervision trees. Each actor in the topology is a kameo actor.                                                                        | [tqwewe/kameo](https://github.com/tqwewe/kameo) · [docs](https://docs.rs/kameo)                                                                                                                                                                                                                                                            |
 | **axum**                 | HTTP/WebSocket server. Handles the WS upgrade, REST endpoints, and spawns per-connection read/write tasks.                                                                                            | [tokio-rs/axum](https://github.com/tokio-rs/axum) · [docs](https://docs.rs/axum)                                                                                                                                                                                                                                                           |
@@ -39,7 +39,7 @@
 | [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md) | The Node.js/Yjs architecture this design replaces. Campaign checkout/checkin model, blob-free files at rest, lossless reconstruction requirement. Many concepts carry forward; the implementation changes. |
 | [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md)             | The three AI workflows (SessionIngest, P&R, Q&A), suggestion lifecycle, conversation system                                                                                                                |
 | [AI PRD](./2026-02-22-ai-prd.md)                                                      | Tool system, suggestion types, retrieval capabilities                                                                                                                                                      |
-| [Templates as Prototype Pages](./2026-02-20-templates-as-prototype-pages.md)          | Templates are Things, categorization via tags-as-relationships, OnCreate directives                                                                                                                        |
+| [Templates as Prototype Pages](./2026-02-20-templates-as-prototype-pages.md)          | Templates are Pages, categorization via tags-as-relationships, OnCreate directives                                                                                                                        |
 
 ---
 
@@ -66,7 +66,7 @@ This is the third pass at the campaign architecture (Hocuspocus/Yjs, then a Loro
 
 **Validated by the spike (and now built into production):**
 - Loro CRDT + TipTap + `loro-prosemirror` round-trip (rich text edits sync correctly between browsers and the Rust backend).
-- kameo actor topology with one `ThingActor` per active page, one `TocActor` per campaign.
+- kameo actor topology with one `PageActor` per active page, one `TocActor` per campaign.
 - `loro-protocol` over WebSocket, room-multiplexed (one connection joins multiple rooms).
 - The `CrdtDoc` trait shape (`apply_updates`, `export_snapshot`, `import_snapshot`, `version`, with `should_persist` / `debug_value` defaults).
 - Suggestion lifecycle as marks on block UUID ranges, suggestion classifier as a pure function, accept/reject commands routing through the CRDT cleanly.
@@ -74,8 +74,8 @@ This is the third pass at the campaign architecture (Hocuspocus/Yjs, then a Loro
 
 **Built into the production tree (this branch):**
 - `apps/campaign/src/domain/crdt/` houses the trait algebras: `CrdtDoc` (data), `CrdtRoom` (membership/dispatch, sketched as a stub).
-- `apps/campaign/src/loro/` houses the concrete impls: `LoroThingDoc`, `LoroTocDoc`. Both implement `CrdtDoc` against a `loro::LoroDoc`.
-- `crates/campaign-shared/src/loro/` holds only ts-rs-exported domain types (`ThingHandle`, `TocEntry`, `TocEntryKind`) and Loro container/key constants. No traits, no wrappers. The trait/wrapper layer is consumed only by the campaign server.
+- `apps/campaign/src/loro/` houses the concrete impls: `LoroPageDoc`, `LoroTocDoc`. Both implement `CrdtDoc` against a `loro::LoroDoc`.
+- `crates/campaign-shared/src/loro/` holds only ts-rs-exported domain types (`PageHandle`, `TocEntry`, `TocEntryKind`) and Loro container/key constants. No traits, no wrappers. The trait/wrapper layer is consumed only by the campaign server.
 - Schema migrations under `apps/campaign/src/migrations/` and entities under `apps/campaign/src/entities/` (sea-orm).
 - A typed `DocError` enum on the trait surface (replaces the spike's `String` errors).
 - `apps/campaign/src/wire/` houses the loro-protocol wire utilities: `BatchAssembler`, `BatchFragmenter`, and the reassembly timeout pattern.
@@ -83,7 +83,7 @@ This is the third pass at the campaign architecture (Hocuspocus/Yjs, then a Loro
 - `apps/campaign/src/persistence/` houses `CampaignStore` (trait), `LocalCampaignStore`, `S3CampaignStore`, and `CampaignDatabase` (checkout/release lifecycle with migration and metadata seeding). The `CampaignReader` trait is not yet built; the supervisor currently holds a `CampaignDatabase` directly rather than passing reader/writer handles to child actors.
 
 **Designed in this doc but not yet built:**
-- `CampaignVocabulary`, `RelationshipGraph`, `UserSession`, `AgentConversation` actors. Room-level actors (`ThingActor`, `TocActor`) that implement `CrdtRoom`.
+- `CampaignVocabulary`, `RelationshipGraph`, `UserSession`, `AgentConversation` actors. Room-level actors (`PageActor`, `TocActor`) that implement `CrdtRoom`.
 - The full `CampaignReader` trait (domain-typed read algebra) and `PersistenceCommand` vocabulary.
 - The `Persistent` and `Evictable` pattern traits.
 - The supervisor state machine (`SupervisorState` enum with Starting/Restoring/Ready/Draining); the current supervisor uses `Option<CampaignDatabase>`.
@@ -106,7 +106,7 @@ A checked-out campaign has the following actor tree:
 ```
 CampaignSupervisor (one per checked-out campaign)
 ├── CampaignVocabulary (one per campaign - entity name lookup service)
-├── ThingActor (per active Thing - NPC page, location page, etc.)
+├── PageActor (per active Page - NPC page, location page, etc.)
 ├── TocActor (one per campaign - the GM's organizational structure)
 ├── RelationshipGraph (one per campaign - the full entity graph)
 ├── UserSession (per connected user)
@@ -117,13 +117,13 @@ CampaignSupervisor (one per checked-out campaign)
 
 #### Why these are the actor boundaries
 
-**ThingActor** is an actor because each Thing has an independent lifecycle (loaded on demand, evicted on idle), holds a LoroDoc that syncs with connected editors via the CRDT protocol, and has state that must be protected from concurrent access. Two users editing different Things should never contend.
+**PageActor** is an actor because each Page has an independent lifecycle (loaded on demand, evicted on idle), holds a LoroDoc that syncs with connected editors via the CRDT protocol, and has state that must be protected from concurrent access. Two users editing different Pages should never contend.
 
-**TocActor** is an actor because the table of contents is a user-authored organizational structure - not a materialized view derivable from Thing metadata. Each campaign's organizational hierarchy is arbitrary and game-specific (planets → spaceports → NPCs in Star Wars, kingdoms → cities → guilds in fantasy). The ToC is itself a collaborative document that syncs via CRDT, with the same lifecycle semantics as a ThingActor (persistence, eviction, real-time sync). Reconciliation with Thing creation/deletion is necessary regardless - the same infrastructure that reconciles AI-proposed entities handles ToC dangling references.
+**TocActor** is an actor because the table of contents is a user-authored organizational structure - not a materialized view derivable from Page metadata. Each campaign's organizational hierarchy is arbitrary and game-specific (planets → spaceports → NPCs in Star Wars, kingdoms → cities → guilds in fantasy). The ToC is itself a collaborative document that syncs via CRDT, with the same lifecycle semantics as a PageActor (persistence, eviction, real-time sync). Reconciliation with Page creation/deletion is necessary regardless - the same infrastructure that reconciles AI-proposed entities handles ToC dangling references.
 
 **RelationshipGraph** is a dedicated actor (not owned by the CampaignSupervisor) because graph queries are on the hot path for AI context building and the serialization compiler. At campaign scale (~500 nodes, ~2,000 edges), the full graph loads into memory at checkout time (trivially small - roughly 100KB). The actor owns the in-memory petgraph representation and the persistence path back to SQLite. It is NOT a CRDT room - relationships are server-authoritative, mutated via REST, with change notifications broadcast over the websocket side-channel.
 
-**Why the full graph in memory, not partial loading:** The AI agent's context-building pass traverses relationships for entities that are overwhelmingly not being edited. "What do we know about Kael? What's his relationship to Dantooine?" is a multi-hop query touching inactive entities. If the graph only held edges for active Things, every AI context query would fall through to the database. At 2,000 edges, the in-memory representation costs nothing and saves the complexity of a partial-loading lifecycle. If campaigns grow to 10,000+ nodes (unlikely - that's an enormous campaign), lazy loading can be added then.
+**Why the full graph in memory, not partial loading:** The AI agent's context-building pass traverses relationships for entities that are overwhelmingly not being edited. "What do we know about Kael? What's his relationship to Dantooine?" is a multi-hop query touching inactive entities. If the graph only held edges for active Pages, every AI context query would fall through to the database. At 2,000 edges, the in-memory representation costs nothing and saves the complexity of a partial-loading lifecycle. If campaigns grow to 10,000+ nodes (unlikely - that's an enormous campaign), lazy loading can be added then.
 
 **Why not SurrealDB or a graph database:** ~500 nodes and ~2,000 relationships per campaign is solved by recursive CTEs on SQLite. A graph database would add an operational dependency for ergonomic gains that don't manifest at this scale. petgraph in memory gives the traversal performance. SQLite gives the persistence and portability (campaign-as-file). The combination is simpler to operate than any graph database.
 
@@ -133,8 +133,8 @@ CampaignSupervisor (one per checked-out campaign)
 
 1. Connects to an LLM inference endpoint (Nebius)
 2. Runs the serialization compiler to build prompts and apply suggestions
-3. Routes compiled suggestions to the correct ThingActor
-4. Manages progressive disclosure context construction (which Things at which retrieval tier)
+3. Routes compiled suggestions to the correct PageActor
+4. Manages progressive disclosure context construction (which Pages at which retrieval tier)
 5. Holds conversation state for P&R or Q&A sessions
 6. Accepts user messages for this specific conversation
 7. Carries a conversation ID that stamps provenance onto every suggestion it produces
@@ -147,7 +147,7 @@ Each user has many conversations. Opening an existing conversation or starting a
 
 ### CampaignVocabulary Actor
 
-CampaignVocabulary is an in-memory projection of all entity names in the campaign. It is a sibling of RelationshipGraph under the CampaignSupervisor, loaded at restoration time, and lives for the lifetime of the campaign checkout.
+CampaignVocabulary is an in-memory projection of all page names in the campaign. It is a sibling of RelationshipGraph under the CampaignSupervisor, loaded at restoration time, and lives for the lifetime of the campaign checkout.
 
 #### Internal State
 
@@ -159,7 +159,7 @@ struct CampaignVocabulary {
 }
 
 struct VocabularyEntry {
-    thing_id: ThingId,
+    page_id: PageId,
     canonical_name: String,
 }
 ```
@@ -170,7 +170,7 @@ At ~500 entities this is trivially small. Matching strategies start simple (norm
 
 ```rust
 enum VocabularyQuery {
-    /// Editor autocomplete. Prefix/substring match against entity names.
+    /// Editor autocomplete. Prefix/substring match against page names.
     Mention { prefix: String, limit: usize },
     /// STT correction and entity recognition. Fuzzy match a candidate
     /// string against the campaign vocabulary.
@@ -184,32 +184,32 @@ Both queries are the same shape: string in, matches out. The vocabulary actor is
 
 **Editor autocomplete:** A REST endpoint queries the vocabulary actor with `Mention`. Interactive latency. The primary user-facing consumer.
 
-**STT correction (pipeline phase 2):** The correction dictionary that normalizes ASR output against known campaign entity names. "Yorgath" needs to find "Jorgath." Calls `FuzzyMatch` for each candidate token the ASR produced. The vocabulary actor handles the matching; the pipeline stage owns the logic of which tokens to check.
+**STT correction (pipeline phase 2):** The correction dictionary that normalizes ASR output against known campaign page names. "Yorgath" needs to find "Jorgath." Calls `FuzzyMatch` for each candidate token the ASR produced. The vocabulary actor handles the matching; the pipeline stage owns the logic of which tokens to check.
 
-**AI context building:** The serialization compiler uses the vocabulary for name matching when it encounters mentions in documents. The full entity list for prompt headers comes from `CampaignReader` (the debounce freshness gap is acceptable for AI prompts - a Thing created 2 seconds ago not appearing in the next prompt is fine).
+**AI context building:** The serialization compiler uses the vocabulary for name matching when it encounters mentions in documents. The full page list for prompt headers comes from `CampaignReader` (the debounce freshness gap is acceptable for AI prompts - a Page created 2 seconds ago not appearing in the next prompt is fine).
 
 #### Event-Driven Freshness
 
-The CampaignSupervisor publishes domain events to the vocabulary actor as regular kameo messages. The vocabulary actor does not subscribe to anything - it receives events from the supervisor, which already mediates Thing lifecycle.
+The CampaignSupervisor publishes domain events to the vocabulary actor as regular kameo messages. The vocabulary actor does not subscribe to anything - it receives events from the supervisor, which already mediates Page lifecycle.
 
 ```rust
 // Messages from CampaignSupervisor
-struct ThingCreated(ThingHandle);
-struct ThingRenamed { id: ThingId, new_name: String }
-struct ThingDeleted(ThingId);
+struct PageCreated(PageHandle);
+struct PageRenamed { id: PageId, new_name: String }
+struct PageDeleted(PageId);
 ```
 
 The vocabulary is always immediately fresh. No polling, no index rebuild, no DB reads on the hot path after initial restoration.
 
 #### Notifications to Clients
 
-CampaignVocabulary implements `Notifiable` because clients need to know when the vocabulary changes independently of any specific document update. The editor's mention popup, any open search UI, and anything that displays entity names outside of a document context all need this notification.
+CampaignVocabulary implements `Notifiable` because clients need to know when the vocabulary changes independently of any specific document update. The editor's mention popup, any open search UI, and anything that displays page names outside of a document context all need this notification.
 
 ```rust
 enum VocabularyNotification {
-    ThingCreated(ThingHandle),
-    ThingRenamed { id: ThingId, new_name: String },
-    ThingDeleted(ThingId),
+    PageCreated(PageHandle),
+    PageRenamed { id: PageId, new_name: String },
+    PageDeleted(PageId),
 }
 ```
 
@@ -219,7 +219,7 @@ enum VocabularyNotification {
 | ---------- | ----------- | ------------------------------------------------------------------------------------------------ |
 | Notifiable | yes         | Clients need vocabulary change notifications independently of document updates                   |
 | Queryable  | yes         | REST endpoints and pipeline stages query for mentions and fuzzy matches                          |
-| Persistent | no          | Derived entirely from Thing data. No independent state to write back.                            |
+| Persistent | no          | Derived entirely from Page data. No independent state to write back.                            |
 | Evictable  | no          | Too cheap to evict and too widely depended on to risk being absent. Lives for campaign lifetime. |
 | CrdtRoom   | no          | Server-authoritative, not collaborative.                                                         |
 | Mutable    | no          | Does not accept external commands via REST. Receives domain events from the supervisor.          |
@@ -228,28 +228,28 @@ enum VocabularyNotification {
 
 ### Mention Model
 
-Mentions in the LoroDoc store a `ThingId` and a display label. The relational data stores only the `ThingId` as a foreign key. The display label does not exist in the database.
+Mentions in the LoroDoc store a `PageId` and a display label. The relational data stores only the `PageId` as a foreign key. The display label does not exist in the database.
 
 ```
-LoroDoc (live editing):   { type: "mention", attrs: { thingId: "abc123", label: "Korgath" } }
-Relational (persistence): thing_id = "abc123"  (no label column)
+LoroDoc (live editing):   { type: "mention", attrs: { pageId: "abc123", label: "Korgath" } }
+Relational (persistence): page_id = "abc123"  (no label column)
 ```
 
 The label is a rendering cache, not a source of truth. Every layer of the system treats it this way.
 
 #### Rename Propagation
 
-When a GM renames a Thing (e.g., "Korgath" → "Kurgath"):
+When a GM renames a Page (e.g., "Korgath" → "Kurgath"):
 
-1. ThingActor (for Korgath's own page) processes the rename
-2. ThingActor tells CampaignSupervisor: `ThingRenamed { id, new_name }`
+1. PageActor (for Korgath's own page) processes the rename
+2. PageActor tells CampaignSupervisor: `PageRenamed { id, new_name }`
 3. Supervisor tells CampaignVocabulary: update the entry
-4. Supervisor tells active ThingActors: `MentionRenamed { thing_id, new_name }` - each walks its live LoroDoc and updates matching mention label attributes
-5. CampaignVocabulary notifies connected clients via `VocabularyNotification::ThingRenamed`
+4. Supervisor tells active PageActors: `MentionRenamed { page_id, new_name }` - each walks its live LoroDoc and updates matching mention label attributes
+5. CampaignVocabulary notifies connected clients via `VocabularyNotification::PageRenamed`
 
-**Inactive Things require no propagation.** Their relational data stores only the ThingId. When an inactive Thing is next restored, `restore()` resolves mention ThingIds to current names using the CampaignVocabulary (or CampaignReader if the vocabulary isn't up yet). The reconstructed LoroDoc gets the correct label at reconstruction time.
+**Inactive Pages require no propagation.** Their relational data stores only the PageId. When an inactive Page is next restored, `restore()` resolves mention PageIds to current names using the CampaignVocabulary (or CampaignReader if the vocabulary isn't up yet). The reconstructed LoroDoc gets the correct label at reconstruction time.
 
-**The RelationshipGraph requires no update.** It stores edges between ThingIds. Entity names never appear there.
+**The RelationshipGraph requires no update.** It stores edges between PageIds. Page names never appear there.
 
 #### Recovery Semantics
 
@@ -261,7 +261,7 @@ The mention model gives a spectrum of recovery quality rather than a binary work
 
 **Hard restart from hot LoroDoc snapshot, vocabulary not yet available:** Stale labels, no way to fix them immediately. Pages render, mentions are clickable (valid IDs), names might be wrong. When the vocabulary comes up, the next restore or edit fixes them.
 
-No recovery path requires special ceremony. The mention's truth is always the ThingId. The label is a cache that is correct when convenient and harmlessly stale otherwise.
+No recovery path requires special ceremony. The mention's truth is always the PageId. The label is a cache that is correct when convenient and harmlessly stale otherwise.
 
 ---
 
@@ -286,9 +286,9 @@ Persistence is not one thing; it's a small family of service patterns that share
 
 | Shape | Used by | How it works | Trait |
 |-------|---------|--------------|-------|
-| **Snapshot** | ThingActor, TocActor, AgentConversation | Debounced full-state write. Actor marks dirty on update, snapshots on a per-actor timer, sends `PersistenceCommand::Snapshot*` to the DatabaseActor, clears dirty on ack. | `Persistent` |
+| **Snapshot** | PageActor, TocActor, AgentConversation | Debounced full-state write. Actor marks dirty on update, snapshots on a per-actor timer, sends `PersistenceCommand::Snapshot*` to the DatabaseActor, clears dirty on ack. | `Persistent` |
 | **Delta** | RelationshipGraph | Each `Mutable::apply_command` produces a `PersistenceCommand::SnapshotGraph(GraphMutation)` immediately. No debounce, no dirty bit. | `Mutable` (the algebra and the persistence path are the same call) |
-| **Derived** | CampaignVocabulary | No write path. Restored from Thing data on startup; mutations come from event subscriptions, never from the user. | (no trait; restoration only) |
+| **Derived** | CampaignVocabulary | No write path. Restored from Page data on startup; mutations come from event subscriptions, never from the user. | (no trait; restoration only) |
 
 The four-layer split that organizes this:
 
@@ -305,12 +305,12 @@ Reads go through a trait that speaks the domain language. The implementation hol
 
 ```rust
 trait CampaignReader: Clone + Send + Sync + 'static {
-    async fn restore_thing(&self, id: &ThingId) -> Result<ThingSnapshot>;
+    async fn restore_page(&self, id: &PageId) -> Result<PageSnapshot>;
     async fn restore_toc(&self) -> Result<TocSnapshot>;
     async fn restore_graph(&self) -> Result<GraphSnapshot>;
     async fn restore_conversation(&self, id: &ConversationId)
         -> Result<ConversationSnapshot>;
-    async fn list_thing_handles(&self) -> Result<Vec<ThingHandle>>;
+    async fn list_page_handles(&self) -> Result<Vec<PageHandle>>;
 }
 ```
 
@@ -323,16 +323,16 @@ Writes are domain-typed commands sent to a `DatabaseActor` (current basic versio
 Snapshot types carry their own identity and convert into persistence commands:
 
 ```rust
-struct ThingSnapshot {
-    id: ThingId,
+struct PageSnapshot {
+    id: PageId,
     blocks: Vec<BlockRecord>,
     mentions: Vec<MentionRecord>,
     suggestions: Vec<SuggestionRecord>,
 }
 
-impl From<ThingSnapshot> for PersistenceCommand {
-    fn from(s: ThingSnapshot) -> Self {
-        PersistenceCommand::SnapshotThing(s)
+impl From<PageSnapshot> for PersistenceCommand {
+    fn from(s: PageSnapshot) -> Self {
+        PersistenceCommand::SnapshotPage(s)
     }
 }
 
@@ -362,7 +362,7 @@ The `PersistenceCommand` enum takes snapshots directly:
 
 ```rust
 enum PersistenceCommand {
-    SnapshotThing(ThingSnapshot),
+    SnapshotPage(PageSnapshot),
     SnapshotToc(TocSnapshot),
     SnapshotConversation(ConversationSnapshot),
     SnapshotGraph(GraphMutation),               // delta, not snapshot
@@ -379,7 +379,7 @@ struct DatabaseActor {
 Each child actor holds an `ActorRef<DatabaseActor>`. When a debounce timer fires, the actor snapshots its state and enqueues a write. `tell()` resolves when the message lands in the DatabaseActor's mailbox (a channel send, microseconds). It does not wait for the write to complete.
 
 ```rust
-// Inside any Persistent + Evictable actor (ThingActor shown)
+// Inside any Persistent + Evictable actor (PageActor shown)
 // tell() enqueues only; the write is async in the DatabaseActor.
 async fn persist(&mut self) {
     let command: PersistenceCommand = self.snapshot().into();
@@ -388,15 +388,15 @@ async fn persist(&mut self) {
             self.dirty = false;
             if self.persistence_degraded {
                 self.persistence_degraded = false;
-                self.notify(ThingNotification::PersistenceRestored);
+                self.notify(PageNotification::PersistenceRestored);
             }
         }
         Err(e) => {
-            tracing::error!(thing_id = %self.id, error = %e,
+            tracing::error!(page_id = %self.id, error = %e,
                 "DatabaseActor unreachable, snapshot queued for retry");
             if !self.persistence_degraded {
                 self.persistence_degraded = true;
-                self.notify(ThingNotification::PersistenceDegraded);
+                self.notify(PageNotification::PersistenceDegraded);
             }
             // dirty remains true, next debounce tick retries
         }
@@ -477,11 +477,11 @@ apps/campaign/src/
 │   │   └── room.rs            // CrdtRoom (composes CrdtDoc + members)
 │   └── ...                    // SuggestionTarget, DocumentState, etc.
 ├── loro/                      // concrete CrdtDoc impls
-│   ├── thing.rs               // LoroThingDoc
+│   ├── page.rs               // LoroPageDoc
 │   └── toc.rs                 // LoroTocDoc, TocTreeNode
 ├── actors/                    // kameo actors (service hosts)
 │   ├── supervisor.rs
-│   ├── thing.rs               // ThingActor, owns a ThingRoom
+│   ├── page.rs               // PageActor, owns a PageRoom
 │   ├── toc.rs
 │   ├── graph.rs
 │   ├── vocabulary.rs
@@ -491,8 +491,8 @@ apps/campaign/src/
 │   ├── mod.rs                 // CampaignDatabase, re-exports
 │   ├── reader.rs              // CampaignReader trait + CampaignReaderImpl
 │   ├── writer.rs              // DatabaseActor, PersistenceCommand
-│   ├── restore.rs             // restore_thing(), restore_graph(), etc.
-│   ├── snapshots.rs           // ThingSnapshot, TocSnapshot, From impls
+│   ├── restore.rs             // restore_page(), restore_graph(), etc.
+│   ├── snapshots.rs           // PageSnapshot, TocSnapshot, From impls
 │   ├── traits.rs              // Persistent (pattern trait)
 │   └── connection.rs          // sea-orm pool + sqlite-vec extension
 ├── entities/                  // sea-orm row types
@@ -502,7 +502,7 @@ apps/campaign/src/
 crates/campaign-shared/src/
 ├── id.rs                      // ts-rs branded ID newtypes
 ├── loro/                      // ts-rs schema types ONLY
-│   ├── thing.rs               // ThingHandle (the type, not the wrapper)
+│   ├── page.rs               // PageHandle (the type, not the wrapper)
 │   ├── toc.rs                 // TocEntry, TocEntryKind, container/key constants
 │   └── prosemirror.rs         // PM convention constants (NODE_NAME_KEY, etc.)
 ├── notification.rs            // WS side-channel envelope types
@@ -512,7 +512,7 @@ crates/campaign-shared/src/
 Two principles drive the layout:
 
 - **`domain/` is pure algebra.** Trait definitions and value types only, no kameo, no Loro wrappers, no SQL. A non-actor implementation could satisfy these traits in principle (and tests do).
-- **`crates/campaign-shared/` holds only what crosses the language or service boundary.** Types that ts-rs exports for the SPA (`ThingHandle`, `TocEntry`), the cross-server identity primitives (`ThingId`, `BlockId`), and constants both sides must agree on (PM keys, ToC kinds). Behaviour with one Rust consumer (the campaign server) lives in `apps/campaign/`. The crate is a *shared types* crate, not a shared *code* crate.
+- **`crates/campaign-shared/` holds only what crosses the language or service boundary.** Types that ts-rs exports for the SPA (`PageHandle`, `TocEntry`), the cross-server identity primitives (`PageId`, `BlockId`), and constants both sides must agree on (PM keys, ToC kinds). Behaviour with one Rust consumer (the campaign server) lives in `apps/campaign/`. The crate is a *shared types* crate, not a shared *code* crate.
 
 The previous version of this doc placed `CrdtDoc` and the Loro wrappers in `campaign-shared` because the spike landed them there. The move into `apps/campaign/` happened in the same branch as this rewrite; see commit history for the diff.
 
@@ -666,11 +666,11 @@ Shutdown mirrors startup: the supervisor evicts all child actors (each one snaps
 
 ---
 
-### ThingActor Internal State
+### PageActor Internal State
 
 ```rust
-struct ThingActor {
-    id: ThingId,
+struct PageActor {
+    id: PageId,
     doc: LoroDoc,
     subscribers: Vec<Subscriber>,
     dirty: bool,
@@ -684,11 +684,11 @@ struct ThingActor {
 
 **The LoroDoc is always reconstructed on actor startup.** There is no "cold" state where the actor holds only relational data. `restore()` reads from SQLite and builds the full LoroDoc via the equivalent of `toYdoc()`. The doc is live from the moment the actor exists.
 
-**Why no two-phase state (cold relational / hot CRDT):** The Hocuspocus architecture had two read paths (Y.Doc for active pages, SQL for inactive pages) because loading a Y.Doc on the Node.js event loop consumed shared memory and blocked the single thread. In Rust, each actor is an independent async task. Reconstructing a LoroDoc in one actor has zero impact on any other actor. The reconstruction cost is a few milliseconds of CPU to walk relational rows and build a document tree. At campaign scale, even a context-building pass that spins up 30 ThingActors costs ~30ms of CPU and ~3MB of memory. The actors evict themselves after idle timeout.
+**Why no two-phase state (cold relational / hot CRDT):** The Hocuspocus architecture had two read paths (Y.Doc for active pages, SQL for inactive pages) because loading a Y.Doc on the Node.js event loop consumed shared memory and blocked the single thread. In Rust, each actor is an independent async task. Reconstructing a LoroDoc in one actor has zero impact on any other actor. The reconstruction cost is a few milliseconds of CPU to walk relational rows and build a document tree. At campaign scale, even a context-building pass that spins up 30 PageActors costs ~30ms of CPU and ~3MB of memory. The actors evict themselves after idle timeout.
 
 One state representation means one read path, one write path, and no conditional logic around "do I have a doc or not." The compiler always reads from a LoroDoc. The CRDT room is always joinable. The debounce timer always has a doc to snapshot. Every code path is exercised in every scenario.
 
-**Debounce is per-actor.** Each ThingActor manages its own persistence timer. When the timer fires, the actor snapshots its LoroDoc to relational data and writes to the campaign database. 30 active Things means 30 independent timers - they're atomic, they don't interact, and if one fires late, nothing else cares. A centralized "sweep dirty actors" tick would couple actors that have no reason to be coupled.
+**Debounce is per-actor.** Each PageActor manages its own persistence timer. When the timer fires, the actor snapshots its LoroDoc to relational data and writes to the campaign database. 30 active Pages means 30 independent timers - they're atomic, they don't interact, and if one fires late, nothing else cares. A centralized "sweep dirty actors" tick would couple actors that have no reason to be coupled.
 
 ---
 
@@ -696,7 +696,7 @@ One state representation means one read path, one write path, and no conditional
 
 The trait system has three kinds of contract, each owned by a different layer:
 
-**Data algebra (`CrdtDoc`).** Pure CRDT operations on a single document: apply updates, export/import snapshots, report a version. Knows nothing about clients, auth, broadcasts, or persistence policy. Implemented by Loro-backed wrappers (`LoroThingDoc`, `LoroTocDoc`).
+**Data algebra (`CrdtDoc`).** Pure CRDT operations on a single document: apply updates, export/import snapshots, report a version. Knows nothing about clients, auth, broadcasts, or persistence policy. Implemented by Loro-backed wrappers (`LoroPageDoc`, `LoroTocDoc`).
 
 **Domain algebra (`CrdtRoom`, `Persistent`, `SuggestionTarget`, `DocumentState`).** Composes the data algebra with campaign-level concepts: membership, identity, status, persistence intent. Each implementor wraps a `CrdtDoc` and adds the campaign-side policy.
 
@@ -728,7 +728,7 @@ pub trait CrdtDoc: Send {
 }
 ```
 
-`CrdtDoc` is the contract every Loro-backed wrapper satisfies. The trait lives at [`apps/campaign/src/domain/crdt/doc.rs`](../../apps/campaign/src/domain/crdt/doc.rs) with `Snapshot`, `VersionVector`, and the typed `DocError` enum. Concrete impls live at [`apps/campaign/src/loro/{thing,toc}.rs`](../../apps/campaign/src/loro/).
+`CrdtDoc` is the contract every Loro-backed wrapper satisfies. The trait lives at [`apps/campaign/src/domain/crdt/doc.rs`](../../apps/campaign/src/domain/crdt/doc.rs) with `Snapshot`, `VersionVector`, and the typed `DocError` enum. Concrete impls live at [`apps/campaign/src/loro/{page,toc}.rs`](../../apps/campaign/src/loro/).
 
 The shape was validated by the spike's [`server/src/doc.rs`](../../../experiment-single-campaign-editor/tiptap-loro-kameo-rust/server/src/doc.rs); the production version differs only in `DocError` (typed) replacing `String` (loose).
 
@@ -767,17 +767,17 @@ pub trait CrdtRoom {
 `CrdtRoom` composes a `CrdtDoc` with campaign-side membership and dispatch:
 
 ```rust
-pub struct ThingRoom {
-    id: ThingId,
-    doc: LoroThingDoc,
+pub struct PageRoom {
+    id: PageId,
+    doc: LoroPageDoc,
     members: HashMap<ClientId, Role>,
     status_tree: StatusTree,
 }
 ```
 
-The actor wrapper (`ThingActor`) holds the kameo-shaped state on top: subscriber mpsc senders, the dirty flag, the db writer handle, plus wire-shape adaptation. On inbound, the actor reassembles fragmented batches into a single update before invoking `room.apply_updates(...)`. On outbound, the actor fragments large broadcasts to fit the protocol's per-message cap. The actor never reaches into the room's internals; it sequences trait calls and adapts wire shape on either side. See [Wire-Protocol Concerns Live at the Actor](#wire-protocol-concerns-live-at-the-actor) below.
+The actor wrapper (`PageActor`) holds the kameo-shaped state on top: subscriber mpsc senders, the dirty flag, the db writer handle, plus wire-shape adaptation. On inbound, the actor reassembles fragmented batches into a single update before invoking `room.apply_updates(...)`. On outbound, the actor fragments large broadcasts to fit the protocol's per-message cap. The actor never reaches into the room's internals; it sequences trait calls and adapts wire shape on either side. See [Wire-Protocol Concerns Live at the Actor](#wire-protocol-concerns-live-at-the-actor) below.
 
-This split lets us write property tests against `ThingRoom` directly (apply N updates in two orders, assert convergence) without spinning up an actor system, and lets the wire utilities be fuzzed without standing up a room.
+This split lets us write property tests against `PageRoom` directly (apply N updates in two orders, assert convergence) without spinning up an actor system, and lets the wire utilities be fuzzed without standing up a room.
 
 #### Pattern Traits
 
@@ -788,7 +788,7 @@ This split lets us write property tests against `ThingRoom` directly (apply N up
 ///
 /// restore() is NOT on this trait. Restoration is a free function in
 /// the persistence module, because each actor needs different inputs
-/// to reconstruct (ThingId + reader + writer, reader + writer,
+/// to reconstruct (PageId + reader + writer, reader + writer,
 /// reader only, etc.). The trait covers the write-back side only.
 trait Persistent {
     type Snapshot: Into<PersistenceCommand>;
@@ -806,7 +806,7 @@ trait Persistent {
 
 The compiler can't prove the persistence logic is _correct_ -- that the SQL writes the right rows, that the snapshot captures all necessary state. But it proves the system is trying. The gaps between compile-time checkpoints are small, concrete functions in the persistence module.
 
-**Actors that don't fit the snapshot pattern don't implement Persistent.** RelationshipGraph is mutated edge-by-edge via `Mutable`, persisted as deltas, not snapshotted whole. CampaignVocabulary is derived from Thing data and has no independent state to persist. Neither implements `Persistent`.
+**Actors that don't fit the snapshot pattern don't implement Persistent.** RelationshipGraph is mutated edge-by-edge via `Mutable`, persisted as deltas, not snapshotted whole. CampaignVocabulary is derived from Page data and has no independent state to persist. Neither implements `Persistent`.
 
 **Point writes that aren't snapshots** (e.g., `RecordSuggestionOutcome`) live in `PersistenceCommand` but don't come from a `Persistent` impl. The `dead_code` lint covers them independently -- if no code constructs the variant, the build fails.
 
@@ -838,7 +838,7 @@ enum EvictionResult {
 async fn prepare_eviction(&mut self) -> EvictionResult {
     if self.dirty {
         if self.persistence_degraded {
-            tracing::warn!(thing_id = %self.id, "Eviction blocked: unpersisted changes");
+            tracing::warn!(page_id = %self.id, "Eviction blocked: unpersisted changes");
             return EvictionResult::Blocked {
                 reason: "dirty state with degraded write path"
             };
@@ -862,7 +862,7 @@ async fn prepare_eviction(&mut self) -> EvictionResult {
 
 1. **Actor refuses eviction.** Returns `Blocked`, logs a warning. Stays alive, holding unpersisted data. Debounce timer continues retrying.
 2. **Supervisor tracks stuck actors** and how long they've been stuck (during shutdown drain or normal idle eviction sweeps).
-3. **Supervisor escalates to the platform.** Reports: "campaign X has unpersisted changes on thing Y, actor has been stuck for Z seconds." The supervisor does not notify users directly. It reports a fact.
+3. **Supervisor escalates to the platform.** Reports: "campaign X has unpersisted changes on page Y, actor has been stuck for Z seconds." The supervisor does not notify users directly. It reports a fact.
 4. **Supervisor force-kills the actor after a deadline.** Shutdown must complete, leases must be released, the server may be going down.
 5. **The platform sends a transactional email to affected users:** "Some changes on [page name] in [campaign name] may not have been saved. Please review."
 
@@ -870,10 +870,10 @@ The boundary is strict: **campaigns report health facts to the platform, the pla
 
 #### Persistence Health Notifications
 
-ThingActor (and any Persistent + Evictable actor) implements `Notifiable` for persistence health:
+PageActor (and any Persistent + Evictable actor) implements `Notifiable` for persistence health:
 
 ```rust
-enum ThingNotification {
+enum PageNotification {
     PersistenceDegraded,
     PersistenceRestored,
 }
@@ -890,14 +890,14 @@ Restoration is not on the `Persistent` trait. Each actor type needs different in
 ```rust
 // In persistence/restore.rs
 
-async fn restore_thing(
-    id: ThingId,
+async fn restore_page(
+    id: PageId,
     reader: &impl CampaignReader,
     writer: ActorRef<DatabaseActor>,
-) -> Result<ThingActor> {
-    let snapshot = reader.restore_thing(&id).await?;
+) -> Result<PageActor> {
+    let snapshot = reader.restore_page(&id).await?;
     let doc = reconstruct_loro_doc(&snapshot)?;
-    Ok(ThingActor {
+    Ok(PageActor {
         id, doc, subscribers: vec![], dirty: false,
         persistence_degraded: false, last_activity: Instant::now(),
         db_writer: writer,
@@ -916,7 +916,7 @@ async fn restore_graph(
 async fn restore_vocabulary(
     reader: &impl CampaignReader,
 ) -> Result<CampaignVocabulary> {
-    let handles = reader.list_thing_handles().await?;
+    let handles = reader.list_page_handles().await?;
     Ok(CampaignVocabulary { entries: handles, .. })
 }
 
@@ -972,7 +972,7 @@ trait SuggestionTarget {
 trait DocumentState {
     fn content(&self) -> &PageContent;
     fn status_tree(&self) -> &StatusTree;
-    fn identity(&self) -> &ThingIdentity;
+    fn identity(&self) -> &PageIdentity;
 }
 ```
 
@@ -986,7 +986,7 @@ Per-block status filtering is a renderer concern, not a compiler concern (see [P
 
 | Actor              | CrdtRoom | Notifiable | Queryable | Mutable | SuggestionTarget | DocumentState |
 | ------------------ | -------- | ---------- | --------- | ------- | ---------------- | ------------- |
-| ThingActor         | ✓        | ✓          | ✓         |         | ✓                | ✓             |
+| PageActor         | ✓        | ✓          | ✓         |         | ✓                | ✓             |
 | TocActor           | ✓        | ✓          | ✓         |         |                  |               |
 | RelationshipGraph  |          | ✓          | ✓         | ✓       |                  |               |
 | CampaignVocabulary |          | ✓          | ✓         |         |                  |               |
@@ -998,7 +998,7 @@ Per-block status filtering is a renderer concern, not a compiler concern (see [P
 
 | Actor              | Persistent | Evictable |
 | ------------------ | ---------- | --------- |
-| ThingActor         | ✓          | ✓         |
+| PageActor         | ✓          | ✓         |
 | TocActor           | ✓          | ✓         |
 | RelationshipGraph  |            |           |
 | CampaignVocabulary |            |           |
@@ -1008,7 +1008,7 @@ Per-block status filtering is a renderer concern, not a compiler concern (see [P
 
 **Why RelationshipGraph is not Persistent:** Mutated edge-by-edge via `Mutable`, persisted as deltas through `PersistenceCommand::SnapshotGraph(GraphMutation)`. The delta-based persistence path doesn't fit the snapshot-on-debounce pattern.
 
-**Why CampaignVocabulary is not Persistent:** Derived entirely from Thing data. No independent state to write back.
+**Why CampaignVocabulary is not Persistent:** Derived entirely from Page data. No independent state to write back.
 
 **Why UserSession is Evictable but not Persistent:** Has a lifecycle (connect, idle, disconnect) but no state worth persisting. Session state is reconstructable from the auth token.
 
@@ -1022,15 +1022,15 @@ For implementation details (assembler/fragmenter internals, the reassembly timeo
 
 ### Permission Model
 
-Some content within a Thing is `gm_only` and must not display to Player clients. Status cascades down (a gm_only block hides everything inside it). The implementation question is how to enforce this in a CRDT collaboration system.
+Some content within a Page is `gm_only` and must not display to Player clients. Status cascades down (a gm_only block hides everything inside it). The implementation question is how to enforce this in a CRDT collaboration system.
 
-**Decision: filter at the TipTap render layer in TypeScript. Validate writes server-side as defence in depth. Single doc per Thing, no server-side projection.**
+**Decision: filter at the TipTap render layer in TypeScript. Validate writes server-side as defence in depth. Single doc per Page, no server-side projection.**
 
 #### What this means concretely
 
-1. **One canonical Loro doc per Thing.** No partitioning, no per-role projection, no shared/gm_only doc split.
+1. **One canonical Loro doc per Page.** No partitioning, no per-role projection, no shared/gm_only doc split.
 2. **Each block carries a `status` attribute** (`gm_only`, `known`, `retconned`) as part of its CRDT state, alongside `id`. The TipTap `UniqueID` extension already manages `id`; a sibling `BlockStatus` extension manages `status`.
-3. **The TipTap renderer drops blocks whose status the current user is not allowed to see.** A Player viewing a Thing receives the full doc over the wire and renders only the non-gm_only blocks.
+3. **The TipTap renderer drops blocks whose status the current user is not allowed to see.** A Player viewing a Page receives the full doc over the wire and renders only the non-gm_only blocks.
 4. **The server validates writes.** `CrdtRoom::apply_updates` rejects updates from a Player that touch a gm_only block (the server walks the update against the status tree). This is a guard, not a security boundary; the client is expected not to attempt invalid writes in the first place.
 5. **Cursors and presence work everywhere.** A GM editing a shared block has their cursor visible to Players because everyone is on the same Loro doc.
 
@@ -1068,7 +1068,7 @@ The read task holds a **local routing table**: `HashMap<RoomId, RoomHandle>`. Th
 
 ```rust
 enum RoomHandle {
-    Thing  { id: ThingId,         actor: ActorRef<ThingActor> },
+    Page  { id: PageId,         actor: ActorRef<PageActor> },
     Toc    {                      actor: ActorRef<TocActor> },
     LlmStream { conversation_id: ConversationId,
                                   actor: ActorRef<AgentConversation> },
@@ -1082,18 +1082,18 @@ Each variant implements the same logical operations (send update, register subsc
 #### Message Routing
 
 ```
-Client sends JoinRequest(room_id="thing:kael")
+Client sends JoinRequest(room_id="page:kael")
   → read_task sends JoinRoom request to CampaignSupervisor
-  → Supervisor returns existing ActorRef or spawns a new ThingActor
+  → Supervisor returns existing ActorRef or spawns a new PageActor
   → read_task stashes RoomHandle in local routing table
-  → read_task registers its outbound Sender with the ThingActor
-  → ThingActor replies with JoinResponseOk + full state
+  → read_task registers its outbound Sender with the PageActor
+  → PageActor replies with JoinResponseOk + full state
   → Reply flows through outbound Sender → write_task → client
 
-Client sends DocUpdate(room_id="thing:kael", ...)
-  → read_task looks up "thing:kael" in local routing table
-  → read_task sends DocUpdate directly to ThingActor (no supervisor)
-  → ThingActor applies update, broadcasts to other subscribers, sends Ack
+Client sends DocUpdate(room_id="page:kael", ...)
+  → read_task looks up "page:kael" in local routing table
+  → read_task sends DocUpdate directly to PageActor (no supervisor)
+  → PageActor applies update, broadcasts to other subscribers, sends Ack
 
 Client disconnects
   → read_task iterates local routing table
@@ -1105,7 +1105,7 @@ Client disconnects
 
 #### Actor Termination and Reconnection
 
-When a ThingActor evicts itself (idle timeout), subsequent messages from any read_task holding a stale `ActorRef` will fail. The read_task detects this, sends a `RoomError(RejoinSuggested)` to the client via the loro protocol, and removes the stale entry from its routing table. The client re-joins the room with a fresh `JoinRequest`, which flows through the supervisor and spawns a new ThingActor from the database.
+When a PageActor evicts itself (idle timeout), subsequent messages from any read_task holding a stale `ActorRef` will fail. The read_task detects this, sends a `RoomError(RejoinSuggested)` to the client via the loro protocol, and removes the stale entry from its routing table. The client re-joins the room with a fresh `JoinRequest`, which flows through the supervisor and spawns a new PageActor from the database.
 
 **Why `RejoinSuggested` rather than transparent respawn:** The actor died, which means the client's state vector may not match the newly restored actor's state. A clean rejoin via JoinRequest → full state sync is safer than applying a stale update to a fresh doc. The loro protocol designed `RejoinSuggested` precisely for this scenario.
 
@@ -1114,7 +1114,7 @@ When a ThingActor evicts itself (idle timeout), subsequent messages from any rea
 Each websocket connection has one unbounded `mpsc::Sender`. When a client joins a room, the read_task registers a clone of this sender with the room's actor. The actor broadcasts by iterating its subscriber list and sending to each subscriber's sender. The write_task drains the receiver and sends frames.
 
 ```rust
-// In ThingActor
+// In PageActor
 fn broadcast(&self, update: &[u8], exclude: Option<ClientId>) {
     self.subscribers
         .iter()
@@ -1142,7 +1142,7 @@ AgentConversation implements `CrdtRoom` because the conversation is a LoroDoc. T
 1. **LLM token streaming is CRDT sync.** As the LLM generates tokens, the AgentConversation appends them to the conversation LoroDoc. The CRDT sync pushes updates to the connected client in real-time. The client uses the same rendering pipeline for "agent is typing" as for "another human is editing."
 2. **Thinking tokens are a different block type** in the LoroDoc. The frontend can render them collapsed or expanded without special streaming logic.
 3. **Conversation history is a document.** It persists, it's restorable, it supports hammock time.
-4. **Historical suggestions are preserved as blocks in the conversation doc.** If a suggestion was accepted on the Thing page, the conversation still shows what was proposed, as immutable history.
+4. **Historical suggestions are preserved as blocks in the conversation doc.** If a suggestion was accepted on the page, the conversation still shows what was proposed, as immutable history.
 
 **Human messages are POSTed, not CRDT-appended.** The human message triggers inference - it's a command, not a document edit. The flow:
 
@@ -1156,9 +1156,9 @@ POST makes the intent unambiguous: "this is a new message, start inference." A C
 
 #### Conversation-Scoped Serialization
 
-When the compiler serializes a Thing page for an AgentConversation, it includes only suggestions owned by that conversation. Other conversations' suggestions are invisible. The agent sees a clean page with only its own pending work.
+When the compiler serializes a page for an AgentConversation, it includes only suggestions owned by that conversation. Other conversations' suggestions are invisible. The agent sees a clean page with only its own pending work.
 
-**Why this matters for deconfliction:** If agent A and agent B independently target the same content, agent B's compiler doesn't see agent A's suggestion marks. It serializes the original content, the agent reasons about it, and produces a suggest_replace. The ThingActor applies the suggestion mark - now both suggestions exist as overlapping marks on the same blocks. The GM sees both and can accept either one independently.
+**Why this matters for deconfliction:** If agent A and agent B independently target the same content, agent B's compiler doesn't see agent A's suggestion marks. It serializes the original content, the agent reasons about it, and produces a suggest_replace. The PageActor applies the suggestion mark - now both suggestions exist as overlapping marks on the same blocks. The GM sees both and can accept either one independently.
 
 This means agents don't need to reason about each other's proposals. They don't need deconfliction logic. They each operate against their own scoped view of the page. The deconfliction surface is the editor UI, where the GM reviews competing suggestions with full context.
 
@@ -1206,9 +1206,9 @@ When multiple suggestions overlap on the same blocks, the editor shifts to a UI 
 
 #### Suggestion Lifecycle
 
-1. **Created:** The compiler processes a `suggest_replace` tool call, identifies the target block IDs, and sends the compiled suggestion to the ThingActor. The ThingActor adds the suggestion mark and metadata to the LoroDoc. CRDT sync broadcasts the update to connected editors.
+1. **Created:** The compiler processes a `suggest_replace` tool call, identifies the target block IDs, and sends the compiled suggestion to the PageActor. The PageActor adds the suggestion mark and metadata to the LoroDoc. CRDT sync broadcasts the update to connected editors.
 2. **Pending:** The suggestion is visible in the editor. Target blocks are read-only. The GM can review in context.
-3. **Accepted:** The GM accepts. The ThingActor replaces the target blocks with the proposed content (new blocks get fresh UUIDs). The suggestion mark is removed. The outcome is recorded in the `suggestion_outcomes` table. Any other suggestions whose target blocks overlapped with the accepted suggestion are now referencing changed/removed blocks - the editor flags them accordingly.
+3. **Accepted:** The GM accepts. The PageActor replaces the target blocks with the proposed content (new blocks get fresh UUIDs). The suggestion mark is removed. The outcome is recorded in the `suggestion_outcomes` table. Any other suggestions whose target blocks overlapped with the accepted suggestion are now referencing changed/removed blocks - the editor flags them accordingly.
 4. **Rejected:** The GM rejects. The suggestion mark is removed. The original blocks become editable. The outcome is recorded in `suggestion_outcomes`. No other suggestions are affected.
 5. **Superseded (same conversation only):** When the same AgentConversation produces a new suggestion targeting the same blocks, the new suggestion replaces the old one. The old suggestion is recorded as superseded in `suggestion_outcomes`. Different conversations' suggestions always coexist - they are independent proposals deserving independent review.
 
@@ -1218,7 +1218,7 @@ When multiple suggestions overlap on the same blocks, the editor shifts to a UI 
 CREATE TABLE suggestion_outcomes (
     suggestion_id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
-    thing_id TEXT NOT NULL,
+    page_id TEXT NOT NULL,
     author_user_id TEXT NOT NULL,
     model TEXT NOT NULL,
     outcome TEXT NOT NULL,          -- 'accepted', 'rejected', 'superseded'
@@ -1232,7 +1232,7 @@ This table serves two purposes:
 
 **For users:** When a conversation is reopened, the conversation doc shows historical suggestions ("I proposed X"). The outcomes table decorates these with resolution status ("accepted", "rejected", "still pending"). The conversation doc is self-contained history; the outcomes table is read-time enrichment.
 
-**For evals:** Accept/reject rates per model, per workflow, per Thing type. Time-to-resolution. Supersession rates (high supersession might indicate poor first-draft quality). This is training signal for model selection and prompt tuning.
+**For evals:** Accept/reject rates per model, per workflow, per page kind. Time-to-resolution. Supersession rates (high supersession might indicate poor first-draft quality). This is training signal for model selection and prompt tuning.
 
 ---
 
@@ -1240,13 +1240,13 @@ This table serves two purposes:
 
 The serialization compiler (`f()` / `f⁻¹()`) is a stateless service, not an actor. It bridges the LoroDoc world (CRDT operations, block UUIDs, Loro types) and the agent world (markdown, wiki-links, retrieval tiers).
 
-**`f()` - LoroDoc → Agent Markdown:** Takes a `DocumentState` reference (from a ThingActor), a graph context (from the RelationshipGraph actor), a retrieval tier, a role (for gm_only filtering), and a conversation ID (for suggestion scoping). Produces the markdown format defined in the AI Serialization Format document. The conversation ID determines which suggestion marks are rendered as `<prior>/<suggestion>` pairs - only the requesting conversation's suggestions are visible.
+**`f()` - LoroDoc → Agent Markdown:** Takes a `DocumentState` reference (from a PageActor), a graph context (from the RelationshipGraph actor), a retrieval tier, a role (for gm_only filtering), and a conversation ID (for suggestion scoping). Produces the markdown format defined in the AI Serialization Format document. The conversation ID determines which suggestion marks are rendered as `<prior>/<suggestion>` pairs - only the requesting conversation's suggestions are visible.
 
-**`f⁻¹()` - Agent Tool Call → Compiled Suggestion:** Takes a `suggest_replace` tool call (page name, old content, new content), serializes the target page via `f()` to get the current markdown, string-matches the old content to identify target block IDs, and produces a `CompiledSuggestion` ready for the ThingActor to apply.
+**`f⁻¹()` - Agent Tool Call → Compiled Suggestion:** Takes a `suggest_replace` tool call (page name, old content, new content), serializes the target page via `f()` to get the current markdown, string-matches the old content to identify target block IDs, and produces a `CompiledSuggestion` ready for the PageActor to apply.
 
-**Why the compiler is not on the actor:** The compiler needs the actor's document state AND the relationship graph AND embedding results (Tier 2) AND role context AND conversation scoping. Putting this on the ThingActor would require the actor to hold references to all of these. The compiler is a pure function with multiple inputs. The AgentConversation orchestrates: it asks the ThingActor for DocumentState, asks the RelationshipGraph for context, calls the compiler, and routes the result back to the ThingActor.
+**Why the compiler is not on the actor:** The compiler needs the actor's document state AND the relationship graph AND embedding results (Tier 2) AND role context AND conversation scoping. Putting this on the PageActor would require the actor to hold references to all of these. The compiler is a pure function with multiple inputs. The AgentConversation orchestrates: it asks the PageActor for DocumentState, asks the RelationshipGraph for context, calls the compiler, and routes the result back to the PageActor.
 
-**Why the compiler always reads from actors:** In the Hocuspocus architecture, the compiler had two read paths - Y.Doc for active pages, SQL for inactive pages - because loading a Y.Doc on the Node.js event loop was expensive and could starve other connections. In the Rust actor model, spinning up a ThingActor to serve a Tier 1 index card costs one SQLite read and a few milliseconds of CPU. The actor evicts itself on idle. There is no event loop to starve. One read path, through the actor, always.
+**Why the compiler always reads from actors:** In the Hocuspocus architecture, the compiler had two read paths - Y.Doc for active pages, SQL for inactive pages - because loading a Y.Doc on the Node.js event loop was expensive and could starve other connections. In the Rust actor model, spinning up a PageActor to serve a Tier 1 index card costs one SQLite read and a few milliseconds of CPU. The actor evicts itself on idle. There is no event loop to starve. One read path, through the actor, always.
 
 ---
 
@@ -1256,7 +1256,7 @@ The designs in this section were not planned top-down. Each one fell out of a sp
 
 #### CampaignDatabase module: "reads are parallelizable, writes need serialization"
 
-The starting problem was: multiple actors need to read from the campaign database concurrently (especially during restoration, when the RelationshipGraph, TocActor, and initial ThingActors all need data), but writes need to be serialized. An actor model gives serialization for free via the mailbox, but if every actor reads through the same write actor, reads become a bottleneck.
+The starting problem was: multiple actors need to read from the campaign database concurrently (especially during restoration, when the RelationshipGraph, TocActor, and initial PageActors all need data), but writes need to be serialized. An actor model gives serialization for free via the mailbox, but if every actor reads through the same write actor, reads become a bottleneck.
 
 The resolution split reads from writes. Reads go through a `CampaignReader` trait - a domain-typed algebra backed by a pool of read-only SQLite connections (WAL mode allows concurrent readers). Writes go through a `DatabaseActor` that owns the single read-write connection.
 
@@ -1286,25 +1286,25 @@ The `Starting` / `Restoring` / `Ready` / `Draining` state machine fell out of th
 
 #### CampaignVocabulary: "autocomplete needs freshness the database can't provide"
 
-The original prompt was editor autocomplete for `@mentions` - when a GM types `@Jorg`, suggest "Jorgath the Beneficent." The naive implementation (query the database: `SELECT id, name FROM things WHERE name LIKE ?`) has a freshness gap: the ThingActor writes to the database through the DatabaseActor's debounce timer. A Thing created 2 seconds ago might not be in the DB yet. "I just created Jorgath, why can't I mention him?"
+The original prompt was editor autocomplete for `@mentions` - when a GM types `@Jorg`, suggest "Jorgath the Beneficent." The naive implementation (query the database: `SELECT id, name FROM pages WHERE name LIKE ?`) has a freshness gap: the PageActor writes to the database through the DatabaseActor's debounce timer. A Page created 2 seconds ago might not be in the DB yet. "I just created Jorgath, why can't I mention him?"
 
-This motivated an in-memory actor that holds the entity list and receives domain events (`ThingCreated`, `ThingRenamed`, `ThingDeleted`) directly from the CampaignSupervisor. The actor is always immediately fresh - no polling, no DB reads on the hot path.
+This motivated an in-memory actor that holds the page list and receives domain events (`PageCreated`, `PageRenamed`, `PageDeleted`) directly from the CampaignSupervisor. The actor is always immediately fresh - no polling, no DB reads on the hot path.
 
 **Why Tantivy was deferred:** At ~500 entities, a linear scan with substring matching is sub-microsecond. The search engine question becomes relevant for fuzzy matching (STT correction needs "Yorgath" to find "Jorgath"), but the matching strategy is an implementation detail behind the query interface. Start with Levenshtein distance. Reach for Tantivy or phonetic indexing if and when matching quality becomes a bottleneck.
 
-**Why two separate concerns, not one trait:** The original sketch had a single `TypedInputSuggestions` trait with both `suggest_thing()` and `suggest_relationship()`. These were split because they have different data sources: Thing mentions draw from the entity list (new CampaignVocabulary actor), relationship suggestions draw from distinct edge labels in the graph (existing RelationshipGraph actor, via its `Queryable` implementation). No new actor needed for the second concern.
+**Why two separate concerns, not one trait:** The original sketch had a single `TypedInputSuggestions` trait with both `suggest_page()` and `suggest_relationship()`. These were split because they have different data sources: Page mentions draw from the page list (new CampaignVocabulary actor), relationship suggestions draw from distinct edge labels in the graph (existing RelationshipGraph actor, via its `Queryable` implementation). No new actor needed for the second concern.
 
-**Why the vocabulary is Notifiable:** Fell out of tracing the rename flow. When the GM renames "Korgath" to "Kurgath," the vocabulary actor updates its entry, but connected clients also need to know - their local autocomplete cache is stale. The notification is independent of any document update. No CRDT room carries this information. The vocabulary actor pushes `VocabularyNotification::ThingRenamed` to subscribers over the websocket side channel.
+**Why the vocabulary is Notifiable:** Fell out of tracing the rename flow. When the GM renames "Korgath" to "Kurgath," the vocabulary actor updates its entry, but connected clients also need to know - their local autocomplete cache is stale. The notification is independent of any document update. No CRDT room carries this information. The vocabulary actor pushes `VocabularyNotification::PageRenamed` to subscribers over the websocket side channel.
 
 #### Mention model: "the relational layer shouldn't store what it can derive"
 
 Tracing the rename flow surfaced three options for mention storage:
 
 - **Option A (ID only in LoroDoc):** No propagation on rename, but every renderer needs a vocabulary lookup. The document is not self-describing. The serialization compiler would need to resolve every mention.
-- **Option B (ID + label in LoroDoc, ID + label in relational):** Self-describing documents, but rename requires propagation to every document that mentions the entity - including inactive Things sitting in the database.
-- **Option C (ID + label in LoroDoc, ID only in relational):** Self-describing live documents, no propagation to inactive Things. The label is a rendering cache in the CRDT. The relational layer stores only the foreign key. On restoration, `restore()` resolves ThingIds to current names using the CampaignVocabulary.
+- **Option B (ID + label in LoroDoc, ID + label in relational):** Self-describing documents, but rename requires propagation to every document that mentions the entity - including inactive Pages sitting in the database.
+- **Option C (ID + label in LoroDoc, ID only in relational):** Self-describing live documents, no propagation to inactive Pages. The label is a rendering cache in the CRDT. The relational layer stores only the foreign key. On restoration, `restore()` resolves PageIds to current names using the CampaignVocabulary.
 
-Option C was chosen because it treats each storage layer according to its strengths. The LoroDoc carries the label for rendering convenience. The relational data carries the ID for structural correctness. Rename propagation only touches active ThingActors (the supervisor sends `MentionRenamed`, each actor updates its live LoroDoc). Inactive Things get the correct name for free when they're next restored.
+Option C was chosen because it treats each storage layer according to its strengths. The LoroDoc carries the label for rendering convenience. The relational data carries the ID for structural correctness. Rename propagation only touches active PageActors (the supervisor sends `MentionRenamed`, each actor updates its live LoroDoc). Inactive Pages get the correct name for free when they're next restored.
 
 **What it gave us for free:** Graceful recovery degradation. A hard restart from a hot LoroDoc snapshot might have stale mention labels (a rename happened after the last snapshot). If the vocabulary actor is up, a reconciliation pass can fix them. If it isn't, the page renders with slightly wrong names but structurally correct links. No recovery path requires special ceremony. No recovery path corrupts data. The label is always "correct when convenient, harmlessly stale otherwise."
 
@@ -1314,7 +1314,7 @@ The original `persist()` method discarded send errors with `let _ =`. If the Dat
 
 The fix has four parts: log the error, notify connected clients via `PersistenceDegraded`, block eviction while dirty and degraded, and escalate to the platform with a deadline force-kill.
 
-**Why ThingActor gained Notifiable:** Persistence health is server-authoritative. It can't go through CrdtRoom (wrong protocol). Notifiable pushes it over the websocket side channel.
+**Why PageActor gained Notifiable:** Persistence health is server-authoritative. It can't go through CrdtRoom (wrong protocol). Notifiable pushes it over the websocket side channel.
 
 **The escalation boundary:** Campaigns report facts, the platform notifies users. Campaign servers don't know about email infrastructure. This is a product-level decision, not just a technical one.
 
@@ -1322,7 +1322,7 @@ The fix has four parts: log the error, notify connected clients via `Persistence
 
 The original trait system mixed CrdtRoom (dispatched by websocket handlers) and Persistent (consumed only by its implementor) without distinguishing them. The distinction emerged from asking "who calls this?"
 
-This nearly led to eliminating Persistent and Evictable entirely. But Persistent was rescued by the `Into<PersistenceCommand>` bound, which connects snapshot types to the DatabaseActor's command vocabulary at compile time. Without the bound, the connection between "this actor produces ThingSnapshots" and "the DatabaseActor handles ThingSnapshots" is enforced only by convention. With the bound, the compiler checks it.
+This nearly led to eliminating Persistent and Evictable entirely. But Persistent was rescued by the `Into<PersistenceCommand>` bound, which connects snapshot types to the DatabaseActor's command vocabulary at compile time. Without the bound, the connection between "this actor produces PageSnapshots" and "the DatabaseActor handles PageSnapshots" is enforced only by convention. With the bound, the compiler checks it.
 
 Evictable was rescued by the coupling between eviction and persistence health -- the degraded check is a correctness requirement the trait makes explicit.
 
@@ -1330,7 +1330,7 @@ The `PersistenceCommand` enum provides a third layer: every variant must be cons
 
 #### Restoration as free functions: "construction is not the actor's concern"
 
-`Persistent` originally included `restore()`. Removed because each actor needs different inputs. ThingActor needs a ThingId + reader + writer. CampaignVocabulary needs a reader only. UserSession needs nothing. An associated `RestoreCtx` type would add machinery without enabling polymorphic restoration code -- nobody writes generic restoration functions.
+`Persistent` originally included `restore()`. Removed because each actor needs different inputs. PageActor needs a PageId + reader + writer. CampaignVocabulary needs a reader only. UserSession needs nothing. An associated `RestoreCtx` type would add machinery without enabling polymorphic restoration code -- nobody writes generic restoration functions.
 
 Free functions in `persistence/restore.rs` are honest about each actor's requirements. The function signature documents exactly what's needed. The actor knows how to snapshot and persist. How it was _created_ is the persistence module's concern.
 
@@ -1346,17 +1346,17 @@ Free functions in `persistence/restore.rs` are honest about each actor's require
 - **Conversation-scoped agent views.** Each agent sees only its own suggestions. Agents don't reason about each other's proposals. The system doesn't need cross-conversation deconfliction logic.
 - **Blocking eliminates staleness.** Read-only blocks under pending suggestions mean the original content never drifts. No staleness detection, no render-time comparison, no stale suggestion states.
 - **Provenance tracking for evals.** Every suggestion carries a conversation ID, user ID, model identifier, and timestamp. The outcomes table records resolution. This is the training signal for model quality measurement.
-- **Hot-path routing bypasses the supervisor.** DocUpdate messages (99% of traffic during editing) go directly from the websocket read task to the ThingActor via the local routing table. The supervisor handles only JoinRequest and lifecycle events.
+- **Hot-path routing bypasses the supervisor.** DocUpdate messages (99% of traffic during editing) go directly from the websocket read task to the PageActor via the local routing table. The supervisor handles only JoinRequest and lifecycle events.
 - **Compile-time persistence wiring.** The `Into<PersistenceCommand>` bound, `dead_code` lint, and exhaustive match together prove the persistence plumbing is connected end to end. Adding a new persistent actor without wiring it to the DatabaseActor is a compile error.
 - **Visible persistence failures.** Write path degradation is logged, notified to clients, and blocks eviction. Data loss scenarios become stuck-actor scenarios that the supervisor can escalate. Silent data loss is architecturally prevented.
 - **Descriptive loading.** The supervisor state machine reports its current phase in heartbeats. The platform forwards this to clients, turning an opaque wait into "Downloading campaign data..." then "Restoring entities..." then the editor loads.
-- **Mention labels as rendering caches.** The relational layer stores only ThingIds for mentions. Rename propagation only touches active actors. Inactive Things get correct names for free on restore. Recovery degrades gracefully.
+- **Mention labels as rendering caches.** The relational layer stores only PageIds for mentions. Rename propagation only touches active actors. Inactive Pages get correct names for free on restore. Recovery degrades gracefully.
 
 ### What this architecture costs us
 
-- **Actor-per-Thing memory.** Every active Thing has a LoroDoc in memory. At ~100KB per doc and campaign scale of ~500 entities (of which maybe 30 are active at once), this is ~3MB - negligible. But it means we rely on eviction working correctly. A bug in idle detection could keep hundreds of actors alive unnecessarily.
-- **Reconstruction on every actor startup.** There is no fast "just load the relational data" path. Every ThingActor startup rebuilds a LoroDoc from relational rows. This is a few milliseconds per actor, acceptable now, but would need revisiting if LoroDoc reconstruction ever becomes expensive (very large documents, complex schema).
-- **Compiler fan-out for context building.** An AI context-building pass may need to read 20+ Things at Tier 1. Each read spins up a ThingActor (if not already active), sends a query, and waits for a response. This is 20+ sequential or parallel actor interactions. Fast individually, but the fan-out pattern needs to be implemented carefully to avoid waterfall latency.
+- **Actor-per-Page memory.** Every active Page has a LoroDoc in memory. At ~100KB per doc and campaign scale of ~500 entities (of which maybe 30 are active at once), this is ~3MB - negligible. But it means we rely on eviction working correctly. A bug in idle detection could keep hundreds of actors alive unnecessarily.
+- **Reconstruction on every actor startup.** There is no fast "just load the relational data" path. Every PageActor startup rebuilds a LoroDoc from relational rows. This is a few milliseconds per actor, acceptable now, but would need revisiting if LoroDoc reconstruction ever becomes expensive (very large documents, complex schema).
+- **Compiler fan-out for context building.** An AI context-building pass may need to read 20+ Pages at Tier 1. Each read spins up a PageActor (if not already active), sends a query, and waits for a response. This is 20+ sequential or parallel actor interactions. Fast individually, but the fan-out pattern needs to be implemented carefully to avoid waterfall latency.
 - **RoomHandle enum boilerplate.** Adding a new room-capable actor type requires updating the RoomHandle enum and adding match arms. This is a small tax on extensibility in exchange for type safety - the compiler catches missing cases.
 - **Two suggestion mechanisms remain.** Document-level suggestions (marks on blocks in the LoroDoc) and graph-level suggestions (propose_relationship through the suggestion queue) use different storage, different review UIs, and different acceptance flows. This is inherited from the Hocuspocus ADR and remains a cost.
 - **Blocking may frustrate GMs.** Read-only blocks under pending suggestions mean the GM must accept or reject before editing that text. For a GM who wants to ignore AI suggestions and just write, this is friction. The escape hatch (reject to unblock) is one action, but if the AI produces many suggestions across many blocks, the GM may feel they're playing whack-a-mole with reject buttons rather than writing.
@@ -1368,9 +1368,9 @@ Free functions in `persistence/restore.rs` are honest about each actor's require
 ## Open Questions
 
 - **Loro's mark/annotation primitives.** The suggestion model depends on marks over block ranges. Loro's native support was validated in the spike for the simple case (one suggestion = one mark over a contiguous block range); see [`tiptap-loro-kameo-rust/server/src/suggestion_classifier.rs`](../../../experiment-single-campaign-editor/tiptap-loro-kameo-rust/server/src/suggestion_classifier.rs). Multi-mark overlap and mark survival across complex edits remain less exercised; needs focused testing during the production rollout.
-- **Non-CRDT side-channel wire framing.** Persistence health notifications (ThingNotification) and vocabulary change notifications (VocabularyNotification) both flow through the Notifiable trait, sharing the same subscriber list as CrdtRoom and multiplexed by the write_task via message envelope discrimination. The remaining open question is the exact wire format: custom message type in the loro-protocol envelope, a separate binary prefix, or JSON messages interleaved with binary CRDT frames. The spike used a rough JSON sidecar; production needs a deliberate choice.
+- **Non-CRDT side-channel wire framing.** Persistence health notifications (PageNotification) and vocabulary change notifications (VocabularyNotification) both flow through the Notifiable trait, sharing the same subscriber list as CrdtRoom and multiplexed by the write_task via message envelope discrimination. The remaining open question is the exact wire format: custom message type in the loro-protocol envelope, a separate binary prefix, or JSON messages interleaved with binary CRDT frames. The spike used a rough JSON sidecar; production needs a deliberate choice.
 - **`Persistent` trait shape: kameo-aware or kameo-free?** The current sketch keeps `Persistent` kameo-free as a pure algebra (`fn snapshot()` on the room), with the actor's `Message<PersistTick>` handler doing the dispatch. The alternative is `Persistent: Actor + Message<PersistTick, Reply = ...>`, which makes the wiring a compile-time check at the cost of binding the trait to kameo. The same question applies to `Notifiable` (which is more naturally kameo-shaped). To be resolved when the supervisor and DatabaseActor land.
 - **Conversation LoroDoc schema.** The exact block types for user messages, assistant messages, thinking tokens, and historical suggestion records in the conversation document. Needs design alongside the TipTap extension for the chat UI.
 - **Campaign graph change notification payloads.** The delivery mechanism is decided: RelationshipGraph implements `Notifiable`, sharing the same subscriber list and write_task multiplexing as other notification consumers. The remaining question is the notification payload shape: what information does the client need when an edge is added, removed, or when a `propose_relationship` is accepted? This determines whether the frontend can update its local graph representation incrementally or needs to re-fetch.
-- **Eviction under active suggestions.** If a ThingActor has pending suggestions and evicts on idle, the suggestions must survive in the database. On restoration, the actor must reconstruct both the document content and the suggestion marks. This is a `restore()` implementation concern, not an architectural one, but it's a correctness requirement that needs explicit testing.
+- **Eviction under active suggestions.** If a PageActor has pending suggestions and evicts on idle, the suggestions must survive in the database. On restoration, the actor must reconstruct both the document content and the suggestion marks. This is a `restore()` implementation concern, not an architectural one, but it's a correctness requirement that needs explicit testing.
 - **Permission-filter regression coverage.** Per-block status filtering happens client-side in the TipTap renderer. Property tests over `(doc state, status tree, role) -> rendered output` are the regression surface. The shape of those tests, where they live in the editor package, and whether they should run in CI on every editor PR is not yet decided.

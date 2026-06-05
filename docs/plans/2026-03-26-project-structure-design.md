@@ -70,7 +70,7 @@ familiar/
 │   └── campaign/          # Rust binary: Axum + kameo (actors, collab, AI, compiler)
 ├── crates/
 │   ├── app-shared/        # Rust library: IDs, auth, internal bearer middleware (platform + campaign)
-│   ├── campaign-shared/   # Rust library: Loro schema constants + ts-rs types, ToC/Thing schema, status (campaign only)
+│   ├── campaign-shared/   # Rust library: Loro schema constants + ts-rs types, ToC/Page schema, status (campaign only)
 │   ├── fs-id/             # Rust utility: branded-ID inner types and traits
 │   └── fs-id-macros/      # Rust utility: #[fs_id] proc-macro for typed ID newtypes
 ├── packages/
@@ -167,7 +167,7 @@ packages/types-app/
 
 ### `@familiar-systems/types-campaign` -- Campaign-scoped types
 
-Generated from `crates/campaign-shared/`. Contains campaign-scoped IDs (ThingId, BlockId, SessionId, SuggestionId, ConversationId) and document schema types (TocEntry, TocEntryKind, TocSuggestion, ThingHandle). The platform server never uses these types.
+Generated from `crates/campaign-shared/`. Contains campaign-scoped IDs (PageId, BlockId, SessionId, SuggestionId, ConversationId) and document schema types (TocEntry, TocEntryKind, TocSuggestion, PageHandle). The platform server never uses these types.
 
 ```
 packages/types-campaign/
@@ -177,14 +177,14 @@ packages/types-campaign/
     ├── index.ts           # Re-exports from generated/
     └── generated/         # ts-rs output -- machine-written, never hand-edited
         ├── id/
-        │   ├── ThingId.ts
+        │   ├── PageId.ts
         │   ├── BlockId.ts
         │   ├── SessionId.ts
         │   └── ...
         └── document/
             ├── TocEntry.ts
             ├── TocEntryKind.ts
-            └── ThingHandle.ts
+            └── PageHandle.ts
 ```
 
 Both packages follow the same structure: `src/index.ts` is the hand-curated public API that re-exports generated types and may add TypeScript-only utilities (type guards, narrowing helpers). The `src/generated/` directory is the output of `cargo test` and lives inside `src/` so that it falls within the tsconfig's compilation scope.
@@ -239,11 +239,11 @@ Talks to **platform.db**: users, campaigns, subscriptions, the routing table. St
 
 Handles everything after a campaign is checked out:
 
-- **WebSocket collaboration** -- Loro CRDTs synced via loro-dev/protocol. Room-based multiplexing: multiple Thing pages, ToC, and agent conversation streams share one WebSocket per campaign per client.
+- **WebSocket collaboration** -- Loro CRDTs synced via loro-dev/protocol. Room-based multiplexing: multiple pages, ToC, and agent conversation streams share one WebSocket per campaign per client.
 - **Campaign-scoped REST** -- entity queries, suggestion review, conversation messages. The SPA calls the campaign server directly for these (not through the platform).
 - **Campaign checkout/checkin** -- downloads SQLite files from object storage, opens them on local disk, spawns actor trees. Single-server ownership via lease-based routing.
-- **Actor lifecycle** -- CampaignSupervisor, ThingActor, TocActor, RelationshipGraph, UserSession, AgentConversation. Independent async tasks with per-actor persistence and eviction.
-- **AI agent conversations** -- AgentConversation actors connect to LLM inference (Nebius), run the serialization compiler, route compiled suggestions to ThingActors.
+- **Actor lifecycle** -- CampaignSupervisor, PageActor, TocActor, RelationshipGraph, UserSession, AgentConversation. Independent async tasks with per-actor persistence and eviction.
+- **AI agent conversations** -- AgentConversation actors connect to LLM inference (Nebius), run the serialization compiler, route compiled suggestions to PageActors.
 - **Job dispatch** -- dispatches audio processing to workers (k8s Jobs on GPU infrastructure), receives structured transcripts, routes them to actors for entity extraction and journal drafting.
 
 Talks to **campaigns/\*.db**: one file per campaign. Block records, entity data, relationships, search text, embeddings, suggestion outcomes, conversation history. Campaign-as-file isolation enables trivial GDPR deletion, PR preview branching (`cp`), and horizontal scaling (add servers, route campaigns).
@@ -256,11 +256,11 @@ The litmus test: **does the platform server need this type?** If yes, it belongs
 
 ### `crates/campaign-shared/` -- the campaign-only crate
 
-Campaign-scoped types the platform server never touches: Loro schema constants and ts-rs-exported types (ToC/Thing container and key names, `TocEntry`, `ThingHandle`), ProseMirror interop conventions, onboarding DTOs, campaign-scoped IDs (ThingId, BlockId, SessionId, SuggestionId, ConversationId), view status types (GmOnly, Known, Retconned), and WebSocket notification types. The concrete Loro doc wrappers (`LoroThingDoc`, `LoroTocDoc`) and the `CrdtDoc` trait are app-local in `apps/campaign` (`src/loro/`, `src/domain/crdt/`), not here. Only the campaign server depends on this crate.
+Campaign-scoped types the platform server never touches: Loro schema constants and ts-rs-exported types (ToC/Page container and key names, `TocEntry`, `PageHandle`), ProseMirror interop conventions, onboarding DTOs, campaign-scoped IDs (PageId, BlockId, SessionId, SuggestionId, ConversationId), view status types (GmOnly, Known, Retconned), and WebSocket notification types. The concrete Loro doc wrappers (`LoroPageDoc`, `LoroTocDoc`) and the `CrdtDoc` trait are app-local in `apps/campaign` (`src/loro/`, `src/domain/crdt/`), not here. Only the campaign server depends on this crate.
 
 ### Utility crates
 
-Smaller cross-cutting libraries used by both shared crates live alongside them under `crates/`. Currently: `fs-id` and `fs-id-macros`, which provide the `#[fs_id]` attribute macro for type-safe ID branding (the boilerplate behind `CampaignId`, `ThingId`, etc., including the ts-rs / serde / utoipa derives). The split into two crates is a Rust requirement: proc-macro crates must be standalone.
+Smaller cross-cutting libraries used by both shared crates live alongside them under `crates/`. Currently: `fs-id` and `fs-id-macros`, which provide the `#[fs_id]` attribute macro for type-safe ID branding (the boilerplate behind `CampaignId`, `PageId`, etc., including the ts-rs / serde / utoipa derives). The split into two crates is a Rust requirement: proc-macro crates must be standalone.
 
 ### Type generation
 
@@ -335,7 +335,7 @@ apps/web/
 │   │   └── campaign/
 │   │       ├── layout.tsx           # Campaign shell (sidebar, nav)
 │   │       ├── overview.tsx
-│   │       ├── thing.$thingId.tsx   # Thing page (entity editor)
+│   │       ├── page.$pageId.tsx   # Page editor
 │   │       ├── graph.tsx            # Graph visualization
 │   │       └── settings.tsx
 │   ├── components/

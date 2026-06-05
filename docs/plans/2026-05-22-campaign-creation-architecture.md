@@ -160,8 +160,8 @@ The `loaded` flag on `GET /api/campaigns` responses comes from this cache. It le
 ### Campaign tier (per-campaign SQLite, `apps/campaign`)
 
 - **campaign_metadata**: `id` (PK, check id=1), `campaign_id`, `owner_user_id`, `name`, `tagline`, `game_system`, `content_locale`, `wizard_completed_at`, `created_at`, `updated_at`
-- **things**: `id` (Nanoid PK), `name`, `status`, `prototype_id` (nullable self-ref), `created_at`, `updated_at`
-- **blocks**: `id` (Nanoid PK), `thing_id` (FK cascade), `status`, `ordering` (i64), `body`, `created_at`, `updated_at`
+- **pages**: `id` (Nanoid PK), `name`, `status`, `prototype_id` (nullable self-ref), `created_at`, `updated_at`
+- **blocks**: `id` (Nanoid PK), `page_id` (FK cascade), `status`, `ordering` (i64), `body`, `created_at`, `updated_at`
 - **block_embeddings_vec**: `id` (Nanoid PK), `block_id` (FK cascade), `embedding` (sqlite-vec vector), `created_at`
 
 ### Platform tier (single SQLite, `apps/platform`)
@@ -175,6 +175,6 @@ The `loaded` flag on `GET /api/campaigns` responses comes from this cache. It le
 - **WebSocket**: CRDT sync (Loro protocol), room multiplexing, presence. Supervisor uses connection count as activity signal for checkout/checkin lifecycle.
 - **Server-sent events**: Error notifications (persistence degraded, server restarting).
 - **Template instantiation**: Compile YAML body to ProseMirror-shaped LoroDoc. The compiler, instantiation route, and template hashes (`seeded_structure_hash`, `seeded_content_hash`) are designed but not built.
-- **ThingActor, TocActor, AgentConversation actors**: Per-entity actors for CRDT rooms. Currently only the supervisor and database writer exist.
-- **Campaign editor UI**: Post-wizard view is a placeholder. Needs the editor surface, thing navigation, ToC rendering.
+- **PageActor, TocActor, AgentConversation actors**: Per-entity actors for CRDT rooms. Currently only the supervisor and database writer exist.
+- **Campaign editor UI**: Post-wizard view is a placeholder. Needs the editor surface, page navigation, ToC rendering.
 - **Starter template content**: Template YAML files are partially authored. System catalog entries exist but template coverage across systems is incomplete.

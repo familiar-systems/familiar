@@ -5,7 +5,7 @@
 
 ## Context
 
-familiar.systems models campaign worlds as a graph of Things connected by Relationships. The GM needs to know not only what the state of their world is but what the state of their world was. Core queries:
+familiar.systems models campaign worlds as a graph of Pages connected by Relationships. The GM needs to know not only what the state of their world is but what the state of their world was. Core queries:
 
 - What is true as of right now?
 - What happened during journal 14?
@@ -29,11 +29,11 @@ The AI is the primary author of relationship changes. It proposes mutations usin
 
 ## The Graph Model
 
-### The graph is two things
+### The graph has two parts
 
-**Things** are the nodes. Entities, events, locations, factions, items. A Thing has a page (a CRDT document, collaboratively edited via TipTap/Loro).
+**Pages** are the nodes. Authored world content - entities (NPCs, locations, factions, items), events - plus sessions, arcs, and tags are all pages. A page *is* a CRDT document, collaboratively edited via TipTap/Loro; its `kind` marks the world-content pages as `entity`.
 
-**Relationships** are the edges. A Relationship always connects exactly two Things. Multi-entity interactions are modeled as an Event (which is a Thing) with multiple Relationships pointing at it.
+**Relationships** are the edges. A Relationship always connects exactly two pages. An interaction among more than two pages is modeled as an Event (itself a page) with multiple Relationships pointing at it.
 
 ### Relationships are bidirectional
 
@@ -49,8 +49,8 @@ One row, one relationship, two directions.
 
 ```
 id:                  UUID (primary key)
-thing_a:             FK -> things
-thing_b:             FK -> things
+page_a:              FK -> pages
+page_b:              FK -> pages
 predicate_a_to_b:    TEXT (immutable after creation)
 predicate_b_to_a:    TEXT (immutable after creation)
 visibility:          ENUM { gm, players }
@@ -100,7 +100,7 @@ Deletion is not an invalidation. There is no `corrected` enum value. GM-only ope
 
 The GM can bypass the journal pipeline and manage relationships directly. Five operations:
 
-- **Create.** Add a new relationship between two Things. If a relationship already exists between the pair, the new one coexists alongside it. There is no separate "augment" operation.
+- **Create.** Add a new relationship between two pages. If a relationship already exists between the pair, the new one coexists alongside it. There is no separate "augment" operation.
 - **End.** The relationship was true and is no longer. Invalidated with `reason: superseded`. No replacement is created.
 - **Replace.** End an existing relationship and create a new one in a single gesture. Shortcut for end + create.
 - **Retcon.** Invalidate a relationship as never having been true in the fiction.
@@ -142,7 +142,7 @@ petgraph holds the current-state graph in memory. Relationships are loaded from 
 
 ## Names
 
-Entity names are an alias list on the Thing, not a temporal relationship. Names accumulate rather than replace. A display name pointer determines what the UI shows. All aliases are indexed for search.
+Entity names are an alias list on the page, not a temporal relationship. Names accumulate rather than replace. A display name pointer determines what the UI shows. All aliases are indexed for search.
 
 ## Consequences
 
@@ -150,7 +150,7 @@ Entity names are an alias list on the Thing, not a temporal relationship. Names 
 - GM manual tools exist as an escape hatch for direct manipulation, retcons, and error correction.
 - Every relationship has a non-nullable, immutable origin. No timestamp-range inference.
 - Sessions are the atomic unit of knowledge time. Snapshot and diff queries operate on session identity.
-- One row per predicate pair per entity pair. Multiple concurrent relationships between two Things are multiple rows.
+- One row per predicate pair per page pair. Multiple concurrent relationships between two pages are multiple rows.
 - The GM decides whether a new relationship supersedes or augments an existing one. The AI always proposes replacements; the GM can downgrade a replacement to an augmentation by rejecting the supersession and accepting only the new row.
 - Retconned facts vanish from the fictional timeline but remain in the database.
 - Factual errors are hard-deleted with no trace.

@@ -46,7 +46,7 @@ This document unifies them. The core insight: **all three workflows converge on 
 - _Nice to have:_ be able to remove the page's context
 
 3. The GM describes what they want, `@`-referencing specific nodes or blocks for additional context
-4. The AI streams a response, producing suggestions as it goes - new things, block updates, relationships
+4. The AI streams a response, producing suggestions as it goes - new entities, block updates, relationships
 5. Suggestions appear in real-time and are immediately durable
 6. The GM reviews inline or comes back later
 
@@ -99,7 +99,7 @@ When the agent window opens, its context is determined by **where the user opene
 | -------------------------------- | --------------------------------------------------------------------------------------- |
 | Session page (post-ingest)       | Session transcript, extracted entities, journal draft, existing suggestions from ingest |
 | Session page (pre-session)       | Recent session summaries, active plot threads, prep notes, upcoming session metadata    |
-| Thing page (NPC, location, etc.) | The thing's blocks, relationships, all mentions across sessions, connected entities     |
+| Entity page (NPC, location, etc.) | The page's blocks, relationships, all mentions across sessions, connected entities     |
 | Campaign overview                | High-level: arcs, major entities, open contradictions, unresolved threads               |
 
 The focal point determines the AI's **initial context retrieval**, not its capabilities. The GM can always pull in additional context with `@`-references: "Flesh out @Grimhollow, connecting it to @SilverCompact and @Kael."
@@ -118,9 +118,9 @@ The agent window does not have modes. Instead, the user's role determines what t
 
 **Write tools** (GM only):
 
-- Propose creating a new thing
-- Propose updating blocks on an existing thing
-- Propose creating a relationship between things
+- Propose creating a new entity
+- Propose updating blocks on an existing entity
+- Propose creating a relationship between entities
 - Propose a journal draft or journal block edits
 - Flag a contradiction between content
 
@@ -156,7 +156,7 @@ A **Suggestion** is a proposed mutation to the campaign graph. Every AI output t
 
 | Type                  | What it proposes                                                                                   |
 | --------------------- | -------------------------------------------------------------------------------------------------- |
-| `create_thing`        | A new node (NPC, location, item, faction, etc.) cloned from a prototype thing, with initial blocks |
+| `create_page`        | A new node (NPC, location, item, faction, etc.) cloned from a template, with initial blocks |
 | `update_blocks`       | New or modified blocks on an existing node                                                         |
 | `create_relationship` | A new edge between two nodes, with label and optional inverse label                                |
 | `update_relationship` | A modification to an existing relationship                                                         |
@@ -165,8 +165,8 @@ A **Suggestion** is a proposed mutation to the campaign graph. Every AI output t
 
 **Suggestion properties:**
 
-- **Type-specific payload**: Each suggestion type carries different data. A `create_thing` has a prototype reference (the ThingId of the prototype to clone from) and initial blocks. A `create_relationship` has source, target, label, and optional inverse. The payload is structured per type, not a generic blob.
-- **Target**: Which existing node this affects (null for `create_thing`).
+- **Type-specific payload**: Each suggestion type carries different data. A `create_page` has a prototype reference (the PageId of the prototype to clone from) and initial blocks. A `create_relationship` has source, target, label, and optional inverse. The payload is structured per type, not a generic blob.
+- **Target**: Which existing node this affects (null for `create_page`).
 - **Source references**: Which content blocks triggered this suggestion - the AI's evidence for why it's proposing this.
 - **Status**: `pending` → `accepted` | `rejected` | `dismissed`.
 - **Provenance**: Which conversation produced this suggestion.
@@ -203,7 +203,7 @@ Auto-rejected suggestions are still part of their conversation's history. The GM
 
 When the GM accepts a suggestion, the system creates the corresponding real content in the campaign graph:
 
-- `create_thing` → a new node is created with `gm_only` status (the default for all new content)
+- `create_page` → a new node is created with `gm_only` status (the default for all new content)
 - `update_blocks` → new blocks are added to the target node with `gm_only` status
 - `create_relationship` → a new edge is created with `gm_only` status
 - `journal_draft` → journal blocks are created on the session
@@ -310,7 +310,7 @@ These are explicitly deferred - noted for future design work, not silently assum
 
 - **MCP exposure of CampaignContext.** The [audio pipeline doc](../discovery/audio_ingest/audio_overview.md) describes exposing the campaign graph as an MCP server for external AI tools. This is compatible with the design here - the same CampaignContext interface, exposed via MCP, with status filtering. Not designed in detail yet.
 
-- **Conversation export.** The GM should be able to export a conversation to a GM-only thing for future reference - capturing reasoning, decisions, and context as a permanent part of the campaign knowledge base. The mechanism (one-click export? selective export?) is not designed yet.
+- **Conversation export.** The GM should be able to export a conversation to a GM-only page for future reference - capturing reasoning, decisions, and context as a permanent part of the campaign knowledge base. The mechanism (one-click export? selective export?) is not designed yet.
 
 - **SessionIngest pipeline stages.** The [audio pipeline doc](../discovery/audio_ingest/audio_overview.md) defines a 6-stage pipeline. This design treats the pipeline as an implementation detail behind the suggestion contract - the pipeline can be refined independently as long as its output is suggestions attached to a system conversation. The pipeline internals are not constrained by this design.
 

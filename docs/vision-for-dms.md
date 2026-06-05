@@ -55,7 +55,7 @@ As you play sessions, your campaign wiki grows automatically. It contains:
 
 - **Sessions** - the write-up of what happened each time you played, organized chronologically
 - **Arcs** - optional groupings across sessions (like chapters: "The Siege of Grimhollow" spanning sessions 7-12)
-- **Things** - every entity in your world: NPCs, locations, items, factions, monsters, lore. Each one has its own page that accumulates detail over time
+- **Entities** - everything in your world: NPCs, locations, items, factions, monsters, lore. Each one has its own page that accumulates detail over time
 - **Connections** - how things relate to each other: "Clericman worships Murdergod," "Kael frequents the Rusty Anchor," "The Silver Compact is allied with the Crown of Ashenmoor"
 
 Everything is linked together. When your session write-up mentions "the party met Kael at the Rusty Anchor," both Kael and the Rusty Anchor become clickable links to their pages. When you're looking at Kael's page, you can see every session he appeared in.

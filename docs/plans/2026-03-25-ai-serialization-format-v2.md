@@ -9,7 +9,7 @@
 
 ## Context
 
-familiar.systems's AI agent operates across three workflows (SessionIngest, Planning & Refinement, Q&A) that all require reading campaign page content and - for the write workflows - modifying it. The editing medium is a rich text editor (TipTap on ProseMirror) backed by Loro CRDTs synced via the loro-dev/protocol. The campaign structure is a graph: Things (nodes), relationships (edges), and blocks (atomic content units within pages).
+familiar.systems's AI agent operates across three workflows (SessionIngest, Planning & Refinement, Q&A) that all require reading campaign page content and - for the write workflows - modifying it. The editing medium is a rich text editor (TipTap on ProseMirror) backed by Loro CRDTs synced via the loro-dev/protocol. The campaign structure is a graph: Pages (nodes), relationships (edges), and blocks (atomic content units within pages).
 
 The agent cannot work directly with ProseMirror JSON or Loro CRDT operations - it needs a human-readable format it can reason about and edit. This document defines that format, the tool surface the agent uses to make changes, the suggestion model that governs how AI proposals interact with each other and with human editors, and the compilation pipeline that bridges agent edits back to the CRDT layer.
 
@@ -23,7 +23,7 @@ The core insight: **the serialization format is markdown**. The page tree is the
 
 1. **Markdown is the format.** The heading hierarchy (`#`, `##`, `###`) defines the page tree. Content is standard markdown. LLMs are most fluent in markdown - it is the format they are best trained to read and produce.
 2. **Headings are the tree.** `## History` is a section. `### Session 3` nested inside it is a child. The tree structure users create by dragging blocks in the editor and nesting headings is the same tree the agent sees and addresses.
-3. **References are wiki-links.** `{Silver Compact}` in the text is a reference to the Thing named "Silver Compact." The linker resolves names to graph nodes. The agent never sees or writes IDs.
+3. **References are wiki-links.** `{Silver Compact}` in the text is a reference to the Page named "Silver Compact." The linker resolves names to graph nodes. The agent never sees or writes IDs.
 4. **Non-markdown annotations exist only for data that isn't page content.** Graph-derived relationships, computed TOCs, and visibility status need markup. Everything else is markdown.
 5. **Status tightens downward, never loosens.** A `[gm_only]` annotation on a heading applies to the entire subtree. A block inside a `[gm_only]` section cannot be `[known]`. The only valid override direction is toward restriction.
 
@@ -111,7 +111,7 @@ The H1 is the page title. The bracketed annotation is the page's visibility stat
 
 Hashtag syntax, immediately after the title. Tags are graph relationships (`Kael -[tagged]-> NPC`) rendered in a compact form. Tags inherit the page's visibility status by default; individual tags can tighten with `[gm_only]`. In this example, players see `#NPC #Human` but not `#Villain`.
 
-Tags are Things in the graph - the "NPC" tag is itself a page. Tagging is a relationship with the label `tagged`.
+Tags are Pages in the graph - the "NPC" tag is itself a page. Tagging is a relationship with the label `tagged`.
 
 #### Preamble
 
@@ -132,7 +132,7 @@ staged. [gm_only]
 {Silver Compact}
 ```
 
-A reference to another Thing in the campaign graph, resolved by name. The linker resolves display names to graph nodes using fuzzy/alias matching against the current graph state. If ambiguous (two Things with the same name), the linker flags it for GM review.
+A reference to another Page in the campaign graph, resolved by name. The linker resolves display names to graph nodes using fuzzy/alias matching against the current graph state. If ambiguous (two Pages with the same name), the linker flags it for GM review.
 
 The agent always writes bare names. It does not see or manage IDs. Name changes are handled by the linker's alias matching - if "Yurgath Tribe" is renamed to "Yurgath Clan," the linker resolves the old name to the renamed entity.
 
@@ -148,7 +148,7 @@ References appear in running prose, not in a separate structure. They serve the 
 </relationships>
 ```
 
-Graph-derived, read-only context. Relationships are edges in the campaign graph, not page content. They appear in the serialization format so the agent can reason about the Thing's connections, but they are **not editable through the document**. The agent mutates relationships via the `propose_relationship` tool call.
+Graph-derived, read-only context. Relationships are edges in the campaign graph, not page content. They appear in the serialization format so the agent can reason about the Page's connections, but they are **not editable through the document**. The agent mutates relationships via the `propose_relationship` tool call.
 
 The format is: `@Target - outgoing label | incoming label`. The `@` prefix distinguishes relationship targets from inline wiki-link references.
 
@@ -201,7 +201,7 @@ The `[gm_only]` annotation is the only status marker that appears in the format.
 
 Sections are markdown headings. The heading hierarchy defines the page tree. Sections can nest (`### Session 0` inside `## History`). Section names must be unique within their parent - this enables path-based addressing (`History/Session 0`).
 
-Sections are defined by the prototype page. When a Thing is created from a prototype, it clones the prototype's section structure. The GM can add, remove, or rename sections. The agent addresses sections by the heading text.
+Sections are defined by the prototype page. When a Page is created from a prototype, it clones the prototype's section structure. The GM can add, remove, or rename sections. The agent addresses sections by the heading text.
 
 #### Pending Suggestions (Conversation-Scoped)
 
@@ -246,7 +246,7 @@ The indentation mirrors the heading hierarchy. Status annotations on sections ar
 
 ## Progressive Disclosure (Retrieval Tiers)
 
-The serialization format supports multiple retrieval tiers. The tier selected depends on how many Things the agent needs to know about and how deeply.
+The serialization format supports multiple retrieval tiers. The tier selected depends on how many Pages the agent needs to know about and how deeply.
 
 ### Tier 1: Index Card
 
@@ -361,14 +361,14 @@ create_page(
   prototype: string,       // prototype name, e.g. "NPC"
   content: string,         // full page in serialization format
   relationships?: [{       // initial relationships, batched
-    target: string,        // target Thing name
+    target: string,        // target Page name
     label: string,         // outgoing label
     inverse?: string       // incoming label
   }]
 )
 ```
 
-The content is the full markdown for the new page, including title, tags, preamble, and sections. The prototype determines the OnCreate tag (e.g., prototype "NPC" auto-tags the new Thing as `#NPC`) and provides the section structure as a starting point.
+The content is the full markdown for the new page, including title, tags, preamble, and sections. The prototype determines the OnCreate tag (e.g., prototype "NPC" auto-tags the new Page as `#NPC`) and provides the section structure as a starting point.
 
 Relationships are bundled with page creation so the agent can express "create Pip, and Pip pickpocketed Tormund" in one coherent proposal. The page and its relationships form a single reviewable unit - rejecting the page cascades to its relationships.
 
@@ -428,12 +428,12 @@ The anchor content (the part of `old_content` that appears unchanged in `new_con
 
 ### `propose_relationship`
 
-Propose a graph edge between two existing Things.
+Propose a graph edge between two existing Pages.
 
 ```
 propose_relationship(
-  source: string,          // source Thing name
-  target: string,          // target Thing name
+  source: string,          // source Page name
+  target: string,          // target Page name
   label: string,           // outgoing label
   inverse?: string         // incoming label
 )
@@ -519,7 +519,7 @@ When the serialization compiler produces markdown for a specific AgentConversati
 
 ### Suggestion lifecycle
 
-1. **Created:** The compiler processes a `suggest_replace` tool call, identifies target block UUIDs, and sends a compiled suggestion to the ThingActor. The ThingActor applies the mark and metadata. CRDT sync broadcasts to connected editors.
+1. **Created:** The compiler processes a `suggest_replace` tool call, identifies target block UUIDs, and sends a compiled suggestion to the PageActor. The PageActor applies the mark and metadata. CRDT sync broadcasts to connected editors.
 2. **Pending:** Visible in the editor. Target blocks are read-only. The GM can review in context.
 3. **Accepted:** Target blocks replaced with proposed content (new block UUIDs). Mark removed. Outcome recorded in `suggestion_outcomes`. Other suggestions whose target blocks overlapped with the accepted suggestion are now referencing changed/removed blocks - the editor flags them.
 4. **Rejected:** Mark removed. Original blocks become editable. Outcome recorded.
@@ -531,7 +531,7 @@ When the serialization compiler produces markdown for a specific AgentConversati
 CREATE TABLE suggestion_outcomes (
     suggestion_id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
-    thing_id TEXT NOT NULL,
+    page_id TEXT NOT NULL,
     author_user_id TEXT NOT NULL,
     model TEXT NOT NULL,
     outcome TEXT NOT NULL,          -- 'accepted', 'rejected', 'superseded'
@@ -543,11 +543,11 @@ CREATE TABLE suggestion_outcomes (
 
 **For users:** When a conversation is reopened, the conversation doc shows historical suggestions ("I proposed X"). The outcomes table decorates these with resolution status ("accepted 3 days ago by GM B"). The conversation doc is self-contained history; the outcomes table is read-time enrichment.
 
-**For evals:** Accept/reject rates per model, per workflow, per Thing type. Time-to-resolution. Supersession rates. This is the primary signal for model selection and prompt tuning.
+**For evals:** Accept/reject rates per model, per workflow, per page kind. Time-to-resolution. Supersession rates. This is the primary signal for model selection and prompt tuning.
 
 ### Suggestions in conversation history
 
-When an AgentConversation produces a suggestion, the full content (target blocks' current text and proposed replacement) is written into the **conversation LoroDoc** as a historical record AND sent to the ThingActor as a live suggestion. These are independent artifacts.
+When an AgentConversation produces a suggestion, the full content (target blocks' current text and proposed replacement) is written into the **conversation LoroDoc** as a historical record AND sent to the PageActor as a live suggestion. These are independent artifacts.
 
 The conversation record is immutable history - "I proposed X." It never changes after creation. The page suggestion is a living proposal that can be accepted, rejected, or superseded. A conversation should be entirely portable and self-contained. Reopening it after hammock time should not require resolving references to find out what was suggested.
 
@@ -561,7 +561,7 @@ The serialization format requires bidirectional transformation between the agent
 
 Produces the agent-readable format from the page's current state.
 
-**Inputs:** A `DocumentState` reference from the ThingActor, graph context from the RelationshipGraph actor, a retrieval tier, a role (GM vs player), and optionally a conversation ID for suggestion scoping.
+**Inputs:** A `DocumentState` reference from the PageActor, graph context from the RelationshipGraph actor, a retrieval tier, a role (GM vs player), and optionally a conversation ID for suggestion scoping.
 
 ```
 f(
@@ -577,22 +577,22 @@ f(
 
 1. Walk the LoroDoc tree, emitting markdown with heading hierarchy
 2. Extract status attributes from nodes, emit `[gm_only]` annotations where status tightens
-3. Resolve Thing references to display names, emit `{Name}` wiki-links
-4. Query the graph for the Thing's relationships and tags, emit `<relationships>` and hashtag blocks
+3. Resolve Page references to display names, emit `{Name}` wiki-links
+4. Query the graph for the Page's relationships and tags, emit `<relationships>` and hashtag blocks
 5. Compute TOC with word counts from the heading structure
 6. Filter by role - exclude `gm_only` subtrees for player-facing serialization
 7. If `conversation_id` is provided: find suggestion marks owned by that conversation, render as `<prior>/<suggestion>` pairs inline. Ignore all other conversations' suggestion marks.
 8. If `conversation_id` is `None`: ignore all suggestion marks, serialize pure content. Used for non-agent contexts (export, preview).
 
-**The compiler is a stateless service, not an actor.** It needs the ThingActor's document state AND the relationship graph AND embedding results (Tier 2) AND role context AND conversation scoping. Putting serialization on the actor would require the actor to hold references to all of these services. The compiler is a pure function with multiple inputs. The AgentConversation orchestrates: asks the ThingActor for DocumentState, asks the RelationshipGraph for context, calls the compiler.
+**The compiler is a stateless service, not an actor.** It needs the PageActor's document state AND the relationship graph AND embedding results (Tier 2) AND role context AND conversation scoping. Putting serialization on the actor would require the actor to hold references to all of these services. The compiler is a pure function with multiple inputs. The AgentConversation orchestrates: asks the PageActor for DocumentState, asks the RelationshipGraph for context, calls the compiler.
 
-**The compiler always reads from actors.** There is no "read from DB for cold entities" path. Every ThingActor always holds a full LoroDoc, reconstructed from relational data on startup. Spinning up a ThingActor to serve a Tier 1 index card costs one libSQL read and a few milliseconds of CPU. The actor evicts itself on idle. One read path, through actors, always.
+**The compiler always reads from actors.** There is no "read from DB for cold entities" path. Every PageActor always holds a full LoroDoc, reconstructed from relational data on startup. Spinning up a PageActor to serve a Tier 1 index card costs one libSQL read and a few milliseconds of CPU. The actor evicts itself on idle. One read path, through actors, always.
 
 ### `f⁻¹()` - Agent Tool Call → Compiled Suggestion (Compilation)
 
-Processes a `suggest_replace` call into a compiled suggestion ready for the ThingActor to apply.
+Processes a `suggest_replace` call into a compiled suggestion ready for the PageActor to apply.
 
-**Inputs:** The tool call, the current serialized markdown (from `f()` with conversation scoping), and the ThingActor's document state (for block UUID resolution).
+**Inputs:** The tool call, the current serialized markdown (from `f()` with conversation scoping), and the PageActor's document state (for block UUID resolution).
 
 ```
 f_inverse(
@@ -624,11 +624,11 @@ struct SuggestionProvenance {
 }
 ```
 
-The ThingActor receives this and applies it - adding the mark, storing the metadata, broadcasting via CRDT sync. The compiler produces the suggestion. The actor applies it. Clean separation.
+The PageActor receives this and applies it - adding the mark, storing the metadata, broadcasting via CRDT sync. The compiler produces the suggestion. The actor applies it. Clean separation.
 
 **String match failure is the feedback mechanism.** If the content has changed since the agent last read the page (because the agent's own earlier suggestion was accepted or rejected), the string match fails. The agent gets an error, re-reads via `f()`, sees the current state, and adapts. This is the same mechanism from the v1 design - what changed is that other conversations' suggestions and human edits to non-suggested blocks no longer cause failures.
 
-**Superseding proposals from the same conversation:** When the compiler identifies that the target blocks already have a pending suggestion from the same conversation, the `CompiledSuggestion` includes a supersession flag. The ThingActor removes the old suggestion mark (recording `superseded` in the outcomes table) and applies the new one.
+**Superseding proposals from the same conversation:** When the compiler identifies that the target blocks already have a pending suggestion from the same conversation, the `CompiledSuggestion` includes a supersession flag. The PageActor removes the old suggestion mark (recording `superseded` in the outcomes table) and applies the new one.
 
 **Validation:** The compiler rejects invalid status inheritance (a `[known]` block inside a `[gm_only]` section), unresolvable references (logged for GM review, not a hard failure), and structural violations (headings that don't match the prototype's expected sections - warning, not error).
 
@@ -636,7 +636,7 @@ The ThingActor receives this and applies it - adding the mark, storing the metad
 
 Wiki-link references `{Name}` are resolved by the linker at both serialization and compilation time.
 
-**On serialization (`f()`):** Thing references in LoroDoc nodes (stored with node IDs internally) are projected to display names. The agent sees `{Silver Compact}`, not an internal ID.
+**On serialization (`f()`):** Page references in LoroDoc nodes (stored with node IDs internally) are projected to display names. The agent sees `{Silver Compact}`, not an internal ID.
 
 **On compilation (`f⁻¹()`):** Display names in agent output are resolved back to graph nodes.
 
@@ -655,7 +655,7 @@ This is the same entity resolution capability required for SessionIngest transcr
 
 ### Prototypes Define Structure
 
-A prototype (template) page defines the section layout, status defaults, and placeholder content for a Thing type. When a Thing is created from a prototype, the system clones the prototype's structure.
+A prototype (template) page defines the section layout, status defaults, and placeholder content for a page kind. When a page is created from a prototype, the system clones the prototype's structure.
 
 Example NPC prototype:
 
@@ -690,13 +690,13 @@ What would you need to know if they came up unexpectedly?}
 
 ### OnCreate Directives
 
-Prototypes specify tags that are automatically applied to Things created from them. The NPC prototype has `OnCreate: tag as #NPC`. This creates a `tagged` relationship to the NPC tag-Thing at creation time.
+Prototypes specify tags that are automatically applied to Pages created from them. The NPC prototype has `OnCreate: tag as #NPC`. This creates a `tagged` relationship to the NPC tag-Page at creation time.
 
-The prototype itself is not tagged NPC - it _creates things that are tagged NPC_. This prevents prototypes from appearing in tag queries alongside actual campaign entities.
+The prototype itself is not tagged NPC - it _creates entities that are tagged NPC_. This prevents prototypes from appearing in tag queries alongside actual campaign entities.
 
 ### AI Instructions Block
 
-Prototypes include an AI instructions block that tells the agent how to work with this Thing type:
+Prototypes include an AI instructions block that tells the agent how to work with this page kind:
 
 ```md
 ## AI Instructions
@@ -712,11 +712,11 @@ The AI instructions block is visible to the GM and editable. The GM controls how
 
 ### Agent Instruction Stack
 
-When the agent works with a Thing, it composes instructions from two layers:
+When the agent works with a Page, it composes instructions from two layers:
 
 1. **Global skills** - shipped with the product, define general capabilities. `create-or-edit-preamble.md` knows what makes a good preamble. `draft-journal-entry.md` knows how to compress a transcript into a session narrative. `propose-relationships.md` knows how to infer relationships from narrative content.
 
-2. **Prototype AI instructions** - campaign-specific, per-Thing-type, editable by the GM. Define what this specific template needs, what sections to prioritize, what tone to use.
+2. **Prototype AI instructions** - campaign-specific, per-template, editable by the GM. Define what this specific template needs, what sections to prioritize, what tone to use.
 
 For Milestone 1 (single starter pack: Fantasy Generic), game-system-specific skills (D&D knowledge, Daggerheart knowledge) are part of the global skill layer. When the starter pack marketplace exists, system-specific skills become a third layer between global and prototype instructions.
 
@@ -779,7 +779,7 @@ The session preamble is the single most important piece of text for retrieval ac
 
 **Decision:** References are bare display names (`{Silver Compact}`), resolved by a linker. The agent never sees or manages entity IDs.
 
-**Why:** IDs are noise in the agent's context window and a source of transcription errors in LLM output. Name-based resolution is already a required capability (SessionIngest entity resolution). The linker handles renames via alias/fuzzy matching. Ambiguity (two Things with the same name) is rare and flagged for GM review - a data quality signal, not a system failure.
+**Why:** IDs are noise in the agent's context window and a source of transcription errors in LLM output. Name-based resolution is already a required capability (SessionIngest entity resolution). The linker handles renames via alias/fuzzy matching. Ambiguity (two Pages with the same name) is rare and flagged for GM review - a data quality signal, not a system failure.
 
 ### Relationships as Read Context, Mutated via Tools
 
@@ -813,9 +813,9 @@ The session preamble is the single most important piece of text for retrieval ac
 
 ### Suggestion Duplication over Cross-Reference
 
-**Decision:** Suggestions are duplicated - one copy as history in the conversation LoroDoc, one as a live mark on the Thing's LoroDoc.
+**Decision:** Suggestions are duplicated - one copy as history in the conversation LoroDoc, one as a live mark on the Page's LoroDoc.
 
-**Why:** A conversation should be entirely self-contained and portable. It's a document. Reopening it after days should not require resolving foreign keys or joining ThingActor rooms to discover what was suggested. The active suggestion on the page has its own lifecycle (accepted, rejected, superseded) that the conversation doesn't need to track structurally. The outcomes table provides status decoration at read time for users who want it, and eval signal for measuring agent quality.
+**Why:** A conversation should be entirely self-contained and portable. It's a document. Reopening it after days should not require resolving foreign keys or joining PageActor rooms to discover what was suggested. The active suggestion on the page has its own lifecycle (accepted, rejected, superseded) that the conversation doesn't need to track structurally. The outcomes table provides status decoration at read time for users who want it, and eval signal for measuring agent quality.
 
 ### Status Tightens Downward Only
 
@@ -827,7 +827,7 @@ The session preamble is the single most important piece of text for retrieval ac
 
 **Decision:** Tags render as `#NPC #Human #Villain [gm_only]` using hashtag syntax.
 
-**Why:** Universally understood (Obsidian, Logseq, social media). Visually distinct from narrative relationships. Tags are graph relationships (`tagged` edges to tag-Things) but serve a different purpose than narrative edges - the hashtag syntax makes this distinction visible.
+**Why:** Universally understood (Obsidian, Logseq, social media). Visually distinct from narrative relationships. Tags are graph relationships (`tagged` edges to tag-Pages) but serve a different purpose than narrative edges - the hashtag syntax makes this distinction visible.
 
 ### Preamble as Implicit Position
 
@@ -847,7 +847,7 @@ The session preamble is the single most important piece of text for retrieval ac
 
 - **Proposed page visibility in other pages' serialization.** When SessionIngest creates a proposed NPC, should that NPC appear in other pages' `<relationships>` blocks and RAG results? Likely yes with a `[proposed]` annotation, but the lifecycle and cleanup model needs design.
 
-- **Suggestion expiry.** The mark model needs an expiry mechanism - either a TTL checked at render time, or a periodic sweep by the ThingActor. The outcomes table should record `expired` as an outcome.
+- **Suggestion expiry.** The mark model needs an expiry mechanism - either a TTL checked at render time, or a periodic sweep by the PageActor. The outcomes table should record `expired` as an outcome.
 
 - **Bulk review UX.** After SessionIngest produces many suggestions across a page, is there a "review mode" that walks through suggestions sequentially? The backend needs to support whatever bulk operations the UX requires (the SuggestionTarget trait may need batch methods).
 

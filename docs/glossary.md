@@ -30,31 +30,37 @@ The interconnected structure of nodes, blocks, and edges that represents the cam
 
 The AI is chiefly responsible for assembling the graph, not the GM. The GM uploads session recordings, reviews AI proposals, and makes corrections - but the heavy lifting of entity extraction, relationship mapping, and wiki maintenance is the AI's job. The key promise is "15 minutes of review, not hours of bookkeeping." The terminology below describes the data model the AI constructs and the GM curates. We need to provide a good UI for humans to interact with this model directly when they choose to, but we are primarily concerned with providing an excellent harness for the AI to build it.
 
+> _Vocabulary: a **page** is any node in the graph; an **entity** is the page kind that holds authored world content. The AI extracts entities; the graph is made of pages._
+
 **Campaign** - The GM's entire body of work for one group playing in one world. The top-level container and the unit of data isolation - one database, one world, no cross-campaign queries or shared state. For GMs running a multi-year sandbox, the campaign _is_ the world. For GMs running sequential bounded stories (Curse of Strahd, then Tomb of Annihilation) in a shared setting, the campaign is the persistent world and each story is an arc within it.
 
-**Thing** - The universal node type in the graph. Everything with a page is a Thing: NPCs, locations, items, factions, lore entries, player characters, monsters, sessions, arcs, tags, and anything else the GM tracks. Some Things have special behavior - sessions carry temporal data and aggregate sub-entities, tags auto-generate a category listing - but they are all Things with pages, blocks, and relationships. Things emerge from play - they can start as nothing more than a name mentioned once and grow organically.
+**Page** - The universal node in the campaign graph. A page is one resource: URL-addressable (`/p/:id`), backed by a LoroDoc, composed of blocks, and connected to other pages by relationships. NPCs, locations, items, factions, lore entries, player characters, monsters, sessions, arcs, and tags are all pages. A page's `kind` (see **PageKind**) distinguishes the few cases that differ in document structure or need engine-level behavior - a session carries temporal data, a tag auto-generates a category listing - but everything else (NPC vs. Location, Villain vs. Quest-Giver) is expressed through tags, templates, and relationships, not the page type. Pages emerge from play - a page can start as nothing more than a name mentioned once and grow organically.
 
-_"Thing" is internal vocabulary for the domain model and codebase. Users never see it._ They create an NPC, a Location, a Session - always from a template or a special type. The creation menu reads `New → Session | Arc | Player Character | NPC | Location | ...`, not "New Thing."
+_"Page" is the supertype that reaches a URL and the API; it is not the word a GM authors with._ They create an NPC, a Location, a Session - always from a template or a kind. The creation menu reads `New → Session | Arc | Player Character | NPC | Location | ...`, not "New Page."
 
-**Template** - A Thing marked as a template. Defines the default page layout and block structure for new Things of that type. When a Thing is created from a template, it clones the template's section structure. Templates carry OnCreate directives (e.g., `OnCreate: tag as #NPC`) and an AI Instructions block. _(Some ADRs use the term "prototype.")_
+**PageKind** - The discriminant on a page (its `kind` field): `entity | session | skill | template`. A kind exists only when pages differ in document **structure** (a different Loro schema) or need a **systemic action the engine can't infer from content** - never for editorial or semantic differences, which live in content, tags, and relationships. Today only `entity` and `template` exist in code; `session` lands with the audio pipeline and `skill` with the agent system. Precedent: `TocEntryKind`. Adding a concept is adding a case, so the compiler points at every site that must handle it.
+
+**entity** - The page kind (`kind == entity`) for authored world content: NPCs, locations, factions, items, lore, arcs, overviews. The collective, user-facing noun for "what exists in the world" and the AI's extraction/resolution/search target end to end. The concrete label a GM picks for one entity stays specific - NPC, Location - via its tag and template; "entity" is the category, not the per-page label.
+
+**Template** - A page of kind `template`: a prototype that `entity` pages clone. Defines the default section structure and block layout for new entities of that type (an NPC template, a Location template). Creating an entity from a template clones its section structure; `prototypeId` tracks the lineage. Templates render a subset of an entity's sections (no derived sections like an AI "sounds like" block), carry OnCreate directives (e.g., `OnCreate: tag as #NPC`) and an AI Instructions block, are excluded from RAG/embedding, and are surfaced to the agent as a `create_page` prototype. `kind == entity` listings exclude them. _(Some ADRs use the term "prototype.")_
 
 > See [templates-as-prototype-pages](plans/2026-02-20-templates-as-prototype-pages.md) for the full design.
 
-**Block** - The atomic content unit. Everything inside a Thing - text, headings, stat blocks, images - is a block. Blocks are the grain at which content is referenced, embedded, and targeted by suggestions. Each block has a UUID (`BlockId`).
+**Block** - The atomic content unit. Everything inside a page - text, headings, stat blocks, images - is a block. Blocks are the grain at which content is referenced, embedded, and targeted by suggestions. Each block has a UUID (`BlockId`).
 
-**Embed** - A block from one Thing embedded live in another. Edit it in one place, it updates everywhere. An embed is both a rendering behavior (show content inline) and an edge in the graph (a block-to-block mention), making the dependency queryable.
+**Embed** - A block from one page embedded live in another. Edit it in one place, it updates everywhere. An embed is both a rendering behavior (show content inline) and an edge in the graph (a block-to-block mention), making the dependency queryable.
 
-**Arc** - A Thing representing a narrative grouping across sessions. "The Siege of Grimhollow" spanning sessions 7-12. Optional - not every campaign uses them. For GMs who run sequential bounded stories in a persistent world, each "campaign" in their parlance maps to an arc in the product's model.
+**Arc** - A page representing a narrative grouping across sessions. "The Siege of Grimhollow" spanning sessions 7-12. Optional - not every campaign uses them. For GMs who run sequential bounded stories in a persistent world, each "campaign" in their parlance maps to an arc in the product's model.
 
-> See [vision.md](vision.md) for the core concepts (Campaign, Thing, Block, Arc).
+> See [vision.md](vision.md) for the core concepts (Campaign, Page, Block, Arc).
 
 ### Sessions
 
-**Session** - A Thing with special behavior: the fundamental temporal unit of a campaign and the unit of knowledge time. Represents a single gathering at the table. The temporal coordinate for the entire campaign's state history - "show me the world as of session 10" means "after all relationship mutations from session 10 have been applied." Sessions are ordered chronologically and form the campaign timeline's spine.
+**Session** - A page with special behavior: the fundamental temporal unit of a campaign and the unit of knowledge time. Represents a single gathering at the table. The temporal coordinate for the entire campaign's state history - "show me the world as of session 10" means "after all relationship mutations from session 10 have been applied." Sessions are ordered chronologically and form the campaign timeline's spine.
 
 A new session automatically links to the previous session by date. For West Marches or interleaved play, the GM can change this - what matters narratively is the last session _these characters_ were in, not the most recent calendar entry. Attendance records are load-bearing for narrative continuity, not just for tracking "who was there."
 
-The sub-entities below are data _on_ the session Thing, not Things themselves:
+The sub-entities below are data _on_ the session page, not pages themselves:
 
 **Session Prep** - Freeform text with @mentions, written by the GM before the session. Plans, contingencies, dramatic questions. No relationships are created. No structured data. The @mentions give the AI signal about which entities are relevant to the upcoming session. The diff between prep and journal is valuable signal ("what happened vs. what was planned").
 
@@ -62,7 +68,7 @@ The sub-entities below are data _on_ the session Thing, not Things themselves:
 
 **GM Summary** - The GM's 4-5 bullet points or sentences about what happened. Lives within session sources. Has a precise role in the AI pipeline: it transforms extraction from open-ended ("what happened?") to guided ("find where _these things_ happened and fill in the gaps"). This is the oracle input - the segmentation prior and verification scaffold. _(When the GM doesn't upload audio, their notes become the primary input to journal drafting - functionally, they are writing the journal's raw material directly.)_
 
-**Session Journal** - The cleaned, GM-approved narrative of a session. The primary written artifact of the campaign and the canonical source of truth for what happened - for both the AI and players. AI-drafted from session sources, then GM-reviewed. Composed of blocks containing references to Things.
+**Session Journal** - The cleaned, GM-approved narrative of a session. The primary written artifact of the campaign and the canonical source of truth for what happened - for both the AI and players. AI-drafted from session sources, then GM-reviewed. Composed of blocks containing references to pages.
 
 The journal records _events_. The graph records _state_. "The party killed the baron" is a journal fact. "The baroness is a widow" is a graph mutation - a relationship change proposed by the AI as a _consequence_ of that journal fact, accepted by the GM. The journal is the ledger; the graph is the derived world state.
 
@@ -70,15 +76,15 @@ The journal records _events_. The graph records _state_. "The party killed the b
 
 ### Edges
 
-**Mention** - A link from a block to a Thing (or to another block). Created by typing `@` followed by a name in any block on any page - `@Kael` creates a clickable reference to Kael's page. The editor resolves the name against the campaign graph via autocomplete.
+**Mention** - A link from a block to a page (or to another block). Created by typing `@` followed by a name in any block on any page - `@Kael` creates a clickable reference to Kael's page. The editor resolves the name against the campaign graph via autocomplete.
 
-Mentions are derived, not authored - created automatically when the AI detects entity references in text or when the GM writes an `@`-reference. They carry no label (the connection is always "mentions") and inherit status from their parent block. Mentions power backlinks ("where is this entity mentioned?"), context retrieval for the AI, and clickable references throughout the wiki. Embeds are a special case of block-to-block mention that renders its target inline.
+Mentions are derived, not authored - created automatically when the AI detects entity references in text or when the GM writes an `@`-reference. They carry no label (the connection is always "mentions") and inherit status from their parent block. Mentions power backlinks ("where is this page mentioned?"), context retrieval for the AI, and clickable references throughout the wiki. Embeds are a special case of block-to-block mention that renders its target inline.
 
-**Relationship** - A node-to-node semantic connection. Bidirectional: carries a forward predicate and a reverse predicate (e.g., "is a resident of" / "is the home of") in a single row. Two Things can have multiple concurrent relationships - the Duke and the Duchess are both "married to" and "rivals with" each other, each a separate row. Predicates are immutable - when a relationship evolves, the old row is invalidated and a new one replaces it, or a new row coexists alongside it. The GM decides which.
+**Relationship** - A node-to-node semantic connection. Bidirectional: carries a forward predicate and a reverse predicate (e.g., "is a resident of" / "is the home of") in a single row. Two pages can have multiple concurrent relationships - the Duke and the Duchess are both "married to" and "rivals with" each other, each a separate row. Predicates are immutable - when a relationship evolves, the old row is invalidated and a new one replaces it, or a new row coexists alongside it. The GM decides which.
 
 The primary way relationships enter the graph is through the AI: the GM uploads session sources, the AI proposes relationship changes based on what happened, and the GM reviews and accepts. Manual tools exist for direct manipulation, but the point is to let the AI handle the bookkeeping. Relationships have an immutable, non-nullable origin: either `prior` (true before the campaign started) or `session(FK)` (became true in the context of that session).
 
-**Tag** - A Thing representing a classification (e.g., `#NPC`, `#Human`). Tags are never created explicitly - tagging a Thing with `#Villain` auto-creates the Villain tag Thing if it doesn't exist. Tagging is a relationship with the label `tagged`. A tag's page auto-generates a listing of everything tagged with it, exactly like a [Wikipedia category page](https://en.wikipedia.org/wiki/Category:2001_establishments_in_the_United_States). The GM can add content to a tag's page - notes like "NPCs in this campaign tend to be untrustworthy" become context the AI uses when working with tagged entities.
+**Tag** - A page representing a classification (e.g., `#NPC`, `#Human`). Tags are never created explicitly - tagging a page with `#Villain` auto-creates the Villain tag page if it doesn't exist. Tagging is a relationship with the label `tagged`. A tag's page auto-generates a listing of everything tagged with it, exactly like a [Wikipedia category page](https://en.wikipedia.org/wiki/Category:2001_establishments_in_the_United_States). The GM can add content to a tag's page - notes like "NPCs in this campaign tend to be untrustworthy" become context the AI uses when working with tagged entities.
 
 > See [entity-relationship-temporal-model](plans/2026-04-10-entity-relationship-temporal-model.md) for the relationship schema and temporal model.
 > See [ai-serialization-format-v2](plans/2026-03-25-ai-serialization-format-v2.md) for how mentions and relationships appear in the agent's markdown format.
@@ -129,7 +135,7 @@ A single field on every primitive - nodes, relationships, and blocks - capturing
 
 **Q&A (Question & Answer)** - Interactive, read-only workflow. Same agent window as P&R, but the AI has only read tools. Players use Q&A through a status-filtered view that structurally cannot reveal GM-only content.
 
-**Focal point** - The context anchor when the agent window opens. Determined by where the user opened it (a session page, a Thing page, campaign overview). Determines initial context retrieval, not capabilities.
+**Focal point** - The context anchor when the agent window opens. Determined by where the user opened it (a session page, an entity page, campaign overview). Determines initial context retrieval, not capabilities.
 
 **"Continue from here"** - The escape hatch for dead-end conversations. The GM starts a new conversation from the same focal point. The new conversation's AI has access to previous conversations and their suggestion history. Suggestions from the abandoned conversation remain durable and dismissable.
 
@@ -138,7 +144,7 @@ A single field on every primitive - nodes, relationships, and blocks - capturing
 
 ### Suggestions
 
-**Suggestion** - A durable, reviewable proposal from the AI. The universal output primitive for all AI write operations. Persisted the moment it's generated. Types: `create_thing`, `update_blocks`, `create_relationship`, `journal_draft`, `contradiction`.
+**Suggestion** - A durable, reviewable proposal from the AI. The universal output primitive for all AI write operations. Persisted the moment it's generated. Types: `create_page`, `update_blocks`, `create_relationship`, `journal_draft`, `contradiction`.
 
 **Suggestion mark** - The underlying representation of a content suggestion. A mark on block UUID ranges with proposed replacement content as metadata. The original blocks remain in the document tree unchanged. Follows TipTap's comment-mark pattern.
 
@@ -168,13 +174,13 @@ A single field on every primitive - nodes, relationships, and blocks - capturing
 
 **Serialization compiler** - The stateless service that transforms between LoroDoc state and the agent's markdown format. Two directions: `f()` (LoroDoc → markdown) and `f⁻¹()` (agent tool call → compiled suggestion). Not an actor - a pure function with multiple inputs.
 
-**Compiled suggestion** - The output of `f⁻¹()`. Contains target block IDs, proposed content, and provenance. Ready for the ThingActor to apply as a mark.
+**Compiled suggestion** - The output of `f⁻¹()`. Contains target block IDs, proposed content, and provenance. Ready for the PageActor to apply as a mark.
 
 **The linker** - The component that resolves `{Name}` mentions to graph nodes using fuzzy/alias matching. Shared between serialization and compilation. Handles renames via alias matching. Flags ambiguity for GM review.
 
 **Retrieval tiers** - Progressive disclosure levels for the serialization format:
 
-- **Tier 1 (Index Card)** - Preamble + tags + relationships + TOC. ~100-150 tokens. Used when packing many entities into context.
+- **Tier 1 (Index Card)** - Preamble + tags + relationships + TOC. ~100-150 tokens. Used when packing many pages into context.
 - **Tier 2** - Index card + selected section content. Used for related entities that need more context.
 - **Tier 3 (Full Page)** - Complete serialized page with all content. Used when the agent is actively editing.
 
@@ -198,7 +204,7 @@ Audio goes in, structured session data comes out. Processing runs on GPU workers
 Three layers, most specific wins:
 
 1. **Global skills** - Shipped with the product. General capabilities like `create-or-edit-preamble.md`, `draft-journal-entry.md`.
-2. **Template AI instructions** - Campaign-specific, per-Thing-type, GM-editable. Define what a specific template needs.
+2. **Template AI instructions** - Campaign-specific, per-template, GM-editable. Define what a specific template needs.
 3. **(Future) System-specific skills** - Game-system knowledge from starter packs. Currently part of the global layer for Milestone 1.
 
 > See [ai-serialization-format-v2](plans/2026-03-25-ai-serialization-format-v2.md) for how the instruction stack composes.
@@ -240,13 +246,13 @@ Three layers, most specific wins:
 
 **CampaignSupervisor** - Root actor per campaign. Handles checkout/checkin, spawns and tracks child actors, routes WebSocket messages, manages the database connection. Pure orchestration - implements no domain traits.
 
-**ThingActor** - One per active Thing. Holds a LoroDoc, implements CrdtRoom (collaborative editing) and Persistent (snapshots to libSQL). Evictable on idle timeout.
+**PageActor** - One per active page (any kind). Holds a LoroDoc, implements CrdtRoom (collaborative editing) and Persistent (snapshots to libSQL). Evictable on idle timeout.
 
 **TocActor** - Manages the campaign's table of contents. CrdtRoom + Persistent.
 
-**RelationshipGraph** - In-memory graph of entity relationships using `petgraph`. Queryable (REST, AI context) + Persistent. Not a CrdtRoom - server-authoritative.
+**RelationshipGraph** - In-memory graph of page-to-page relationships using `petgraph`. Queryable (REST, AI context) + Persistent. Not a CrdtRoom - server-authoritative.
 
-**CampaignVocabulary** - In-memory projection of all entity names. Powers editor autocomplete and STT correction fuzzy matching. Notifiable (pushes changes to clients) + Queryable. Derived from Thing data, so not independently Persistent. Lives for the campaign's lifetime - too cheap and too depended-on to evict.
+**CampaignVocabulary** - In-memory projection of all page names. Powers editor autocomplete and STT correction fuzzy matching. Notifiable (pushes changes to clients) + Queryable. Derived from page data, so not independently Persistent. Lives for the campaign's lifetime - too cheap and too depended-on to evict.
 
 **UserSession** - Per-user-per-campaign. Tracks which rooms the user has joined, manages WebSocket message routing.
 
@@ -311,7 +317,7 @@ Three layers, most specific wins:
 
 **"Tolerant of neglect"** - See AI System section.
 
-**"The journal is the source of truth"** - When graph and journal conflict, the journal wins. The journal records events; the graph records derived state. Things and relationships emerge from journal content.
+**"The journal is the source of truth"** - When graph and journal conflict, the journal wins. The journal records events; the graph records derived state. Entities and relationships emerge from journal content.
 
 **"Structure is discovered, not imposed"** - The GM doesn't design an ontology before session 1. Relationship vocabulary is freeform and emerges over time. The AI clusters and normalizes.
 

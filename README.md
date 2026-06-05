@@ -33,7 +33,7 @@ packages/editor           @familiar-systems/editor, TipTap/ProseMirror schema + 
 
 The Rust backend splits into two binaries: the **platform** (auth, campaign CRUD, routing table, discover) and the **campaign server** (actor hierarchy, WebSocket collaboration, AI conversations, serialization compiler). Cross-binary communication goes over HTTP, with the platform owning the routing table that maps each campaign to the shard currently hosting it. TypeScript is frontend-only; domain logic lives in Rust.
 
-The shared-library split mirrors the binary split. `app-shared` holds types and traits both servers need (IDs, auth primitives). `campaign-shared` holds campaign-only concerns (Loro CRDT wrappers, ToC/Thing schema, ProseMirror conventions). Each Rust crate exports TypeScript types via ts-rs into its sibling package, so the client/server boundary is enforced by the dependency graph.
+The shared-library split mirrors the binary split. `app-shared` holds types and traits both servers need (IDs, auth primitives). `campaign-shared` holds campaign-only concerns (Loro CRDT wrappers, ToC/Page schema, ProseMirror conventions). Each Rust crate exports TypeScript types via ts-rs into its sibling package, so the client/server boundary is enforced by the dependency graph.
 
 See [project structure](docs/plans/2026-03-26-project-structure-design.md) for the full design.
 

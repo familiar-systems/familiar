@@ -19,11 +19,11 @@ If we can capture what happens at the table - through audio recording, transcrip
 A specialized, non-linear, AI-assisted campaign notebook. Two interlocking systems:
 
 1. **The Journal** - captures what happened (sessions, recordings, narrative)
-2. **The Things** - captures what exists in the world (NPCs, locations, items, factions, lore)
+2. **The Entities** - captures what exists in the world (NPCs, locations, items, factions, lore)
 
-The AI is the connective tissue. It processes journal content, proposes new things and relationships, and keeps the campaign knowledge base growing with minimal GM effort. The AI layer connects to external language models - the hosted instance manages this; self-hosters configure their own provider.
+The AI is the connective tissue. It processes journal content, proposes new entities and relationships, and keeps the campaign knowledge base growing with minimal GM effort. The AI layer connects to external language models - the hosted instance manages this; self-hosters configure their own provider.
 
-The underlying structure is a **graph**: every entity is a node, every relationship is an edge, and content is composed of blocks that can be referenced and embedded across the graph.
+The underlying structure is a **graph**: every page is a node, every relationship is an edge, and content is composed of blocks that can be referenced and embedded across the graph.
 
 ### Distribution
 
@@ -47,9 +47,9 @@ familiar.systems is a **web application**. The GM opens a browser, logs in, and 
 
 ### Campaign
 
-The top-level container. A campaign holds everything: arcs, sessions, things, and the relationship graph that connects them. A GM might run multiple campaigns. Each campaign has its own graph, its own prototype things (templates), and its own emergent vocabulary of relationships.
+The top-level container. A campaign holds everything: arcs, sessions, entities, and the relationship graph that connects them. A GM might run multiple campaigns. Each campaign has its own graph, its own templates, and its own emergent vocabulary of relationships.
 
-A campaign can ship with a **starter pack** - a set of prototype things (NPC, Location, Item, Faction, etc.) and suggested relationship labels appropriate to the game system (D&D 5e, Mothership, Blades in the Dark, etc.). Prototypes are themselves things - editable pages that define what a new NPC or location looks like when created. These are defaults, not constraints. The GM can customize or ignore them.
+A campaign can ship with a **starter pack** - a set of templates (NPC, Location, Item, Faction, etc.) and suggested relationship labels appropriate to the game system (D&D 5e, Mothership, Blades in the Dark, etc.). Templates are themselves pages (of kind `template`) - editable, and they define what a new NPC or location looks like when created. These are defaults, not constraints. The GM can customize or ignore them.
 
 ### Arc
 
@@ -79,21 +79,21 @@ The workflow for producing a journal entry:
 2. **Raw journal**: Recordings are transcribed and combined with any typed notes into a raw, unstructured dump
 3. **AI draft**: The AI processes the raw journal against the campaign graph, producing a structured draft with entity references, suggested highlights, and narrative cleanup
 4. **GM review**: The GM edits the draft - correcting errors, adjusting tone, adding context the AI missed
-5. **Publication**: The final journal entry is saved. The AI extracts suggested things and relationships for the review queue.
+5. **Publication**: The final journal entry is saved. The AI extracts suggested entities and relationships for the review queue.
 
-The journal entry is composed of **blocks** (see below), and those blocks contain references to things in the campaign graph. When the GM writes "the party met Kael at the Rusty Anchor," both "Kael" and "Rusty Anchor" become clickable references to their respective nodes.
+The journal entry is composed of **blocks** (see below), and those blocks contain references to pages in the campaign graph. When the GM writes "the party met Kael at the Rusty Anchor," both "Kael" and "Rusty Anchor" become clickable references to their respective pages.
 
-### Things
+### Entities
 
-Things are the entities that make up the campaign world: NPCs, locations, items, factions, lore, monsters, player characters, and anything else the GM cares to track. Each thing is a node in the graph, populated with **blocks** of content. A thing can be created from a **prototype** - another thing marked as a template - which provides its initial page layout and block structure (an NPC page looks different from a location page because they were cloned from different prototypes).
+Entities are the campaign world's content: NPCs, locations, items, factions, lore, monsters, player characters, and anything else the GM cares to track. Each entity is a **page** - the universal, node-shaped unit in the graph (`kind == entity`) - populated with **blocks** of content. An entity is created from a **template** - a prototype page that provides its initial layout and block structure (an NPC page looks different from a location page because they were cloned from different templates).
 
-Things are not authored in isolation. They emerge from play:
+Entities are not authored in isolation. They emerge from play:
 
-- The AI detects a new NPC mentioned in a journal entry and proposes creating a node for them
-- The GM confirms, and the thing is created with whatever context the journal provides
-- Over subsequent sessions, the thing accumulates more references, more detail, and more relationships
+- The AI detects a new NPC mentioned in a journal entry and proposes creating a page for them
+- The GM confirms, and the entity is created with whatever context the journal provides
+- Over subsequent sessions, the entity accumulates more references, more detail, and more relationships
 
-Things can also be created manually - the GM might want to pre-build a city before the party arrives. But the system should never _require_ upfront authoring. A thing can start as nothing more than a name and a single journal reference, and grow organically.
+Entities can also be created manually - the GM might want to pre-build a city before the party arrives. But the system should never _require_ upfront authoring. An entity can start as nothing more than a name and a single journal reference, and grow organically.
 
 ### Block
 
@@ -107,15 +107,15 @@ Key behaviors:
 
 ### Edges
 
-The graph has two kinds of connections. Both are edges, but they serve different purposes, connect different things, and behave differently with respect to status.
+The graph has two kinds of connections. Both are edges, but they serve different purposes, connect different kinds of nodes, and behave differently with respect to status.
 
-**Mentions** are **block-to-node or block-to-block** links. They're referential - "this content points to that entity or that content." The source is always a block (since blocks are the atomic content unit), but the target can be a node or another block.
+**Mentions** are **block-to-node or block-to-block** links. They're referential - "this content points to that page or that content." The source is always a block (since blocks are the atomic content unit), but the target can be a node or another block.
 
-A block-to-node mention is an entity reference: a journal block says "Jormag and Linnea went to [The Wet Beer]," creating mentions to three things. A block-to-block mention is a content reference: a player character's page links to [a specific moment in Session 3's journal entry](block reference). Block-to-block mentions are what make transclusion work - a transcluded block is a mention that renders its target inline.
+A block-to-node mention is a page reference: a journal block says "Jormag and Linnea went to [The Wet Beer]," creating mentions to three pages. A block-to-block mention is a content reference: a player character's page links to [a specific moment in Session 3's journal entry](block reference). Block-to-block mentions are what make transclusion work - a transcluded block is a mention that renders its target inline.
 
 Mentions are derived, not authored. They're created automatically when the AI detects entity references in text, or when the GM writes an inline reference. They carry no label (the connection is always "mentions"), no meaningful direction, and no independent status - a mention inherits status from the block it lives in. If the block is GM-only, its mentions are too.
 
-Mentions power backlinks ("where is this entity mentioned?"), context retrieval for the AI, and the clickable references throughout the graph.
+Mentions power backlinks ("where is this page mentioned?"), context retrieval for the AI, and the clickable references throughout the graph.
 
 **Relationships** are **node-to-node** links. They're semantic - they describe how two entities in the campaign world are connected. "Clericman the Good" worships "Murdergod." Kael frequents the Rusty Anchor. The Silver Compact is allied with the Crown of Ashenmoor.
 
@@ -171,7 +171,7 @@ A **suggestion** is a proposed mutation to the campaign graph. Every AI output t
 
 **Suggestion types:**
 
-- **Create thing** - a new node (NPC, location, item, etc.) cloned from a prototype thing, with initial blocks
+- **Create page** - a new entity (NPC, location, item, etc.) cloned from a template, with initial blocks
 - **Update blocks** - new or modified blocks on an existing node
 - **Create relationship** - a new edge between two nodes, with label and optional inverse
 - **Journal draft** - proposed journal entry blocks for a session
@@ -213,7 +213,7 @@ When the agent window opens, its context is determined by **where the user opene
 | -------------------------------- | --------------------------------------------------------------------------- |
 | Session page (post-processing)   | Session transcript, extracted entities, journal draft, existing suggestions |
 | Session page (pre-session)       | Recent session summaries, active plot threads, prep notes                   |
-| Thing page (NPC, location, etc.) | The thing's blocks, relationships, all mentions across sessions             |
+| Entity page (NPC, location, etc.) | The page's blocks, relationships, all mentions across sessions             |
 | Campaign overview                | High-level: arcs, major entities, open contradictions                       |
 
 The focal point determines the AI's initial context retrieval. The GM can always pull in additional context with `@`-references to specific nodes or blocks.
@@ -223,7 +223,7 @@ The focal point determines the AI's initial context retrieval. The GM can always
 The agent window does not have modes. Instead, the user's role determines what tools the AI has access to:
 
 - **Read tools** (all users): search entities, get entity details, get relationships, semantic search across content, session summaries
-- **Write tools** (GM only): propose creating things, propose block updates, propose relationships, flag contradictions
+- **Write tools** (GM only): propose creating entities, propose block updates, propose relationships, flag contradictions
 
 When a player opens the agent window, the AI has only read tools and answers questions. When a GM opens it, the AI has both read and write tools. If the GM asks "tell me about Kael," the AI answers (Q&A). If the GM asks "flesh out Kael's backstory," the AI produces suggestions (planning & refinement). The tool set drives the behavior, not a mode flag.
 
@@ -255,9 +255,9 @@ journal drafting, proposal generation)
         ↓
 A system-initiated conversation appears on the session page:
   - Journal draft as suggested blocks
-  - New things to create (3 new NPCs detected)
+  - New entities to create (3 new NPCs detected)
   - New relationships to add (Kael → Rusty Anchor: "frequents")
-  - Updates to existing things (Tormund's status: now deceased)
+  - Updates to existing entities (Tormund's status: now deceased)
   - Contradiction flags
         ↓
 GM reviews suggestions (accept / edit / reject / dismiss)
@@ -273,7 +273,7 @@ The entire post-session process should take **15-30 minutes**, not hours. The AI
 
 Before a session, the GM needs to prepare. The GM opens the agent window from the upcoming session page, where the AI has session-relevant context loaded:
 
-1. **Surfacing relevant context**: Based on where the last session ended, the AI pulls together relevant things - NPCs the party is likely to encounter, locations they're heading toward, unresolved plot threads
+1. **Surfacing relevant context**: Based on where the last session ended, the AI pulls together relevant entities - NPCs the party is likely to encounter, locations they're heading toward, unresolved plot threads
 2. **Highlighting gaps**: "You've established that the party is traveling to Grimhollow, but you haven't defined what's there yet. Want to flesh it out?"
 3. **Prep notes**: The GM writes plans, encounter ideas, secrets to reveal, and NPC motivations in a prep note attached to the upcoming session
 4. **Interactive planning**: The GM collaborates with the AI to flesh out locations, build encounters, develop NPCs - all through the agent window, with suggestions landing as durable proposals
@@ -281,10 +281,10 @@ Before a session, the GM needs to prepare. The GM opens the agent window from th
 
 ### Ongoing World-Building Workflow
 
-Between sessions, the GM might want to build out parts of the world that haven't come up in play yet. The GM can author manually or open the agent window from any thing page to collaborate with the AI:
+Between sessions, the GM might want to build out parts of the world that haven't come up in play yet. The GM can author manually or open the agent window from any page to collaborate with the AI:
 
-- Create a new thing from a prototype (cloning its page layout and block structure)
-- Fill in details, embed references to other things
+- Create a new entity from a template (cloning its page layout and block structure)
+- Fill in details, embed references to other pages
 - Open the agent window: "Flesh out @Grimhollow - it should be a ruined fortress connected to @SilverCompact"
 - AI produces suggestions (new blocks, related entities, relationships) that the GM reviews
 - Everything starts GM-only by default; the GM publishes nodes, blocks, and edges as they're revealed in play
@@ -322,8 +322,8 @@ Not every GM will review every suggestion. The system stays useful even when the
 
 ### Structure is discovered, not imposed
 
-The GM doesn't design an ontology before session 1. Prototype things provide sensible defaults for page layout, but the relationship vocabulary between things is freeform and emerges over time. The AI clusters and normalizes labels as the campaign grows.
+The GM doesn't design an ontology before session 1. Templates provide sensible defaults for page layout, but the relationship vocabulary between entities is freeform and emerges over time. The AI clusters and normalizes labels as the campaign grows.
 
 ### The journal is the source of truth
 
-When in doubt, what happened at the table is canonical. Things and relationships are derived from journal content. If the graph contradicts the journal, the journal wins. Retconning is always explicit - a deliberate act that preserves what was originally established while marking it as no longer active.
+When in doubt, what happened at the table is canonical. Entities and relationships are derived from journal content. If the graph contradicts the journal, the journal wins. Retconning is always explicit - a deliberate act that preserves what was originally established while marking it as no longer active.
