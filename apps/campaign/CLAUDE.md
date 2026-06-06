@@ -18,7 +18,7 @@ Covers `apps/campaign/` only: the `familiar-systems-campaign` Axum + kameo binar
 - `PUT /internal/campaign/{id}/lease`: bearer-protected. Ensures an existing campaign is checked out on this shard. Idempotent.
 - `DELETE /internal/campaign/{id}/lease`: bearer-protected. Releases a campaign from this shard (platform-initiated eviction). Idempotent; returns 200 even if the campaign is not loaded.
 
-**Live:** ToC + Page CRDT room actors, the WebSocket collaboration path, block/ToC persistence, Page creation, and a `CampaignStore` checkout/release abstraction (local + S3 backends). **Still ahead:** `AgentConversationActor`, `RelationshipGraph`, template instantiation (cloning a prototype's block structure), periodic mid-session object-storage writeback, and the supervisor `SupervisorState`/`Restoring` phase. See "Design docs" below for where each is specified.
+**Live:** ToC + Page CRDT room actors, the WebSocket collaboration path, block/ToC persistence, Page creation, and a `CampaignStore` checkout/release abstraction (local + S3 backends). **Still ahead:** `AgentConversationActor`, `RelationshipGraph`, template instantiation (cloning a template's block structure), periodic mid-session object-storage writeback, and the supervisor `SupervisorState`/`Restoring` phase. See "Design docs" below for where each is specified.
 
 ## Architecture
 

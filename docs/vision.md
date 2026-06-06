@@ -10,18 +10,18 @@ World-building tools like WorldAnvil and Kanka exist, but they treat the wiki as
 
 ## The Insight
 
-The primary artifact of a TTRPG campaign is not a wiki. It's the **session** - what happened at the table. Everything else (the NPCs, the locations, the factions, the lore) is derived from that lived experience.
+The primary artifact of a TTRPG campaign is not a wiki. It's the **session** - the adventure everyone comes to the table for, and what ultimately matters. Everything else (the NPCs, the locations, the factions, the lore) falls out of sessions and, to a lesser extent, the prep that precedes them.
 
-If we can capture what happens at the table - through audio recording, transcription, and the GM's own notes - then the knowledge base should **assemble itself** from that activity. The GM's job shifts from _authoring a wiki_ to _running their game and reviewing what the AI extracted_.
+If we can capture what happens at the table - through the GM's own notes, or through audio recording and transcription - then the knowledge base should **assemble itself** from that activity. The GM's job shifts from _authoring a wiki_ to _running their game and reviewing what the AI extracted_.
 
 ## The Product
 
-A specialized, non-linear, AI-assisted campaign notebook. Two interlocking systems:
+A specialized, non-linear, AI-assisted campaign notebook built around a single organizing unit: the **session**. The session is the event - the GM's prep, the raw capture of what happened (notes or audio), and everything that emerges from it all live within it. From each session, two things fall out:
 
-1. **The Journal** - captures what happened (sessions, recordings, narrative)
-2. **The Entities** - captures what exists in the world (NPCs, locations, items, factions, lore)
+1. **The Journal** - the canonical narrative of what happened
+2. **The Entities** - what exists in the world (NPCs, locations, items, factions, lore)
 
-The AI is the connective tissue. It processes journal content, proposes new entities and relationships, and keeps the campaign knowledge base growing with minimal GM effort. The AI layer connects to external language models - the hosted instance manages this; self-hosters configure their own provider.
+The AI is the connective tissue. It processes each session, proposes the journal draft along with the new entities and relationships it implies, and keeps the campaign knowledge base growing with minimal GM effort. The AI layer connects to external language models - the hosted instance manages this; self-hosters configure their own provider.
 
 The underlying structure is a **graph**: every page is a node, every relationship is an edge, and content is composed of blocks that can be referenced and embedded across the graph.
 
@@ -59,24 +59,26 @@ Arcs are nodes in the graph. They can have their own content (theme notes, plann
 
 ### Session
 
-The fundamental temporal unit of a campaign. A session represents a single gathering at the table (or online). It carries:
+The campaign's central unit - the event everything else falls out of. A session represents a single gathering at the table (or online), and it contains everything that matters about that gathering:
 
 - **Date and attendees** - which players were present (this matters for "what does this character know?")
 - **Arc membership** - which arc(s) this session belongs to, if any
-- **Raw sources** - audio recordings, transcription output, player-submitted notes
+- **Prep notes** - what the GM planned before the session (optional, but valuable for diffing plan vs. reality)
+- **Raw sources** - the capture of what happened, on one of two paths:
+    - **With audio**: the recording (audio files), the GM's rough recap, and a transcription - speaker-attributed words that the AI resolves against the campaign's known entities
+    - **Without audio**: the GM's or players' written recap or notes, which become the primary material the journal is drafted from
 - **Journal entry** - the cleaned, canonical narrative of what happened
-- **Prep notes** - what the GM planned before the session (optional but valuable for diffing plan vs. reality)
 
-Sessions are ordered chronologically and form the spine of the campaign timeline.
+Whichever path a session takes, it converges on the same output: a **suggested journal and suggested entities** that the GM reviews. Sessions are ordered chronologically and form the spine of the campaign timeline.
 
 ### Journal Entry
 
-The cleaned, GM-approved narrative of a session. This is the primary written artifact of the campaign - the record of what happened, in the GM's voice.
+The cleaned, GM-approved narrative a session produces. This is the primary _written_ artifact of the campaign - the canonical record of what happened, in the GM's voice. When the graph and the journal disagree, the journal wins.
 
 The workflow for producing a journal entry:
 
-1. **Capture**: The GM records the session (audio) and/or takes rough notes during play
-2. **Raw journal**: Recordings are transcribed and combined with any typed notes into a raw, unstructured dump
+1. **Capture**: The GM takes rough notes during play, or records the session as audio (and players can add their own notes on either path)
+2. **Raw journal**: Notes and any transcription are combined into a raw, unstructured dump
 3. **AI draft**: The AI processes the raw journal against the campaign graph, producing a structured draft with entity references, suggested highlights, and narrative cleanup
 4. **GM review**: The GM edits the draft - correcting errors, adjusting tone, adding context the AI missed
 5. **Publication**: The final journal entry is saved. The AI extracts suggested entities and relationships for the review queue.
@@ -85,7 +87,7 @@ The journal entry is composed of **blocks** (see below), and those blocks contai
 
 ### Entities
 
-Entities are the campaign world's content: NPCs, locations, items, factions, lore, monsters, player characters, and anything else the GM cares to track. Each entity is a **page** - the universal, node-shaped unit in the graph (`kind == entity`) - populated with **blocks** of content. An entity is created from a **template** - a prototype page that provides its initial layout and block structure (an NPC page looks different from a location page because they were cloned from different templates).
+Entities are the campaign world's content: NPCs, locations, items, factions, lore, monsters, player characters, and anything else the GM cares to track. Each entity is a **page** - the universal, node-shaped unit in the graph (`kind == entity`) - populated with **blocks** of content. An entity is created from a **template** - a page that provides its initial layout and block structure (an NPC page looks different from a location page because they were cloned from different templates).
 
 Entities are not authored in isolation. They emerge from play:
 
@@ -246,12 +248,12 @@ These are not separate features. They are the same interface with different star
 This is the core loop. After every session, the GM goes through roughly this process:
 
 ```
-Record/capture session
+Capture the session - your notes, or an audio recording
         ↓
-Upload audio + notes to the session page, fill in metadata
+Add your sources to the session page (notes and/or audio), fill in metadata
         ↓
-System processes the upload (transcription, entity extraction,
-journal drafting, proposal generation)
+System processes the session (transcription if there's audio, entity
+extraction, journal drafting, proposal generation)
         ↓
 A system-initiated conversation appears on the session page:
   - Journal draft as suggested blocks
@@ -311,6 +313,12 @@ Players interact with the campaign knowledge base differently:
 ### The graph assembles itself
 
 The GM's primary activity is running the game and writing about it. The knowledge base grows as a side effect of that activity. Maintaining the graph should never feel like a separate chore.
+
+### The primitives are the skeleton; the AI is the sinew
+
+A small set of primitives gives the system its shape: pages, their kinds (`template`, `skill`, `memory`, `entity`, `session`), the relationships between them (above all, entity-to-entity), the GM's own templates and skills, and the memories the AI accumulates as it learns the campaign. That structure is the skeleton the AI braces against. The language models and other AI techniques are the sinew - they bind those rules and blocks together and do the work the structure can't specify.
+
+Because the structure is general, the system doesn't care what game you play or how you picture your world. Whatever the ruleset, whatever the cosmology, these primitives flex to fit it - enough to bring a world into a wiki automatically, giving GMs and players alike both a reference and a canvas for brainstorming.
 
 ### AI proposes, the GM disposes
 

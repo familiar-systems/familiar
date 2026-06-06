@@ -11,7 +11,7 @@ export type PageResponse = {
   name: string;
   status: Status;
   kind: PageKind;
-  prototype_id: PageId | null;
+  template_id: PageId | null;
   /**
    * RFC 3339 timestamp.
    */

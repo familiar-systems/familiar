@@ -59,7 +59,7 @@ async fn gm_creates_page_and_nests_under_parent() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["name"], "Korgath");
     assert_eq!(body["status"], "gmOnly", "defaults to gm_only");
-    assert!(body["prototype_id"].is_null());
+    assert!(body["template_id"].is_null());
     let parent_id = body["id"].as_str().expect("id is a string").to_string();
 
     // Create a child nested under the first Page.

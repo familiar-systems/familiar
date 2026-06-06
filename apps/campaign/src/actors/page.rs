@@ -496,7 +496,7 @@ mod tests {
             name: Set(name.to_string()),
             status: Set(StatusCol::from(Status::GmOnly)),
             kind: Set(PageKindCol::from(PageKind::Entity)),
-            prototype_id: Set(None),
+            template_id: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
         }

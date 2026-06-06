@@ -1,4 +1,4 @@
-# familiar.systems - Templates as Prototype Pages
+# familiar.systems - Templates as Pages
 
 ## Context
 
@@ -36,7 +36,7 @@ Possible patches - a layout JSON on Template, tree-structured blocks, a separate
 
 ## The Insight: Templates Are Pages
 
-A template is a page you clone from. The "NPC template" is itself a page - with a portrait placeholder, a relationship list widget, a stat block transclusion slot, and a freeform content zone - that looks exactly like what an NPC page should look like.
+A template is a page you clone from (it behaves like a prototype in the prototypal-inheritance sense: you copy it to make instances). The "NPC template" is itself a page - with a portrait placeholder, a relationship list widget, a stat block transclusion slot, and a freeform content zone - that looks exactly like what an NPC page should look like.
 
 When a GM creates "Graydalf the Wisened" from the NPC template, the system clones the template page's block structure. Graydalf's page starts as a copy of the NPC template page, with placeholders ready to fill in.
 
@@ -89,23 +89,23 @@ At some point, it makes sense to let users upload their own templates to a share
 ### Changed
 
 - `Page` carries a `kind: PageKind` field; `template` is one kind (alongside `entity`). Template-ness is a kind, not a separate type or a boolean flag.
-- `Page` _may_ reference its source template via `prototypeId?: PageId` (for lineage tracking - "this was cloned from that template")
+- `Page` _may_ reference its source template via `templateId?: PageId` (for lineage tracking - "this was cloned from that template")
 - Block structure may need to support nesting or rich layout (columns, widgets) - this is an editor-layer decision, not a domain-layer decision
 
 ### Unchanged
 
 - `Block`, `Status`, `Relationship`, `Mention`, `Suggestion`, `AgentConversation` - all unchanged
-- The suggestion system still proposes creating entities, and those entity pages still reference a template (now a prototype page) for the initial block structure
+- The suggestion system still proposes creating entities, and those entity pages still reference a template (now a template page) for the initial block structure
 
 ## Categorization and Tags
 
-### Template type: `prototypeId`
+### Template lineage: `templateId`
 
-"Show me all NPCs" is the most common categorization query. Since every entity cloned from a template carries `prototypeId: PageId`, this is a trivial lookup - find all pages whose `prototypeId` points to the NPC template. No tags, no extra fields. Template lineage IS the primary categorization.
+"Show me all NPCs" is the most common categorization query. Since every entity cloned from a template carries `templateId: PageId`, this is a trivial lookup - find all pages whose `templateId` points to the NPC template. No tags, no extra fields. Template lineage IS the primary categorization.
 
 ### Cross-cutting tags: relationships to tag-pages
 
-`prototypeId` is single-valued and possibly not even necessary - it answers "what template was this cloned from?" but not "this NPC is also a Villain, a Quest Giver, and Deceased." Cross-cutting tags use the existing graph:
+`templateId` is single-valued and possibly not even necessary - it answers "what template was this cloned from?" but not "this NPC is also a Villain, a Quest Giver, and Deceased." Cross-cutting tags use the existing graph:
 
 - A tag is a page. The "Villain" tag is a page named "Villain." It can optionally have its own content ("what makes someone a villain in this campaign?"), or it can be a bare named node.
 - Tagging is a relationship: `Graydalf -[tagged]-> Villain`.
@@ -119,11 +119,11 @@ At some point, it makes sense to let users upload their own templates to a share
 
 ### Relationship labels as the only discriminator
 
-Both `prototypeId` and tag-relationships use labels to distinguish structural from narrative connections:
+Both `templateId` and tag-relationships use labels to distinguish structural from narrative connections:
 
 | Query                         | Mechanism                                                              |
 | ----------------------------- | ---------------------------------------------------------------------- |
-| "Show me all NPCs"            | `prototypeId = NPC template PageId`                                    |
+| "Show me all NPCs"            | `templateId = NPC template PageId`                                    |
 | "Show me all Villains"        | Relationship where `label = 'tagged'` and `targetId = Villain PageId`  |
 | "Who is Graydalf married to?" | Relationship where `label = 'married to'`                              |
 | "What are Graydalf's tags?"   | Relationships where `label = 'tagged'`                                 |
@@ -152,4 +152,4 @@ When a GM updates the NPC template (adds a "Motivation" section), what happens t
 
 - **[Vision](../vision.md)** - says templates give entities structure and ship with starter packs. This document clarifies that templates ARE pages, not a separate concept.
 - **[Project Structure](2026-03-26-project-structure-design.md)** - shared types are generated from Rust via ts-rs, `packages/editor` defines the TipTap schema. The block structure question (flat vs. tree) will be resolved when designing the editor package.
-- **[AI Workflow](2026-02-14-ai-workflow-unification-design.md)** - suggestions that create entities still reference a template for initial structure. The template is now a `PageId` (the prototype) rather than a TemplateId.
+- **[AI Workflow](2026-02-14-ai-workflow-unification-design.md)** - suggestions that create entities still reference a template for initial structure. The template is now a `PageId` rather than a `TemplateId`.

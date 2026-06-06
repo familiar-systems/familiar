@@ -36,11 +36,11 @@ pub struct NewPage {
     pub status: Status,
     /// What kind of page this is. `build_new_page` always produces `Entity`
     /// today; the `template` kind has no creation path until template
-    /// instantiation lands (which will set it here alongside `prototype_id`).
+    /// instantiation lands (which will set it here alongside `template_id`).
     pub kind: PageKind,
     /// Lineage back to the template this was cloned from, if any. `None` until
     /// template instantiation lands.
-    pub prototype_id: Option<PageId>,
+    pub template_id: Option<PageId>,
     pub blocks: Vec<NewBlock>,
 }
 
@@ -57,10 +57,10 @@ pub struct NewPage {
 /// effect) and embedded in the block content as `attributes.blockId`, keeping
 /// the builder pure.
 ///
-/// TODO: (templates) when `from_template_id` is supported, the prototype's
+/// TODO: (templates) when `from_template_id` is supported, the template's
 /// blocks are cloned into `seed_blocks` at the call edge — deep-copy each
 /// block's content, mint a fresh `BlockId`, reset `ordering` — and this sets
-/// `prototype_id` for lineage.
+/// `template_id` for lineage.
 pub fn build_new_page(
     id: PageId,
     name: String,
@@ -73,9 +73,9 @@ pub fn build_new_page(
         status,
         // Everything created today is authored world content. Template creation
         // (the only other current kind) is not wired yet; when it lands it sets
-        // `kind: Template` and `prototype_id` here.
+        // `kind: Template` and `template_id` here.
         kind: PageKind::Entity,
-        prototype_id: None,
+        template_id: None,
         blocks: seed_blocks,
     }
 }
@@ -85,14 +85,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_page_has_no_blocks_and_no_prototype() {
+    fn empty_page_has_no_blocks_and_no_template() {
         let id = PageId::generate();
         let new_page = build_new_page(id.clone(), "Korgath".to_string(), Status::GmOnly, vec![]);
 
         assert_eq!(new_page.id, id);
         assert_eq!(new_page.name, "Korgath");
         assert_eq!(new_page.status, Status::GmOnly);
-        assert_eq!(new_page.prototype_id, None);
+        assert_eq!(new_page.template_id, None);
         assert!(new_page.blocks.is_empty());
     }
 

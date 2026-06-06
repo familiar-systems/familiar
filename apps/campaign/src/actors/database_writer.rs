@@ -440,7 +440,7 @@ impl Message<DbCreatePage> for DatabaseWriteActor {
             name: Set(nt.name),
             status: Set(StatusCol::from(nt.status)),
             kind: Set(PageKindCol::from(nt.kind)),
-            prototype_id: Set(nt.prototype_id.map(PageIdCol::from)),
+            template_id: Set(nt.template_id.map(PageIdCol::from)),
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -658,7 +658,7 @@ mod tests {
                     name: "Korgath".into(),
                     status: Status::GmOnly,
                     kind: PageKind::Entity,
-                    prototype_id: None,
+                    template_id: None,
                     blocks: vec![NewBlock {
                         id: BlockId::generate(),
                         ordering: 0,
@@ -705,7 +705,7 @@ mod tests {
             name: Set("Korgath".into()),
             status: Set(StatusCol::GmOnly),
             kind: Set(PageKindCol::Entity),
-            prototype_id: Set(None),
+            template_id: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -793,7 +793,7 @@ mod tests {
             name: Set("Korgath".into()),
             status: Set(StatusCol::GmOnly),
             kind: Set(PageKindCol::Entity),
-            prototype_id: Set(None),
+            template_id: Set(None),
             created_at: Set(t0),
             updated_at: Set(t0),
         }

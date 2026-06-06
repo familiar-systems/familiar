@@ -18,7 +18,7 @@ Full catalog in `docs/plans/`. Read the **authoritative** structure doc before a
 - `docs/plans/2026-05-04-campaign-actor-domain-design.md` - actor topology, CRDT room model, suggestion model
 - `docs/plans/2026-04-11-app-server-prd.md` - platform server (auth, CRUD, shard coordination, billing)
 - `docs/plans/2026-04-10-entity-relationship-temporal-model.md` - relationship schema + temporal model
-- `docs/plans/2026-02-20-templates-as-prototype-pages.md` - templates are pages of kind `template` (`prototypeId` lineage)
+- `docs/plans/2026-02-20-templates-as-pages.md` - templates are pages of kind `template` (`templateId` lineage)
 - `docs/plans/2026-03-30-deployment-architecture.md` - platform/campaign split, graceful restart, previews
 - `docs/plans/2026-05-23-infrastructure.md` - k3s, OpenTofu, certs, CI/CD
 - `docs/plans/2026-02-20-public-site-design.md` - Astro public site (has drifted; verify against `apps/site`)
@@ -132,7 +132,7 @@ Maximum strictness, no exceptions:
 - **Mentions** (block→node or block→block): Derived automatically, power backlinks and transclusion.
 - **Relationships** (node→node): Authored/curated, carry semantic labels. Freeform vocabulary.
 - **Pages & kinds**: A **Page** is the universal node/document (URL `/p/:id`, LoroDoc-backed). Its `kind` field is a `PageKind` - `entity | template` in code today (`session`/`skill` are future). `entity` = authored world content (NPCs, locations, lore); the AI's extraction/search target. The collective noun "entity" is world content; "page" is any node.
-- **Prototypes (templates)**: A template is a page of kind `template` - no separate `Template` entity. Creating an entity from a template clones the prototype's block structure; `prototypeId?: PageId` tracks lineage. Tags are pages connected via `tagged` relationships, not a `tags: string[]` field.
+- **Templates**: A template is a page of kind `template` - no separate `Template` entity. Creating an entity from a template clones the template's block structure; `templateId?: PageId` tracks lineage. Tags are pages connected via `tagged` relationships, not a `tags: string[]` field.
 
 ## Deployment
 

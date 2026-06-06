@@ -7,23 +7,69 @@ use utoipa::ToSchema;
 /// (a different Loro schema) or need a systemic action the engine can't infer
 /// from content; editorial differences (NPC vs Location) live in tags,
 /// relationships, and template lineage, not here.
-/// See: docs/plans/2026-03-25-ai-serialization-format-v2.md and issue #155.
+/// See
+/// - docs/plans/2026-03-25-ai-serialization-format-v2.md
+/// - docs/glossary.md
+/// - issue #155.
 ///
-/// Only `Entity` and `Template` exist today. `Session` and `Skill` are known
-/// future cases (the audio pipeline and the agent system) and get added as
-/// variants when those documents are actually built - each addition makes the
-/// `match` arms below non-exhaustive, so the compiler points at every site.
+/// Only `Entity` and `Template` exist today. `Session`, `Skill`, and `Memory`
+/// are known future cases (the audio pipeline and the agent system) and get
+/// added as variants when those documents are actually built - each addition
+/// makes the `match` arms below non-exhaustive, so the compiler points at
+/// every site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "types-campaign/src/generated/document/")]
 pub enum PageKind {
-    /// Authored world content: NPCs, places, factions, items, lore, arcs,
-    /// overviews. The default kind for everything a GM writes about the world.
+    /// Authored world content such as NPCs, places, factions, items, etc.
+    /// The default kind for everything a GM writes about the world.
     Entity,
-    /// A prototype that `Entity` pages clone. Excluded from `kind == entity`
+    /// A template that `Entity` pages clone. Excluded from `kind == entity`
     /// listings. Has no creation path yet (template instantiation is unbuilt);
     /// the variant exists so the schema and exclusion semantics are in place.
     Template,
+    // === FUTURE ===
+    // Future pages we know we need but haven't built yet go here.
+
+    // A session is the campaign's central unit and spine.
+    // Has the following sections:
+    // - Prep notes
+    // - (Audio only) GM summary
+    // - (Audio only) Audio upload
+    // - (Audio only) Audio transcription
+    // - (No audio only) GM/player recap
+    // - Session Journal
+    //
+    // Content spine:
+    // TTRPGs are, fundamentally, a collaborative endeavor about what happened at the table.
+    // A session is a record of the events at the table.
+    // All of these other pages and tools help to record state for use by the GMs and players.
+    //
+    // Temporal spine:
+    // Sessions happen sequentially.
+    // Each session is either the start of a new story arc or follows a prior one.
+    // If doing a west-marches style campaign or a living world, things get a bit murkier.
+    // However, even still, coarsely, this still approximately holds.
+    // Session,
+
+    // GM-authored, campaign-specific instruction available for agents to load.
+    // Has a title, a trigger, and a content block.
+    //
+    // Page Visibility is set like any other page.
+    // For example, a GM's agent cares about how to create NPCs.
+    // A player's does not, saving valuable context window space.
+    // Skill,
+
+    // AI-authored, GM-curated notes the agent keeps about this campaign.
+    // The agent's durable, long-term memory: patterns it has learned and
+    // standing facts about how this table plays, accumulated across sessions
+    // and carried forward. Same title/trigger/content shape as a Skill; what
+    // differs is provenance - the AI writes memories, the GM writes skills.
+    //
+    // Page Visibility is set like any other page.
+    // A memory formed from gm-only context stays gm-only, so a player's agent
+    // never loads it.
+    // Memory,
 }
 
 impl PageKind {

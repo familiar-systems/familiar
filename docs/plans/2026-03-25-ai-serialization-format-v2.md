@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-03-25
 **Supersedes:** AI Serialization Format v1 (undated)
-**Related decisions:** [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md), [AI PRD](./2026-02-22-ai-prd.md), [Templates as Prototype Pages](./2026-02-20-templates-as-prototype-pages.md)
+**Related decisions:** [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md), [AI PRD](./2026-02-22-ai-prd.md), [Templates as Pages](./2026-02-20-templates-as-pages.md)
 
 ---
 
@@ -201,7 +201,7 @@ The `[gm_only]` annotation is the only status marker that appears in the format.
 
 Sections are markdown headings. The heading hierarchy defines the page tree. Sections can nest (`### Session 0` inside `## History`). Section names must be unique within their parent - this enables path-based addressing (`History/Session 0`).
 
-Sections are defined by the prototype page. When a Page is created from a prototype, it clones the prototype's section structure. The GM can add, remove, or rename sections. The agent addresses sections by the heading text.
+Sections are defined by the template page. When a Page is created from a template, it clones the template's section structure. The GM can add, remove, or rename sections. The agent addresses sections by the heading text.
 
 #### Pending Suggestions (Conversation-Scoped)
 
@@ -354,11 +354,11 @@ The agent has three write tools. **All writes produce proposals - the agent neve
 
 ### `create_page`
 
-Create a new proposed page from a prototype.
+Create a new proposed page from a template.
 
 ```
 create_page(
-  prototype: string,       // prototype name, e.g. "NPC"
+  template: string,       // template name, e.g. "NPC"
   content: string,         // full page in serialization format
   relationships?: [{       // initial relationships, batched
     target: string,        // target Page name
@@ -368,7 +368,7 @@ create_page(
 )
 ```
 
-The content is the full markdown for the new page, including title, tags, preamble, and sections. The prototype determines the OnCreate tag (e.g., prototype "NPC" auto-tags the new Page as `#NPC`) and provides the section structure as a starting point.
+The content is the full markdown for the new page, including title, tags, preamble, and sections. The template determines the OnCreate tag (e.g., template "NPC" auto-tags the new Page as `#NPC`) and provides the section structure as a starting point.
 
 Relationships are bundled with page creation so the agent can express "create Pip, and Pip pickpocketed Tormund" in one coherent proposal. The page and its relationships form a single reviewable unit - rejecting the page cascades to its relationships.
 
@@ -422,7 +422,7 @@ new_content: ""
 
 The anchor content (the part of `old_content` that appears unchanged in `new_content`) is included in the suggestion's `target_blocks`. The editor's inline diff rendering compares target blocks against proposed blocks at the block level and classifies each as unchanged, modified, inserted, or deleted - showing the GM exactly what's changing and what's just context.
 
-**Start-of-document insertion:** The page title heading (`# Kael [known]`) always exists (every page has at least a title from the prototype), so matching the title and proposing `title + new content` handles this case. A completely empty page is not a meaningful edge case.
+**Start-of-document insertion:** The page title heading (`# Kael [known]`) always exists (every page has at least a title from the template), so matching the title and proposing `title + new content` handles this case. A completely empty page is not a meaningful edge case.
 
 **Used by:** P&R ("flesh out the backstory", "add a section about his childhood"), SessionIngest (proposing journal drafts, inserting new session entries into History).
 
@@ -630,7 +630,7 @@ The PageActor receives this and applies it - adding the mark, storing the metada
 
 **Superseding proposals from the same conversation:** When the compiler identifies that the target blocks already have a pending suggestion from the same conversation, the `CompiledSuggestion` includes a supersession flag. The PageActor removes the old suggestion mark (recording `superseded` in the outcomes table) and applies the new one.
 
-**Validation:** The compiler rejects invalid status inheritance (a `[known]` block inside a `[gm_only]` section), unresolvable references (logged for GM review, not a hard failure), and structural violations (headings that don't match the prototype's expected sections - warning, not error).
+**Validation:** The compiler rejects invalid status inheritance (a `[known]` block inside a `[gm_only]` section), unresolvable references (logged for GM review, not a hard failure), and structural violations (headings that don't match the template's expected sections - warning, not error).
 
 ### Reference Resolution (The Linker)
 
@@ -651,13 +651,13 @@ This is the same entity resolution capability required for SessionIngest transcr
 
 ---
 
-## Prototype Pages and Agent Instructions
+## Template Pages and Agent Instructions
 
-### Prototypes Define Structure
+### Templates Define Structure
 
-A prototype (template) page defines the section layout, status defaults, and placeholder content for a page kind. When a page is created from a prototype, the system clones the prototype's structure.
+A template (template) page defines the section layout, status defaults, and placeholder content for a page kind. When a page is created from a template, the system clones the template's structure.
 
-Example NPC prototype:
+Example NPC template:
 
 ```md
 # {Name} [known]
@@ -690,13 +690,13 @@ What would you need to know if they came up unexpectedly?}
 
 ### OnCreate Directives
 
-Prototypes specify tags that are automatically applied to Pages created from them. The NPC prototype has `OnCreate: tag as #NPC`. This creates a `tagged` relationship to the NPC tag-Page at creation time.
+Templates specify tags that are automatically applied to Pages created from them. The NPC template has `OnCreate: tag as #NPC`. This creates a `tagged` relationship to the NPC tag-Page at creation time.
 
-The prototype itself is not tagged NPC - it _creates entities that are tagged NPC_. This prevents prototypes from appearing in tag queries alongside actual campaign entities.
+The template itself is not tagged NPC - it _creates entities that are tagged NPC_. This prevents templates from appearing in tag queries alongside actual campaign entities.
 
 ### AI Instructions Block
 
-Prototypes include an AI instructions block that tells the agent how to work with this page kind:
+Templates include an AI instructions block that tells the agent how to work with this page kind:
 
 ```md
 ## AI Instructions
@@ -716,11 +716,11 @@ When the agent works with a Page, it composes instructions from two layers:
 
 1. **Global skills** - shipped with the product, define general capabilities. `create-or-edit-preamble.md` knows what makes a good preamble. `draft-journal-entry.md` knows how to compress a transcript into a session narrative. `propose-relationships.md` knows how to infer relationships from narrative content.
 
-2. **Prototype AI instructions** - campaign-specific, per-template, editable by the GM. Define what this specific template needs, what sections to prioritize, what tone to use.
+2. **Template AI instructions** - campaign-specific, per-template, editable by the GM. Define what this specific template needs, what sections to prioritize, what tone to use.
 
-For Milestone 1 (single starter pack: Fantasy Generic), game-system-specific skills (D&D knowledge, Daggerheart knowledge) are part of the global skill layer. When the starter pack marketplace exists, system-specific skills become a third layer between global and prototype instructions.
+For Milestone 1 (single starter pack: Fantasy Generic), game-system-specific skills (D&D knowledge, Daggerheart knowledge) are part of the global skill layer. When the starter pack marketplace exists, system-specific skills become a third layer between global and template instructions.
 
-The most specific layer (prototype instructions) overrides the most general (global skills) when they conflict.
+The most specific layer (template instructions) overrides the most general (global skills) when they conflict.
 
 ---
 

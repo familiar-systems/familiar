@@ -165,7 +165,7 @@ A **Suggestion** is a proposed mutation to the campaign graph. Every AI output t
 
 **Suggestion properties:**
 
-- **Type-specific payload**: Each suggestion type carries different data. A `create_page` has a prototype reference (the PageId of the prototype to clone from) and initial blocks. A `create_relationship` has source, target, label, and optional inverse. The payload is structured per type, not a generic blob.
+- **Type-specific payload**: Each suggestion type carries different data. A `create_page` has a template reference (the PageId of the template to clone from) and initial blocks. A `create_relationship` has source, target, label, and optional inverse. The payload is structured per type, not a generic blob.
 - **Target**: Which existing node this affects (null for `create_page`).
 - **Source references**: Which content blocks triggered this suggestion - the AI's evidence for why it's proposing this.
 - **Status**: `pending` → `accepted` | `rejected` | `dismissed`.

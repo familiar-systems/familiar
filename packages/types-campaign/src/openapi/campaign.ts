@@ -131,7 +131,10 @@ export interface components {
      *     (a different Loro schema) or need a systemic action the engine can't infer
      *     from content; editorial differences (NPC vs Location) live in tags,
      *     relationships, and template lineage, not here.
-     *     See: docs/plans/2026-03-25-ai-serialization-format-v2.md and issue #155.
+     *     See
+     *     - docs/plans/2026-03-25-ai-serialization-format-v2.md
+     *     - docs/glossary.md
+     *     - issue #155.
      *
      *     Only `Entity` and `Template` exist today. `Session` and `Skill` are known
      *     future cases (the audio pipeline and the agent system) and get added as

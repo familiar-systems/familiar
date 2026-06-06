@@ -8,7 +8,7 @@ An AI-assisted campaign notebook for tabletop RPG game masters.
 
 Running a TTRPG campaign generates an enormous amount of information: NPCs improvised on the fly, locations described in passing, plot threads introduced and forgotten. GMs are expected to track all of it, and most existing tools treat the wiki as the primary artifact, requiring the GM to maintain a knowledge base as a separate activity from running the game.
 
-familiar.systems flips this. The primary artifact is the **session**: what happened at the table. Capture session audio and notes, and the AI extracts the knowledge base: NPCs, locations, items, relationships, contradictions. The GM's job shifts from authoring a wiki to running their game and reviewing what the AI proposed.
+familiar.systems flips this. The primary artifact is the **session**: what happened at the table. Capture a session, from just your notes or from audio you record, and the AI drafts its journal and extracts the knowledge base: NPCs, locations, items, relationships, contradictions. The GM's job shifts from authoring a wiki to running their game and reviewing what the AI proposed.
 
 The AI never modifies the campaign directly. Every change is a **suggestion** that the GM accepts, rejects, or ignores.
 
@@ -118,7 +118,7 @@ Use `mise tasks` to list every task with its description.
 
 ### Further reading
 
-Additional decision records, spikes, and narrower designs (libSQL vs PostgreSQL, datalog vs SQL, the Loro+TipTap suggestion-marks spike, templates-as-prototype-pages, public site design, archived/superseded plans) live in [`docs/`](docs/).
+Additional decision records, spikes, and narrower designs (libSQL vs PostgreSQL, datalog vs SQL, the Loro+TipTap suggestion-marks spike, templates-as-pages, public site design, archived/superseded plans) live in [`docs/`](docs/).
 
 ## Contributing
 

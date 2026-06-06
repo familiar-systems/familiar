@@ -116,7 +116,7 @@ pub async fn create_page(
                 name: model.name,
                 status: model.status.into(),
                 kind: model.kind.into(),
-                prototype_id: model.prototype_id.map(PageId::from),
+                template_id: model.template_id.map(PageId::from),
                 created_at: model.created_at.to_rfc3339(),
                 updated_at: model.updated_at.to_rfc3339(),
             };

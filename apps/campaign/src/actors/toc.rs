@@ -1004,7 +1004,7 @@ mod tests {
             name: Set("Korgath".into()),
             status: Set(StatusCol::from(Status::GmOnly)),
             kind: Set(PageKindCol::Entity),
-            prototype_id: Set(None),
+            template_id: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
         }

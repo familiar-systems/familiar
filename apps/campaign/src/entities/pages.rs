@@ -14,8 +14,7 @@ pub struct Model {
     /// Which `PageKind` this page is (entity, template). Default `entity`.
     pub kind: PageKindCol,
     /// Which template this was cloned from, if any.
-    /// FIXME rename to `from_template_id`
-    pub prototype_id: Option<PageIdCol>,
+    pub template_id: Option<PageIdCol>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -24,8 +23,8 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::blocks::Entity")]
     Blocks,
-    #[sea_orm(belongs_to = "Entity", from = "Column::PrototypeId", to = "Column::Id")]
-    Prototype,
+    #[sea_orm(belongs_to = "Entity", from = "Column::TemplateId", to = "Column::Id")]
+    Template,
 }
 
 impl Related<super::blocks::Entity> for Entity {

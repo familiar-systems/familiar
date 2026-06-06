@@ -39,7 +39,7 @@
 | [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md) | The Node.js/Yjs architecture this design replaces. Campaign checkout/checkin model, blob-free files at rest, lossless reconstruction requirement. Many concepts carry forward; the implementation changes. |
 | [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md)             | The three AI workflows (SessionIngest, P&R, Q&A), suggestion lifecycle, conversation system                                                                                                                |
 | [AI PRD](./2026-02-22-ai-prd.md)                                                      | Tool system, suggestion types, retrieval capabilities                                                                                                                                                      |
-| [Templates as Prototype Pages](./2026-02-20-templates-as-prototype-pages.md)          | Templates are Pages, categorization via tags-as-relationships, OnCreate directives                                                                                                                        |
+| [Templates as Pages](./2026-02-20-templates-as-pages.md)          | Templates are Pages, categorization via tags-as-relationships, OnCreate directives                                                                                                                        |
 
 ---
 

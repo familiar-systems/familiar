@@ -33,7 +33,7 @@ async fn pages_and_blocks_round_trip_branded_types() {
         name: Set("Vex the Bone Sage".into()),
         status: Set(Status::Known.into()),
         kind: Set(PageKindCol::Entity),
-        prototype_id: Set(None),
+        template_id: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }

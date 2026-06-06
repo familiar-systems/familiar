@@ -36,7 +36,7 @@ pub struct PageResponse {
     pub name: String,
     pub status: Status,
     pub kind: PageKind,
-    pub prototype_id: Option<PageId>,
+    pub template_id: Option<PageId>,
     /// RFC 3339 timestamp.
     pub created_at: String,
     /// RFC 3339 timestamp.

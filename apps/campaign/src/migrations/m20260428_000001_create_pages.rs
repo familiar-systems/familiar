@@ -10,7 +10,7 @@ enum Pages {
     Name,
     Status,
     Kind,
-    PrototypeId,
+    TemplateId,
     CreatedAt,
     UpdatedAt,
 }
@@ -27,7 +27,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Pages::Name).text().not_null())
                     .col(ColumnDef::new(Pages::Status).text().not_null())
                     .col(ColumnDef::new(Pages::Kind).text().not_null())
-                    .col(ColumnDef::new(Pages::PrototypeId).text().null())
+                    .col(ColumnDef::new(Pages::TemplateId).text().null())
                     .col(
                         ColumnDef::new(Pages::CreatedAt)
                             .timestamp_with_time_zone()
@@ -40,7 +40,7 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .from(Pages::Table, Pages::PrototypeId)
+                            .from(Pages::Table, Pages::TemplateId)
                             .to(Pages::Table, Pages::Id),
                     )
                     .to_owned(),

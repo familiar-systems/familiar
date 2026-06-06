@@ -160,7 +160,7 @@ The `loaded` flag on `GET /api/campaigns` responses comes from this cache. It le
 ### Campaign tier (per-campaign SQLite, `apps/campaign`)
 
 - **campaign_metadata**: `id` (PK, check id=1), `campaign_id`, `owner_user_id`, `name`, `tagline`, `game_system`, `content_locale`, `wizard_completed_at`, `created_at`, `updated_at`
-- **pages**: `id` (Nanoid PK), `name`, `status`, `prototype_id` (nullable self-ref), `created_at`, `updated_at`
+- **pages**: `id` (Nanoid PK), `name`, `status`, `template_id` (nullable self-ref), `created_at`, `updated_at`
 - **blocks**: `id` (Nanoid PK), `page_id` (FK cascade), `status`, `ordering` (i64), `body`, `created_at`, `updated_at`
 - **block_embeddings_vec**: `id` (Nanoid PK), `block_id` (FK cascade), `embedding` (sqlite-vec vector), `created_at`
 
