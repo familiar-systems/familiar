@@ -89,7 +89,7 @@ mod tests {
 
     /// A minimal actor that owns an assembler and records timeout fires.
     /// The `Message<FragmentTimeout>` impl below is exactly the shape
-    /// each real actor (ThingActor, TocActor, AgentConversationActor)
+    /// each real actor (PageActor, TocActor, AgentConversationActor)
     /// will write: direct, no trait, no macro.
     struct TestActor {
         assembler: BatchAssembler,

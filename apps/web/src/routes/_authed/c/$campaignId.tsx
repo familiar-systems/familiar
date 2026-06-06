@@ -1,6 +1,6 @@
 // Layout route for /c/$campaignId. Owns the `campaignId` param parsing/branding
 // for every child (the index at /c/$campaignId and the editor at
-// /c/$campaignId/t/$thingId) and renders them through the Outlet. The app
+// /c/$campaignId/p/$pageId) and renders them through the Outlet. The app
 // chrome (Shell, backdrop) is provided one level up by _authed.tsx.
 
 import type { CampaignId } from "@familiar-systems/types-app";
@@ -25,7 +25,7 @@ function CampaignLayout(): React.ReactElement {
 }
 
 // The sidebar is page-editing chrome, so it is shown only on a page route
-// (`thingId` present), never over the onboarding wizard or the index redirect.
+// (`pageId` present), never over the onboarding wizard or the index redirect.
 // It persists across navigation between pages because it lives here at the
 // campaign layout, beside the Outlet. `min-h-0` lets both the sidebar and the
 // editor pane scroll independently within the flex column the app Shell provides
@@ -35,7 +35,7 @@ function CampaignWorkspace({ campaignId }: { campaignId: CampaignId }): React.Re
   // branch so navigating between them never tears it down (the debounced leave
   // would absorb a quick toggle, but pinning avoids the churn entirely).
   useTocRoom();
-  const onPage = useParams({ strict: false }).thingId !== undefined;
+  const onPage = useParams({ strict: false }).pageId !== undefined;
   if (!onPage) {
     return <Outlet />;
   }

@@ -3,7 +3,7 @@ use familiar_systems_app_shared::id::{CampaignId, UserId};
 use fs_id::Uuid;
 use sea_orm::entity::prelude::*;
 
-use crate::entities::columns::ThingIdCol;
+use crate::entities::columns::PageIdCol;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, DeriveValueType)]
 #[sea_orm(column_type = "Text")]
@@ -25,7 +25,7 @@ pub const METADATA_ROW_ID: i32 = 1;
 
 /// Campaign metadata is a per-campaign summary of everything about that campaign.
 /// At time of writing, it's mostly used for display purposes.
-/// In the future, this would be an excellent place for things like feature flags.
+/// In the future, this would be an excellent place for pages like feature flags.
 #[derive(Debug, Clone, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "campaign_metadata")]
 pub struct Model {
@@ -47,13 +47,13 @@ pub struct Model {
     pub game_system: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub content_locale: Option<String>,
-    /// Pointer to the campaign's home / landing-page Thing, seeded once at
-    /// creation ("Campaign Base Camp"). FK to `things(id)` with
-    /// `ON DELETE SET NULL` (see [`Relation::HomeThing`]): deleting the Thing
+    /// Pointer to the campaign's home / landing-page Page, seeded once at
+    /// creation ("Campaign Base Camp"). FK to `pages(id)` with
+    /// `ON DELETE SET NULL` (see [`Relation::HomePage`]): deleting the Page
     /// clears the pointer rather than the campaign row, so a non-null value
-    /// always resolves to a live Thing. Null only in the brief window before
+    /// always resolves to a live Page. Null only in the brief window before
     /// the async seed completes.
-    pub home_thing_id: Option<ThingIdCol>,
+    pub home_page_id: Option<PageIdCol>,
     pub wizard_completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -69,17 +69,17 @@ impl Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    /// Soft reference to the home / landing-page Thing. `ON DELETE SET NULL`
-    /// so deleting the Thing clears the pointer instead of cascading into the
+    /// Soft reference to the home / landing-page Page. `ON DELETE SET NULL`
+    /// so deleting the Page clears the pointer instead of cascading into the
     /// singleton campaign row. Mirrors the FK declared in the create migration;
     /// `schema_drift` asserts the two stay in lockstep.
     #[sea_orm(
-        belongs_to = "super::things::Entity",
-        from = "Column::HomeThingId",
-        to = "super::things::Column::Id",
+        belongs_to = "super::pages::Entity",
+        from = "Column::HomePageId",
+        to = "super::pages::Column::Id",
         on_delete = "SetNull"
     )]
-    HomeThing,
+    HomePage,
 }
 
 impl ActiveModelBehavior for ActiveModel {}

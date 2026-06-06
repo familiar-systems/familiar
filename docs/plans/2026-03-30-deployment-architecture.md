@@ -170,7 +170,7 @@ The campaign server holds stateful WebSocket connections and in-memory CRDTs. Re
 
 The shutdown is per-campaign, not a global sequence. Each campaign drains independently. The process exits only after all campaigns have completed their drain.
 
-**Global:** Stop accepting new WebSocket connections. Cancel in-flight AI work - each AgentConversation actor drops its HTTP stream to Nebius (closing the connection cancels generation on the inference side). The conversation persists an "interrupted" marker in the conversation history. No partial tool call results are applied - in-flight compiled suggestions that haven't reached a ThingActor are discarded. **The heartbeat to the platform continues throughout the drain.** It is the first thing to start on boot and the last thing to stop before exit. This prevents the platform from expiring leases while campaigns are still writing back to object storage.
+**Global:** Stop accepting new WebSocket connections. Cancel in-flight AI work - each AgentConversation actor drops its HTTP stream to Nebius (closing the connection cancels generation on the inference side). The conversation persists an "interrupted" marker in the conversation history. No partial tool call results are applied - in-flight compiled suggestions that haven't reached a PageActor are discarded. **The heartbeat to the platform continues throughout the drain.** It is the first thing to start on boot and the last thing to stop before exit. This prevents the platform from expiring leases while campaigns are still writing back to object storage.
 
 **Per campaign (concurrent across all checked-out campaigns):**
 
@@ -197,8 +197,8 @@ The `terminationGracePeriodSeconds` on the k8s pod provides the time budget. 30 
 Three levels of "mid-conversation" during a restart, all handled by the same protocol:
 
 - **Tokens streaming, no tool calls yet.** Nothing persisted beyond the user's last message. On reconnect, the UI shows "your last request was interrupted - would you like to retry?" The partial tokens were display-only.
-- **Tool calls compiled but not yet applied to ThingActors.** Compiled suggestions in flight between AgentConversation and ThingActors evaporate. The user never saw them. Same recovery as above - the AI re-runs the turn on retry.
-- **Tool calls already applied as marks on ThingActor LoroDocs.** Suggestions are safe - they're in the LoroDoc and will be snapshotted during the per-campaign drain. Only the partial assistant response text is lost. Same "interrupted" recovery.
+- **Tool calls compiled but not yet applied to PageActors.** Compiled suggestions in flight between AgentConversation and PageActors evaporate. The user never saw them. Same recovery as above - the AI re-runs the turn on retry.
+- **Tool calls already applied as marks on PageActor LoroDocs.** Suggestions are safe - they're in the LoroDoc and will be snapshotted during the per-campaign drain. Only the partial assistant response text is lost. Same "interrupted" recovery.
 
 The cost of an interrupted turn is one LLM call on retry, not data corruption.
 

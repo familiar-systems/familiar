@@ -1,7 +1,7 @@
 //! `CampaignSupervisor`: per-campaign orchestrator.
 //!
 //! Owns the [`CampaignDatabase`] and an idle-eviction clock. Child room
-//! actors: [`TocActor`] (singleton, eager), [`ThingActor`] (per-thing,
+//! actors: [`TocActor`] (singleton, eager), [`PageActor`] (per-page,
 //! lazy-spawned on first `JoinRoom`). Future: AgentConversation,
 //! RelationshipGraph, CampaignVocabulary.
 //!
@@ -25,7 +25,7 @@ use kameo::prelude::Actor;
 
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
-use familiar_systems_campaign_shared::id::{BlockId, ClientId, ThingId};
+use familiar_systems_campaign_shared::id::{BlockId, ClientId, PageId};
 use familiar_systems_campaign_shared::status::Status;
 use tokio::sync::mpsc;
 
@@ -33,13 +33,13 @@ use crate::actors::database_writer::{
     DbSetLandingPage, GetMetadata, MetadataError, PatchCampaignError,
     PatchCampaignMetadata as DbPatchCampaign, PatchCampaignResult,
 };
-use crate::actors::thing::{ThingActor, ThingActorArgs, ThingInit};
-use crate::actors::toc::{AddThingNode, ResolveThingNode, TocActor, TocActorArgs};
+use crate::actors::page::{PageActor, PageActorArgs, PageInit};
+use crate::actors::toc::{AddPageNode, ResolvePageNode, TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::domain::crdt::room_actor;
-use crate::domain::thing::NewBlock;
-use crate::entities::columns::ThingIdCol;
-use crate::entities::{campaign_metadata, things};
+use crate::domain::page::NewBlock;
+use crate::entities::columns::PageIdCol;
+use crate::entities::{campaign_metadata, pages};
 use crate::error::InitError;
 use crate::loro::block_codec;
 use crate::persistence::{CampaignDatabase, CampaignStore};
@@ -54,7 +54,7 @@ pub struct CampaignSupervisor {
     store: Arc<dyn CampaignStore>,
     db: Option<CampaignDatabase>,
     toc: ActorRef<TocActor>,
-    things: HashMap<ThingId, ActorRef<ThingActor>>,
+    pages: HashMap<PageId, ActorRef<PageActor>>,
     last_activity: Instant,
     idle_timeout: Duration,
     stop_cause: Option<StopCause>,
@@ -155,9 +155,9 @@ impl Actor for CampaignSupervisor {
         // Seed the campaign's home page exactly once, on first-ever checkout.
         // Spawned (not inline) because on_start has not returned yet: the mailbox
         // is not draining, so a self-`ask` would deadlock. This runs after
-        // on_start completes, going through the same CreateThing path the GM's
+        // on_start completes, going through the same CreatePage path the GM's
         // future "new page" button uses. Best-effort: a failure is cosmetic, and
-        // the orphan path re-surfaces any created Thing at the ToC root on the
+        // the orphan path re-surfaces any created Page at the ToC root on the
         // next checkout.
         if is_new {
             let seed_ref = actor_ref.clone();
@@ -174,7 +174,7 @@ impl Actor for CampaignSupervisor {
                     status: Status::GmOnly,
                 }];
                 match seed_ref
-                    .ask(CreateThing {
+                    .ask(CreatePage {
                         name: "Campaign Base Camp".to_string(),
                         status: Some(Status::Known),
                         parent: None,
@@ -185,9 +185,9 @@ impl Actor for CampaignSupervisor {
                     // What happens if this fails to land correctly? Nothing, really.
                     // Users can still always make their own home pages and other new pages.
                     // Well, at least when setting a new home page lands - that's still a TODO!
-                    Ok(thing) => {
-                        let thing_id = ThingId::from(thing.id);
-                        if let Err(e) = seed_ref.ask(SetLandingPage { thing_id }).await {
+                    Ok(page) => {
+                        let page_id = PageId::from(page.id);
+                        if let Err(e) = seed_ref.ask(SetLandingPage { page_id }).await {
                             tracing::warn!(error = %e, "failed to record campaign home page pointer");
                         }
                     }
@@ -203,7 +203,7 @@ impl Actor for CampaignSupervisor {
             store: args.store,
             db: Some(db),
             toc,
-            things: HashMap::new(),
+            pages: HashMap::new(),
             last_activity: Instant::now(),
             idle_timeout: args.idle_timeout,
             stop_cause: None,
@@ -230,11 +230,11 @@ impl Actor for CampaignSupervisor {
         tracing::info!(cause, "draining supervisor");
         let started = Instant::now();
 
-        // Stop all ThingActors, then TocActor, before DatabaseWriteActor
+        // Stop all PageActors, then TocActor, before DatabaseWriteActor
         // so any pending writebacks reach the writer before it drains.
-        for (thing_id, actor) in self.things.drain() {
+        for (page_id, actor) in self.pages.drain() {
             if let Err(e) = actor.stop_gracefully().await {
-                tracing::warn!(thing_id = %thing_id.0, error = ?e, "thing actor already stopped during drain");
+                tracing::warn!(page_id = %page_id.0, error = ?e, "page actor already stopped during drain");
             }
             actor.wait_for_shutdown_with_result(|_| ()).await;
         }
@@ -276,9 +276,9 @@ impl Actor for CampaignSupervisor {
     }
 
     // The supervisor is `link`ed to two kinds of siblings (kameo links are
-    // bidirectional): its parent `CampaignRegistry` and each child `ThingActor`
+    // bidirectional): its parent `CampaignRegistry` and each child `PageActor`
     // it spawns. This handler fires for both, so it must tell them apart and
-    // react differently. Children are linked *after* insertion into `things`, so
+    // react differently. Children are linked *after* insertion into `pages`, so
     // a dead sibling whose id is still in the map is necessarily a child.
     #[tracing::instrument(
         skip_all,
@@ -290,18 +290,18 @@ impl Actor for CampaignSupervisor {
         id: ActorId,
         reason: ActorStopReason,
     ) -> Result<ControlFlow<ActorStopReason>, Self::Error> {
-        // A child ThingActor died (idle self-evict, drain, or panic). Prune its
+        // A child PageActor died (idle self-evict, drain, or panic). Prune its
         // entry and keep running: a single room going away (or even crashing)
-        // must not take down the whole campaign and every other room. Each Thing
-        // is in `things` when its one-shot link_died fires (linked after insert;
+        // must not take down the whole campaign and every other room. Each Page
+        // is in `pages` when its one-shot link_died fires (linked after insert;
         // `on_stop`'s drain is terminal), so a hit here means "child".
-        let before = self.things.len();
-        self.things.retain(|_, actor| actor.id() != id);
-        if self.things.len() != before {
+        let before = self.pages.len();
+        self.pages.retain(|_, actor| actor.id() != id);
+        if self.pages.len() != before {
             tracing::debug!(
                 ?reason,
-                thing_count = self.things.len(),
-                "thing actor removed from supervisor via link_died"
+                page_count = self.pages.len(),
+                "page actor removed from supervisor via link_died"
             );
             return Ok(ControlFlow::Continue(()));
         }
@@ -433,13 +433,13 @@ impl Message<GetMetadata> for CampaignSupervisor {
 // SetLandingPage
 // ---------------------------------------------------------------------------
 
-/// Point `campaign_metadata.home_thing_id` at a Thing (the campaign's home /
+/// Point `campaign_metadata.home_page_id` at a Page (the campaign's home /
 /// landing page). System-set during seeding, never mirrored to the platform
 /// (it is a local display preference, unlike the wizard-seal metadata). Kept
 /// distinct from `PatchCampaignMetadata` so the wizard path stays clean.
 #[derive(Debug, Clone)]
 pub struct SetLandingPage {
-    pub thing_id: ThingId,
+    pub page_id: PageId,
 }
 
 impl Message<SetLandingPage> for CampaignSupervisor {
@@ -447,7 +447,7 @@ impl Message<SetLandingPage> for CampaignSupervisor {
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.thing_id.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %msg.page_id.0),
     )]
     async fn handle(
         &mut self,
@@ -462,7 +462,7 @@ impl Message<SetLandingPage> for CampaignSupervisor {
         match db
             .writer()
             .ask(DbSetLandingPage {
-                thing_id: msg.thing_id,
+                page_id: msg.page_id,
             })
             .await
         {
@@ -477,29 +477,29 @@ impl Message<SetLandingPage> for CampaignSupervisor {
 }
 
 // ---------------------------------------------------------------------------
-// CreateThing
+// CreatePage
 // ---------------------------------------------------------------------------
 
-/// Create a new Thing in this campaign. The supervisor validates placement,
-/// spawns the owning `ThingActor` in genesis mode (which persists the Thing's
+/// Create a new Page in this campaign. The supervisor validates placement,
+/// spawns the owning `PageActor` in genesis mode (which persists the Page's
 /// own birth row), registers it, and adds its node to the live ToC. Replies
-/// with the persisted `things` row for the HTTP response.
+/// with the persisted `pages` row for the HTTP response.
 #[derive(Debug, Clone)]
-pub struct CreateThing {
+pub struct CreatePage {
     pub name: String,
     pub status: Option<Status>,
-    /// Parent Thing to nest under in the ToC. `None` => ToC root.
-    pub parent: Option<ThingId>,
-    /// Initial content blocks. Empty for a generic new Thing; the home-page
+    /// Parent Page to nest under in the ToC. `None` => ToC root.
+    pub parent: Option<PageId>,
+    /// Initial content blocks. Empty for a generic new Page; the home-page
     /// seed passes one empty paragraph so the page opens editable.
     pub seed_blocks: Vec<NewBlock>,
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum CreateThingError {
-    #[error("parent thing not found in toc")]
+pub enum CreatePageError {
+    #[error("parent page not found in toc")]
     ParentNotFound,
-    #[error("thing genesis failed")]
+    #[error("page genesis failed")]
     Genesis,
     #[error("a child actor was unavailable")]
     ActorUnavailable,
@@ -507,8 +507,8 @@ pub enum CreateThingError {
     Db(#[from] sea_orm::DbErr),
 }
 
-impl Message<CreateThing> for CampaignSupervisor {
-    type Reply = Result<things::Model, CreateThingError>;
+impl Message<CreatePage> for CampaignSupervisor {
+    type Reply = Result<pages::Model, CreatePageError>;
 
     #[tracing::instrument(
         skip_all,
@@ -516,7 +516,7 @@ impl Message<CreateThing> for CampaignSupervisor {
     )]
     async fn handle(
         &mut self,
-        msg: CreateThing,
+        msg: CreatePage,
         ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.last_activity = Instant::now();
@@ -524,18 +524,18 @@ impl Message<CreateThing> for CampaignSupervisor {
         // Validate placement before any write: a bad parent fails cleanly with
         // nothing persisted.
         if let Some(parent) = &msg.parent {
-            match self.toc.ask(ResolveThingNode(parent.clone())).await {
+            match self.toc.ask(ResolvePageNode(parent.clone())).await {
                 Ok(Some(_)) => {}
-                Ok(None) => return Err(CreateThingError::ParentNotFound),
+                Ok(None) => return Err(CreatePageError::ParentNotFound),
                 Err(e) => {
                     tracing::error!(error = %e, "toc unavailable while resolving parent");
-                    return Err(CreateThingError::ActorUnavailable);
+                    return Err(CreatePageError::ActorUnavailable);
                 }
             }
         }
 
         let status = msg.status.unwrap_or(Status::GmOnly);
-        let thing_id = ThingId::generate();
+        let page_id = PageId::generate();
 
         let (db_reader, db_writer) = {
             let db = self
@@ -546,13 +546,13 @@ impl Message<CreateThing> for CampaignSupervisor {
         };
 
         // Spawn the owning actor in genesis mode; it persists its own birth row
-        // through the single-writer. Nothing writes a Thing's rows around it.
-        let actor = ThingActor::spawn(ThingActorArgs {
+        // through the single-writer. Nothing writes a Page's rows around it.
+        let actor = PageActor::spawn(PageActorArgs {
             campaign_id: self.campaign_id.clone(),
-            thing_id: thing_id.clone(),
+            page_id: page_id.clone(),
             db_reader: db_reader.clone(),
             db_writer,
-            init: ThingInit::New {
+            init: PageInit::New {
                 name: msg.name.clone(),
                 status,
                 seed_blocks: msg.seed_blocks,
@@ -562,20 +562,20 @@ impl Message<CreateThing> for CampaignSupervisor {
         });
         actor.wait_for_startup().await;
         if !actor.is_alive() {
-            tracing::error!("thing actor died during genesis");
-            return Err(CreateThingError::Genesis);
+            tracing::error!("page actor died during genesis");
+            return Err(CreatePageError::Genesis);
         }
-        self.things.insert(thing_id.clone(), actor.clone());
+        self.pages.insert(page_id.clone(), actor.clone());
         // Link after insert so `on_link_died` prunes this entry when the actor
         // self-evicts on idle (see the handler for the after-insert rationale).
         ctx.actor_ref().clone().link(&actor).await;
 
         // Place it in the live ToC. Best-effort: a failure here leaves a valid
-        // Thing that `restore_toc` re-surfaces at the root on the next checkout.
+        // Page that `restore_toc` re-surfaces at the root on the next checkout.
         if let Err(e) = self
             .toc
-            .ask(AddThingNode {
-                thing_id: thing_id.clone(),
+            .ask(AddPageNode {
+                page_id: page_id.clone(),
                 title: msg.name.clone(),
                 visibility: status,
                 parent: msg.parent.clone(),
@@ -584,15 +584,15 @@ impl Message<CreateThing> for CampaignSupervisor {
         {
             tracing::error!(
                 error = %e,
-                "failed to add toc node for new thing; it will self-heal on next checkout"
+                "failed to add toc node for new page; it will self-heal on next checkout"
             );
         }
 
         // Read back the committed row for the response.
-        things::Entity::find_by_id(ThingIdCol::from(thing_id.clone()))
+        pages::Entity::find_by_id(PageIdCol::from(page_id.clone()))
             .one(&db_reader)
             .await?
-            .ok_or(CreateThingError::Genesis)
+            .ok_or(CreatePageError::Genesis)
     }
 }
 
@@ -606,7 +606,7 @@ impl Message<CreateThing> for CampaignSupervisor {
 #[derive(Clone)]
 pub enum RoomHandle {
     Toc(ActorRef<TocActor>),
-    Thing(ActorRef<ThingActor>),
+    Page(ActorRef<PageActor>),
 }
 
 impl RoomHandle {
@@ -623,7 +623,7 @@ impl RoomHandle {
                 Err(kameo::error::SendError::HandlerError(e)) => Err(e),
                 Err(e) => Err(room_actor::JoinError::Internal(e.to_string())),
             },
-            RoomHandle::Thing(actor) => match actor.ask(msg).await {
+            RoomHandle::Page(actor) => match actor.ask(msg).await {
                 Ok(response) => Ok(response),
                 Err(kameo::error::SendError::HandlerError(e)) => Err(e),
                 Err(e) => Err(room_actor::JoinError::Internal(e.to_string())),
@@ -653,7 +653,7 @@ impl RoomHandle {
                     Err(room_actor::UpdateError::Busy)
                 }
             },
-            RoomHandle::Thing(actor) => match actor.ask(msg).await {
+            RoomHandle::Page(actor) => match actor.ask(msg).await {
                 Ok(ack) => Ok(ack),
                 Err(SendError::HandlerError(e)) => Err(e),
                 Err(SendError::ActorNotRunning(_) | SendError::ActorStopped) => {
@@ -672,7 +672,7 @@ impl RoomHandle {
             RoomHandle::Toc(actor) => {
                 let _ = actor.tell(msg).await;
             }
-            RoomHandle::Thing(actor) => {
+            RoomHandle::Page(actor) => {
                 let _ = actor.tell(msg).await;
             }
         }
@@ -694,14 +694,14 @@ pub enum JoinRoomError {
 impl CampaignSupervisor {
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %thing_id.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %page_id.0),
     )]
-    async fn ensure_thing_actor(
+    async fn ensure_page_actor(
         &mut self,
-        thing_id: ThingId,
+        page_id: PageId,
         supervisor_ref: ActorRef<Self>,
-    ) -> Result<ActorRef<ThingActor>, JoinRoomError> {
-        if let Some(actor) = self.things.get(&thing_id)
+    ) -> Result<ActorRef<PageActor>, JoinRoomError> {
+        if let Some(actor) = self.pages.get(&page_id)
             && actor.is_alive()
         {
             return Ok(actor.clone());
@@ -712,27 +712,27 @@ impl CampaignSupervisor {
             .as_ref()
             .expect("db must be Some while actor is running");
 
-        let exists = things::Entity::find()
-            .filter(things::Column::Id.eq(ThingIdCol::from(thing_id.clone())))
+        let exists = pages::Entity::find()
+            .filter(pages::Column::Id.eq(PageIdCol::from(page_id.clone())))
             .count(db.reader())
             .await?
             > 0;
 
         if !exists {
-            return Err(JoinRoomError::UnknownRoom(format!("thing:{}", thing_id.0)));
+            return Err(JoinRoomError::UnknownRoom(format!("page:{}", page_id.0)));
         }
 
-        let actor = ThingActor::spawn(ThingActorArgs {
+        let actor = PageActor::spawn(PageActorArgs {
             campaign_id: self.campaign_id.clone(),
-            thing_id: thing_id.clone(),
+            page_id: page_id.clone(),
             db_reader: db.reader().clone(),
             db_writer: db.writer().clone(),
-            init: ThingInit::Restore,
+            init: PageInit::Restore,
             debounce_duration: Duration::from_secs(2),
             idle_timeout: Duration::from_secs(30),
         });
 
-        self.things.insert(thing_id, actor.clone());
+        self.pages.insert(page_id, actor.clone());
         // Link after insert so `on_link_died` prunes this entry when the actor
         // self-evicts on idle (see the handler for the after-insert rationale).
         supervisor_ref.link(&actor).await;
@@ -751,15 +751,15 @@ impl Message<JoinRoom> for CampaignSupervisor {
         self.last_activity = Instant::now();
         match msg.room_id.as_str() {
             "toc" => Ok(RoomHandle::Toc(self.toc.clone())),
-            _ if msg.room_id.starts_with("thing:") => {
-                let id_str = &msg.room_id["thing:".len()..];
+            _ if msg.room_id.starts_with("page:") => {
+                let id_str = &msg.room_id["page:".len()..];
                 let ulid = ulid::Ulid::from_string(id_str)
                     .map_err(|_| JoinRoomError::UnknownRoom(msg.room_id.clone()))?;
-                let thing_id = ThingId::from(ulid);
+                let page_id = PageId::from(ulid);
                 let actor = self
-                    .ensure_thing_actor(thing_id, ctx.actor_ref().clone())
+                    .ensure_page_actor(page_id, ctx.actor_ref().clone())
                     .await?;
-                Ok(RoomHandle::Thing(actor))
+                Ok(RoomHandle::Page(actor))
             }
             _ => Err(JoinRoomError::UnknownRoom(msg.room_id)),
         }
@@ -810,22 +810,22 @@ impl Message<GetStopCause> for CampaignSupervisor {
     }
 }
 
-/// Test-only probe for the private `things` map: is this Thing still tracked?
+/// Test-only probe for the private `pages` map: is this Page still tracked?
 /// Lets eviction tests assert pruning without exposing the map.
 #[cfg(test)]
 #[derive(Debug, Clone)]
-pub struct ContainsThing(pub ThingId);
+pub struct ContainsPage(pub PageId);
 
 #[cfg(test)]
-impl Message<ContainsThing> for CampaignSupervisor {
+impl Message<ContainsPage> for CampaignSupervisor {
     type Reply = bool;
 
     async fn handle(
         &mut self,
-        ContainsThing(id): ContainsThing,
+        ContainsPage(id): ContainsPage,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        self.things.contains_key(&id)
+        self.pages.contains_key(&id)
     }
 }
 
@@ -971,14 +971,14 @@ mod tests {
         assert!(actor_ref.ask(Ping).await.is_err());
     }
 
-    /// A ThingActor that stops (idle self-eviction, or any stop) must be pruned
-    /// from the supervisor's `things` map via the `link` + `on_link_died` edge,
+    /// A PageActor that stops (idle self-eviction, or any stop) must be pruned
+    /// from the supervisor's `pages` map via the `link` + `on_link_died` edge,
     /// not left as a dead `ActorRef` until the next join of the same id.
     /// Drives the terminal effect directly with `stop_gracefully` (a `Normal`
     /// stop, same as `IdleEvict -> ctx.stop`) so the test is deterministic and
     /// needs no real idle wait.
     #[tokio::test]
-    async fn evicted_thing_actor_is_pruned_from_map() {
+    async fn evicted_page_actor_is_pruned_from_map() {
         ensure_vec0();
         let tmp = TempDir::new().unwrap();
         let store = store_in(tmp.path());
@@ -986,9 +986,9 @@ mod tests {
         let supervisor = CampaignSupervisor::spawn(args);
         supervisor.wait_for_startup().await;
 
-        // Create a Thing: it is inserted into `things` and linked.
+        // Create a Page: it is inserted into `pages` and linked.
         let model = supervisor
-            .ask(CreateThing {
+            .ask(CreatePage {
                 name: "Ephemeral".to_string(),
                 status: Some(Status::GmOnly),
                 parent: None,
@@ -996,25 +996,22 @@ mod tests {
             })
             .await
             .unwrap();
-        let thing_id = ThingId::from(model.id.clone());
+        let page_id = PageId::from(model.id.clone());
         assert!(
-            supervisor
-                .ask(ContainsThing(thing_id.clone()))
-                .await
-                .unwrap(),
-            "newly created thing should be tracked",
+            supervisor.ask(ContainsPage(page_id.clone())).await.unwrap(),
+            "newly created page should be tracked",
         );
 
         // Join to obtain the live actor ref (returns the same in-map actor),
         // then stop it.
         let handle = supervisor
             .ask(JoinRoom {
-                room_id: format!("thing:{}", thing_id.0),
+                room_id: format!("page:{}", page_id.0),
             })
             .await
             .unwrap();
-        let RoomHandle::Thing(actor) = handle else {
-            panic!("expected a Thing room handle");
+        let RoomHandle::Page(actor) = handle else {
+            panic!("expected a Page room handle");
         };
         actor.stop_gracefully().await.unwrap();
         actor.wait_for_shutdown_with_result(|_| ()).await;
@@ -1022,11 +1019,7 @@ mod tests {
         // link_died is delivered after the actor terminates; poll until pruned.
         let mut pruned = false;
         for _ in 0..50 {
-            if !supervisor
-                .ask(ContainsThing(thing_id.clone()))
-                .await
-                .unwrap()
-            {
+            if !supervisor.ask(ContainsPage(page_id.clone())).await.unwrap() {
                 pruned = true;
                 break;
             }
@@ -1034,7 +1027,7 @@ mod tests {
         }
         assert!(
             pruned,
-            "dead thing actor should be pruned from the supervisor map"
+            "dead page actor should be pruned from the supervisor map"
         );
 
         supervisor.stop_gracefully().await.unwrap();
@@ -1043,33 +1036,30 @@ mod tests {
 
     /// Poll the campaign's SQLite file (the seed runs in a spawned task after
     /// `on_start`, so it lands asynchronously) until the home base exists.
-    /// Asserts exactly one Thing named "Campaign Base Camp" (status `Known`)
-    /// with `home_thing_id` pointing at it, and returns its id.
-    async fn poll_until_seeded(db_path: &std::path::Path) -> ThingId {
+    /// Asserts exactly one Page named "Campaign Base Camp" (status `Known`)
+    /// with `home_page_id` pointing at it, and returns its id.
+    async fn poll_until_seeded(db_path: &std::path::Path) -> PageId {
         for _ in 0..200 {
             let conn = crate::db::connect_readonly(db_path)
                 .await
                 .expect("open readonly");
-            let things = things::Entity::find()
-                .all(&conn)
-                .await
-                .expect("query things");
+            let pages = pages::Entity::find().all(&conn).await.expect("query pages");
             let meta = campaign_metadata::Entity::find_by_id(campaign_metadata::METADATA_ROW_ID)
                 .one(&conn)
                 .await
                 .expect("query metadata")
                 .expect("metadata row exists");
-            // Require both writes (the Thing row, then the pointer) so we never
-            // observe the brief window between CreateThing and SetLandingPage.
-            if let (Some(thing), Some(home)) = (things.first(), meta.home_thing_id.clone()) {
-                assert_eq!(things.len(), 1, "exactly one Thing seeded");
-                assert_eq!(thing.name, "Campaign Base Camp");
-                assert_eq!(Status::from(thing.status), Status::Known);
-                let thing_id = ThingId::from(thing.id.clone());
+            // Require both writes (the Page row, then the pointer) so we never
+            // observe the brief window between CreatePage and SetLandingPage.
+            if let (Some(page), Some(home)) = (pages.first(), meta.home_page_id.clone()) {
+                assert_eq!(pages.len(), 1, "exactly one Page seeded");
+                assert_eq!(page.name, "Campaign Base Camp");
+                assert_eq!(Status::from(page.status), Status::Known);
+                let page_id = PageId::from(page.id.clone());
                 assert_eq!(
-                    ThingId::from(home),
-                    thing_id,
-                    "home_thing_id points at the base camp"
+                    PageId::from(home),
+                    page_id,
+                    "home_page_id points at the base camp"
                 );
 
                 // The seed must give the home page exactly one block whose row
@@ -1078,8 +1068,8 @@ mod tests {
                 // block identity is stable, not minted fresh on each persist.
                 let block_rows = crate::entities::blocks::Entity::find()
                     .filter(
-                        crate::entities::blocks::Column::ThingId
-                            .eq(ThingIdCol::from(thing_id.clone())),
+                        crate::entities::blocks::Column::PageId
+                            .eq(PageIdCol::from(page_id.clone())),
                     )
                     .all(&conn)
                     .await
@@ -1100,7 +1090,7 @@ mod tests {
                 );
                 assert_eq!(content["nodeName"].as_str(), Some("paragraph"));
 
-                return thing_id;
+                return page_id;
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
@@ -1159,18 +1149,15 @@ mod tests {
         let conn = crate::db::connect_readonly(&db_path)
             .await
             .expect("open readonly");
-        let things = things::Entity::find()
-            .all(&conn)
-            .await
-            .expect("query things");
-        assert_eq!(things.len(), 1, "reopen must not add a second base camp");
+        let pages = pages::Entity::find().all(&conn).await.expect("query pages");
+        assert_eq!(pages.len(), 1, "reopen must not add a second base camp");
         let meta = campaign_metadata::Entity::find_by_id(campaign_metadata::METADATA_ROW_ID)
             .one(&conn)
             .await
             .expect("query metadata")
             .expect("metadata row exists");
         assert_eq!(
-            meta.home_thing_id.map(ThingId::from),
+            meta.home_page_id.map(PageId::from),
             Some(seeded),
             "home pointer unchanged on reopen"
         );

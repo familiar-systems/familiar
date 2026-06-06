@@ -1,7 +1,7 @@
 //! Shared persistence state machine for the CRDT room actors.
 //!
 //! Both [`TocActor`](super::toc::TocActor) and
-//! [`ThingActor`](super::thing::ThingActor) debounce client edits and flush a
+//! [`PageActor`](super::page::PageActor) debounce client edits and flush a
 //! full snapshot of their in-memory Loro doc to the
 //! [`DatabaseWriteActor`](super::database_writer::DatabaseWriteActor). They used
 //! to encode that lifecycle as a `dirty: bool` plus a

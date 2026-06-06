@@ -6,7 +6,7 @@
 // guarantee is the manager's, not this effect's timing). Mounted once per
 // campaign at the /c/$campaignId layout (keyed by campaignId so switching
 // campaigns rebuilds the manager against the new socket URL). Consumers read
-// docs via useThingDoc.
+// docs via usePageDoc.
 
 import type { CampaignId } from "@familiar-systems/types-app";
 import { createContext, useContext, useEffect, useState } from "react";

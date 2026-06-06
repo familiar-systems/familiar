@@ -1,7 +1,7 @@
 //! Actor-facing contract for CRDT rooms.
 //!
 //! Contains the kameo `Message` structs that the WebSocket layer sends to
-//! room-capable actors (TocActor, ThingActor, AgentConversation), the reply
+//! room-capable actors (TocActor, PageActor, AgentConversation), the reply
 //! and result types those handlers return, and shared enums (`Capability`,
 //! error types) that flow across the actor boundary.
 //!

@@ -12,7 +12,7 @@ World-building tools like WorldAnvil and Kanka exist, but they expect you to bui
 
 **The session is the source of truth - not the wiki.**
 
-Everything important in your campaign - the NPCs, the locations, the factions, the lore - comes from what happened at the table. If we can capture what happens during your sessions (through recordings, notes, or both), the campaign wiki should build itself from that.
+Everything important in your campaign - the NPCs, the locations, the factions, the lore - falls out of what happened at the table. The session is the event; the wiki is just what we derive from it. If we can capture what happens during your sessions (through your notes, a recording, or both), the campaign wiki should build itself from that.
 
 Your job shifts from "maintain a wiki" to "run your game and review what the AI pulled out of it."
 
@@ -24,11 +24,11 @@ familiar.systems is a web app. You open a browser, log in, and you're working. N
 
 This is the core loop - the thing you'd do after every session:
 
-1. **Upload your audio or video recording and/or notes** from the session
+1. **Add what you've got** from the session - just your typed notes, or an audio/video recording, or both. Notes alone are enough; you don't have to record anything.
 
 - **Optionally** players add their characters' notes, too
 
-2. **The AI processes everything** - it transcribes audio, figures out what happened, and drafts a write-up of the session
+2. **The AI processes everything** - it transcribes any audio, figures out what happened, and drafts a write-up of the session
 3. **You get a list of proposals**: "I found 3 new NPCs. I think Kael frequents the Rusty Anchor. Tormund appears to be dead now. Here's a draft of what happened."
 4. **You review**: accept the ones that look right, tweak the ones that are close, skip the ones you don't care about
 5. **Done.** Your campaign wiki just grew, and it took 15-30 minutes instead of hours
@@ -55,7 +55,7 @@ As you play sessions, your campaign wiki grows automatically. It contains:
 
 - **Sessions** - the write-up of what happened each time you played, organized chronologically
 - **Arcs** - optional groupings across sessions (like chapters: "The Siege of Grimhollow" spanning sessions 7-12)
-- **Things** - every entity in your world: NPCs, locations, items, factions, monsters, lore. Each one has its own page that accumulates detail over time
+- **Entities** - everything in your world: NPCs, locations, items, factions, monsters, lore. Each one has its own page that accumulates detail over time
 - **Connections** - how things relate to each other: "Clericman worships Murdergod," "Kael frequents the Rusty Anchor," "The Silver Compact is allied with the Crown of Ashenmoor"
 
 Everything is linked together. When your session write-up mentions "the party met Kael at the Rusty Anchor," both Kael and the Rusty Anchor become clickable links to their pages. When you're looking at Kael's page, you can see every session he appeared in.
@@ -82,6 +82,8 @@ Players can also:
 **The AI proposes, you decide.** The AI never changes your world on its own. Every suggestion needs your approval. And every suggestion comes with the reasoning behind it, so you can always see why the AI thought something was worth proposing.
 
 **It captures the mess.** Retconned something? No problem. familiar.systems lets you mark things as "this was established in play but we've since decided it didn't happen." The history is preserved, but the AI stops treating it as current. Your campaign's contradictions and course corrections are part of the story.
+
+**You give it a frame; it fills it in.** Your pages, your templates, and the way you link things together give the AI a structure to work within. The AI does the filling-in - turning what happened at the table into linked, browsable pages. It works for whatever game you play and however you imagine your world.
 
 ## Self-Hosting
 

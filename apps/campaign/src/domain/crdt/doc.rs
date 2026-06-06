@@ -1,7 +1,7 @@
 //! CRDT document algebra.
 //!
 //! `CrdtDoc` is the algebra of CRDT operations on a single document. Concrete
-//! Loro-backed implementations live in `crate::loro` (`LoroThingDoc`,
+//! Loro-backed implementations live in `crate::loro` (`LoroPageDoc`,
 //! `LoroTocDoc`, etc). The trait is the contract every doc-shaped actor's
 //! inner state satisfies.
 
@@ -40,7 +40,7 @@ pub enum DocError {
     ImportSnapshot(String),
 }
 
-/// CRDT algebra. Implemented by inner Loro-backed types (e.g. `LoroThingDoc`,
+/// CRDT algebra. Implemented by inner Loro-backed types (e.g. `LoroPageDoc`,
 /// `LoroTocDoc`) and consumed by actor-side message handlers, the persistence
 /// pipeline, and tests.
 ///

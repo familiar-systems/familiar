@@ -6,7 +6,7 @@
 // move still merges conflict-free.
 
 import { TOC_MAX_DEPTH } from "@familiar-systems/types-campaign";
-import type { ThingId } from "@familiar-systems/types-campaign";
+import type { PageId } from "@familiar-systems/types-campaign";
 import {
   closestCenter,
   DndContext,
@@ -49,20 +49,20 @@ const MAX_DRAG_DEPTH = TOC_MAX_DEPTH - 1; // depth here is 0-indexed
 interface TocTreeProps {
   tree: TocTreeNode[];
   /** The page currently open in the editor (for active-row highlight). */
-  activeThingId: ThingId | null;
-  /** undefined = not creating, null = creating at root, ThingId = under that page. */
-  pendingParent: ThingId | null | undefined;
+  activePageId: PageId | null;
+  /** undefined = not creating, null = creating at root, PageId = under that page. */
+  pendingParent: PageId | null | undefined;
   creating: boolean;
-  onNavigate: (thingId: ThingId) => void;
+  onNavigate: (pageId: PageId) => void;
   onMove: (node: TreeID, parent: TreeID | null, index: number) => void;
-  onAddChild: (parent: ThingId) => void;
+  onAddChild: (parent: PageId) => void;
   onSubmitCreate: (name: string) => void;
   onCancelCreate: () => void;
 }
 
 export function TocTree({
   tree,
-  activeThingId,
+  activePageId,
   pendingParent,
   creating,
   onNavigate,
@@ -112,9 +112,9 @@ export function TocTree({
     });
   }
 
-  function handleAddChild(thingId: ThingId): void {
+  function handleAddChild(pageId: PageId): void {
     // Expand the target so the inline input (and existing children) are visible.
-    const match = items.find((i) => i.entry.kind === "thing" && i.entry.thingId === thingId);
+    const match = items.find((i) => i.entry.kind === "page" && i.entry.pageId === pageId);
     if (match !== undefined) {
       setCollapsed((prev) => {
         const next = new Set(prev);
@@ -122,7 +122,7 @@ export function TocTree({
         return next;
       });
     }
-    onAddChild(thingId);
+    onAddChild(pageId);
   }
 
   function reset(): void {
@@ -181,7 +181,7 @@ export function TocTree({
     const isActive = node.treeId === activeId;
     const depth = isActive && projection !== null ? projection.depth : node.depth;
     const entry = node.entry;
-    const open = entry.kind === "thing" && entry.thingId === activeThingId;
+    const open = entry.kind === "page" && entry.pageId === activePageId;
     rows.push(
       <TocRow
         key={node.treeId}
@@ -197,8 +197,8 @@ export function TocTree({
     if (
       pendingParent !== null &&
       pendingParent !== undefined &&
-      entry.kind === "thing" &&
-      entry.thingId === pendingParent
+      entry.kind === "page" &&
+      entry.pageId === pendingParent
     ) {
       rows.push(
         <TocCreateRow

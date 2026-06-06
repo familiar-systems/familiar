@@ -11,11 +11,11 @@ use sea_orm::{
     TransactionTrait,
 };
 
-use familiar_systems_campaign_shared::loro::thing::SECTION_CONTENT;
+use familiar_systems_campaign_shared::loro::page::SECTION_CONTENT;
 
-use crate::domain::thing::NewThing;
-use crate::entities::columns::{BlockIdCol, StatusCol};
-use crate::entities::{blocks, campaign_metadata, things, toc_entries};
+use crate::domain::page::NewPage;
+use crate::entities::columns::{BlockIdCol, PageKindCol, StatusCol};
+use crate::entities::{blocks, campaign_metadata, pages, toc_entries};
 
 pub struct DatabaseWriteActor {
     campaign_id: CampaignId,
@@ -148,15 +148,15 @@ impl Message<PatchCampaignMetadata> for DatabaseWriteActor {
 // DbSetLandingPage
 // ---------------------------------------------------------------------------
 
-/// Point `campaign_metadata.home_thing_id` at a Thing. Partial update: touches
-/// only `home_thing_id` and `updated_at`, leaving every other field as-is. No
+/// Point `campaign_metadata.home_page_id` at a Page. Partial update: touches
+/// only `home_page_id` and `updated_at`, leaving every other field as-is. No
 /// existence check: the sole caller (the genesis seed) passes a just-committed
-/// Thing, and the FK (`ON DELETE SET NULL`) keeps the pointer honest over the
-/// Thing's lifetime. Reuses [`PatchCampaignError`]; the only failure modes are
+/// Page, and the FK (`ON DELETE SET NULL`) keeps the pointer honest over the
+/// Page's lifetime. Reuses [`PatchCampaignError`]; the only failure modes are
 /// a missing metadata row or a DB error.
 #[derive(Debug, Clone)]
 pub struct DbSetLandingPage {
-    pub thing_id: ThingId,
+    pub page_id: PageId,
 }
 
 impl Message<DbSetLandingPage> for DatabaseWriteActor {
@@ -164,7 +164,7 @@ impl Message<DbSetLandingPage> for DatabaseWriteActor {
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.thing_id.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %msg.page_id.0),
     )]
     async fn handle(
         &mut self,
@@ -177,7 +177,7 @@ impl Message<DbSetLandingPage> for DatabaseWriteActor {
             .ok_or(PatchCampaignError::NoMetadataRow)?;
 
         let mut am: campaign_metadata::ActiveModel = existing.into();
-        am.home_thing_id = Set(Some(ThingIdCol::from(msg.thing_id)));
+        am.home_page_id = Set(Some(PageIdCol::from(msg.page_id)));
         am.updated_at = Set(Utc::now());
         am.update(&self.conn).await?;
         Ok(())
@@ -274,7 +274,7 @@ impl Message<WriteTocSnapshot> for DatabaseWriteActor {
                 .on_conflict(
                     sea_orm::sea_query::OnConflict::column(toc_entries::Column::Id)
                         .update_columns([
-                            toc_entries::Column::ThingId,
+                            toc_entries::Column::PageId,
                             toc_entries::Column::FolderTitle,
                             toc_entries::Column::Visibility,
                             toc_entries::Column::ParentId,
@@ -297,37 +297,37 @@ impl Message<WriteTocSnapshot> for DatabaseWriteActor {
 }
 
 // ---------------------------------------------------------------------------
-// WriteThingBlocks
+// WritePageBlocks
 // ---------------------------------------------------------------------------
 
-use familiar_systems_campaign_shared::id::ThingId;
+use familiar_systems_campaign_shared::id::PageId;
 
-use crate::entities::columns::ThingIdCol;
+use crate::entities::columns::PageIdCol;
 
-pub struct WriteThingBlocks {
-    pub thing_id: ThingId,
+pub struct WritePageBlocks {
+    pub page_id: PageId,
     pub blocks: Vec<blocks::ActiveModel>,
     pub name_sync: Option<String>,
 }
 
-impl Message<WriteThingBlocks> for DatabaseWriteActor {
+impl Message<WritePageBlocks> for DatabaseWriteActor {
     type Reply = Result<(), sea_orm::DbErr>;
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.thing_id.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %msg.page_id.0),
     )]
     async fn handle(
         &mut self,
-        msg: WriteThingBlocks,
+        msg: WritePageBlocks,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         let block_count = msg.blocks.len();
-        tracing::debug!(block_count, "writing thing blocks");
+        tracing::debug!(block_count, "writing page blocks");
 
-        let thing_id_col = ThingIdCol::from(msg.thing_id.clone());
+        let page_id_col = PageIdCol::from(msg.page_id.clone());
 
-        // The live block ids in this snapshot; everything else for the Thing is
+        // The live block ids in this snapshot; everything else for the Page is
         // stale and gets pruned. `flush` always `Set`s the id, so the unwrap is
         // total (same idiom as `WriteTocSnapshot`).
         let keep_ids: Vec<sea_orm::Value> = msg
@@ -337,7 +337,7 @@ impl Message<WriteThingBlocks> for DatabaseWriteActor {
             .collect();
 
         // Prune-then-upsert is a full-snapshot replace; it must be atomic so a
-        // failed upsert can't leave the Thing's blocks pruned but unreplaced (this
+        // failed upsert can't leave the Page's blocks pruned but unreplaced (this
         // flush also runs on actor stop, as the Loro doc is torn down). One
         // transaction wraps both; an early return drops `txn`, rolling back the
         // prune. Upsert rather than delete-then-insert so a block's `created_at`
@@ -346,21 +346,21 @@ impl Message<WriteThingBlocks> for DatabaseWriteActor {
         let txn = self.conn.begin().await?;
 
         if msg.blocks.is_empty() {
-            // No live blocks: drop every block for this Thing.
+            // No live blocks: drop every block for this Page.
             blocks::Entity::delete_many()
-                .filter(blocks::Column::ThingId.eq(thing_id_col.clone()))
+                .filter(blocks::Column::PageId.eq(page_id_col.clone()))
                 .exec(&txn)
                 .await?;
         } else {
-            // Prune blocks absent from the new snapshot. Scoped to this Thing:
+            // Prune blocks absent from the new snapshot. Scoped to this Page:
             // unlike `toc_entries` (a per-campaign singleton table), `blocks` is
-            // shared across all Things, so an unscoped `NOT IN` would delete other
-            // Things' rows. `is_not_in` binds one parameter per live block; a Thing
+            // shared across all Pages, so an unscoped `NOT IN` would delete other
+            // Pages' rows. `is_not_in` binds one parameter per live block; a Page
             // with enough blocks to exceed `SQLITE_MAX_VARIABLE_NUMBER` would fail
             // here -- the same bound `WriteTocSnapshot` already accepts (page block
             // counts are bounded in practice).
             blocks::Entity::delete_many()
-                .filter(blocks::Column::ThingId.eq(thing_id_col.clone()))
+                .filter(blocks::Column::PageId.eq(page_id_col.clone()))
                 .filter(blocks::Column::Id.is_not_in(keep_ids))
                 .exec(&txn)
                 .await?;
@@ -368,7 +368,7 @@ impl Message<WriteThingBlocks> for DatabaseWriteActor {
             // Upsert the snapshot. `CreatedAt` is deliberately omitted from the
             // update set so an existing block keeps its original creation time; the
             // `created_at = now` that `flush` stamps only takes effect on the insert
-            // (new-block) path. `ThingId`/`Section` are constant per block.
+            // (new-block) path. `PageId`/`Section` are constant per block.
             blocks::Entity::insert_many(msg.blocks)
                 .on_conflict(
                     sea_orm::sea_query::OnConflict::column(blocks::Column::Id)
@@ -385,11 +385,11 @@ impl Message<WriteThingBlocks> for DatabaseWriteActor {
         }
 
         if let Some(name) = msg.name_sync {
-            things::Entity::update_many()
-                .filter(things::Column::Id.eq(thing_id_col))
-                .col_expr(things::Column::Name, sea_orm::sea_query::Expr::value(name))
+            pages::Entity::update_many()
+                .filter(pages::Column::Id.eq(page_id_col))
+                .col_expr(pages::Column::Name, sea_orm::sea_query::Expr::value(name))
                 .col_expr(
-                    things::Column::UpdatedAt,
+                    pages::Column::UpdatedAt,
                     sea_orm::sea_query::Expr::value(Utc::now()),
                 )
                 .exec(&txn)
@@ -397,49 +397,50 @@ impl Message<WriteThingBlocks> for DatabaseWriteActor {
         }
 
         txn.commit().await?;
-        tracing::debug!(block_count, "thing blocks written");
+        tracing::debug!(block_count, "page blocks written");
         Ok(())
     }
 }
 
 // ---------------------------------------------------------------------------
-// DbCreateThing (genesis write)
+// DbCreatePage (genesis write)
 // ---------------------------------------------------------------------------
 
-/// Persist a brand-new Thing: its `things` row plus any seeded `blocks`, in a
-/// single transaction. Invoked once, from the `ThingActor`'s genesis path
-/// (`ThingInit::New`), so the actor that owns the Thing owns its birth write.
+/// Persist a brand-new Page: its `pages` row plus any seeded `blocks`, in a
+/// single transaction. Invoked once, from the `PageActor`'s genesis path
+/// (`PageInit::New`), so the actor that owns the Page owns its birth write.
 /// Replies with the persisted row (timestamps stamped here, at the write edge).
-pub struct DbCreateThing {
-    pub new_thing: NewThing,
+pub struct DbCreatePage {
+    pub new_page: NewPage,
 }
 
-impl Message<DbCreateThing> for DatabaseWriteActor {
-    type Reply = Result<things::Model, sea_orm::DbErr>;
+impl Message<DbCreatePage> for DatabaseWriteActor {
+    type Reply = Result<pages::Model, sea_orm::DbErr>;
 
     #[tracing::instrument(
         skip_all,
-        fields(campaign_id = %self.campaign_id.0, thing_id = %msg.new_thing.id.0),
+        fields(campaign_id = %self.campaign_id.0, page_id = %msg.new_page.id.0),
     )]
     async fn handle(
         &mut self,
-        msg: DbCreateThing,
+        msg: DbCreatePage,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        let nt = msg.new_thing;
-        let thing_id_col = ThingIdCol::from(nt.id.clone());
+        let nt = msg.new_page;
+        let page_id_col = PageIdCol::from(nt.id.clone());
         let block_count = nt.blocks.len();
         let now = Utc::now();
 
-        tracing::debug!(block_count, "creating thing");
+        tracing::debug!(block_count, "creating page");
 
         let txn = self.conn.begin().await?;
 
-        let model = things::ActiveModel {
-            id: Set(thing_id_col.clone()),
+        let model = pages::ActiveModel {
+            id: Set(page_id_col.clone()),
             name: Set(nt.name),
             status: Set(StatusCol::from(nt.status)),
-            prototype_id: Set(nt.prototype_id.map(ThingIdCol::from)),
+            kind: Set(PageKindCol::from(nt.kind)),
+            template_id: Set(nt.template_id.map(PageIdCol::from)),
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -452,7 +453,7 @@ impl Message<DbCreateThing> for DatabaseWriteActor {
                 .into_iter()
                 .map(|b| blocks::ActiveModel {
                     id: Set(BlockIdCol::from(b.id)),
-                    thing_id: Set(thing_id_col.clone()),
+                    page_id: Set(page_id_col.clone()),
                     status: Set(StatusCol::from(b.status)),
                     ordering: Set(b.ordering),
                     content: Set(b.content),
@@ -465,7 +466,7 @@ impl Message<DbCreateThing> for DatabaseWriteActor {
         }
 
         txn.commit().await?;
-        tracing::debug!(block_count, "thing created");
+        tracing::debug!(block_count, "page created");
         Ok(model)
     }
 }
@@ -518,7 +519,7 @@ mod tests {
             tagline: Set(None),
             game_system: Set(None),
             content_locale: Set(None),
-            home_thing_id: Set(None),
+            home_page_id: Set(None),
             wizard_completed_at: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
@@ -635,9 +636,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_thing_inserts_row_and_blocks_atomically() {
-        use crate::domain::thing::{NewBlock, NewThing};
-        use familiar_systems_campaign_shared::id::{BlockId, ThingId};
+    async fn create_page_inserts_row_and_blocks_atomically() {
+        use crate::domain::page::{NewBlock, NewPage};
+        use familiar_systems_campaign_shared::id::{BlockId, PageId};
+        use familiar_systems_campaign_shared::page_kind::PageKind;
         use familiar_systems_campaign_shared::status::Status;
 
         db::register_sqlite_vec();
@@ -648,14 +650,15 @@ mod tests {
             conn: conn.clone(),
         });
 
-        let thing_id = ThingId::generate();
+        let page_id = PageId::generate();
         let model = actor
-            .ask(DbCreateThing {
-                new_thing: NewThing {
-                    id: thing_id.clone(),
+            .ask(DbCreatePage {
+                new_page: NewPage {
+                    id: page_id.clone(),
                     name: "Korgath".into(),
                     status: Status::GmOnly,
-                    prototype_id: None,
+                    kind: PageKind::Entity,
+                    template_id: None,
                     blocks: vec![NewBlock {
                         id: BlockId::generate(),
                         ordering: 0,
@@ -665,23 +668,23 @@ mod tests {
                 },
             })
             .await
-            .expect("create thing");
+            .expect("create page");
         assert_eq!(model.name, "Korgath");
 
-        let things = things::Entity::find().all(&conn).await.unwrap();
-        assert_eq!(things.len(), 1, "thing row inserted");
+        let pages = pages::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(pages.len(), 1, "page row inserted");
         let block_rows = blocks::Entity::find().all(&conn).await.unwrap();
         assert_eq!(block_rows.len(), 1, "block row inserted");
         assert_eq!(block_rows[0].content, b"hello");
     }
 
-    /// A `WriteThingBlocks` whose upsert fails must not destroy the blocks it
-    /// was meant to replace. The handler prunes the Thing's stale blocks before
+    /// A `WritePageBlocks` whose upsert fails must not destroy the blocks it
+    /// was meant to replace. The handler prunes the Page's stale blocks before
     /// upserting the new set; without a transaction a failed upsert leaves the
     /// blocks pruned but unreplaced (the catastrophic case, since this runs on
     /// flush-on-stop while the in-memory Loro doc is being torn down).
     #[tokio::test]
-    async fn write_thing_blocks_failed_insert_preserves_existing_rows() {
+    async fn write_page_blocks_failed_insert_preserves_existing_rows() {
         use familiar_systems_campaign_shared::id::BlockId;
 
         db::register_sqlite_vec();
@@ -693,26 +696,27 @@ mod tests {
         });
 
         let now = Utc::now();
-        let thing_id = ThingId::generate();
-        let thing_id_col = ThingIdCol::from(thing_id.clone());
+        let page_id = PageId::generate();
+        let page_id_col = PageIdCol::from(page_id.clone());
 
-        // FK parent: blocks.thing_id -> things.id.
-        things::ActiveModel {
-            id: Set(thing_id_col.clone()),
+        // FK parent: blocks.page_id -> pages.id.
+        pages::ActiveModel {
+            id: Set(page_id_col.clone()),
             name: Set("Korgath".into()),
             status: Set(StatusCol::GmOnly),
-            prototype_id: Set(None),
+            kind: Set(PageKindCol::Entity),
+            template_id: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
         }
         .insert(&conn)
         .await
-        .expect("seed thing");
+        .expect("seed page");
 
         // One pre-existing block a correct (transactional) write must preserve.
         blocks::ActiveModel {
             id: Set(BlockIdCol::from(BlockId::generate())),
-            thing_id: Set(thing_id_col.clone()),
+            page_id: Set(page_id_col.clone()),
             status: Set(StatusCol::GmOnly),
             ordering: Set(0),
             content: Set(b"original".to_vec()),
@@ -724,15 +728,15 @@ mod tests {
         .await
         .expect("seed existing block");
 
-        // A doomed snapshot: one row whose `thing_id` points at a Thing that
+        // A doomed snapshot: one row whose `page_id` points at a Page that
         // doesn't exist, so the upsert trips the FK (foreign_keys are ON) and
         // fails as a unit. The handler has already pruned the existing block by
         // then. (A duplicate-PK batch no longer suffices to force failure:
         // `ON CONFLICT DO UPDATE` would resolve the conflict instead of erroring.)
-        let ghost = ThingId::generate();
+        let ghost = PageId::generate();
         let doomed = vec![blocks::ActiveModel {
             id: Set(BlockIdCol::from(BlockId::generate())),
-            thing_id: Set(ThingIdCol::from(ghost)),
+            page_id: Set(PageIdCol::from(ghost)),
             status: Set(StatusCol::GmOnly),
             ordering: Set(0),
             content: Set(b"new-a".to_vec()),
@@ -742,8 +746,8 @@ mod tests {
         }];
 
         actor
-            .ask(WriteThingBlocks {
-                thing_id: thing_id.clone(),
+            .ask(WritePageBlocks {
+                page_id: page_id.clone(),
                 blocks: doomed,
                 name_sync: None,
             })
@@ -761,10 +765,10 @@ mod tests {
     /// `CreatedAt` from the conflict-update set, so the original creation time is
     /// kept) while the `NOT IN` prune removes blocks absent from the new snapshot.
     /// Regression test for "created_at reset to now on every flush" (#2 in the PR
-    /// review): an editor flushes a Thing's blocks repeatedly, and `created_at`
+    /// review): an editor flushes a Page's blocks repeatedly, and `created_at`
     /// must not be clobbered each time.
     #[tokio::test]
-    async fn write_thing_blocks_preserves_created_at_and_prunes_dropped() {
+    async fn write_page_blocks_preserves_created_at_and_prunes_dropped() {
         use familiar_systems_campaign_shared::id::BlockId;
 
         db::register_sqlite_vec();
@@ -775,33 +779,34 @@ mod tests {
             conn: conn.clone(),
         });
 
-        let thing_id = ThingId::generate();
-        let thing_id_col = ThingIdCol::from(thing_id.clone());
+        let page_id = PageId::generate();
+        let page_id_col = PageIdCol::from(page_id.clone());
 
         // Fixed whole-second timestamps so the SQLite text round-trip is exact and
         // the test is deterministic (no `Utc::now()` sub-second flake).
         let t0 = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
         let t1 = chrono::DateTime::from_timestamp(1_700_000_060, 0).unwrap();
 
-        // FK parent: blocks.thing_id -> things.id.
-        things::ActiveModel {
-            id: Set(thing_id_col.clone()),
+        // FK parent: blocks.page_id -> pages.id.
+        pages::ActiveModel {
+            id: Set(page_id_col.clone()),
             name: Set("Korgath".into()),
             status: Set(StatusCol::GmOnly),
-            prototype_id: Set(None),
+            kind: Set(PageKindCol::Entity),
+            template_id: Set(None),
             created_at: Set(t0),
             updated_at: Set(t0),
         }
         .insert(&conn)
         .await
-        .expect("seed thing");
+        .expect("seed page");
 
         let kept = BlockId::generate();
         let dropped = BlockId::generate();
         let row =
             |id: &BlockId, ord: i64, body: &[u8], ts: chrono::DateTime<Utc>| blocks::ActiveModel {
                 id: Set(BlockIdCol::from(id.clone())),
-                thing_id: Set(thing_id_col.clone()),
+                page_id: Set(page_id_col.clone()),
                 status: Set(StatusCol::GmOnly),
                 ordering: Set(ord),
                 content: Set(body.to_vec()),
@@ -812,8 +817,8 @@ mod tests {
 
         // First flush: two blocks, both stamped t0.
         actor
-            .ask(WriteThingBlocks {
-                thing_id: thing_id.clone(),
+            .ask(WritePageBlocks {
+                page_id: page_id.clone(),
                 blocks: vec![row(&kept, 0, b"v1", t0), row(&dropped, 1, b"d1", t0)],
                 name_sync: None,
             })
@@ -823,8 +828,8 @@ mod tests {
         // Second flush: `kept` is edited and carries a *later* created_at (as a
         // real flush would, stamping `now`); `dropped` is gone from the snapshot.
         actor
-            .ask(WriteThingBlocks {
-                thing_id: thing_id.clone(),
+            .ask(WritePageBlocks {
+                page_id: page_id.clone(),
                 blocks: vec![row(&kept, 0, b"v2", t1)],
                 name_sync: None,
             })
@@ -867,7 +872,7 @@ mod tests {
         // *failed* snapshot must leave untouched.
         toc_entries::ActiveModel {
             id: Set("old".to_string()),
-            thing_id: Set(None),
+            page_id: Set(None),
             folder_title: Set(Some("Stale Folder".into())),
             visibility: Set(StatusCol::GmOnly),
             parent_id: Set(None),
@@ -877,13 +882,13 @@ mod tests {
         .await
         .expect("seed stale toc row");
 
-        // Keep-set is just "new"; its thing_id points at a Thing that doesn't
+        // Keep-set is just "new"; its page_id points at a Page that doesn't
         // exist, so the upsert trips the FK (foreign_keys are ON) and fails.
         // The prune deletes "old" first.
-        let ghost = ThingId::generate();
+        let ghost = PageId::generate();
         let rows = vec![toc_entries::ActiveModel {
             id: Set("new".to_string()),
-            thing_id: Set(Some(ThingIdCol::from(ghost))),
+            page_id: Set(Some(PageIdCol::from(ghost))),
             folder_title: Set(None),
             visibility: Set(StatusCol::GmOnly),
             parent_id: Set(None),

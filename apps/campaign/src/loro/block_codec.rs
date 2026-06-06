@@ -1,6 +1,6 @@
 //! Opaque round-trip between Loro containers and JSON blobs.
 //!
-//! Each block in a Thing's content section is a top-level child of the
+//! Each block in a Page's content section is a top-level child of the
 //! ProseMirror document's children LoroList. This module serializes each
 //! block's Loro sub-tree to JSON (via `get_deep_value`) and reconstructs
 //! it from that JSON on restore.
@@ -29,7 +29,7 @@ pub fn serialize_block(block_map: &LoroMap) -> Vec<u8> {
 // ── Seed: build a starter block ─────────────────────────────────────────────
 
 /// Build the content blob for a seeded empty paragraph carrying a stable
-/// `blockId`. A brand-new Thing seeds one of these so it opens as a
+/// `blockId`. A brand-new Page seeds one of these so it opens as a
 /// schema-valid, editable ProseMirror document (a `doc` with one `block+`
 /// child) rather than an empty, uneditable `doc`. Embedding the block's ULID
 /// in `attributes.blockId` keeps its identity stable from genesis through
@@ -48,8 +48,8 @@ pub fn empty_paragraph_blob(block_id: &BlockId) -> Vec<u8> {
 /// Why a block (or one of its children) could not be reconstructed.
 ///
 /// Restore is best-effort: rather than panicking on a malformed blob (which,
-/// running inside `ThingActor::on_start`, would crash-loop the actor and make
-/// the Thing un-openable), the offending block is dropped and surfaced through
+/// running inside `PageActor::on_start`, would crash-loop the actor and make
+/// the Page un-openable), the offending block is dropped and surfaced through
 /// [`SkippedBlock`].
 ///
 /// TODO let users know about it
@@ -221,7 +221,7 @@ fn read_block_id(block_map: &LoroMap) -> Option<BlockId> {
 ///
 /// Best-effort per block: a blob that cannot be reconstructed (not valid JSON,
 /// not a node object) is dropped and returned in the [`SkippedBlock`] report
-/// rather than panicking, so one corrupt row cannot make the Thing un-openable.
+/// rather than panicking, so one corrupt row cannot make the Page un-openable.
 /// `pos` is a write cursor advanced only on a successful insert, so a dropped
 /// block does not skew the positions of the blocks after it.
 ///

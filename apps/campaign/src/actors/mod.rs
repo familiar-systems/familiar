@@ -10,13 +10,13 @@
 //!
 //! Child room actors under the supervisor:
 //! - [`TocActor`](toc::TocActor): singleton, eagerly spawned on checkout.
-//! - [`ThingActor`](thing::ThingActor): per-Thing, lazily spawned on first room join.
+//! - [`PageActor`](page::PageActor): per-Page, lazily spawned on first room join.
 //!
 //! Future: AgentConversation, RelationshipGraph, CampaignVocabulary.
 
 pub mod database_writer;
+pub mod page;
 pub mod persist;
 pub mod registry;
 pub mod supervisor;
-pub mod thing;
 pub mod toc;

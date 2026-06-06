@@ -5,10 +5,10 @@
 
 use fs_id::{Ulid, fs_id};
 
-/// Uniquely identifies a thing (NPC, location, item, etc.).
+/// Uniquely identifies a page (NPC, location, item, etc.).
 /// ULID for compact URLs (26 chars) and B-tree-friendly insert ordering.
 #[fs_id(export_to = "types-campaign/src/generated/id/")]
-pub struct ThingId(pub Ulid);
+pub struct PageId(pub Ulid);
 
 /// Uniquely identifies a block within a document. ULID gives approximate
 /// chronological creation ordering and a single representation across

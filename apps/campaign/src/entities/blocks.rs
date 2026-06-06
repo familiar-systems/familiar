@@ -1,14 +1,14 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 
-use crate::entities::columns::{BlockIdCol, StatusCol, ThingIdCol};
+use crate::entities::columns::{BlockIdCol, PageIdCol, StatusCol};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "blocks")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: BlockIdCol,
-    pub thing_id: ThingIdCol,
+    pub page_id: PageIdCol,
     pub status: StatusCol,
     pub ordering: i64,
     #[sea_orm(column_type = "Blob")]
@@ -22,17 +22,17 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::things::Entity",
-        from = "Column::ThingId",
-        to = "super::things::Column::Id",
+        belongs_to = "super::pages::Entity",
+        from = "Column::PageId",
+        to = "super::pages::Column::Id",
         on_delete = "Cascade"
     )]
-    Thing,
+    Page,
 }
 
-impl Related<super::things::Entity> for Entity {
+impl Related<super::pages::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Thing.def()
+        Relation::Page.def()
     }
 }
 

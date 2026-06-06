@@ -93,7 +93,7 @@ impl CampaignDatabase {
                 tagline: Set(None),
                 game_system: Set(None),
                 content_locale: Set(None),
-                home_thing_id: Set(None),
+                home_page_id: Set(None),
                 wizard_completed_at: Set(None),
                 created_at: Set(now),
                 updated_at: Set(now),

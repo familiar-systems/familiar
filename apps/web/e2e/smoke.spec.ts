@@ -29,7 +29,7 @@ test.beforeEach(async ({ context }) => {
 
 // The editor opens with one empty paragraph. Type the first line into it, press
 // Enter to split off a second block, type the second line -> two content blocks
-// (which is what step 10's DB assertion checks per Thing).
+// (which is what step 10's DB assertion checks per Page).
 async function typeTwoLines(
   page: import("@playwright/test").Page,
   editor: import("@playwright/test").Locator,
@@ -66,7 +66,7 @@ test("create a campaign, edit two pages, and navigate between them via the ToC",
   await page.getByTestId("wax-seal").click();
 
   // --- 3. Home editor ("Campaign Base Camp"), once the Loro doc has synced. ---
-  await expect(page).toHaveURL(/\/c\/[^/]+\/t\/[^/]+$/);
+  await expect(page).toHaveURL(/\/c\/[^/]+\/p\/[^/]+$/);
   await expect(page.locator(".ProseMirror")).toBeVisible();
 
   // Sentinel for the no-full-reload invariant: SPA navigation must not reload

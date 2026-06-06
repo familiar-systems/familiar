@@ -12,6 +12,8 @@ import {
   ScrollText,
   MapPin,
   Users,
+  LayoutTemplate,
+  Library,
   Swords,
   BrainCircuit,
   Link2,
@@ -271,7 +273,7 @@ const ravenDarkUrl = `${baseUrl}raven-for-dark.svg`;
         </p>
       </div>
 
-      <!-- Things -->
+      <!-- Entities -->
       <div
         class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background"
       >
@@ -280,7 +282,7 @@ const ravenDarkUrl = `${baseUrl}raven-for-dark.svg`;
         >
           <Users className="w-6 h-6 text-bronze" />
         </div>
-        <h3 class="text-xl font-bold mb-3 font-display">Things</h3>
+        <h3 class="text-xl font-bold mb-3 font-display">Entities</h3>
         <p class="text-muted-foreground leading-relaxed">
           Every entity in your world: NPCs, locations, items, factions, clocks,
           spaceships, aspects, whatever your system needs. Each one has its own
@@ -299,10 +301,27 @@ const ravenDarkUrl = `${baseUrl}raven-for-dark.svg`;
         </div>
         <h3 class="text-xl font-bold mb-3 font-display">Connections</h3>
         <p class="text-muted-foreground leading-relaxed">
-          How things relate: "Kael frequents the Rusty Anchor," "The Silver
+          How entities relate: "Kael frequents the Rusty Anchor," "The Silver
           Compact is allied with the Crown of Ashenmoor," "The Lampblack League
           owns the clock Summon The Ghost Ships." A freeform, living graph of
           your world.
+        </p>
+      </div>
+
+      <!-- Templates -->
+      <div
+        class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background"
+      >
+        <div
+          class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5"
+        >
+          <LayoutTemplate className="w-6 h-6 text-bronze" />
+        </div>
+        <h3 class="text-xl font-bold mb-3 font-display">Templates</h3>
+        <p class="text-muted-foreground leading-relaxed">
+          Every entity is built from a template: an NPC, a tavern, a starship.
+          Start from the ones your system ships with, or shape your own. Your
+          defaults, your familiar's blueprint.
         </p>
       </div>
 
@@ -319,6 +338,24 @@ const ravenDarkUrl = `${baseUrl}raven-for-dark.svg`;
         <p class="text-muted-foreground leading-relaxed">
           You control what players see. Secret notes stay secret. The Good
           Cleric's dark patron remains hidden until you're ready to reveal it.
+        </p>
+      </div>
+
+      <!-- Arcs -->
+      <div
+        class="p-8 rounded-2xl border border-foreground/5 dark:border-foreground/10 hover:border-bronze/20 transition-all duration-300 bg-background"
+      >
+        <div
+          class="w-12 h-12 rounded-xl bg-bronze/10 flex items-center justify-center mb-5"
+        >
+          <Library className="w-6 h-6 text-bronze" />
+        </div>
+        <h3 class="text-xl font-bold mb-3 font-display">Arcs</h3>
+        <p class="text-muted-foreground leading-relaxed">
+          When one adventure ends, the next begins in the same world. Arcs group
+          your sessions into storylines, so a finished story opens onto a living
+          world instead of ending. Optional for a single tale, essential for
+          West Marches and party-based play.
         </p>
       </div>
     </div>

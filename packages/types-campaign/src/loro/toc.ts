@@ -5,7 +5,7 @@
 //! `crates/campaign-shared/src/loro/toc.rs` (`CONTAINER_TOC`, `KEY_*`,
 //! `KIND_*`, `MAX_DEPTH`). The `TocEntry`/`TocEntryKind` *types* are ts-rs
 //! generated; these *string constants* are not, so they are hand-mirrored here
-//! the same way `packages/editor/src/meta.ts` mirrors the Thing meta keys.
+//! the same way `packages/editor/src/meta.ts` mirrors the Page meta keys.
 //!
 //! FIXME: hand-mirroring is a drift hazard. These constants are the wire schema
 //! shared with the server and MUST be generated/exported from the Rust source
@@ -22,14 +22,14 @@ export const TOC_CONTAINER = "toc";
 // Node-metadata LoroMap keys (one map per tree node).
 export const TOC_KEY_KIND = "kind";
 export const TOC_KEY_TITLE = "title";
-export const TOC_KEY_THING_ID = "thingId";
+export const TOC_KEY_PAGE_ID = "pageId";
 export const TOC_KEY_VISIBILITY = "visibility";
 export const TOC_KEY_CONVERSATION_ID = "conversationId";
 
 // Kind discriminant values. `satisfies TocEntryKind` pins them to the generated
 // union, so a rename on the Rust/ts-rs side fails to compile here.
 export const TOC_KIND_FOLDER = "folder" satisfies TocEntryKind;
-export const TOC_KIND_THING = "thing" satisfies TocEntryKind;
+export const TOC_KIND_PAGE = "page" satisfies TocEntryKind;
 export const TOC_KIND_SUGGESTION = "suggestion" satisfies TocEntryKind;
 
 /**

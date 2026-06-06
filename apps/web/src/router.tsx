@@ -14,7 +14,7 @@
 // When adding a route with a branded-ID param, brand the ID at the URL
 // boundary in the route file's parseParams, with a Zod schema co-located
 // with the brand. Platform-shared brands (CampaignId, UserId) live in
-// @familiar-systems/types-app; campaign-only brands (ThingId, BlockId)
+// @familiar-systems/types-app; campaign-only brands (PageId, BlockId)
 // live in @familiar-systems/types-campaign. Example for /campaigns/$id
 // (in src/routes/_authed/campaigns/$id.tsx):
 //

@@ -16,7 +16,7 @@ The architectural shape: **the platform tier is domain-blind.** It knows what a 
 ## Reading list (fresh-context agent, in order)
 
 1. **`~/git/familiar-systems/experiment-single-campaign-editor/tiptap-loro-kameo-rust/CLAUDE.md`** — the prototype the campaign server is being built from (lives outside this repo's worktree, hence the absolute path). Read its Architecture section to understand the actor topology (CampaignSupervisor + ThingActor + TocActor + DatabaseActor) and the CRDT sync flow. The campaign tier in this design is essentially this prototype plus a registration call back to the platform and a catalog route.
-2. **[`docs/plans/2026-02-20-templates-as-prototype-pages.md`](2026-02-20-templates-as-prototype-pages.md)** — the templates-are-Things model. Why `Template`/`TemplateField` was rejected, what `prototypeId` means, and how categorization works through the graph.
+2. **[`docs/plans/2026-02-20-templates-as-pages.md`](2026-02-20-templates-as-pages.md)** — the templates-are-Things model. Why `Template`/`TemplateField` was rejected, what `prototypeId` means, and how categorization works through the graph.
 3. **[`docs/plans/2026-05-04-campaign-actor-domain-design.md`](2026-05-04-campaign-actor-domain-design.md)** §Campaign Startup Lifecycle — how a fresh checkout transitions through `Starting → Restoring → Ready`. New-campaign init is a minimal variant of that flow.
 4. **[`docs/plans/2026-04-11-app-server-prd.md`](2026-04-11-app-server-prd.md)** §URL architecture and §Campaign CRUD — the routing-table model and the platform's role.
 5. **[`docs/plans/2026-02-22-ai-prd.md`](2026-02-22-ai-prd.md)** — the AI works in ProseMirror-shaped Loro state, which is why the template compiler is Rust (not TypeScript).
@@ -310,7 +310,7 @@ No Rust constant. No Rust compiler change.
 1. **Author time:** the JSON Schema flags an invalid node name in VS Code before anyone hits CI.
 2. **Integration test (the drift catcher):** compile every template under `content/templates/`, mount each output document in a real TipTap editor (via the existing test harness used for the `loro-prosemirror` roundtrip), fail if any node falls back to "unknown."
 
-[`docs/plans/2026-02-20-templates-as-prototype-pages.md`](2026-02-20-templates-as-prototype-pages.md) walks through the NPC template ("Graydalf the Wisened") and names the widgets that page needs: portrait widget, relationship list widget, transclusion slot. These are conceptual; no TipTap extensions exist for them in `packages/editor` today. The editor team owns the actual node names, attribute shapes, and rendering. This design's only contract is: once those extensions exist, the YAML's `node:` values match their names and the schema validates.
+[`docs/plans/2026-02-20-templates-as-pages.md`](2026-02-20-templates-as-pages.md) walks through the NPC template ("Graydalf the Wisened") and names the widgets that page needs: portrait widget, relationship list widget, transclusion slot. These are conceptual; no TipTap extensions exist for them in `packages/editor` today. The editor team owns the actual node names, attribute shapes, and rendering. This design's only contract is: once those extensions exist, the YAML's `node:` values match their names and the schema validates.
 
 ### Compiler
 

@@ -11,7 +11,8 @@
 //! The `*Col` types live entirely inside this crate; nothing outside
 //! `apps/campaign/` imports them.
 
-use familiar_systems_campaign_shared::id::{BlockId, ThingId};
+use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use sea_orm::sea_query::{ArrayType, ColumnType, Nullable, ValueType, ValueTypeErr};
 use sea_orm::{
@@ -97,7 +98,7 @@ macro_rules! ulid_id_column {
     };
 }
 
-ulid_id_column!(ThingIdCol, ThingId);
+ulid_id_column!(PageIdCol, PageId);
 ulid_id_column!(BlockIdCol, BlockId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, DeriveActiveEnum)]
@@ -126,6 +127,35 @@ impl From<StatusCol> for Status {
             StatusCol::GmOnly => Self::GmOnly,
             StatusCol::Known => Self::Known,
             StatusCol::Retconned => Self::Retconned,
+        }
+    }
+}
+
+// The on-disk representation matches `PageKind::as_loro_str` (single tokens, so
+// the DB and Loro/wire strings coincide). Adding a `PageKind` variant adds a
+// line here; the `From` matches below then fail to compile until updated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "Text")]
+pub enum PageKindCol {
+    #[sea_orm(string_value = "entity")]
+    Entity,
+    #[sea_orm(string_value = "template")]
+    Template,
+}
+
+impl From<PageKind> for PageKindCol {
+    fn from(k: PageKind) -> Self {
+        match k {
+            PageKind::Entity => Self::Entity,
+            PageKind::Template => Self::Template,
+        }
+    }
+}
+impl From<PageKindCol> for PageKind {
+    fn from(k: PageKindCol) -> Self {
+        match k {
+            PageKindCol::Entity => Self::Entity,
+            PageKindCol::Template => Self::Template,
         }
     }
 }

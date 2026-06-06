@@ -14,9 +14,9 @@
 use crate::routes::catalog::*;
 use crate::routes::health::*;
 use crate::routes::metadata::*;
-use crate::routes::things::*;
+use crate::routes::pages::*;
 use crate::state::AppState;
-use familiar_systems_campaign_shared::document::things::{CreateThingRequest, ThingResponse};
+use familiar_systems_campaign_shared::document::pages::{CreatePageRequest, PageResponse};
 use familiar_systems_campaign_shared::onboarding::catalog::{
     ByoEntry, CatalogResponse, SystemEntry, TemplateRef,
 };
@@ -45,8 +45,8 @@ use utoipa_axum::{router::OpenApiRouter, routes};
         CampaignErrorResponse,
         AudioMode,
         CampaignMetadataResponse,
-        CreateThingRequest,
-        ThingResponse,
+        CreatePageRequest,
+        PageResponse,
         Status,
     ))
 )]
@@ -57,5 +57,5 @@ pub fn api_router() -> OpenApiRouter<AppState> {
         .routes(routes!(health))
         .routes(routes!(list_systems))
         .routes(routes!(get_campaign, patch_campaign))
-        .routes(routes!(create_thing))
+        .routes(routes!(create_page))
 }

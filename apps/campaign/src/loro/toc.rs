@@ -9,10 +9,10 @@
 use serde::Serialize;
 use std::borrow::Cow;
 
-use familiar_systems_campaign_shared::id::{ConversationId, ThingId};
+use familiar_systems_campaign_shared::id::{ConversationId, PageId};
 use familiar_systems_campaign_shared::loro::toc::{
-    CONTAINER_TOC, KEY_CONVERSATION_ID, KEY_KIND, KEY_THING_ID, KEY_TITLE, KEY_VISIBILITY,
-    KIND_FOLDER, KIND_SUGGESTION, KIND_THING, TocEntry,
+    CONTAINER_TOC, KEY_CONVERSATION_ID, KEY_KIND, KEY_PAGE_ID, KEY_TITLE, KEY_VISIBILITY,
+    KIND_FOLDER, KIND_PAGE, KIND_SUGGESTION, TocEntry,
 };
 use familiar_systems_campaign_shared::status::Status;
 use loro::{LoroDoc, LoroMap, LoroTree, LoroValue, TreeID, ValueOrContainer};
@@ -36,10 +36,10 @@ pub struct TocTreeNode {
 /// LoroDoc root:
 ///   "toc" (LoroTree, fractional index enabled)
 ///     Node metadata (LoroMap per node):
-///       "kind": "folder" | "thing" | "suggestion"
+///       "kind": "folder" | "page" | "suggestion"
 ///       "title": string
 ///       "visibility": "gmOnly" | "known" | "retconned"
-///       "thingId": string          (Thing only)
+///       "pageId": string          (Page only)
 ///       "conversationId": string   (Suggestion only)
 /// ```
 pub struct LoroTocDoc {
@@ -92,7 +92,7 @@ impl LoroTocDoc {
 
     /// Write a `TocEntry` into a tree node's metadata map.
     ///
-    /// TODO: Inline suggestions (`TocSuggestion`) on Folder/Thing entries are
+    /// TODO: Inline suggestions (`TocSuggestion`) on Folder/Page entries are
     /// not written here. They need their own read/write path, likely as a
     /// LoroList sub-container on each node's metadata map. During an active
     /// session the CRDT is authoritative for suggestion state; on checkout
@@ -107,15 +107,15 @@ impl LoroTocDoc {
                 meta.insert(KEY_VISIBILITY, visibility.as_loro_str())
                     .unwrap();
             }
-            TocEntry::Thing {
+            TocEntry::Page {
                 title,
-                thing_id,
+                page_id,
                 visibility,
                 ..
             } => {
-                meta.insert(KEY_KIND, KIND_THING).unwrap();
+                meta.insert(KEY_KIND, KIND_PAGE).unwrap();
                 meta.insert(KEY_TITLE, title.as_str()).unwrap();
-                meta.insert(KEY_THING_ID, thing_id.0.to_string()).unwrap();
+                meta.insert(KEY_PAGE_ID, page_id.0.to_string()).unwrap();
                 meta.insert(KEY_VISIBILITY, visibility.as_loro_str())
                     .unwrap();
             }
@@ -156,20 +156,20 @@ impl LoroTocDoc {
                     suggestions: Vec::new(),
                 })
             }
-            KIND_THING => {
+            KIND_PAGE => {
                 let title = match meta.get(KEY_TITLE)? {
                     ValueOrContainer::Value(LoroValue::String(s)) => s.to_string(),
                     _ => return None,
                 };
-                let thing_id = match meta.get(KEY_THING_ID)? {
+                let page_id = match meta.get(KEY_PAGE_ID)? {
                     ValueOrContainer::Value(LoroValue::String(s)) => {
-                        ThingId::from(ulid::Ulid::from_string(&s).ok()?)
+                        PageId::from(ulid::Ulid::from_string(&s).ok()?)
                     }
                     _ => return None,
                 };
-                Some(TocEntry::Thing {
+                Some(TocEntry::Page {
                     title,
-                    thing_id,
+                    page_id,
                     visibility,
                     suggestions: Vec::new(),
                 })
@@ -288,12 +288,12 @@ impl LoroTocDoc {
         self.read_children(&tree, None)
     }
 
-    /// Find the `TreeID` of the node representing `thing_id`, if it appears
-    /// anywhere in the tree. Used to resolve a parent Thing for placement.
-    pub fn find_thing_node(&self, thing_id: &ThingId) -> Option<TreeID> {
-        fn search(nodes: &[TocTreeNode], target: &ThingId) -> Option<TreeID> {
+    /// Find the `TreeID` of the node representing `page_id`, if it appears
+    /// anywhere in the tree. Used to resolve a parent Page for placement.
+    pub fn find_page_node(&self, page_id: &PageId) -> Option<TreeID> {
+        fn search(nodes: &[TocTreeNode], target: &PageId) -> Option<TreeID> {
             for node in nodes {
-                if let TocEntry::Thing { thing_id: id, .. } = &node.entry
+                if let TocEntry::Page { page_id: id, .. } = &node.entry
                     && id == target
                 {
                     return Some(node.tree_id);
@@ -304,7 +304,7 @@ impl LoroTocDoc {
             }
             None
         }
-        search(&self.read_tree(), thing_id)
+        search(&self.read_tree(), page_id)
     }
 
     /// Read a single entry by TreeID.
@@ -361,15 +361,15 @@ mod tests {
         }
     }
 
-    fn thing(title: &str) -> (TocEntry, ThingId) {
-        let thing_id = ThingId::generate();
-        let entry = TocEntry::Thing {
+    fn page(title: &str) -> (TocEntry, PageId) {
+        let page_id = PageId::generate();
+        let entry = TocEntry::Page {
             title: title.to_string(),
-            thing_id: thing_id.clone(),
+            page_id: page_id.clone(),
             visibility: Status::Known,
             suggestions: Vec::new(),
         };
-        (entry, thing_id)
+        (entry, page_id)
     }
 
     #[test]
@@ -393,17 +393,17 @@ mod tests {
     }
 
     #[test]
-    fn add_thing_entry() {
+    fn add_page_entry() {
         let mut doc = LoroTocDoc::new();
-        let (entry, expected_id) = thing("Korgath the Destroyer");
+        let (entry, expected_id) = page("Korgath the Destroyer");
         let (_, _) = doc.add_entry(None, &entry).unwrap();
 
         let tree = doc.read_tree();
-        assert_eq!(tree[0].entry.kind(), TocEntryKind::Thing);
-        if let TocEntry::Thing { thing_id, .. } = &tree[0].entry {
-            assert_eq!(*thing_id, expected_id);
+        assert_eq!(tree[0].entry.kind(), TocEntryKind::Page);
+        if let TocEntry::Page { page_id, .. } = &tree[0].entry {
+            assert_eq!(*page_id, expected_id);
         } else {
-            panic!("expected Thing variant");
+            panic!("expected Page variant");
         }
     }
 
@@ -458,7 +458,7 @@ mod tests {
     fn nested_entries() {
         let mut doc = LoroTocDoc::new();
         let (_, parent_id) = doc.add_entry(None, &folder("Act I")).unwrap();
-        let (child_entry, _) = thing("The Dragon's Lair");
+        let (child_entry, _) = page("The Dragon's Lair");
         doc.add_entry(Some(parent_id), &child_entry).unwrap();
 
         let tree = doc.read_tree();
@@ -468,16 +468,16 @@ mod tests {
     }
 
     #[test]
-    fn find_thing_node_locates_nested_thing() {
+    fn find_page_node_locates_nested_page() {
         let mut doc = LoroTocDoc::new();
         let (_, folder_id) = doc.add_entry(None, &folder("Act I")).unwrap();
-        let (thing_entry, thing_id) = thing("The Dragon's Lair");
-        let (_, tree_id) = doc.add_entry(Some(folder_id), &thing_entry).unwrap();
+        let (page_entry, page_id) = page("The Dragon's Lair");
+        let (_, tree_id) = doc.add_entry(Some(folder_id), &page_entry).unwrap();
 
-        assert_eq!(doc.find_thing_node(&thing_id), Some(tree_id));
+        assert_eq!(doc.find_page_node(&page_id), Some(tree_id));
         assert!(
-            doc.find_thing_node(&ThingId::generate()).is_none(),
-            "absent thing resolves to None"
+            doc.find_page_node(&PageId::generate()).is_none(),
+            "absent page resolves to None"
         );
     }
 
@@ -498,7 +498,7 @@ mod tests {
         let mut doc = LoroTocDoc::new();
         let (_, id) = doc.add_entry(None, &folder("Draft")).unwrap();
 
-        let (updated, _) = thing("Final");
+        let (updated, _) = page("Final");
         doc.update_entry(id, &updated).unwrap();
 
         let entry = doc.read_entry(id).unwrap();
@@ -540,36 +540,36 @@ mod tests {
         let snapshot = server.export_snapshot().unwrap();
         let mut client = LoroTocDoc::from_snapshot(&snapshot).unwrap();
 
-        // 1. Add two root-level entries: a folder and a thing.
+        // 1. Add two root-level entries: a folder and a page.
         let (delta, folder_id) = server.add_entry(None, &folder("Act I")).unwrap();
         apply!(server, client, delta);
 
-        let (thing_entry, _thing_id) = thing("The Iron Citadel");
-        let (delta, thing_node_id) = server.add_entry(None, &thing_entry).unwrap();
+        let (page_entry, _page_id) = page("The Iron Citadel");
+        let (delta, page_node_id) = server.add_entry(None, &page_entry).unwrap();
         apply!(server, client, delta);
 
         assert_eq!(server.read_tree().len(), 2);
 
-        // 2. Move the thing under the folder.
-        let delta = server.move_entry(thing_node_id, Some(folder_id)).unwrap();
+        // 2. Move the page under the folder.
+        let delta = server.move_entry(page_node_id, Some(folder_id)).unwrap();
         apply!(server, client, delta);
 
         let tree = server.read_tree();
         assert_eq!(tree.len(), 1, "only the folder at root");
-        assert_eq!(tree[0].children.len(), 1, "thing is now a child");
-        assert_eq!(tree[0].children[0].entry, thing_entry);
+        assert_eq!(tree[0].children.len(), 1, "page is now a child");
+        assert_eq!(tree[0].children[0].entry, page_entry);
 
         // 3. Add a second child and reorder it before the first.
-        let (sibling_entry, _) = thing("The Shattered Gate");
+        let (sibling_entry, _) = page("The Shattered Gate");
         let (delta, sibling_id) = server.add_entry(Some(folder_id), &sibling_entry).unwrap();
         apply!(server, client, delta);
 
-        let delta = server.move_before(sibling_id, thing_node_id).unwrap();
+        let delta = server.move_before(sibling_id, page_node_id).unwrap();
         apply!(server, client, delta);
 
         let children = &server.read_tree()[0].children;
         assert_eq!(children[0].entry, sibling_entry, "sibling moved first");
-        assert_eq!(children[1].entry, thing_entry, "original thing second");
+        assert_eq!(children[1].entry, page_entry, "original page second");
 
         // 4. Update an entry's metadata.
         let updated = TocEntry::Folder {

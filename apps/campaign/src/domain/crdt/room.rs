@@ -6,7 +6,7 @@ use familiar_systems_campaign_shared::id::ClientId;
 use tokio::sync::mpsc;
 
 pub enum CrdtRoomType {
-    Thing,
+    Page,
     Toc,
     Conversation,
 }

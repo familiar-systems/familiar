@@ -2,7 +2,7 @@
 // metadata, then branches three ways:
 //   - onboarding unfinished       -> the creation wizard
 //   - onboarded + home page set    -> redirect to the home-page editor
-//   - onboarded + no home page set -> a placeholder (the home Thing was
+//   - onboarded + no home page set -> a placeholder (the home Page was
 //     deleted; the FK clears the pointer. Choosing a new one is a future
 //     feature, not built here.)
 
@@ -82,17 +82,17 @@ function CampaignIndex(): React.ReactElement {
   }
 
   // Onboarded: open the home-page editor.
-  if (load.campaign.home_thing_id !== null) {
+  if (load.campaign.home_page_id !== null) {
     return (
       <Navigate
-        to="/c/$campaignId/t/$thingId"
-        params={{ campaignId, thingId: load.campaign.home_thing_id }}
+        to="/c/$campaignId/p/$pageId"
+        params={{ campaignId, pageId: load.campaign.home_page_id }}
         replace
       />
     );
   }
 
-  // Onboarded, but the home page pointer is null (the home Thing was deleted).
+  // Onboarded, but the home page pointer is null (the home Page was deleted).
   return (
     <section
       className="mx-auto w-full max-w-3xl space-y-3 px-8 pt-24"

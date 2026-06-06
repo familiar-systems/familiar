@@ -1,13 +1,13 @@
 //! Spike's grade card. Two tests:
-//! 1. Things + Blocks round-trip with branded ID types across a cross-type FK.
+//! 1. Pages + Blocks round-trip with branded ID types across a cross-type FK.
 //! 2. Vec search filters at KNN time (not after) for player viewers.
 
 use chrono::Utc;
 use familiar_systems_campaign::db;
 use familiar_systems_campaign::embeddings::{EmbeddingsRepo, ViewerKind};
-use familiar_systems_campaign::entities::{blocks, columns::*, things};
+use familiar_systems_campaign::entities::{blocks, columns::*, pages};
 use familiar_systems_campaign::migrations::Migrator;
-use familiar_systems_campaign_shared::id::{BlockId, ThingId};
+use familiar_systems_campaign_shared::id::{BlockId, PageId};
 use familiar_systems_campaign_shared::status::Status;
 use sea_orm::{
     ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, ModelTrait, Set, Statement,
@@ -22,23 +22,24 @@ async fn setup() -> DatabaseConnection {
 }
 
 #[tokio::test]
-async fn things_and_blocks_round_trip_branded_types() {
+async fn pages_and_blocks_round_trip_branded_types() {
     let db = setup().await;
     let now = Utc::now();
 
-    // Insert a Thing.
-    let thing_id = ThingId::generate();
-    things::ActiveModel {
-        id: Set(thing_id.clone().into()),
+    // Insert a Page.
+    let page_id = PageId::generate();
+    pages::ActiveModel {
+        id: Set(page_id.clone().into()),
         name: Set("Vex the Bone Sage".into()),
         status: Set(Status::Known.into()),
-        prototype_id: Set(None),
+        kind: Set(PageKindCol::Entity),
+        template_id: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }
     .insert(&db)
     .await
-    .expect("insert thing");
+    .expect("insert page");
 
     // Insert three Blocks tied to it. Mixed status so the FK + branded-type
     // round-trip carries non-trivial values.
@@ -46,7 +47,7 @@ async fn things_and_blocks_round_trip_branded_types() {
     for (i, status) in statuses.into_iter().enumerate() {
         blocks::ActiveModel {
             id: Set(BlockId::generate().into()),
-            thing_id: Set(thing_id.clone().into()),
+            page_id: Set(page_id.clone().into()),
             status: Set(status.into()),
             ordering: Set(i as i64),
             content: Set(format!("paragraph {i}").into_bytes()),
@@ -59,14 +60,14 @@ async fn things_and_blocks_round_trip_branded_types() {
         .expect("insert block");
     }
 
-    // Read the Thing back and pull its blocks via the FK relation.
-    let thing = things::Entity::find_by_id(ThingIdCol::from(thing_id.clone()))
+    // Read the Page back and pull its blocks via the FK relation.
+    let page = pages::Entity::find_by_id(PageIdCol::from(page_id.clone()))
         .one(&db)
         .await
-        .expect("find thing")
-        .expect("thing exists");
+        .expect("find page")
+        .expect("page exists");
 
-    let block_models: Vec<blocks::Model> = thing
+    let block_models: Vec<blocks::Model> = page
         .find_related(blocks::Entity)
         .all(&db)
         .await
@@ -75,17 +76,17 @@ async fn things_and_blocks_round_trip_branded_types() {
     // Boundary: domain types come out branded. The let bindings are the
     // assertion: if any of these types disagreed with the entity columns,
     // the cast would fail to compile.
-    let thing_id_back: ThingId = thing.id.into();
+    let page_id_back: PageId = page.id.into();
     let block_ids_back: Vec<BlockId> = block_models.iter().map(|b| b.id.clone().into()).collect();
-    let block_thing_ids_back: Vec<ThingId> = block_models
+    let block_page_ids_back: Vec<PageId> = block_models
         .iter()
-        .map(|b| b.thing_id.clone().into())
+        .map(|b| b.page_id.clone().into())
         .collect();
     let block_statuses_back: Vec<Status> = block_models.iter().map(|b| b.status.into()).collect();
 
-    assert_eq!(thing_id_back, thing_id);
+    assert_eq!(page_id_back, page_id);
     assert_eq!(block_ids_back.len(), 3);
-    assert!(block_thing_ids_back.iter().all(|t| *t == thing_id));
+    assert!(block_page_ids_back.iter().all(|t| *t == page_id));
     assert_eq!(
         block_statuses_back,
         vec![Status::Known, Status::Known, Status::GmOnly]

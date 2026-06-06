@@ -1,11 +1,11 @@
 import {
   TOC_CONTAINER,
   TOC_KEY_KIND,
-  TOC_KEY_THING_ID,
+  TOC_KEY_PAGE_ID,
   TOC_KEY_TITLE,
   TOC_KEY_VISIBILITY,
   TOC_KIND_FOLDER,
-  TOC_KIND_THING,
+  TOC_KIND_PAGE,
 } from "@familiar-systems/types-campaign";
 import { LoroDoc } from "loro-crdt";
 import type { TreeID } from "loro-crdt";
@@ -13,9 +13,9 @@ import { describe, expect, it } from "vitest";
 
 import { getTocTree, moveTocNode, readTocTree } from "./toc-doc";
 
-// Canonical 26-char ULIDs (accepted by thingIdSchema).
-const THING_A = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
-const THING_B = "01BX5ZZKBKACTAV9WEVGEMMVRZ";
+// Canonical 26-char ULIDs (accepted by pageIdSchema).
+const PAGE_A = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+const PAGE_B = "01BX5ZZKBKACTAV9WEVGEMMVRZ";
 
 function addFolder(doc: LoroDoc, parent: TreeID | undefined, title: string): TreeID {
   const node = getTocTree(doc).createNode(parent);
@@ -25,26 +25,21 @@ function addFolder(doc: LoroDoc, parent: TreeID | undefined, title: string): Tre
   return node.id;
 }
 
-function addThing(
-  doc: LoroDoc,
-  parent: TreeID | undefined,
-  title: string,
-  thingId: string,
-): TreeID {
+function addPage(doc: LoroDoc, parent: TreeID | undefined, title: string, pageId: string): TreeID {
   const node = getTocTree(doc).createNode(parent);
-  node.data.set(TOC_KEY_KIND, TOC_KIND_THING);
+  node.data.set(TOC_KEY_KIND, TOC_KIND_PAGE);
   node.data.set(TOC_KEY_TITLE, title);
-  node.data.set(TOC_KEY_THING_ID, thingId);
+  node.data.set(TOC_KEY_PAGE_ID, pageId);
   node.data.set(TOC_KEY_VISIBILITY, "gmOnly");
   return node.id;
 }
 
 describe("readTocTree", () => {
-  it("decodes folders and things into a nested structure", () => {
+  it("decodes folders and pages into a nested structure", () => {
     const doc = new LoroDoc();
     const actId = addFolder(doc, undefined, "Act I");
-    addThing(doc, actId, "The Iron Citadel", THING_A);
-    addThing(doc, undefined, "Korgath", THING_B);
+    addPage(doc, actId, "The Iron Citadel", PAGE_A);
+    addPage(doc, undefined, "Korgath", PAGE_B);
     doc.commit();
 
     const [act, korgath] = readTocTree(doc);
@@ -57,11 +52,11 @@ describe("readTocTree", () => {
     });
     expect(act?.children).toHaveLength(1);
     expect(act?.children[0]?.entry).toMatchObject({
-      kind: "thing",
+      kind: "page",
       title: "The Iron Citadel",
-      thingId: THING_A,
+      pageId: PAGE_A,
     });
-    expect(korgath?.entry).toMatchObject({ kind: "thing", title: "Korgath", thingId: THING_B });
+    expect(korgath?.entry).toMatchObject({ kind: "page", title: "Korgath", pageId: PAGE_B });
     expect(korgath?.children).toHaveLength(0);
   });
 
@@ -71,7 +66,7 @@ describe("readTocTree", () => {
     // fractional-index handling that the local-build tests do not.
     const server = new LoroDoc();
     const actId = addFolder(server, undefined, "Act I");
-    addThing(server, actId, "The Iron Citadel", THING_A);
+    addPage(server, actId, "The Iron Citadel", PAGE_A);
     server.commit();
     const snapshot = server.export({ mode: "snapshot" });
 
@@ -82,9 +77,9 @@ describe("readTocTree", () => {
     expect(tree).toHaveLength(1);
     expect(tree[0]?.entry).toMatchObject({ kind: "folder", title: "Act I" });
     expect(tree[0]?.children[0]?.entry).toMatchObject({
-      kind: "thing",
+      kind: "page",
       title: "The Iron Citadel",
-      thingId: THING_A,
+      pageId: PAGE_A,
     });
   });
 
@@ -93,7 +88,7 @@ describe("readTocTree", () => {
     // (or otherwise writes) generates a local op the LoroAdaptor broadcasts,
     // clobbering the shared server tree under StrictMode's join/teardown race.
     const server = new LoroDoc();
-    addThing(server, undefined, "A", THING_A);
+    addPage(server, undefined, "A", PAGE_A);
     server.commit();
     const client = new LoroDoc();
     client.import(server.export({ mode: "snapshot" }));
@@ -134,8 +129,8 @@ describe("moveTocNode", () => {
   it("reparents a node and places it at the given sibling index", () => {
     const doc = new LoroDoc();
     const actId = addFolder(doc, undefined, "Act I");
-    addThing(doc, actId, "The Iron Citadel", THING_A);
-    const korgathId = addThing(doc, undefined, "Korgath", THING_B);
+    addPage(doc, actId, "The Iron Citadel", PAGE_A);
+    const korgathId = addPage(doc, undefined, "Korgath", PAGE_B);
     doc.commit();
 
     // Move Korgath from root to be the first child of Act I.

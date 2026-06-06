@@ -16,7 +16,7 @@ mod common;
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::CampaignId;
 use familiar_systems_campaign::actors::registry::CreateCampaign;
-use familiar_systems_campaign::actors::supervisor::{CreateThing, JoinRoom};
+use familiar_systems_campaign::actors::supervisor::{CreatePage, JoinRoom};
 use familiar_systems_campaign::domain::crdt::doc::{CrdtDoc, Snapshot};
 use familiar_systems_campaign::loro::toc::LoroTocDoc;
 use familiar_systems_campaign_shared::id::ClientId;
@@ -44,18 +44,18 @@ async fn toc_rejoin_after_leave_still_gets_full_snapshot() {
         .await
         .expect("create campaign");
 
-    // Populate the ToC with two root-level Things. CreateThing awaits its
-    // AddThingNode, so each node is live in the doc by the time the call returns.
+    // Populate the ToC with two root-level Pages. CreatePage awaits its
+    // AddPageNode, so each node is live in the doc by the time the call returns.
     for name in ["Korgath", "The Rusted Flagon"] {
         supervisor
-            .ask(CreateThing {
+            .ask(CreatePage {
                 name: name.to_string(),
                 status: None,
                 parent: None,
                 seed_blocks: vec![],
             })
             .await
-            .expect("create thing");
+            .expect("create page");
     }
 
     // Client A joins the singleton toc room and sees the populated tree.
@@ -73,7 +73,7 @@ async fn toc_rejoin_after_leave_still_gets_full_snapshot() {
     let a_count = snapshot_root_count(&resp_a.snapshot);
     assert!(
         a_count >= 2,
-        "client A should see the two created Things (plus the async home-base seed), got {a_count}"
+        "client A should see the two created Pages (plus the async home-base seed), got {a_count}"
     );
 
     // Client A leaves — mirrors the WS connection's per-room leave on disconnect.

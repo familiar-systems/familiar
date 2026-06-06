@@ -8,7 +8,7 @@ An AI-assisted campaign notebook for tabletop RPG game masters.
 
 Running a TTRPG campaign generates an enormous amount of information: NPCs improvised on the fly, locations described in passing, plot threads introduced and forgotten. GMs are expected to track all of it, and most existing tools treat the wiki as the primary artifact, requiring the GM to maintain a knowledge base as a separate activity from running the game.
 
-familiar.systems flips this. The primary artifact is the **session**: what happened at the table. Capture session audio and notes, and the AI extracts the knowledge base: NPCs, locations, items, relationships, contradictions. The GM's job shifts from authoring a wiki to running their game and reviewing what the AI proposed.
+familiar.systems flips this. The primary artifact is the **session**: what happened at the table. Capture a session, from just your notes or from audio you record, and the AI drafts its journal and extracts the knowledge base: NPCs, locations, items, relationships, contradictions. The GM's job shifts from authoring a wiki to running their game and reviewing what the AI proposed.
 
 The AI never modifies the campaign directly. Every change is a **suggestion** that the GM accepts, rejects, or ignores.
 
@@ -33,7 +33,7 @@ packages/editor           @familiar-systems/editor, TipTap/ProseMirror schema + 
 
 The Rust backend splits into two binaries: the **platform** (auth, campaign CRUD, routing table, discover) and the **campaign server** (actor hierarchy, WebSocket collaboration, AI conversations, serialization compiler). Cross-binary communication goes over HTTP, with the platform owning the routing table that maps each campaign to the shard currently hosting it. TypeScript is frontend-only; domain logic lives in Rust.
 
-The shared-library split mirrors the binary split. `app-shared` holds types and traits both servers need (IDs, auth primitives). `campaign-shared` holds campaign-only concerns (Loro CRDT wrappers, ToC/Thing schema, ProseMirror conventions). Each Rust crate exports TypeScript types via ts-rs into its sibling package, so the client/server boundary is enforced by the dependency graph.
+The shared-library split mirrors the binary split. `app-shared` holds types and traits both servers need (IDs, auth primitives). `campaign-shared` holds campaign-only concerns (Loro CRDT wrappers, ToC/Page schema, ProseMirror conventions). Each Rust crate exports TypeScript types via ts-rs into its sibling package, so the client/server boundary is enforced by the dependency graph.
 
 See [project structure](docs/plans/2026-03-26-project-structure-design.md) for the full design.
 
@@ -118,7 +118,7 @@ Use `mise tasks` to list every task with its description.
 
 ### Further reading
 
-Additional decision records, spikes, and narrower designs (libSQL vs PostgreSQL, datalog vs SQL, the Loro+TipTap suggestion-marks spike, templates-as-prototype-pages, public site design, archived/superseded plans) live in [`docs/`](docs/).
+Additional decision records, spikes, and narrower designs (libSQL vs PostgreSQL, datalog vs SQL, the Loro+TipTap suggestion-marks spike, templates-as-pages, public site design, archived/superseded plans) live in [`docs/`](docs/).
 
 ## Contributing
 

@@ -145,7 +145,7 @@ pub async fn run(
 /// Tracks a joined room: the handle for dispatching messages, and the
 /// CrdtType from the original JoinRequest (needed to build reply frames).
 struct RoomEntry {
-    #[allow(dead_code)] // needed when ThingActor lands
+    #[allow(dead_code)] // needed when PageActor lands
     crdt: CrdtType,
     handle: RoomHandle,
 }

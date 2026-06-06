@@ -7,7 +7,7 @@ pub struct Migration;
 enum Blocks {
     Table,
     Id,
-    ThingId,
+    PageId,
     Status,
     Ordering,
     Content,
@@ -17,7 +17,7 @@ enum Blocks {
 }
 
 #[derive(DeriveIden)]
-enum Things {
+enum Pages {
     Table,
     Id,
 }
@@ -31,7 +31,7 @@ impl MigrationTrait for Migration {
                     .table(Blocks::Table)
                     .if_not_exists()
                     .col(ColumnDef::new(Blocks::Id).text().not_null().primary_key())
-                    .col(ColumnDef::new(Blocks::ThingId).text().not_null())
+                    .col(ColumnDef::new(Blocks::PageId).text().not_null())
                     .col(ColumnDef::new(Blocks::Status).text().not_null())
                     .col(ColumnDef::new(Blocks::Ordering).big_integer().not_null())
                     .col(ColumnDef::new(Blocks::Content).blob().not_null())
@@ -48,8 +48,8 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .from(Blocks::Table, Blocks::ThingId)
-                            .to(Things::Table, Things::Id)
+                            .from(Blocks::Table, Blocks::PageId)
+                            .to(Pages::Table, Pages::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),
