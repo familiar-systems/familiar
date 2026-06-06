@@ -5,7 +5,7 @@ description: "Single-GM launch. Core audio, AI chat, graph wiki, and full GDPR-c
 status: "in-progress"
 ---
 
-- Arbitrary things created by arbitrary templates referenced via arbitrary relationships form a usable, searchable graph-based wiki for both humans and LLMs.
+- Arbitrary entities created by arbitrary templates referenced via arbitrary relationships form a usable, searchable graph-based wiki for both humans and LLMs.
 - Initial audio extraction to wiki generation pipeline working.
 - Initial LLM chat interface working.
 - One GM per campaign/world.
