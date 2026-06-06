@@ -1,9 +1,6 @@
 {
   "permissions": {
-    "deny": [
-      "Read(./**/.envrc)",
-      "Read(./**/.env)"
-    ],
+    "deny": ["Read(./**/.envrc)", "Read(./**/.env)"],
     "allow": [
       "Bash(cargo test *)",
       "Bash(cargo check *)",
@@ -24,7 +21,8 @@
       "Bash(mise ls-remote *)",
       "Bash(mise env *)",
       "Bash(mise settings get *)",
-      "Bash(gh search *)"
+      "Bash(gh search *)",
+      "Bash(gh issue view *)"
     ]
   },
   "enabledPlugins": {
