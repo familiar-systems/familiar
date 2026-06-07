@@ -54,7 +54,9 @@ pub struct PageActor {
     /// To send [`UpdatePageNode`] messages to the ToC on title and visibility change in real time.
     toc: ActorRef<TocActor>,
     /// Last thing pushed to the ToC. Skip if no changes, e.g. on body edit.
-    last_node_state: Option<NodeState>,
+    /// Always populated (the title falls back to a recovery marker), so it never
+    /// needs to be optional.
+    last_node_state: NodeState,
     /// This actor incarnation's spawn time, carried with every ToC push. On
     /// evict+respawn the Page doc is rebuilt from storage and its version vector
     /// no longer descends from the pre-eviction one, so the vv alone cannot tell
@@ -210,12 +212,13 @@ impl Actor for PageActor {
 
         // The Page is the authority for its node-facing state; seed the
         // last-pushed snapshot from the freshly built doc so the first body-only
-        // edit doesn't spuriously push to the ToC. `None` when the title is empty
-        // (which never persists), so the first real title still pushes.
-        let initial_node_state = doc.read_title().map(|title| NodeState {
-            title,
+        // edit doesn't spuriously push to the ToC. The title resolves to a
+        // recovery marker if `meta.title` is somehow empty (name-first means it
+        // shouldn't be), so the seed is always populated.
+        let initial_node_state = NodeState {
+            title: doc.read_title_or_recovery_marker(&args.page_id),
             visibility: doc.read_status().unwrap_or(Status::GmOnly),
-        });
+        };
 
         let doc_room = room::Room::new(doc);
 
@@ -373,45 +376,50 @@ impl Message<room_actor::ClientUpdate> for PageActor {
         // - The next checkout (the ToC is re-derived)
         // - A subsequent title change (the node state is updated)
         // - A subsequent visibility change (the node state is updated)
-        if let Some(title) = self.doc_room.doc().read_title() {
-            let visibility = self.doc_room.doc().read_status().unwrap_or(Status::GmOnly);
-            let node_state = NodeState { title, visibility };
-            if self.last_node_state.as_ref() != Some(&node_state) {
-                // Spawn so the edit path never blocks on the ToC. The spawned
-                // `ask` reports any failure (transport or handler) in full; the
-                // ToC node self-heals on checkout regardless.
-                //
-                // TODO(version-gating): spawning means these pushes can reach the
-                // ToC out of order, and an evict+respawn resets the Page doc's vv
-                // lineage, so pushes also cross incarnations. We carry `created_at`
-                // (this incarnation's spawn time) and the Page doc's `version` so
-                // the ToC can order them -- newer incarnation dominates, vv breaks
-                // ties -- and drop stale ones (see the `UpdatePageNode` handler).
-                // Until that is wired up we accept the race.
-                let toc = self.toc.clone();
-                let page_id = self.page_id.clone();
-                let title = node_state.title.clone();
-                let visibility = node_state.visibility;
-                let version = self.doc_room.doc().version();
-                let created_at = self.created_at;
-                tokio::spawn(async move {
-                    let msg = UpdatePageNode {
-                        page_id: page_id.clone(),
-                        title,
-                        visibility,
-                        created_at,
-                        version,
-                    };
-                    if let Err(err) = toc.ask(msg).await {
-                        tracing::warn!(
-                            error = %err,
-                            page_id = %page_id.0,
-                            "failed to push node state to toc",
-                        );
-                    }
-                });
-                self.last_node_state = Some(node_state);
-            }
+        // Always resolve a title (a recovery marker if `meta.title` is somehow
+        // empty), so a visibility change is never gated on title presence and an
+        // empty title surfaces loudly in the ToC instead of being silently kept.
+        let title = self
+            .doc_room
+            .doc()
+            .read_title_or_recovery_marker(&self.page_id);
+        let visibility = self.doc_room.doc().read_status().unwrap_or(Status::GmOnly);
+        let node_state = NodeState { title, visibility };
+        if self.last_node_state != node_state {
+            // Spawn so the edit path never blocks on the ToC. The spawned
+            // `ask` reports any failure (transport or handler) in full; the
+            // ToC node self-heals on checkout regardless.
+            //
+            // TODO(version-gating): spawning means these pushes can reach the
+            // ToC out of order, and an evict+respawn resets the Page doc's vv
+            // lineage, so pushes also cross incarnations. We carry `created_at`
+            // (this incarnation's spawn time) and the Page doc's `version` so
+            // the ToC can order them -- newer incarnation dominates, vv breaks
+            // ties -- and drop stale ones (see the `UpdatePageNode` handler).
+            // Until that is wired up we accept the race.
+            let toc = self.toc.clone();
+            let page_id = self.page_id.clone();
+            let title = node_state.title.clone();
+            let visibility = node_state.visibility;
+            let version = self.doc_room.doc().version();
+            let created_at = self.created_at;
+            tokio::spawn(async move {
+                let msg = UpdatePageNode {
+                    page_id: page_id.clone(),
+                    title,
+                    visibility,
+                    created_at,
+                    version,
+                };
+                if let Err(err) = toc.ask(msg).await {
+                    tracing::warn!(
+                        error = %err,
+                        page_id = %page_id.0,
+                        "failed to push node state to toc",
+                    );
+                }
+            });
+            self.last_node_state = node_state;
         }
 
         Ok(ack)
@@ -878,6 +886,115 @@ mod tests {
         assert!(
             renamed,
             "PageActor must push the rename to the live ToC node"
+        );
+
+        page.stop_gracefully().await.unwrap();
+        page.wait_for_shutdown_with_result(|_| ()).await;
+        toc.stop_gracefully().await.unwrap();
+        toc.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    /// An empty `meta.title` should never happen (Pages are name-first), but if
+    /// a client commits one it must surface loudly, not silently keep the stale
+    /// title. Clearing the title pushes the deterministic recovery marker to the
+    /// live ToC node; the old `if let Some(title)` gate would have dropped it.
+    #[tokio::test]
+    async fn clearing_title_pushes_recovery_marker_to_toc() {
+        use familiar_systems_campaign_shared::id::ClientId;
+        use familiar_systems_campaign_shared::loro::page::{CONTAINER_META, KEY_TITLE};
+        use loro::LoroDoc;
+        use std::borrow::Cow;
+
+        let conn = setup_db().await;
+        let campaign_id = CampaignId::generate();
+        let db_writer =
+            DatabaseWriteActor::spawn(crate::actors::database_writer::DatabaseWriteActorArgs {
+                campaign_id: campaign_id.clone(),
+                conn: conn.clone(),
+            });
+        let toc = TocActor::spawn(TocActorArgs {
+            campaign_id: campaign_id.clone(),
+            db_reader: conn.clone(),
+            db_writer: db_writer.clone(),
+            debounce_duration: Duration::from_secs(60),
+        });
+        toc.wait_for_startup().await;
+
+        // Genesis a Page named "Original" (writes its own row), wired to the toc.
+        let page_id = PageId::generate();
+        let page = PageActor::spawn(PageActorArgs {
+            campaign_id: campaign_id.clone(),
+            page_id: page_id.clone(),
+            db_reader: conn.clone(),
+            db_writer,
+            toc: toc.clone(),
+            init: PageInit::New {
+                name: "Original".into(),
+                status: Status::GmOnly,
+                seed_blocks: vec![],
+            },
+            debounce_duration: Duration::from_secs(60),
+            idle_timeout: Duration::from_secs(60),
+        });
+        page.wait_for_startup().await;
+
+        // Mirror the supervisor: place the page's node in the ToC.
+        toc.ask(AddPageNode {
+            page_id: page_id.clone(),
+            title: "Original".into(),
+            visibility: Status::GmOnly,
+            parent: None,
+        })
+        .await
+        .expect("add page node");
+
+        // Join as GM, then clear meta.title to "" over a ClientUpdate.
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let client = ClientId::new(1);
+        let join = page
+            .ask(room_actor::ClientJoin {
+                client,
+                tx,
+                role: CampaignRole::Gm,
+            })
+            .await
+            .expect("join");
+
+        let client_doc = LoroDoc::new();
+        client_doc.import(join.snapshot.as_bytes()).unwrap();
+        let before = client_doc.oplog_vv();
+        client_doc
+            .get_map(CONTAINER_META)
+            .insert(KEY_TITLE, "")
+            .unwrap();
+        client_doc.commit();
+        let update = client_doc
+            .export(loro::ExportMode::Updates {
+                from: Cow::Owned(before),
+            })
+            .unwrap();
+
+        page.ask(room_actor::ClientUpdate {
+            client,
+            updates: vec![update],
+        })
+        .await
+        .expect("apply update");
+
+        // The push lands asynchronously; poll until the ToC node carries the
+        // recovery marker (the page's id makes it identifiable).
+        let marker = format!("ERROR LOADING TITLE {}", page_id.0);
+        let mut surfaced = false;
+        for _ in 0..50 {
+            if toc.ask(ReadPageNodeTitle(page_id.clone())).await.unwrap() == Some(marker.clone()) {
+                surfaced = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(
+            surfaced,
+            "clearing the title must push the recovery marker to the live ToC node"
         );
 
         page.stop_gracefully().await.unwrap();

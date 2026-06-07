@@ -18,6 +18,7 @@ use std::borrow::Cow;
 
 use loro::{LoroDoc, LoroMap, LoroValue, ValueOrContainer};
 
+use familiar_systems_campaign_shared::id::PageId;
 use familiar_systems_campaign_shared::loro::page::{
     CONTAINER_CONTENT, CONTAINER_META, KEY_KIND, KEY_STATUS, KEY_TITLE,
 };
@@ -114,6 +115,18 @@ impl LoroPageDoc {
         }
     }
 
+    /// Title for display, or a loud, deterministic recovery marker when
+    /// `meta.title` is unexpectedly empty. Pages are created name-first, so an
+    /// empty title should never happen; if it does, we surface it visibly and
+    /// editably (the GM can just rename it) rather than panicking or silently
+    /// dropping the node update. The `{id}` makes the broken page findable in the
+    /// ToC. Distinct from [`read_title`](Self::read_title) -> `Option`, which
+    /// `name_sync` uses to tell a real title from "leave `pages.name` alone".
+    pub fn read_title_or_recovery_marker(&self, id: &PageId) -> String {
+        self.read_title()
+            .unwrap_or_else(|| format!("ERROR LOADING TITLE {}", id.0))
+    }
+
     /// Read the status from the meta section.
     pub fn read_status(&self) -> Option<Status> {
         match self.meta().get(KEY_STATUS)? {
@@ -190,6 +203,25 @@ mod tests {
         let (doc, _) = LoroPageDoc::from_blocks("Korgath", &Status::Known, &PageKind::Entity, &[]);
         assert_eq!(doc.read_title(), Some("Korgath".to_string()));
         assert_eq!(doc.read_status(), Some(Status::Known));
+    }
+
+    #[test]
+    fn read_title_or_recovery_marker_falls_back_on_empty() {
+        let id = PageId::generate();
+
+        // A fresh doc seeds `meta.title` to "" (the should-never-happen state):
+        // the marker is deterministic and carries the id so the page is findable.
+        let empty = LoroPageDoc::new();
+        assert_eq!(empty.read_title(), None);
+        assert_eq!(
+            empty.read_title_or_recovery_marker(&id),
+            format!("ERROR LOADING TITLE {}", id.0),
+        );
+
+        // A real title passes straight through, untouched.
+        let (named, _) =
+            LoroPageDoc::from_blocks("Korgath", &Status::GmOnly, &PageKind::Entity, &[]);
+        assert_eq!(named.read_title_or_recovery_marker(&id), "Korgath");
     }
 
     #[test]

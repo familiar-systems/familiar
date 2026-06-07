@@ -10,8 +10,8 @@
 #
 # Auth: the real servers and the browser both POST tokens to a stub
 # /sessions/validate (apps/web/e2e/support/mock-hanko.mjs); the spec seeds the
-# `hanko` cookie. Steps 1-9 (the browser flow) live in smoke.spec.ts; steps 10
-# (graceful shutdown) and 11 (SQLite assertion) live here.
+# `hanko` cookie. The browser flow lives in smoke.spec.ts; the graceful
+# shutdown and SQLite assertion live here.
 
 set -euo pipefail
 # Job control so each background server gets its own process group; that lets
@@ -144,12 +144,12 @@ wait_for "web" "http://127.0.0.1:$WEB/" || { dump_logs; exit 1; }
 # also proves the /api -> platform proxy path end to end.
 wait_for "proxy" "http://127.0.0.1:$PROXY/api/health" || { dump_logs; exit 1; }
 
-# ---- steps 1-8: the browser flow ----
+# ---- the browser flow ----
 echo "==> running Playwright smoke spec"
 rc=0
 pnpm --filter @familiar-systems/web e2e || rc=$?
 
-# ---- step 9: graceful campaign shutdown so room actors flush to SQLite ----
+# ---- graceful campaign shutdown so room actors flush to SQLite ----
 echo "==> shutting campaign down (graceful flush)"
 (
   sleep 30
@@ -160,7 +160,7 @@ kill -TERM "-$CAMPAIGN_PID" 2>/dev/null || true
 wait "$CAMPAIGN_PID" 2>/dev/null || true
 kill "$watchdog" 2>/dev/null || true
 
-# ---- step 10: assert the persisted campaign SQLite ----
+# ---- assert the persisted campaign SQLite ----
 echo "==> asserting campaign SQLite"
 rc2=0
 shopt -s nullglob

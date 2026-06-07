@@ -112,6 +112,11 @@ description = "Refuse to start the dev stack if any dev port is taken, so a stal
 # names the holding PID/command, which is the actionable bit. The port list
 # mirrors the dev:<server> tasks + Caddyfile.dev.
 run = """
+if ! command -v lsof >/dev/null 2>&1; then
+  echo "FAIL: dev:preflight needs lsof to check ports, but it is not installed." >&2
+  echo "Install it and retry." >&2
+  exit 1
+fi
 busy=0
 for port in 3000 3001 4321 5173 8080; do
   if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then

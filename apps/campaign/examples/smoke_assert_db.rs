@@ -1,4 +1,4 @@
-//! DB assertion for the full-stack e2e smoke test (step 11).
+//! DB assertion for the full-stack e2e smoke test.
 //!
 //! After the harness gracefully shuts the campaign server down (so its room
 //! actors have flushed their CRDT snapshots to SQLite), it runs this against
