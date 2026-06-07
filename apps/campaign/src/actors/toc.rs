@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use familiar_systems_app_shared::id::CampaignId;
 use familiar_systems_campaign_shared::id::PageId;
 use familiar_systems_campaign_shared::loro::toc::TocEntry;
@@ -14,7 +15,7 @@ use std::time::Duration;
 
 use crate::actors::database_writer::{DatabaseWriteActor, WriteTocSnapshot};
 use crate::actors::persist::{Persist, PersistError, PersistNow};
-use crate::domain::crdt::doc::CrdtDoc;
+use crate::domain::crdt::doc::{CrdtDoc, DocError, VersionVector};
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
 use crate::entities::columns::{PageIdCol, StatusCol};
@@ -276,7 +277,11 @@ pub struct AddPageNode {
 }
 
 impl Message<AddPageNode> for TocActor {
-    type Reply = Result<(), String>;
+    // `ask`-invoked from the page-creation path, which treats a failure as
+    // best-effort (logs, keeps the persisted Page). An `ask` handler's `Err` is
+    // delivered back through the reply channel, so a typed error here is safe --
+    // unlike a `tell` handler, where it would trip `on_panic` and stop the actor.
+    type Reply = Result<(), DocError>;
 
     #[tracing::instrument(
         skip_all,
@@ -328,30 +333,39 @@ impl Message<AddPageNode> for TocActor {
     }
 }
 
-/// Refresh an existing Page node's node-facing state in the live ToC and
-/// broadcast the change. Sent by the owning [`PageActor`](crate::actors::page)
-/// whenever the Page's `meta` changes, so the ToC tracks renames (and, later,
-/// visibility/icon changes) without waiting on the persistence debounce. This
-/// keeps the title's single source of truth on the Page side: clients edit only
-/// `meta.title`; the server fans the change out to the ToC.
+/// Whenever a [`PageActor`](crate::actors::page::PageActor) changes any of these
+/// fields, the ToC receives the update on a best-effort basis and broadcasts it
+/// to all clients.
 ///
-/// Persistence is asymmetric by design. Page titles are re-derived from
-/// `pages.name` on checkout and never stored in `toc_entries`, so a title-only
-/// change only broadcasts. A visibility change also schedules a snapshot, since
-/// `toc_entries.visibility` *is* persisted. A Page not (yet) in the tree is
-/// ignored: `restore_toc` re-derives it from `pages.name` on the next checkout.
+/// The PageActor spawns the push, so it never blocks the edit path. `created_at`
+/// (the pushing actor incarnation's spawn time) and `version` (the Page doc's
+/// version at send time) together order updates so the ToC can (eventually) drop
+/// stale, out-of-order pushes: a later `created_at` dominates, and `version`
+/// breaks ties within one incarnation. See the version-gating TODO in the handler.
 ///
-/// TODO: carry `icon` here once Page icons exist (it travels with the same node
-/// state, not as a separate message).
+/// If we fail to accept this message it's not fatal: the
+/// [`LoroPageDoc`](crate::loro::page::LoroPageDoc) is the authoritative truth, so
+/// it self-heals on the next checkout, or the next time a relevant field changes.
+///
+/// TODO: Add the `icon` field once Page icons exist.
 #[derive(Debug, Clone)]
 pub struct UpdatePageNode {
     pub page_id: PageId,
     pub title: String,
     pub visibility: Status,
+    /// The pushing actor incarnation's spawn time. Dominates `version` when
+    /// ordering updates: a respawn resets the vv lineage, so vv alone cannot rank
+    /// updates across incarnations.
+    pub created_at: DateTime<Utc>,
+    pub version: VersionVector,
 }
 
 impl Message<UpdatePageNode> for TocActor {
-    type Reply = Result<(), String>;
+    // `ask`-invoked from a task the PageActor spawns: the edit path never blocks
+    // on the ToC, and a returned `Err` is delivered to that task's logging (an
+    // `ask` reply, not `on_panic`). So the error is honest and typed, not
+    // swallowed and not actor-fatal.
+    type Reply = Result<(), DocError>;
 
     #[tracing::instrument(
         skip_all,
@@ -366,6 +380,23 @@ impl Message<UpdatePageNode> for TocActor {
             tracing::trace!("update for a page not in the toc; ignoring (self-heals on checkout)");
             return Ok(());
         };
+
+        // TODO(version-gating): order updates by `(msg.created_at, msg.version)`
+        // and drop stale ones. Pushes are spawned (can reorder) and an
+        // evict+respawn resets the Page doc's vv lineage (pushes cross
+        // incarnations), so neither arrival order nor vv alone is enough. Desired:
+        // track the last-applied `(created_at, version)` per node as an `Option`:
+        //   * `None`             => first sighting; apply.
+        //   * newer `created_at` => newer incarnation; apply (vv ignored).
+        //   * older `created_at` => stale incarnation; drop.
+        //   * equal `created_at` => same incarnation; apply iff `version` is
+        //                           causally newer than the stored vv.
+        // For now we apply unconditionally and accept the race.
+        tracing::trace!(
+            version_bytes = msg.version.0.len(),
+            created_at = %msg.created_at,
+            "applying toc node update (version-gating not yet wired)"
+        );
 
         // Only a visibility change needs a DB write: titles live in `pages.name`
         // and are re-derived on checkout, never persisted from the ToC side.
@@ -1263,6 +1294,9 @@ mod tests {
             page_id: page_id.clone(),
             title: "Renamed".into(),
             visibility: Status::GmOnly,
+            // Version-gating is not yet wired (see handler TODO); values are inert.
+            created_at: Utc::now(),
+            version: VersionVector(Vec::new()),
         })
         .await
         .expect("update page node");
@@ -1281,6 +1315,8 @@ mod tests {
             page_id: page_id.clone(),
             title: "Renamed".into(),
             visibility: Status::Known,
+            created_at: Utc::now(),
+            version: VersionVector(Vec::new()),
         })
         .await
         .expect("update page node visibility");

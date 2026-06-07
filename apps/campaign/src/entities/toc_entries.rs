@@ -48,6 +48,7 @@ pub struct Model {
     /// (Page titles come from `pages.name` on restore).
     #[sea_orm(column_type = "Text")]
     pub folder_title: Option<String>,
+    /// FIXME: this needs to be in [`crate::entities::pages::Model`].
     pub visibility: StatusCol,
     /// References `id` of the parent row (null = root level). No FK
     /// constraint: full-replace writeback makes self-referential cascades

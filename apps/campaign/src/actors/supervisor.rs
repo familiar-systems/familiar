@@ -523,16 +523,13 @@ impl Message<CreatePage> for CampaignSupervisor {
     ) -> Self::Reply {
         self.last_activity = Instant::now();
 
-        // Pages must have a non-empty title. Trim and reject here so every
-        // creation path (the HTTP route, the home-page seed, future AI
-        // create_page) is held to the invariant, not just the UI.
         let name = msg.name.trim().to_string();
         if name.is_empty() {
             return Err(CreatePageError::EmptyName);
         }
 
-        // Validate placement before any write: a bad parent fails cleanly with
-        // nothing persisted.
+        // Validate placement before any write.
+        // Bad parent fails cleanly with nothing persisted.
         if let Some(parent) = &msg.parent {
             match self.toc.ask(ResolvePageNode(parent.clone())).await {
                 Ok(Some(_)) => {}

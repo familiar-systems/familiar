@@ -10,7 +10,7 @@
 
 use std::time::Duration;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::CampaignId;
 use familiar_systems_campaign_shared::id::{BlockId, PageId};
@@ -40,25 +40,31 @@ use crate::wire::fragmenter::BatchFragmenter;
 pub struct PageActor {
     campaign_id: CampaignId,
     page_id: PageId,
-    doc_room: room::Room<LoroPageDoc>,
-    db_writer: ActorRef<DatabaseWriteActor>,
-    /// The campaign's ToC singleton. The Page owns its node-facing state
-    /// (title, visibility); on change it pushes an [`UpdatePageNode`] here so the
-    /// live ToC tracks renames without waiting on the persistence debounce.
-    toc: ActorRef<TocActor>,
     self_ref: ActorRef<PageActor>,
-    /// Whether the doc has unpersisted edits and, if so, the armed flush timer.
-    /// See [`Persist`]; the timer is inseparable from dirtiness by construction.
-    persist: Persist,
-    /// Last node-facing state (title, visibility) pushed to the ToC. Lets the
-    /// `ClientUpdate` handler skip a push when an edit left both untouched (the
-    /// common case: body edits).
-    last_node_state: Option<(String, Status)>,
+
+    // === CONTENT ===
+    doc_room: room::Room<LoroPageDoc>,
+    fragmenter: BatchFragmenter,
+    // === PERSISTENCE ===
     debounce_duration: Duration,
+    /// Whether the doc has unpersisted edits and, if so, the armed flush timer.
+    persist: Persist,
+    db_writer: ActorRef<DatabaseWriteActor>,
+    // === TOC ===
+    /// To send [`UpdatePageNode`] messages to the ToC on title and visibility change in real time.
+    toc: ActorRef<TocActor>,
+    /// Last thing pushed to the ToC. Skip if no changes, e.g. on body edit.
+    last_node_state: Option<NodeState>,
+    /// This actor incarnation's spawn time, carried with every ToC push. On
+    /// evict+respawn the Page doc is rebuilt from storage and its version vector
+    /// no longer descends from the pre-eviction one, so the vv alone cannot tell
+    /// a fresh incarnation's edit from a stale in-flight push. `created_at`
+    /// dominates the ordering; the vv only breaks ties within one incarnation.
+    created_at: DateTime<Utc>,
+    // === LIFETIME ===
     /// Whether the room has subscribers and, if not, the armed eviction timer.
     occupancy: Occupancy,
     idle_timeout: Duration,
-    fragmenter: BatchFragmenter,
 }
 
 /// Whether a Page room currently has subscribers.
@@ -73,6 +79,15 @@ pub struct PageActor {
 enum Occupancy {
     Occupied,
     Vacating(tokio::task::JoinHandle<()>),
+}
+
+/// The Page's node-facing state, as last pushed to the ToC. Named (rather than a
+/// bare `(String, Status)` tuple) so the equality compare reads clearly and the
+/// anticipated third field (icon) is a one-line add, not a `.0/.1/.2` churn.
+#[derive(Clone, PartialEq, Eq)]
+struct NodeState {
+    title: String,
+    visibility: Status,
 }
 
 pub struct PageActorArgs {
@@ -197,9 +212,10 @@ impl Actor for PageActor {
         // last-pushed snapshot from the freshly built doc so the first body-only
         // edit doesn't spuriously push to the ToC. `None` when the title is empty
         // (which never persists), so the first real title still pushes.
-        let initial_node_state = doc
-            .read_title()
-            .map(|title| (title, doc.read_status().unwrap_or(Status::GmOnly)));
+        let initial_node_state = doc.read_title().map(|title| NodeState {
+            title,
+            visibility: doc.read_status().unwrap_or(Status::GmOnly),
+        });
 
         let doc_room = room::Room::new(doc);
 
@@ -216,6 +232,7 @@ impl Actor for PageActor {
             self_ref: actor_ref,
             persist: Persist::new(),
             last_node_state: initial_node_state,
+            created_at: Utc::now(),
             debounce_duration: args.debounce_duration,
             occupancy: Occupancy::Occupied,
             idle_timeout: args.idle_timeout,
@@ -351,31 +368,48 @@ impl Message<room_actor::ClientUpdate> for PageActor {
         tracing::trace!(frame_count = frames.len(), "fanning out broadcast");
         self.doc_room.fan_out(&frames, broadcast.exclude);
 
-        // Server-authoritative ToC sync. If this edit changed the Page's
-        // node-facing state (title today; visibility/icon later), push it to the
-        // ToC so the sidebar reflects the rename immediately, ahead of the
-        // debounced `pages.name` write. The ToC node is a live cache (the durable
-        // title is `pages.name`), so this is best-effort: a dropped push
-        // self-heals when the ToC is re-derived on the next checkout.
-        //
-        // An empty title is ignored, not pushed: it never persists to
-        // `pages.name` (`read_title` is None), so blanking the ToC node would
-        // drift it from the durable name. The last non-empty title stands until a
-        // real one replaces it. (The client never commits an empty title; this is
-        // the server-side backstop for that invariant.)
+        // On title or visibility change, push to the ToC immediately.
+        // If we have any failures, everything will self-heal on any of the following:
+        // - The next checkout (the ToC is re-derived)
+        // - A subsequent title change (the node state is updated)
+        // - A subsequent visibility change (the node state is updated)
         if let Some(title) = self.doc_room.doc().read_title() {
             let visibility = self.doc_room.doc().read_status().unwrap_or(Status::GmOnly);
-            let node_state = (title, visibility);
+            let node_state = NodeState { title, visibility };
             if self.last_node_state.as_ref() != Some(&node_state) {
-                let _ = self
-                    .toc
-                    .tell(UpdatePageNode {
-                        page_id: self.page_id.clone(),
-                        title: node_state.0.clone(),
-                        visibility: node_state.1,
-                    })
-                    .send()
-                    .await;
+                // Spawn so the edit path never blocks on the ToC. The spawned
+                // `ask` reports any failure (transport or handler) in full; the
+                // ToC node self-heals on checkout regardless.
+                //
+                // TODO(version-gating): spawning means these pushes can reach the
+                // ToC out of order, and an evict+respawn resets the Page doc's vv
+                // lineage, so pushes also cross incarnations. We carry `created_at`
+                // (this incarnation's spawn time) and the Page doc's `version` so
+                // the ToC can order them -- newer incarnation dominates, vv breaks
+                // ties -- and drop stale ones (see the `UpdatePageNode` handler).
+                // Until that is wired up we accept the race.
+                let toc = self.toc.clone();
+                let page_id = self.page_id.clone();
+                let title = node_state.title.clone();
+                let visibility = node_state.visibility;
+                let version = self.doc_room.doc().version();
+                let created_at = self.created_at;
+                tokio::spawn(async move {
+                    let msg = UpdatePageNode {
+                        page_id: page_id.clone(),
+                        title,
+                        visibility,
+                        created_at,
+                        version,
+                    };
+                    if let Err(err) = toc.ask(msg).await {
+                        tracing::warn!(
+                            error = %err,
+                            page_id = %page_id.0,
+                            "failed to push node state to toc",
+                        );
+                    }
+                });
                 self.last_node_state = Some(node_state);
             }
         }
@@ -829,8 +863,8 @@ mod tests {
         .await
         .expect("apply update");
 
-        // The PageActor tells the TocActor before its ClientUpdate reply returns,
-        // so the rename is already enqueued; poll to stay robust to scheduling.
+        // The PageActor spawns the push to the TocActor, so the rename lands
+        // asynchronously after the ClientUpdate reply returns; poll until it does.
         let mut renamed = false;
         for _ in 0..50 {
             if toc.ask(ReadPageNodeTitle(page_id.clone())).await.unwrap()
