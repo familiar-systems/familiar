@@ -73,14 +73,14 @@ impl LoroTocDoc {
     }
 
     /// Capture version vector, run mutation, export the delta for broadcasting.
-    fn with_delta(&self, f: impl FnOnce()) -> Result<Vec<u8>, String> {
+    fn with_delta(&self, f: impl FnOnce()) -> Result<Vec<u8>, DocError> {
         let vv_before = self.doc.oplog_vv();
         f();
         self.doc
             .export(loro::ExportMode::Updates {
                 from: Cow::Owned(vv_before),
             })
-            .map_err(|e| format!("failed to export toc update: {e}"))
+            .map_err(|e| DocError::ExportUpdates(e.to_string()))
     }
 
     fn read_status(meta: &LoroMap) -> Option<Status> {
@@ -230,7 +230,7 @@ impl LoroTocDoc {
         &mut self,
         parent: Option<TreeID>,
         entry: &TocEntry,
-    ) -> Result<(Vec<u8>, TreeID), String> {
+    ) -> Result<(Vec<u8>, TreeID), DocError> {
         let tree = self.tree();
         let mut new_id = None;
         let delta = self.with_delta(|| {
@@ -248,7 +248,7 @@ impl LoroTocDoc {
         &mut self,
         node: TreeID,
         new_parent: Option<TreeID>,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<Vec<u8>, DocError> {
         let tree = self.tree();
         self.with_delta(|| {
             tree.mov(node, new_parent).expect("move tree node");
@@ -257,7 +257,7 @@ impl LoroTocDoc {
 
     /// Move a node to appear before `before` (same parent level).
     /// Returns the delta bytes for broadcasting.
-    pub fn move_before(&mut self, node: TreeID, before: TreeID) -> Result<Vec<u8>, String> {
+    pub fn move_before(&mut self, node: TreeID, before: TreeID) -> Result<Vec<u8>, DocError> {
         let tree = self.tree();
         self.with_delta(|| {
             tree.mov_before(node, before).expect("move_before");
@@ -265,7 +265,7 @@ impl LoroTocDoc {
     }
 
     /// Remove an entry from the ToC. Returns the delta bytes for broadcasting.
-    pub fn remove_entry(&mut self, node: TreeID) -> Result<Vec<u8>, String> {
+    pub fn remove_entry(&mut self, node: TreeID) -> Result<Vec<u8>, DocError> {
         let tree = self.tree();
         self.with_delta(|| {
             tree.delete(node).expect("delete tree node");
@@ -274,7 +274,7 @@ impl LoroTocDoc {
 
     /// Update the metadata of an existing entry.
     /// Returns the delta bytes for broadcasting.
-    pub fn update_entry(&mut self, node: TreeID, entry: &TocEntry) -> Result<Vec<u8>, String> {
+    pub fn update_entry(&mut self, node: TreeID, entry: &TocEntry) -> Result<Vec<u8>, DocError> {
         let tree = self.tree();
         self.with_delta(|| {
             let meta = tree.get_meta(node).expect("get node meta");

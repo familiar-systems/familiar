@@ -25,7 +25,8 @@ impl VersionVector {
     }
 }
 
-/// Failure modes for the three trait methods that touch CRDT bytes.
+/// Failure modes for CRDT byte operations: the `CrdtDoc` trait methods plus the
+/// ToC's tree edits, which export an update delta to broadcast.
 ///
 /// Each variant carries the underlying error description (Loro's `LoroError`
 /// formatted into a String). The variant tells the caller *which* operation
@@ -36,6 +37,8 @@ pub enum DocError {
     ApplyUpdate(String),
     #[error("export snapshot failed: {0}")]
     ExportSnapshot(String),
+    #[error("export updates failed: {0}")]
+    ExportUpdates(String),
     #[error("import snapshot failed: {0}")]
     ImportSnapshot(String),
 }

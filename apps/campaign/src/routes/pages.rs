@@ -44,7 +44,7 @@ use crate::state::AppState;
         (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
         (status = NOT_FOUND, description = "Campaign not on this shard"),
         // 5XX
-        (status = UNPROCESSABLE_ENTITY, description = "Parent page not found in the table of contents"),
+        (status = UNPROCESSABLE_ENTITY, description = "Parent page not found, or the page name is empty"),
         (status = NOT_IMPLEMENTED, description = "Creating from a template is not yet supported"),
         (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
         (status = INTERNAL_SERVER_ERROR, description = "Creation failed"),
@@ -125,6 +125,11 @@ pub async fn create_page(
         Err(SendError::HandlerError(CreatePageError::ParentNotFound)) => (
             StatusCode::UNPROCESSABLE_ENTITY,
             "Parent page not found in the table of contents.",
+        )
+            .into_response(),
+        Err(SendError::HandlerError(CreatePageError::EmptyName)) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Page name must not be empty.",
         )
             .into_response(),
         Err(SendError::HandlerError(e)) => {

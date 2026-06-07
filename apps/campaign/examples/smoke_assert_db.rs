@@ -1,13 +1,16 @@
-//! DB assertion for the full-stack e2e smoke test (step 10).
+//! DB assertion for the full-stack e2e smoke test.
 //!
 //! After the harness gracefully shuts the campaign server down (so its room
 //! actors have flushed their CRDT snapshots to SQLite), it runs this against
 //! the campaign's `.db` file to prove the edits actually persisted:
 //!
 //!   - at least 2 Pages exist (the seeded "Campaign Base Camp" home page plus
-//!     the "Test page" the spec created), and
+//!     the second page the spec created), and
 //!   - each Page has at least 2 `section = 'content'` blocks (the spec types
-//!     two paragraphs into each).
+//!     two paragraphs into each), and
+//!   - one Page is named "The Sunken Bastion": the spec renames "Test page" via
+//!     the in-editor title, so this proves an in-editor rename reached
+//!     `pages.name` (the server-authoritative `meta.title` -> `name_sync` flush).
 //!
 //! It deliberately reuses the campaign crate's own `db` helpers and sea-orm
 //! entities rather than a separate SQLite reader: same driver/WAL semantics the
@@ -15,7 +18,7 @@
 //! error here instead of a silently-passing assertion.
 //!
 //! Usage: `cargo run -p familiar-systems-campaign --example smoke_assert_db -- <path-to.db>`
-//! Exits 0 if both invariants hold, non-zero (with a FAIL line) otherwise.
+//! Exits 0 if all invariants hold, non-zero (with a FAIL line) otherwise.
 
 use std::path::PathBuf;
 use std::process::exit;
@@ -26,6 +29,9 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 const MIN_PAGES: u64 = 2;
 const MIN_CONTENT_BLOCKS_PER_PAGE: u64 = 2;
+/// The spec renames "Test page" to this via the in-editor title; it must persist
+/// to `pages.name`.
+const RENAMED_PAGE: &str = "The Sunken Bastion";
 
 #[tokio::main]
 async fn main() {
@@ -65,6 +71,13 @@ async fn main() {
         failures.push(format!("expected >= {MIN_PAGES} pages, found {page_count}"));
     }
 
+    if !all_pages.iter().any(|p| p.name == RENAMED_PAGE) {
+        let names: Vec<&str> = all_pages.iter().map(|p| p.name.as_str()).collect();
+        failures.push(format!(
+            "expected a page renamed to {RENAMED_PAGE:?} (in-editor title edit must persist to pages.name), found names {names:?}"
+        ));
+    }
+
     for t in &all_pages {
         let content_blocks = blocks::Entity::find()
             .filter(blocks::Column::PageId.eq(t.id.clone()))
@@ -87,7 +100,7 @@ async fn main() {
 
     if failures.is_empty() {
         println!(
-            "OK: {page_count} pages, each with >= {MIN_CONTENT_BLOCKS_PER_PAGE} content blocks"
+            "OK: {page_count} pages, each with >= {MIN_CONTENT_BLOCKS_PER_PAGE} content blocks, one renamed to {RENAMED_PAGE:?}"
         );
         exit(0);
     }

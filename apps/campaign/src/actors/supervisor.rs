@@ -499,6 +499,8 @@ pub struct CreatePage {
 pub enum CreatePageError {
     #[error("parent page not found in toc")]
     ParentNotFound,
+    #[error("page name must not be empty")]
+    EmptyName,
     #[error("page genesis failed")]
     Genesis,
     #[error("a child actor was unavailable")]
@@ -521,8 +523,13 @@ impl Message<CreatePage> for CampaignSupervisor {
     ) -> Self::Reply {
         self.last_activity = Instant::now();
 
-        // Validate placement before any write: a bad parent fails cleanly with
-        // nothing persisted.
+        let name = msg.name.trim().to_string();
+        if name.is_empty() {
+            return Err(CreatePageError::EmptyName);
+        }
+
+        // Validate placement before any write.
+        // Bad parent fails cleanly with nothing persisted.
         if let Some(parent) = &msg.parent {
             match self.toc.ask(ResolvePageNode(parent.clone())).await {
                 Ok(Some(_)) => {}
@@ -552,8 +559,9 @@ impl Message<CreatePage> for CampaignSupervisor {
             page_id: page_id.clone(),
             db_reader: db_reader.clone(),
             db_writer,
+            toc: self.toc.clone(),
             init: PageInit::New {
-                name: msg.name.clone(),
+                name: name.clone(),
                 status,
                 seed_blocks: msg.seed_blocks,
             },
@@ -576,7 +584,7 @@ impl Message<CreatePage> for CampaignSupervisor {
             .toc
             .ask(AddPageNode {
                 page_id: page_id.clone(),
-                title: msg.name.clone(),
+                title: name,
                 visibility: status,
                 parent: msg.parent.clone(),
             })
@@ -727,6 +735,7 @@ impl CampaignSupervisor {
             page_id: page_id.clone(),
             db_reader: db.reader().clone(),
             db_writer: db.writer().clone(),
+            toc: self.toc.clone(),
             init: PageInit::Restore,
             debounce_duration: Duration::from_secs(2),
             idle_timeout: Duration::from_secs(30),
@@ -1164,5 +1173,37 @@ mod tests {
 
         second.stop_gracefully().await.unwrap();
         second.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    /// Pages must have a non-empty title. An empty or whitespace-only name is
+    /// rejected before anything is persisted, on every creation path (not just
+    /// the UI).
+    #[tokio::test]
+    async fn create_page_rejects_empty_name() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let store = store_in(tmp.path());
+        let args = fast_args(CampaignId::generate(), store, 60_000, 60_000);
+        let supervisor = CampaignSupervisor::spawn(args);
+        supervisor.wait_for_startup().await;
+
+        for name in ["", "   "] {
+            let err = supervisor
+                .ask(CreatePage {
+                    name: name.to_string(),
+                    status: Some(Status::GmOnly),
+                    parent: None,
+                    seed_blocks: vec![],
+                })
+                .await
+                .expect_err("empty name must be rejected");
+            assert!(
+                matches!(err, SendError::HandlerError(CreatePageError::EmptyName)),
+                "expected EmptyName, got {err:?}"
+            );
+        }
+
+        supervisor.stop_gracefully().await.unwrap();
+        supervisor.wait_for_shutdown_with_result(|_| ()).await;
     }
 }

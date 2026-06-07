@@ -341,7 +341,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Parent page not found in the table of contents */
+      /** @description Parent page not found, or the page name is empty */
       422: {
         headers: {
           [name: string]: unknown;

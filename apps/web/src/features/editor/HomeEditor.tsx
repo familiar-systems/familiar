@@ -3,10 +3,24 @@
 // Loro binding come from @familiar-systems/editor; this component owns the
 // React/transport wiring and the on-page chrome.
 
-import { BlockId, LoroExtension, NODE_EXTENSIONS, readPageTitle } from "@familiar-systems/editor";
+import {
+  BlockId,
+  LoroExtension,
+  NODE_EXTENSIONS,
+  readPageTitle,
+  writePageTitle,
+} from "@familiar-systems/editor";
 import type { PageId } from "@familiar-systems/types-campaign";
 import { EditorContent, useEditor } from "@tiptap/react";
 import type { ContainerID, LoroDoc } from "loro-crdt";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { roomErrorMessage } from "./loro-manager";
 import { usePageDoc } from "./usePageDoc";
@@ -38,7 +52,10 @@ export function HomeEditor({ pageId }: HomeEditorProps): React.ReactElement {
   // the local Loro doc and flush when the socket returns); only the indicator
   // differs.
   return (
+    // Key by page so the title draft state (below) resets on navigation rather
+    // than briefly showing the previous page's title.
     <BoundEditor
+      key={pageId}
       doc={state.doc}
       containerId={state.containerId}
       reconnecting={state.status === "reconnecting"}
@@ -52,10 +69,26 @@ interface BoundEditorProps {
   reconnecting: boolean;
 }
 
+// Reactive read of the Page title from its `meta.title` LWW string. Subscribes
+// to the whole doc (cheap: getSnapshot returns the same string when the title is
+// unchanged, so body edits don't re-render the title), so a remote rename shows
+// up live, not just our own edits.
+function usePageTitle(doc: LoroDoc): string {
+  const subscribe = useCallback((onChange: () => void) => doc.subscribe(() => onChange()), [doc]);
+  const getSnapshot = useCallback(() => readPageTitle(doc), [doc]);
+  return useSyncExternalStore(subscribe, getSnapshot);
+}
+
 // Separate component so `useEditor` runs unconditionally (rules of hooks) and
 // only after the doc has synced. The editor is created once per doc.
 function BoundEditor({ doc, containerId, reconnecting }: BoundEditorProps): React.ReactElement {
-  const title = readPageTitle(doc);
+  const committedTitle = usePageTitle(doc);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  // The title field is a draft over the committed Loro title. It may be empty
+  // mid-edit, but an empty/whitespace title is never committed and reverts on
+  // blur, so a Page always keeps a non-empty title (matching the create path).
+  const [draft, setDraft] = useState(committedTitle);
+  const editingRef = useRef(false);
   const editor = useEditor(
     {
       extensions: [...NODE_EXTENSIONS, BlockId, LoroExtension.configure({ doc, containerId })],
@@ -68,6 +101,21 @@ function BoundEditor({ doc, containerId, reconnecting }: BoundEditorProps): Reac
     [doc],
   );
 
+  // Mirror committed changes (our own commits and remote renames) into the draft
+  // while not actively editing, so a remote rename shows up but never clobbers
+  // in-progress typing.
+  useEffect(() => {
+    if (!editingRef.current) setDraft(committedTitle);
+  }, [committedTitle]);
+
+  // Auto-grow the title to fit wrapped lines (no inner scrollbar).
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
+
   return (
     <article className="mx-auto w-full max-w-3xl px-8 pt-16 pb-24">
       {reconnecting ? (
@@ -76,7 +124,45 @@ function BoundEditor({ doc, containerId, reconnecting }: BoundEditorProps): Reac
           Reconnecting...
         </p>
       ) : null}
-      <h1 className="mb-8 font-display text-3xl font-medium tracking-tight">{title}</h1>
+      {/* The title is a single logical line that soft-wraps (a textarea, not an
+          input, so long fantasy nouns wrap rather than truncate). Newlines are
+          stripped and Enter jumps to the body, so it never holds a literal `\n`,
+          matching the `meta.title` LWW-string model. */}
+      <textarea
+        ref={titleRef}
+        value={draft}
+        onFocus={() => {
+          editingRef.current = true;
+        }}
+        onChange={(e) => {
+          const next = e.target.value.replace(/\n/g, "");
+          setDraft(next);
+          // Never commit an empty title; the field can show empty while editing,
+          // but it reverts on blur (below).
+          if (next.trim() !== "") writePageTitle(doc, next);
+        }}
+        onBlur={() => {
+          editingRef.current = false;
+          const trimmed = draft.trim();
+          if (trimmed === "") {
+            setDraft(committedTitle); // leaving it empty reverts to the last title
+          } else if (trimmed !== committedTitle) {
+            writePageTitle(doc, trimmed); // normalize surrounding whitespace
+            setDraft(trimmed);
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            editor?.commands.focus("start");
+          }
+        }}
+        rows={1}
+        placeholder="Untitled"
+        aria-label="Page title"
+        spellCheck={false}
+        className="mb-8 w-full resize-none overflow-hidden border-0 bg-transparent p-0 font-display text-3xl font-medium tracking-tight outline-none placeholder:text-muted-foreground/40"
+      />
       <EditorContent
         editor={editor}
         className={[
