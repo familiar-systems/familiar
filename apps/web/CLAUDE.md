@@ -69,9 +69,10 @@ The editor is split by concern: `@familiar-systems/editor` owns the shared TipTa
 
 ## Testing
 
-Three tiers, deliberately distinct (one term per concept — the old "e2e" specs were never end-to-end):
+Four tiers, deliberately distinct (one term per concept — the old "e2e" specs were never end-to-end):
 
-- **Unit (Vitest):** co-located `*.test.ts`; type-level tests are `*.test-d.ts`.
+- **Unit (Vitest):** co-located `*.test.ts`; type-level tests are `*.test-d.ts`. Node environment, no DOM.
+- **Component (Storybook + Vitest browser mode):** stories co-located as `*.stories.tsx`. Every story runs as a real-browser test (Playwright Chromium) via `@storybook/addon-vitest`: a smoke render plus its `play` function as an interaction test. This is the "given props + a user interaction, does this component behave" tier — the one a pure unit test and a full-stack e2e both miss (e.g. a dnd-kit drag, which jsdom can't run because it reads `getBoundingClientRect`). Components take plain props + callbacks (spied with `fn()` from `storybook/test`); Loro-backed views get an **in-process `LoroDoc` fixture** (`readTocTree(doc)`), never a mocked socket — the doc is the contract, transport is not. Config is `vitest.stories.config.ts` (a separate config, mirroring the Playwright split), which `mergeConfig`s `vite.config.ts` (so the `wasm()` plugin works) and excludes `loro-crdt` from `optimizeDeps` (esbuild can't pre-bundle the .wasm). Global decorators + the Tailwind import live in `.storybook/preview.tsx`: a memory-history TanStack Router wraps every story so `<Link>`s resolve, and `@storybook/addon-themes`' `withThemeByClassName` adds a toolbar light/dark switch that toggles the same `.dark` class on `<html>` the app uses (`src/lib/theme.ts` + `global.css`'s `@custom-variant dark` + `theme.css`), so no theme styling is duplicated. The toggle is for visual browsing; headless story tests run at the default (light) theme — set `globals: { theme: "dark" }` on a story to assert dark rendering. Run via `mise run web:stories` (needs `mise run setup:playwright` once); part of `mise run check`, and CI runs it inside the `integration` job (both browser-only tiers share the same Vite + chromium setup). Browse components visually with `mise run storybook`.
 - **Integration (Playwright):** in `integration/` as `*.spec.ts`. The SPA runs in a real browser, but Hanko session validation, `/me`, and **every backend call** are mocked at the network layer (route interception). Asserts SPA-specific behavior — e.g. that navigation does no full-page reload and `Shell` stays mounted across it. `playwright.config.ts` spawns `pnpm dev` against `:5173`. Run via `mise run web:integration`; part of `mise run check`.
 - **E2E (Playwright):** the genuine full stack — real platform + campaign + Loro WebSocket + SQLite, only the third-party Hanko edge stubbed. One spec, `e2e/smoke.spec.ts`, under `playwright.e2e.config.ts` (baseURL `http://app.localhost:18080`, **no** `webServer`). The `.mise/tasks/e2e` shell harness boots the whole stack on an isolated port block (13000/13001/15173/18080/19100, so it coexists with a running `mise run dev`), runs the spec, then SIGTERMs the campaign for a graceful flush and asserts the persisted SQLite via `apps/campaign/examples/smoke_assert_db`. The browser "login" is one seeded `hanko` cookie (the SDK's `getSessionToken()` reads it); the stub `/sessions/validate` is `e2e/support/mock-hanko.mjs`. Run via `mise run e2e` (needs `mise run setup:playwright` once); **not** in `check`.
 - `vitest.config.ts` excludes both `e2e/` and `integration/` (those dirs are Playwright's, not vitest's).
@@ -95,9 +96,11 @@ Use the workspace `mise` tasks (per the root rule, don't drop to raw `pnpm --fil
 
 ```bash
 mise run test            # Vitest unit tests
+mise run web:stories     # Storybook stories as browser-mode component tests; in `check`
 mise run web:integration # Playwright integration (browser + mocked backends); in `check`
 mise run e2e             # Playwright full-stack smoke (real servers + SQLite); not in `check`
 mise run lint
 mise run typecheck
 mise run dev             # full stack; web on :5173 behind the Caddy proxy on :8080
+mise run storybook       # Storybook UI to browse components in isolation
 ```
