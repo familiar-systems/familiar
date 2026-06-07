@@ -162,7 +162,7 @@
             "description": "Campaign not on this shard"
           },
           "422": {
-            "description": "Parent page not found in the table of contents"
+            "description": "Parent page not found, or the page name is empty"
           },
           "500": {
             "description": "Creation failed"
