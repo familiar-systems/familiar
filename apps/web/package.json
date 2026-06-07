@@ -51,13 +51,13 @@
     "@tanstack/router-plugin": "^1.167.35",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react": "^5",
+    "@vitejs/plugin-react": "^6",
     "@vitest/browser-playwright": "^4.1.6",
-    "oxlint-tailwindcss": "^0.7.1",
+    "oxlint-tailwindcss": "^1.1.0",
     "playwright": "^1.60.0",
     "storybook": "^10",
     "typescript": "catalog:",
-    "vite": "^7",
+    "vite": "^8",
     "vite-plugin-wasm": "^3.6.0",
     "vitest": "^4.1.6"
   }
