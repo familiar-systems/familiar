@@ -26,6 +26,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOr
 
 use crate::actors::database_writer::{DatabaseWriteActor, DbCreatePage, WritePageBlocks};
 use crate::actors::persist::{Persist, PersistError, PersistNow};
+use crate::actors::toc::{TocActor, UpdatePageNode};
 use crate::domain::crdt::doc::CrdtDoc;
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
@@ -41,10 +42,18 @@ pub struct PageActor {
     page_id: PageId,
     doc_room: room::Room<LoroPageDoc>,
     db_writer: ActorRef<DatabaseWriteActor>,
+    /// The campaign's ToC singleton. The Page owns its node-facing state
+    /// (title, visibility); on change it pushes an [`UpdatePageNode`] here so the
+    /// live ToC tracks renames without waiting on the persistence debounce.
+    toc: ActorRef<TocActor>,
     self_ref: ActorRef<PageActor>,
     /// Whether the doc has unpersisted edits and, if so, the armed flush timer.
     /// See [`Persist`]; the timer is inseparable from dirtiness by construction.
     persist: Persist,
+    /// Last node-facing state (title, visibility) pushed to the ToC. Lets the
+    /// `ClientUpdate` handler skip a push when an edit left both untouched (the
+    /// common case: body edits).
+    last_node_state: Option<(String, Status)>,
     debounce_duration: Duration,
     /// Whether the room has subscribers and, if not, the armed eviction timer.
     occupancy: Occupancy,
@@ -71,6 +80,8 @@ pub struct PageActorArgs {
     pub page_id: PageId,
     pub db_reader: DatabaseConnection,
     pub db_writer: ActorRef<DatabaseWriteActor>,
+    /// The campaign's ToC singleton, for server-authoritative node-state pushes.
+    pub toc: ActorRef<TocActor>,
     /// Whether the actor loads an existing Page or originates a new one.
     pub init: PageInit,
     pub debounce_duration: Duration,
@@ -182,6 +193,14 @@ impl Actor for PageActor {
             }
         };
 
+        // The Page is the authority for its node-facing state; seed the
+        // last-pushed snapshot from the freshly built doc so the first body-only
+        // edit doesn't spuriously push to the ToC. `None` when the title is empty
+        // (which never persists), so the first real title still pushes.
+        let initial_node_state = doc
+            .read_title()
+            .map(|title| (title, doc.read_status().unwrap_or(Status::GmOnly)));
+
         let doc_room = room::Room::new(doc);
 
         // Born vacating: a freshly spawned room has no subscribers yet. The
@@ -193,8 +212,10 @@ impl Actor for PageActor {
             page_id: args.page_id,
             doc_room,
             db_writer: args.db_writer,
+            toc: args.toc,
             self_ref: actor_ref,
             persist: Persist::new(),
+            last_node_state: initial_node_state,
             debounce_duration: args.debounce_duration,
             occupancy: Occupancy::Occupied,
             idle_timeout: args.idle_timeout,
@@ -329,6 +350,36 @@ impl Message<room_actor::ClientUpdate> for PageActor {
         );
         tracing::trace!(frame_count = frames.len(), "fanning out broadcast");
         self.doc_room.fan_out(&frames, broadcast.exclude);
+
+        // Server-authoritative ToC sync. If this edit changed the Page's
+        // node-facing state (title today; visibility/icon later), push it to the
+        // ToC so the sidebar reflects the rename immediately, ahead of the
+        // debounced `pages.name` write. The ToC node is a live cache (the durable
+        // title is `pages.name`), so this is best-effort: a dropped push
+        // self-heals when the ToC is re-derived on the next checkout.
+        //
+        // An empty title is ignored, not pushed: it never persists to
+        // `pages.name` (`read_title` is None), so blanking the ToC node would
+        // drift it from the durable name. The last non-empty title stands until a
+        // real one replaces it. (The client never commits an empty title; this is
+        // the server-side backstop for that invariant.)
+        if let Some(title) = self.doc_room.doc().read_title() {
+            let visibility = self.doc_room.doc().read_status().unwrap_or(Status::GmOnly);
+            let node_state = (title, visibility);
+            if self.last_node_state.as_ref() != Some(&node_state) {
+                let _ = self
+                    .toc
+                    .tell(UpdatePageNode {
+                        page_id: self.page_id.clone(),
+                        title: node_state.0.clone(),
+                        visibility: node_state.1,
+                    })
+                    .send()
+                    .await;
+                self.last_node_state = Some(node_state);
+            }
+        }
+
         Ok(ack)
     }
 }
@@ -470,6 +521,7 @@ impl Message<IdleEvict> for PageActor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::actors::toc::{AddPageNode, ReadPageNodeTitle, TocActorArgs};
     use crate::db;
     use crate::entities::columns::PageKindCol;
     use crate::migrations::Migrator;
@@ -479,6 +531,22 @@ mod tests {
     use kameo::actor::Spawn;
     use sea_orm::ActiveModelTrait;
     use sea_orm_migration::MigratorTrait;
+
+    /// Spawn a ToC actor for tests that need a `PageActor`'s required `toc` ref.
+    /// Borrows its deps so the caller can still move `conn`/`db_writer`/
+    /// `campaign_id` into `PageActorArgs` afterward.
+    fn spawn_toc(
+        campaign_id: &CampaignId,
+        conn: &DatabaseConnection,
+        db_writer: &ActorRef<DatabaseWriteActor>,
+    ) -> ActorRef<TocActor> {
+        TocActor::spawn(TocActorArgs {
+            campaign_id: campaign_id.clone(),
+            db_reader: conn.clone(),
+            db_writer: db_writer.clone(),
+            debounce_duration: Duration::from_secs(60),
+        })
+    }
 
     async fn setup_db() -> DatabaseConnection {
         db::register_sqlite_vec();
@@ -527,11 +595,13 @@ mod tests {
                 conn: conn.clone(),
             });
 
+        let toc = spawn_toc(&campaign_id, &conn, &db_writer);
         let actor = PageActor::spawn(PageActorArgs {
             campaign_id,
             page_id: page_id.clone(),
             db_reader: conn,
             db_writer,
+            toc,
             init: PageInit::Restore,
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
@@ -552,11 +622,13 @@ mod tests {
             });
 
         let page_id = PageId::generate();
+        let toc = spawn_toc(&campaign_id, &conn, &db_writer);
         let actor = PageActor::spawn(PageActorArgs {
             campaign_id,
             page_id: page_id.clone(),
             db_reader: conn.clone(),
             db_writer,
+            toc,
             init: PageInit::New {
                 name: "Korgath the Destroyer".into(),
                 status: Status::GmOnly,
@@ -612,11 +684,13 @@ mod tests {
                 conn: conn.clone(),
             });
 
+        let toc = spawn_toc(&campaign_id, &conn, &db_writer);
         let actor = PageActor::spawn(PageActorArgs {
             campaign_id,
             page_id,
             db_reader: conn,
             db_writer,
+            toc,
             init: PageInit::Restore,
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
@@ -645,11 +719,13 @@ mod tests {
                 conn: conn.clone(),
             });
 
+        let toc = spawn_toc(&campaign_id, &conn, &db_writer);
         let actor = PageActor::spawn(PageActorArgs {
             campaign_id,
             page_id,
             db_reader: conn,
             db_writer,
+            toc,
             init: PageInit::Restore,
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_millis(40),
@@ -659,5 +735,120 @@ mod tests {
         // No client joins; the born-vacating idle timer should evict it.
         tokio::time::sleep(Duration::from_millis(250)).await;
         assert!(!actor.is_alive(), "an un-joined page self-evicts when idle");
+    }
+
+    /// The server-authoritative title path, end to end: a GM joins a Page room,
+    /// edits `meta.title` over a `ClientUpdate`, and the owning PageActor pushes
+    /// the rename to the wired TocActor so the live ToC node reflects it.
+    #[tokio::test]
+    async fn meta_title_edit_pushes_rename_to_toc() {
+        use familiar_systems_campaign_shared::id::ClientId;
+        use familiar_systems_campaign_shared::loro::page::{CONTAINER_META, KEY_TITLE};
+        use loro::LoroDoc;
+        use std::borrow::Cow;
+
+        let conn = setup_db().await;
+        let campaign_id = CampaignId::generate();
+        let db_writer =
+            DatabaseWriteActor::spawn(crate::actors::database_writer::DatabaseWriteActorArgs {
+                campaign_id: campaign_id.clone(),
+                conn: conn.clone(),
+            });
+        let toc = TocActor::spawn(TocActorArgs {
+            campaign_id: campaign_id.clone(),
+            db_reader: conn.clone(),
+            db_writer: db_writer.clone(),
+            debounce_duration: Duration::from_secs(60),
+        });
+        toc.wait_for_startup().await;
+
+        // Genesis a Page named "Original" (writes its own row), wired to the toc.
+        let page_id = PageId::generate();
+        let page = PageActor::spawn(PageActorArgs {
+            campaign_id: campaign_id.clone(),
+            page_id: page_id.clone(),
+            db_reader: conn.clone(),
+            db_writer,
+            toc: toc.clone(),
+            init: PageInit::New {
+                name: "Original".into(),
+                status: Status::GmOnly,
+                seed_blocks: vec![],
+            },
+            debounce_duration: Duration::from_secs(60),
+            idle_timeout: Duration::from_secs(60),
+        });
+        page.wait_for_startup().await;
+
+        // Mirror the supervisor: place the page's node in the ToC.
+        toc.ask(AddPageNode {
+            page_id: page_id.clone(),
+            title: "Original".into(),
+            visibility: Status::GmOnly,
+            parent: None,
+        })
+        .await
+        .expect("add page node");
+        assert_eq!(
+            toc.ask(ReadPageNodeTitle(page_id.clone())).await.unwrap(),
+            Some("Original".to_string()),
+        );
+
+        // Join as GM (Write capability) and take the server snapshot.
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let client = ClientId::new(1);
+        let join = page
+            .ask(room_actor::ClientJoin {
+                client,
+                tx,
+                role: CampaignRole::Gm,
+            })
+            .await
+            .expect("join");
+
+        // Build a client doc from the snapshot, rename via meta.title, and ship
+        // the delta back as a ClientUpdate (the real edit path).
+        let client_doc = LoroDoc::new();
+        client_doc.import(join.snapshot.as_bytes()).unwrap();
+        let before = client_doc.oplog_vv();
+        client_doc
+            .get_map(CONTAINER_META)
+            .insert(KEY_TITLE, "Renamed")
+            .unwrap();
+        client_doc.commit();
+        let update = client_doc
+            .export(loro::ExportMode::Updates {
+                from: Cow::Owned(before),
+            })
+            .unwrap();
+
+        page.ask(room_actor::ClientUpdate {
+            client,
+            updates: vec![update],
+        })
+        .await
+        .expect("apply update");
+
+        // The PageActor tells the TocActor before its ClientUpdate reply returns,
+        // so the rename is already enqueued; poll to stay robust to scheduling.
+        let mut renamed = false;
+        for _ in 0..50 {
+            if toc.ask(ReadPageNodeTitle(page_id.clone())).await.unwrap()
+                == Some("Renamed".to_string())
+            {
+                renamed = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(
+            renamed,
+            "PageActor must push the rename to the live ToC node"
+        );
+
+        page.stop_gracefully().await.unwrap();
+        page.wait_for_shutdown_with_result(|_| ()).await;
+        toc.stop_gracefully().await.unwrap();
+        toc.wait_for_shutdown_with_result(|_| ()).await;
     }
 }

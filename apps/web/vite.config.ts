@@ -31,6 +31,13 @@ export default defineConfig({
     wasm(),
   ],
   server: {
+    // Caddy (Caddyfile.dev) hardcodes the SPA upstream as :5173. Without
+    // strictPort a busy 5173 silently drifts to 5174 and the proxy 502s. Fail
+    // loudly on the contracted port instead - no silent fallback default. Host
+    // stays unpinned here: this config is shared with the integration
+    // webServer (playwright.config.ts), which reaches Vite over localhost; the
+    // dev-only 127.0.0.1 pin lives in mise.toml's dev:web task.
     port: 5173,
+    strictPort: true,
   },
 });

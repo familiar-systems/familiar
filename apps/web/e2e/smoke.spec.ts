@@ -6,13 +6,14 @@
 // points this config's baseURL at the Caddy app apex; only the third-party
 // Hanko edge is stubbed (a tiny mock /sessions/validate the servers and the
 // browser both trust). The harness owns shutdown + the SQLite assertion
-// (steps 9-10); this spec is steps 1-8.
+// (steps 10-11); this spec is steps 1-9.
 //
 // The happy path: create a Daggerheart campaign through the wizard, edit the
-// seeded home page, create and edit a second page, then navigate between them
-// via the table of contents and assert the content survived the server
-// round-trip (which, because room actors flush on last-subscriber-leave, also
-// proves it reached the campaign DB).
+// seeded home page, create and edit a second page, navigate between them via the
+// table of contents and assert the content survived the server round-trip, then
+// rename the page and assert the ToC updates live (which, because room actors
+// flush on last-subscriber-leave / on stop, also proves it reached the campaign
+// DB).
 
 import { expect, test } from "@playwright/test";
 
@@ -102,6 +103,24 @@ test("create a campaign, edit two pages, and navigate between them via the ToC",
   await sidebar.getByRole("button", { name: "Test page" }).click();
   await expect(page.locator(".ProseMirror")).toContainText("Test line one");
   await expect(page.locator(".ProseMirror")).toContainText("Test line two");
+
+  // --- 9. Rename the open page; the ToC updates live. This is the
+  // server-authoritative path: the client writes only `meta.title`, the
+  // PageActor mirrors it to `pages.name` and pushes the rename to the ToC. The
+  // sidebar label changing proves the server round-trip happened; the harness's
+  // DB assertion proves the new name reached `pages.name`. ---
+  const title = page.getByLabel("Page title");
+  await expect(title).toHaveValue("Test page");
+  await title.fill("The Sunken Bastion");
+  await expect(sidebar.getByRole("button", { name: "The Sunken Bastion" })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "Test page" })).toHaveCount(0);
+
+  // Empty titles are not allowed: clearing the field and blurring reverts to the
+  // last name (and never blanks the ToC).
+  await title.fill("");
+  await page.locator(".ProseMirror").click();
+  await expect(title).toHaveValue("The Sunken Bastion");
+  await expect(sidebar.getByRole("button", { name: "The Sunken Bastion" })).toBeVisible();
 
   // The whole flow was client-side navigation: the shell never reloaded.
   const stillMounted = await page.evaluate(

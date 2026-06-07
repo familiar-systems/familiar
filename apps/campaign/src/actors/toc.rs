@@ -328,6 +328,102 @@ impl Message<AddPageNode> for TocActor {
     }
 }
 
+/// Refresh an existing Page node's node-facing state in the live ToC and
+/// broadcast the change. Sent by the owning [`PageActor`](crate::actors::page)
+/// whenever the Page's `meta` changes, so the ToC tracks renames (and, later,
+/// visibility/icon changes) without waiting on the persistence debounce. This
+/// keeps the title's single source of truth on the Page side: clients edit only
+/// `meta.title`; the server fans the change out to the ToC.
+///
+/// Persistence is asymmetric by design. Page titles are re-derived from
+/// `pages.name` on checkout and never stored in `toc_entries`, so a title-only
+/// change only broadcasts. A visibility change also schedules a snapshot, since
+/// `toc_entries.visibility` *is* persisted. A Page not (yet) in the tree is
+/// ignored: `restore_toc` re-derives it from `pages.name` on the next checkout.
+///
+/// TODO: carry `icon` here once Page icons exist (it travels with the same node
+/// state, not as a separate message).
+#[derive(Debug, Clone)]
+pub struct UpdatePageNode {
+    pub page_id: PageId,
+    pub title: String,
+    pub visibility: Status,
+}
+
+impl Message<UpdatePageNode> for TocActor {
+    type Reply = Result<(), String>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, page_id = %msg.page_id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: UpdatePageNode,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let Some(tree_id) = self.doc_room.doc().find_page_node(&msg.page_id) else {
+            tracing::trace!("update for a page not in the toc; ignoring (self-heals on checkout)");
+            return Ok(());
+        };
+
+        // Only a visibility change needs a DB write: titles live in `pages.name`
+        // and are re-derived on checkout, never persisted from the ToC side.
+        let visibility_changed = self
+            .doc_room
+            .doc()
+            .read_entry(tree_id)
+            .map(|entry| *entry.visibility() != msg.visibility)
+            .unwrap_or(true);
+
+        let entry = TocEntry::Page {
+            title: msg.title,
+            page_id: msg.page_id,
+            visibility: msg.visibility,
+            suggestions: Vec::new(),
+        };
+        let delta = self.doc_room.doc_mut().update_entry(tree_id, &entry)?;
+
+        let frames = encode_broadcast(
+            loro_protocol::CrdtType::Loro,
+            "toc",
+            std::slice::from_ref(&delta),
+            &self.fragmenter,
+        );
+        self.doc_room.fan_out(&frames, None);
+
+        if visibility_changed {
+            self.persist
+                .schedule(&self.self_ref, self.debounce_duration);
+        }
+        Ok(())
+    }
+}
+
+/// Test-only probe: read the current title of a Page's live ToC node. Lives at
+/// module scope (not in `mod tests`) so the `page` actor's integration test can
+/// assert the server-authoritative title push end-to-end.
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub(crate) struct ReadPageNodeTitle(pub PageId);
+
+#[cfg(test)]
+impl Message<ReadPageNodeTitle> for TocActor {
+    type Reply = Option<String>;
+
+    async fn handle(
+        &mut self,
+        msg: ReadPageNodeTitle,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let tree_id = self.doc_room.doc().find_page_node(&msg.0)?;
+        match self.doc_room.doc().read_entry(tree_id)? {
+            TocEntry::Page { title, .. } => Some(title),
+            _ => None,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Persistence
 // ---------------------------------------------------------------------------
@@ -1088,6 +1184,109 @@ mod tests {
         assert!(
             toc.ask(InspectDirty).await.unwrap(),
             "a failed flush must leave the actor dirty"
+        );
+
+        toc.stop_gracefully().await.unwrap();
+        toc.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    // -- Actor: UpdatePageNode --
+
+    /// The server-authoritative title path: a Page's owning actor pushes
+    /// node-state changes here. A title-only change refreshes the live tree and
+    /// broadcasts but schedules no snapshot (titles re-derive from `pages.name`);
+    /// a visibility change additionally marks the actor dirty.
+    #[tokio::test]
+    async fn update_page_node_refreshes_title_and_persists_only_on_visibility() {
+        use crate::actors::database_writer::DatabaseWriteActorArgs;
+        use crate::db;
+        use crate::migrations::Migrator;
+        use chrono::Utc;
+        use kameo::actor::Spawn;
+        use sea_orm::ActiveModelTrait;
+        use sea_orm_migration::MigratorTrait;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+
+        // A Page plus a toc_entry referencing it: restore yields a clean tree
+        // (no orphan), so persist-scheduling can be asserted precisely.
+        let page_id = PageId::generate();
+        let now = Utc::now();
+        pages::ActiveModel {
+            id: Set(PageIdCol::from(page_id.clone())),
+            name: Set("Original".into()),
+            status: Set(StatusCol::from(Status::GmOnly)),
+            kind: Set(PageKindCol::Entity),
+            template_id: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&conn)
+        .await
+        .unwrap();
+        toc_entries::ActiveModel {
+            id: Set(ulid::Ulid::new().to_string()),
+            page_id: Set(Some(PageIdCol::from(page_id.clone()))),
+            folder_title: Set(None),
+            visibility: Set(StatusCol::from(Status::GmOnly)),
+            parent_id: Set(None),
+            position: Set(0),
+        }
+        .insert(&conn)
+        .await
+        .unwrap();
+
+        let campaign_id = CampaignId::generate();
+        let db_writer = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: campaign_id.clone(),
+            conn: conn.clone(),
+        });
+        let toc = TocActor::spawn(TocActorArgs {
+            campaign_id,
+            db_reader: conn.clone(),
+            db_writer,
+            debounce_duration: Duration::from_secs(60), // don't fire mid-test
+        });
+        toc.wait_for_startup().await;
+
+        assert_eq!(
+            toc.ask(ReadPageNodeTitle(page_id.clone())).await.unwrap(),
+            Some("Original".to_string()),
+            "restored node carries the page's name"
+        );
+        assert!(!toc.ask(InspectDirty).await.unwrap(), "clean after restore");
+
+        // Title-only change: live tree updates, nothing scheduled to persist.
+        toc.ask(UpdatePageNode {
+            page_id: page_id.clone(),
+            title: "Renamed".into(),
+            visibility: Status::GmOnly,
+        })
+        .await
+        .expect("update page node");
+        assert_eq!(
+            toc.ask(ReadPageNodeTitle(page_id.clone())).await.unwrap(),
+            Some("Renamed".to_string()),
+            "live title updated"
+        );
+        assert!(
+            !toc.ask(InspectDirty).await.unwrap(),
+            "a title-only change must not schedule a snapshot"
+        );
+
+        // Visibility change: a snapshot is now warranted.
+        toc.ask(UpdatePageNode {
+            page_id: page_id.clone(),
+            title: "Renamed".into(),
+            visibility: Status::Known,
+        })
+        .await
+        .expect("update page node visibility");
+        assert!(
+            toc.ask(InspectDirty).await.unwrap(),
+            "a visibility change must schedule a snapshot"
         );
 
         toc.stop_gracefully().await.unwrap();

@@ -102,18 +102,52 @@ depends = ["format:check", "lint", "typecheck", "test", "web:integration"]
 
 [tasks.dev]
 description = "Start all dev servers (site, SPA, platform, campaign, proxy). Open http://localhost:8080."
+# `dev:*` also matches dev:preflight; mise dedups it and every server task
+# `wait_for`s it, so the port check runs to completion before anything binds.
 depends = ["dev:*"]
+
+[tasks."dev:preflight"]
+description = "Refuse to start the dev stack if any dev port is taken, so a stale server can't cause a silent Vite 5173->5174 drift that 502s the Caddy proxy. Only the umbrella `mise run dev` triggers this (servers wait_for it); single `dev:<server>` runs skip it."
+# lsof -iTCP is family-agnostic (catches a listener on 127.0.0.1 or ::1) and
+# names the holding PID/command, which is the actionable bit. The port list
+# mirrors the dev:<server> tasks + Caddyfile.dev.
+run = """
+busy=0
+for port in 3000 3001 4321 5173 8080; do
+  if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "FAIL: dev port $port is already in use:" >&2
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >&2
+    busy=1
+  fi
+done
+if [ "$busy" -ne 0 ]; then
+  echo "Stop whatever holds the port(s) above (a stale 'mise run dev'?) and retry." >&2
+  exit 1
+fi
+"""
 
 [tasks."dev:site"]
 description = "Astro dev server (port 4321)"
-run = "pnpm --filter @familiar-systems/site dev"
+# wait_for (not depends): gates on dev:preflight only when the full `mise run
+# dev` stack is starting, so `mise run dev:site` standalone still runs.
+wait_for = ["dev:preflight"]
+# --host 127.0.0.1: Astro defaults to binding `localhost`, which can resolve to
+# ::1; Caddy's upstream is pinned to 127.0.0.1, so bind IPv4 to match. exec (not
+# the `dev` script) mirrors the e2e harness and avoids pnpm arg-forwarding.
+run = "pnpm --filter @familiar-systems/site exec astro dev --host 127.0.0.1 --port 4321"
 # Astro auto-exposes PUBLIC_*-prefixed env vars to client modules via
 # import.meta.env. The site reads PUBLIC_APP_URL to build the Sign In link.
 env = { PUBLIC_APP_URL = "{{ env.APP_URL_DEV }}" }
 
 [tasks."dev:web"]
 description = "Vite dev server (port 5173, SPA served at root of the app apex; reach it through Caddy at http://app.localhost:8080)"
-run = "pnpm --filter @familiar-systems/web dev"
+# wait_for (not depends): gates on dev:preflight only under the full `mise run
+# dev`; `mise run dev:web` standalone still runs (strictPort guards 5173).
+wait_for = ["dev:preflight"]
+# --host 127.0.0.1: Vite defaults to binding `localhost`, which can resolve to
+# ::1; Caddy's upstream is pinned to 127.0.0.1, so bind IPv4 to match (same as
+# the e2e harness). exec vite reads vite.config.ts for port 5173 + strictPort.
+run = "pnpm --filter @familiar-systems/web exec vite --host 127.0.0.1"
 # Dev mirrors the prod two-apex layout: marketing at http://localhost:8080/ →
 # Astro, app at http://app.localhost:8080/ → SPA, /api → platform, /campaign →
 # campaign. Caddy (dev:proxy) binds both host matchers on :8080 so the
@@ -128,6 +162,7 @@ env = { VITE_HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", VITE_SITE_URL = "{{ 
 
 [tasks."dev:platform"]
 description = "Platform server (port 3000). dev-ui mounts Scalar at /api/docs."
+wait_for = ["dev:preflight"]
 # `mkdir -p data` is here, not in the binary, because DATABASE_URL is set per
 # task and the data directory only matters in dev. Fresh worktrees don't
 # inherit the directory; SQLite's `mode=rwc` creates the file but not the
@@ -147,6 +182,7 @@ env = { HANKO_API_URL = "{{ env.HANKO_API_URL_DEV }}", DATABASE_URL = "sqlite://
 
 [tasks."dev:campaign"]
 description = "Campaign server (port 3001)"
+wait_for = ["dev:preflight"]
 # Parallels dev:platform: per-task `data/` directory created here because
 # CAMPAIGN_DATA_DIR is set per task and the parent must exist before the
 # binary writes into it. Local-dev uses 3001 to avoid colliding with
@@ -160,6 +196,7 @@ env = { CAMPAIGN_STORAGE_BACKEND = "local", PORT = "3001", HANKO_API_URL = "{{ e
 
 [tasks."dev:proxy"]
 description = "Caddy reverse proxy on :8080 unifying site + SPA + platform + campaign under one origin"
+wait_for = ["dev:preflight"]
 # Caddy retries upstreams with 502s until they come up, so ordering within
 # the parallel `dev:*` graph doesn't matter - start this alongside the rest.
 run = "caddy run --config Caddyfile.dev --adapter caddyfile"

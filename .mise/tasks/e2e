@@ -10,8 +10,8 @@
 #
 # Auth: the real servers and the browser both POST tokens to a stub
 # /sessions/validate (apps/web/e2e/support/mock-hanko.mjs); the spec seeds the
-# `hanko` cookie. Steps 1-8 (the browser flow) live in smoke.spec.ts; steps 9
-# (graceful shutdown) and 10 (SQLite assertion) live here.
+# `hanko` cookie. Steps 1-9 (the browser flow) live in smoke.spec.ts; steps 10
+# (graceful shutdown) and 11 (SQLite assertion) live here.
 
 set -euo pipefail
 # Job control so each background server gets its own process group; that lets
