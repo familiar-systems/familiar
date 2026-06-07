@@ -13,7 +13,10 @@
     "format:check": "oxfmt --check .",
     "test": "vitest run --passWithNoTests",
     "integration": "playwright test",
-    "e2e": "playwright test --config playwright.e2e.config.ts"
+    "e2e": "playwright test --config playwright.e2e.config.ts",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build",
+    "stories": "vitest run --config vitest.stories.config.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "catalog:",
@@ -41,12 +44,18 @@
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",
     "@playwright/test": "^1.60.0",
+    "@storybook/addon-themes": "^10",
+    "@storybook/addon-vitest": "^10",
+    "@storybook/react-vite": "^10",
     "@tanstack/router-cli": "^1.166.43",
     "@tanstack/router-plugin": "^1.167.35",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^5",
+    "@vitest/browser-playwright": "4.1.5",
     "oxlint-tailwindcss": "^0.7.1",
+    "playwright": "^1.60.0",
+    "storybook": "^10",
     "typescript": "catalog:",
     "vite": "^7",
     "vite-plugin-wasm": "^3.6.0",

@@ -316,11 +316,14 @@ jobs:
       - name: lint
         run: mise run lint:content
 
-  # ── Integration (Playwright, mocked backends) ────────────
-  # Real browser, but Hanko + /me + every backend call are route-mocked and
-  # only Vite boots. Path-filtered to frontend changes. Retries are 0 (see
-  # playwright.config.ts) - a flaky test is a useless test, so a red here is
-  # a real red.
+  # ── Browser-only frontend tiers (Playwright + Vitest, no backend) ──
+  # Two tiers share this job because they share setup exactly (Vite-only +
+  # chromium, no backend, same frontend path-filter): the integration tier
+  # (Playwright, Hanko + /me + every backend call route-mocked) and the
+  # component tier (Storybook stories run as Vitest browser-mode tests).
+  # Folding the second into this job avoids re-paying the install + browser
+  # setup for a sub-second run. Retries are 0 (see playwright.config.ts) - a
+  # flaky test is a useless test, so a red here is a real red.
   integration:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
@@ -375,6 +378,9 @@ jobs:
 
       - name: Integration tests
         run: mise run web:integration
+
+      - name: Component (story) tests
+        run: mise run web:stories
 
   # ── End-to-end (Playwright, real stack) ──────────────────
   # Boots real platform + campaign + Vite + Caddy on an isolated port block

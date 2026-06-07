@@ -95,8 +95,8 @@ run = "pnpm --filter @familiar-systems/web exec playwright install chromium"
 # --- check ---
 
 [tasks.check]
-description = "Run all checks in parallel (format:check, lint, typecheck, test, web:integration)"
-depends = ["format:check", "lint", "typecheck", "test", "web:integration"]
+description = "Run all checks in parallel (format:check, lint, typecheck, test, web:integration, web:stories)"
+depends = ["format:check", "lint", "typecheck", "test", "web:integration", "web:stories"]
 
 # --- dev ---
 
@@ -163,6 +163,18 @@ description = "Caddy reverse proxy on :8080 unifying site + SPA + platform + cam
 # Caddy retries upstreams with 502s until they come up, so ordering within
 # the parallel `dev:*` graph doesn't matter - start this alongside the rest.
 run = "caddy run --config Caddyfile.dev --adapter caddyfile"
+
+# --- storybook ---
+
+[tasks.storybook]
+description = "Launch the Storybook dev UI (port 6006) to browse components in isolation. The component TEST tier is `web:stories`."
+# Wraps the package script (storybook dev -p 6006 --no-open). Stays out of the
+# `dev:*` graph deliberately: storybook is an on-demand browse server, not part
+# of the full-stack `mise run dev`. Port 6006 is clear of the dev stack
+# (4321/5173/3000/3001/8080) and the e2e harness (13000/13001/15173/18080/19100),
+# so it coexists with a running `mise run dev`. Click the URL storybook prints;
+# `--no-open` (in the package script) keeps it from spawning a tab on every restart.
+run = "pnpm --filter @familiar-systems/web storybook"
 
 # --- build ---
 
@@ -241,6 +253,25 @@ sources = [
   "apps/web/src/**/*.tsx",
   "apps/web/integration/**/*.ts",
   "apps/web/playwright.config.ts",
+  "apps/web/package.json",
+  "pnpm-lock.yaml",
+]
+
+[tasks."web:stories"]
+description = "Component/interaction tests for apps/web: Storybook stories run as Vitest browser-mode tests (chromium; run `mise run setup:playwright` once first)"
+# The component tier. Like web:integration it needs a real browser, so it
+# stays out of `test:*` (the inner loop) but IS part of `mise run check`,
+# and CI runs it inside the `integration` job (both browser-only frontend
+# tiers share the same Vite-only + chromium setup, so folding avoids a
+# duplicate job). Mirrors the Playwright config split: its own config
+# (vitest.stories.config.ts) and its own task. Browse components in
+# isolation with `mise run storybook`.
+run = "pnpm --filter @familiar-systems/web stories"
+sources = [
+  "apps/web/src/**/*.ts",
+  "apps/web/src/**/*.tsx",
+  "apps/web/.storybook/**",
+  "apps/web/vitest.stories.config.ts",
   "apps/web/package.json",
   "pnpm-lock.yaml",
 ]

@@ -3,3 +3,5 @@ src/routeTree.gen.ts
 .tanstack/
 test-results/
 playwright-report/
+storybook-static/
+*storybook.log
