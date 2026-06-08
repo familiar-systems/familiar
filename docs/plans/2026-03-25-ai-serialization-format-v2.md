@@ -101,7 +101,7 @@ should come through {Whisper} showing up at the {Rusty Anchor}.
 # Kael [known]
 ```
 
-The H1 is the page title. The bracketed annotation is the page's visibility status. `[known]` is the default and could be omitted, but including it makes the status unambiguous.
+The H1 is the page title. The bracketed annotation is the page's visibility status. A page's stored default is `gm_only` (fail closed: a newly created page is hidden until the GM reveals it); `[known]` on the title marks a page that has been revealed to players, and is the visibility baseline for everything below it.
 
 #### Tags
 
@@ -125,6 +125,8 @@ Preamble blocks inherit the page's visibility status. Individual paragraphs can 
 He's still reporting to the {Silver Compact}. His defection was
 staged. [gm_only]
 ```
+
+The preamble is backed by its own storage container and is **AI-authored by default**, kept current by the maintenance pipeline in [Multi-Section Document Structure](2026-06-07-multi-section-document-structure.md#preamble-maintenance). Its position still defines it in this format (see *Preamble as Implicit Position*); the storage container does not change the markdown.
 
 #### References (Wiki-Links)
 
@@ -175,7 +177,11 @@ Page (known)
 
 A `[known]` block inside a `[gm_only]` section is a **parse error**. If the agent produces it, the compiler rejects it. If the GM wants to make one piece of a `gm_only` section visible to players, it belongs in a `known` section instead.
 
-The `[gm_only]` annotation is the only status marker that appears in the format. `[known]` is the default and is only written on the page title for explicitness. `[retconned]` content is excluded from the serialization entirely (retrievable only on explicit request).
+The stored default is `gm_only` at every level (fail closed): a page, section, or block is hidden unless made visible, and a newly created page is invisible to players until the GM reveals it (`[known]` on its title). Within a revealed page, body blocks inherit the page's visible baseline, and `[gm_only]` flags the ones that tighten back to secret, so secrets stay loud in the format. `[retconned]` content is excluded from the serialization entirely (retrievable only on explicit request).
+
+Visibility is **one uniform axis**: the same status tag can sit on the page (`meta.status`), a section (its heading), or any block, and a thing is visible to players iff it and all of its ancestors are visible. "The party has not met this NPC" (a `gm_only` page) and "this fact is a secret" (a `gm_only` block on a visible page) are the same tag at different heights. Visibility is **co-authored with content**: a single `suggest_replace` carries per-block visibility alongside the prose, because secrecy is part of what the content means.
+
+Because visibility reaches per-block into the **preamble**, the same page projects two cards: player-facing RAG packs only the visible subset of the preamble and body, while GM-facing RAG packs all of it. The role filter in `f()` already performs this projection; per-block preamble visibility is what makes the two cards diverge.
 
 #### Sections
 
@@ -286,7 +292,7 @@ GM Notes [gm_only] (150 words)
 
 ### Tier 2: Index Card + RAG Blocks
 
-Tier 1 plus embedding-selected blocks relevant to the current query. The TOC provides structural context; the RAG blocks provide specific content without loading the full page.
+Tier 1 plus embedding-selected blocks relevant to the current query. The TOC provides structural context; the RAG blocks provide specific content without loading the full page. The assembled pack is `meta + preamble + relationships + TOC + matched blocks in their TOC position`.
 
 ```md
 # Kael [known]
@@ -382,11 +388,16 @@ Propose an inline edit to existing page content via string replacement.
 suggest_replace(
   page: string,           // page name
   old_content: string,    // content to find (must be unique)
-  new_content: string     // proposed replacement content
+  new_content: string,    // proposed replacement content
+  reason: string          // why this change; shown to the GM with the suggestion
 )
 ```
 
 Directly inspired by Claude Code's `str_replace` tool ([open source](https://github.com/anthropics/claude-code)) - the `old_content` must match exactly and appear exactly once on the page. If not found or not unique, the tool fails and the agent retries with more context. Claude Code is a standard harness for ML evals, which means agents are already trained on this interaction pattern. We get good tool-calling behavior for free.
+
+**Precondition (full read).** `suggest_replace` requires the agent to have read the page in full this turn (Tier 3). This is the drift harness: the agent always proposes against the current whole page, so a stale `old_content` fails the match instead of corrupting the document.
+
+**Return value.** On success the tool returns the registered *proposal*, not an applied edit. The page is unchanged until the GM accepts; the conversation's own later reads render its pending suggestion inline (per conversation scoping). A failed or ambiguous match returns an error, and the agent re-reads and retries.
 
 **This does not apply the edit.** The compiler identifies which block UUIDs contain the matched content, creates a suggestion mark on those blocks, and stores the proposed replacement as metadata. The GM sees the suggestion in the editor and accepts or rejects.
 
@@ -460,6 +471,7 @@ struct Suggestion {
     author_user_id: UserId,              // which user's agent
     created_at: i64,
     model: String,                       // which LLM model
+    reason: String,                      // human-readable justification, shown to the GM
 }
 ```
 
