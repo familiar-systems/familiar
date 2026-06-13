@@ -58,14 +58,6 @@ impl LoroTocDoc {
         Self { doc }
     }
 
-    /// Restore from a snapshot blob.
-    pub fn from_snapshot(snapshot: &Snapshot) -> Result<Self, DocError> {
-        let doc = LoroDoc::new();
-        doc.import(snapshot.as_bytes())
-            .map_err(|e| DocError::ImportSnapshot(e.to_string()))?;
-        Ok(Self { doc })
-    }
-
     // -- Private helpers --
 
     fn tree(&self) -> LoroTree {
@@ -336,13 +328,6 @@ impl CrdtDoc for LoroTocDoc {
             .map_err(|e| DocError::ExportSnapshot(e.to_string()))
     }
 
-    fn import_snapshot(&mut self, data: &Snapshot) -> Result<(), DocError> {
-        self.doc
-            .import(data.as_bytes())
-            .map(|_| ())
-            .map_err(|e| DocError::ImportSnapshot(e.to_string()))
-    }
-
     fn debug_value(&self) -> Option<serde_json::Value> {
         Some(self.doc.get_deep_value().into())
     }
@@ -511,11 +496,12 @@ mod tests {
         doc.add_entry(None, &folder("A")).unwrap();
 
         let snapshot = doc.export_snapshot().unwrap();
-        let doc2 = LoroTocDoc::from_snapshot(&snapshot).unwrap();
 
-        let tree = doc2.read_tree();
-        assert_eq!(tree.len(), 1);
-        assert_eq!(tree[0].entry.title(), Some("A"));
+        // A joining client imports the snapshot into its own raw LoroDoc; the
+        // reconstructed state must match the server's full doc.
+        let client = LoroDoc::new();
+        client.import(snapshot.as_bytes()).unwrap();
+        assert_eq!(doc.debug_value(), Some(client.get_deep_value().into()));
     }
 
     /// Proves that a client doc stays converged with a server doc across
@@ -525,12 +511,15 @@ mod tests {
     /// full state.
     #[test]
     fn server_client_convergence_across_mutation_sequence() {
+        // The client is a raw LoroDoc, exactly what a joining peer holds: it
+        // imports the server's snapshot, then each broadcast delta, and must
+        // stay byte-for-byte converged with the server's typed doc.
         macro_rules! apply {
             ($server:expr, $client:expr, $delta:expr) => {{
-                $client.apply_updates(&[$delta]).unwrap();
+                $client.import(&$delta).unwrap();
                 assert_eq!(
                     $server.debug_value(),
-                    $client.debug_value(),
+                    Some($client.get_deep_value().into()),
                     "docs diverged after applying delta"
                 );
             }};
@@ -538,7 +527,8 @@ mod tests {
 
         let mut server = LoroTocDoc::new();
         let snapshot = server.export_snapshot().unwrap();
-        let mut client = LoroTocDoc::from_snapshot(&snapshot).unwrap();
+        let client = LoroDoc::new();
+        client.import(snapshot.as_bytes()).unwrap();
 
         // 1. Add two root-level entries: a folder and a page.
         let (delta, folder_id) = server.add_entry(None, &folder("Act I")).unwrap();
@@ -589,7 +579,7 @@ mod tests {
         let tree = server.read_tree();
         assert_eq!(tree[0].children.len(), 1, "sibling removed");
 
-        // Final: full read_tree equality (not just debug_value).
-        assert_eq!(server.read_tree(), client.read_tree());
+        // Final: the raw client peer is byte-converged with the server's doc.
+        assert_eq!(server.debug_value(), Some(client.get_deep_value().into()));
     }
 }

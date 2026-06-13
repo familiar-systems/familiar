@@ -8,13 +8,13 @@
 //! no subscribers and an idle timer fires, so a room that is never joined does
 //! not leak resident until campaign drain.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::CampaignId;
 use familiar_systems_campaign_shared::id::{BlockId, PageId};
-use familiar_systems_campaign_shared::loro::page::SECTION_CONTENT;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use kameo::actor::{ActorRef, WeakActorRef};
@@ -36,6 +36,36 @@ use crate::entities::{blocks, pages};
 use crate::loro::page::LoroPageDoc;
 use crate::wire::broadcast::encode_broadcast;
 use crate::wire::fragmenter::BatchFragmenter;
+
+/// Fold `(section, content)` pairs into the `(section, blobs)` shape
+/// [`LoroPageDoc::from_blocks`] consumes, ordered by the kind's declared
+/// [`sections()`](PageKind::sections). Within each section the input order is
+/// preserved (callers pass blocks already ordered, e.g. the restore query's
+/// `ORDER BY section, ordering`). Rows tagged with a section the kind does not
+/// declare cannot bind to a container; they are dropped but logged loudly.
+fn group_sections(
+    kind: &PageKind,
+    blocks: impl Iterator<Item = (String, Vec<u8>)>,
+) -> Vec<(&'static str, Vec<Vec<u8>>)> {
+    let mut by_section: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
+    for (section, content) in blocks {
+        by_section.entry(section).or_default().push(content);
+    }
+    let grouped: Vec<(&'static str, Vec<Vec<u8>>)> = kind
+        .sections()
+        .iter()
+        .map(|&name| (name, by_section.remove(name).unwrap_or_default()))
+        .collect();
+    for (orphan, dropped) in by_section {
+        tracing::error!(
+            section = %orphan,
+            count = dropped.len(),
+            ?kind,
+            "blocks tagged with a section this page kind does not declare; dropped",
+        );
+    }
+    grouped
+}
 
 pub struct PageActor {
     campaign_id: CampaignId,
@@ -116,9 +146,9 @@ pub enum PageInit {
     New {
         name: String,
         status: Status,
-        /// Initial content blocks: empty (`vec![]`) for a generic new Page
-        /// whose content arrives later through the editor, or one empty
-        /// paragraph for the campaign home-page seed (so it opens editable).
+        /// Initial content blocks, each tagged with its section. Empty
+        /// (`vec![]`) in tests; the create-page and home-page paths seed one
+        /// empty paragraph per section so each section opens editable.
         seed_blocks: Vec<NewBlock>,
     },
 }
@@ -149,9 +179,12 @@ impl Actor for PageActor {
                     .inspect_err(|e| tracing::error!(error = %e, "failed to query page"))?
                     .expect("PageActor spawned for a page that exists in the database");
 
+                // All sections in one query, ordered by (section, ordering) so a
+                // section's blocks arrive contiguous and in-order; `group_sections`
+                // folds them into the kind's declared section list.
                 let block_rows = blocks::Entity::find()
                     .filter(blocks::Column::PageId.eq(PageIdCol::from(args.page_id.clone())))
-                    .filter(blocks::Column::Section.eq(SECTION_CONTENT))
+                    .order_by_asc(blocks::Column::Section)
                     .order_by_asc(blocks::Column::Ordering)
                     .all(&args.db_reader)
                     .await
@@ -159,18 +192,17 @@ impl Actor for PageActor {
 
                 let status: Status = page_row.status.into();
                 let kind: PageKind = page_row.kind.into();
-                let blobs: Vec<Vec<u8>> = block_rows.into_iter().map(|b| b.content).collect();
-                tracing::info!(
-                    block_count = blobs.len(),
-                    ?status,
-                    ?kind,
-                    "page actor restored"
+                let sections = group_sections(
+                    &kind,
+                    block_rows.into_iter().map(|b| (b.section, b.content)),
                 );
+                let block_count: usize = sections.iter().map(|(_, b)| b.len()).sum();
+                tracing::info!(block_count, ?status, ?kind, "page actor restored");
                 let (doc, skipped) =
-                    LoroPageDoc::from_blocks(&page_row.name, &status, &kind, &blobs);
-                // A dropped block means a corrupt `content` blob slipped past the
-                // serialize path -- it should never happen, so log the offending
-                // bytes in full for triage. The Page still opens without it.
+                    LoroPageDoc::from_blocks(&page_row.name, &status, &kind, &sections);
+                // A dropped block means a corrupt blob slipped past the serialize
+                // path -- it should never happen, so log the offending bytes in
+                // full for triage. The Page still opens without it.
                 for sb in &skipped {
                     tracing::error!(
                         ordering = sb.ordering,
@@ -190,15 +222,21 @@ impl Actor for PageActor {
                 // genesis row through the single-writer. Nothing writes a
                 // Page's rows around the actor that owns it.
                 let new_page = build_new_page(args.page_id.clone(), name, status, seed_blocks);
-                let blobs: Vec<Vec<u8>> =
-                    new_page.blocks.iter().map(|b| b.content.clone()).collect();
-                // Seed blobs are freshly serialized here, so none can be malformed;
-                // discard the (always-empty) skip report.
+                // Group seed blocks by section (mirrors restore) so each seeded
+                // section is initialized. Seed blobs are freshly serialized here,
+                // so none can be malformed; discard the (always-empty) skip report.
+                let sections = group_sections(
+                    &new_page.kind,
+                    new_page
+                        .blocks
+                        .iter()
+                        .map(|b| (b.section.to_string(), b.content.clone())),
+                );
                 let (doc, _) = LoroPageDoc::from_blocks(
                     &new_page.name,
                     &new_page.status,
                     &new_page.kind,
-                    &blobs,
+                    &sections,
                 );
 
                 if let Err(e) = args.db_writer.ask(DbCreatePage { new_page }).await {
@@ -463,13 +501,17 @@ impl PageActor {
         fields(campaign_id = %self.campaign_id.0, page_id = %self.page_id.0),
     )]
     async fn flush(&mut self) -> Result<(), PersistError> {
-        let extracted = self.doc_room.doc().extract_blocks();
+        let sections = self.doc_room.doc().extract_sections();
         let title = self.doc_room.doc().read_title();
         let now = Utc::now();
+        let page_id_col = PageIdCol::from(self.page_id.clone());
 
-        let block_rows: Vec<blocks::ActiveModel> = extracted
-            .into_iter()
-            .map(|b| {
+        // One flat row set across all sections. `ordering` is per-section (each
+        // container indexes its children from 0), so blocks sort within their
+        // section, not globally; `section` carries which container they belong to.
+        let mut block_rows: Vec<blocks::ActiveModel> = Vec::new();
+        for (section, blocks) in sections {
+            for b in blocks {
                 // Stable identity comes from the block's own `blockId` attribute
                 // (assigned by the editor's unique-id extension, or at genesis).
                 // Falling back to a fresh id only happens if it is missing or
@@ -479,21 +521,21 @@ impl PageActor {
                     tracing::warn!("persisted block has no stable blockId; minting a fresh one");
                     BlockId::generate()
                 });
-                blocks::ActiveModel {
+                block_rows.push(blocks::ActiveModel {
                     id: Set(BlockIdCol::from(block_id)),
-                    page_id: Set(PageIdCol::from(self.page_id.clone())),
+                    page_id: Set(page_id_col.clone()),
                     // Interim default: every block is GM-only until a per-block
                     // visibility control exists (no editor plugin sets status
                     // yet). Status is reset to gm_only on every persist.
                     status: Set(StatusCol::from(Status::GmOnly)),
                     ordering: Set(b.ordering),
                     content: Set(b.content),
-                    section: Set(SECTION_CONTENT.to_string()),
+                    section: Set(section.to_string()),
                     created_at: Set(now),
                     updated_at: Set(now),
-                }
-            })
-            .collect();
+                });
+            }
+        }
 
         let block_count = block_rows.len();
         tracing::debug!(block_count, "persisting page blocks");
@@ -567,6 +609,7 @@ mod tests {
     use crate::db;
     use crate::entities::columns::PageKindCol;
     use crate::migrations::Migrator;
+    use familiar_systems_campaign_shared::loro::page::SECTION_BODY;
     use familiar_systems_campaign_shared::loro::prosemirror::{
         ATTRIBUTES_KEY, CHILDREN_KEY, NODE_NAME_KEY,
     };
@@ -711,7 +754,7 @@ mod tests {
             status: Set(StatusCol::from(Status::GmOnly)),
             ordering: Set(0),
             content: Set(make_heading_blob("Korgath the Destroyer")),
-            section: Set(SECTION_CONTENT.to_string()),
+            section: Set(SECTION_BODY.to_string()),
             created_at: Set(now),
             updated_at: Set(now),
         }

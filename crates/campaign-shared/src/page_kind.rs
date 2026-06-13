@@ -97,6 +97,22 @@ impl PageKind {
             _ => None,
         }
     }
+
+    /// The ordered list of section containers this kind's document is laid out
+    /// from. Each name is both the Loro root container and the at-rest
+    /// `blocks.section` value (see `loro::page` constants). The order is the
+    /// render/restore order; `body` is the freeform section and stays last so
+    /// genesis seeds and "content moves into body" stay well-defined.
+    ///
+    /// Modeled as a `match` so adding a kind (Skill, Session) is a new arm the
+    /// compiler forces every section-aware site to handle. See
+    /// `docs/plans/2026-06-07-multi-section-document-structure.md`.
+    pub fn sections(&self) -> &'static [&'static str] {
+        use crate::loro::page::{CONTAINER_BODY, CONTAINER_PREAMBLE};
+        match self {
+            PageKind::Entity | PageKind::Template => &[CONTAINER_PREAMBLE, CONTAINER_BODY],
+        }
+    }
 }
 
 #[cfg(test)]
@@ -136,5 +152,15 @@ mod tests {
     fn from_loro_str_rejects_unknown() {
         assert_eq!(PageKind::from_loro_str("Entity"), None);
         assert_eq!(PageKind::from_loro_str(""), None);
+    }
+
+    #[test]
+    fn entity_and_template_share_preamble_body_layout() {
+        // The "Now" slice: both kinds are preamble + body. `body` must stay last
+        // so genesis seeds and the content->body rename keep their meaning.
+        for kind in [PageKind::Entity, PageKind::Template] {
+            assert_eq!(kind.sections(), &["preamble", "body"]);
+            assert_eq!(kind.sections().last(), Some(&"body"));
+        }
     }
 }

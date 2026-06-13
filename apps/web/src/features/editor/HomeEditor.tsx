@@ -5,18 +5,21 @@
 
 import {
   BlockId,
+  bodyContainerId,
   LoroExtension,
   NODE_EXTENSIONS,
+  preambleContainerId,
   readPageTitle,
   writePageTitle,
 } from "@familiar-systems/editor";
 import type { PageId } from "@familiar-systems/types-campaign";
 import { EditorContent, useEditor } from "@tiptap/react";
-import type { ContainerID, LoroDoc } from "loro-crdt";
+import { type LoroDoc, UndoManager } from "loro-crdt";
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -24,6 +27,18 @@ import {
 
 import { roomErrorMessage } from "./loro-manager";
 import { usePageDoc } from "./usePageDoc";
+
+// Shared per-section editor styling (the heading/paragraph rhythm). Each section
+// adds its own `.ProseMirror` min-height: the preamble is a compact index card,
+// the body fills the page.
+const SECTION_EDITOR_CLASS = [
+  "font-sans text-base leading-7 text-foreground",
+  "[&_.ProseMirror]:outline-none",
+  "[&_h1]:font-display [&_h1]:text-3xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h1]:mt-8 [&_h1]:mb-3",
+  "[&_h2]:font-display [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-2",
+  "[&_h3]:font-display [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2",
+  "[&_p]:my-3",
+].join(" ");
 
 interface HomeEditorProps {
   pageId: PageId;
@@ -54,18 +69,12 @@ export function HomeEditor({ pageId }: HomeEditorProps): React.ReactElement {
   return (
     // Key by page so the title draft state (below) resets on navigation rather
     // than briefly showing the previous page's title.
-    <BoundEditor
-      key={pageId}
-      doc={state.doc}
-      containerId={state.containerId}
-      reconnecting={state.status === "reconnecting"}
-    />
+    <BoundEditor key={pageId} doc={state.doc} reconnecting={state.status === "reconnecting"} />
   );
 }
 
 interface BoundEditorProps {
   doc: LoroDoc;
-  containerId: ContainerID;
   reconnecting: boolean;
 }
 
@@ -80,8 +89,10 @@ function usePageTitle(doc: LoroDoc): string {
 }
 
 // Separate component so `useEditor` runs unconditionally (rules of hooks) and
-// only after the doc has synced. The editor is created once per doc.
-function BoundEditor({ doc, containerId, reconnecting }: BoundEditorProps): React.ReactElement {
+// only after the doc has synced. The editors are created once per doc. The page
+// has two section containers (preamble + body); each binds its own editor to the
+// same doc, separated by a horizontal bar.
+function BoundEditor({ doc, reconnecting }: BoundEditorProps): React.ReactElement {
   const committedTitle = usePageTitle(doc);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   // The title field is a draft over the committed Loro title. It may be empty
@@ -89,14 +100,36 @@ function BoundEditor({ doc, containerId, reconnecting }: BoundEditorProps): Reac
   // blur, so a Page always keeps a non-empty title (matching the create path).
   const [draft, setDraft] = useState(committedTitle);
   const editingRef = useRef(false);
-  const editor = useEditor(
+
+  // One UndoManager shared by both section editors gives unified page-level undo
+  // (a single Ctrl-Z stack across preamble + body), the multi-section design's
+  // "Now" behavior. Known rough edge accepted for now: loro-prosemirror registers
+  // cursor-restore per plugin instance, so after a cross-section undo the caret
+  // can land in the wrong section. Undo itself is correct; only caret placement
+  // is rough (fixed by the deferred per-section undo work).
+  const undoManager = useMemo(() => new UndoManager(doc, {}), [doc]);
+
+  // No `content` on either editor: loro-prosemirror builds each section from its
+  // Loro container. Seeding TipTap content here would race the Loro init.
+  const preambleEditor = useEditor(
     {
-      extensions: [...NODE_EXTENSIONS, BlockId, LoroExtension.configure({ doc, containerId })],
-      // No `content`: loro-prosemirror builds the document from the synced Loro
-      // container. Seeding TipTap content here would race the Loro init.
-      editorProps: {
-        attributes: { class: "outline-none" },
-      },
+      extensions: [
+        ...NODE_EXTENSIONS,
+        BlockId,
+        LoroExtension.configure({ doc, containerId: preambleContainerId(doc), undoManager }),
+      ],
+      editorProps: { attributes: { class: "outline-none" } },
+    },
+    [doc],
+  );
+  const bodyEditor = useEditor(
+    {
+      extensions: [
+        ...NODE_EXTENSIONS,
+        BlockId,
+        LoroExtension.configure({ doc, containerId: bodyContainerId(doc), undoManager }),
+      ],
+      editorProps: { attributes: { class: "outline-none" } },
     },
     [doc],
   );
@@ -154,7 +187,7 @@ function BoundEditor({ doc, containerId, reconnecting }: BoundEditorProps): Reac
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            editor?.commands.focus("start");
+            preambleEditor?.commands.focus("start");
           }
         }}
         rows={1}
@@ -163,17 +196,22 @@ function BoundEditor({ doc, containerId, reconnecting }: BoundEditorProps): Reac
         spellCheck={false}
         className="mb-8 w-full resize-none overflow-hidden border-0 bg-transparent p-0 font-display text-3xl font-medium tracking-tight outline-none placeholder:text-muted-foreground/40"
       />
-      <EditorContent
-        editor={editor}
-        className={[
-          "font-sans text-base leading-7 text-foreground",
-          "[&_.ProseMirror]:min-h-[50vh] [&_.ProseMirror]:outline-none",
-          "[&_h1]:font-display [&_h1]:text-3xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h1]:mt-8 [&_h1]:mb-3",
-          "[&_h2]:font-display [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-2",
-          "[&_h3]:font-display [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2",
-          "[&_p]:my-3",
-        ].join(" ")}
-      />
+      {/* Preamble: the bounded "index card" section. */}
+      <div data-testid="preamble-editor">
+        <EditorContent
+          editor={preambleEditor}
+          className={`${SECTION_EDITOR_CLASS} [&_.ProseMirror]:min-h-12`}
+        />
+      </div>
+      {/* Horizontal bar separating the preamble from the freeform body. */}
+      <div className="my-6 border-b border-foreground/10" />
+      {/* Body: the freeform section. */}
+      <div data-testid="body-editor">
+        <EditorContent
+          editor={bodyEditor}
+          className={`${SECTION_EDITOR_CLASS} [&_.ProseMirror]:min-h-[50vh]`}
+        />
+      </div>
     </article>
   );
 }

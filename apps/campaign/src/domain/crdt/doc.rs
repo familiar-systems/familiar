@@ -39,8 +39,6 @@ pub enum DocError {
     ExportSnapshot(String),
     #[error("export updates failed: {0}")]
     ExportUpdates(String),
-    #[error("import snapshot failed: {0}")]
-    ImportSnapshot(String),
 }
 
 /// CRDT algebra. Implemented by inner Loro-backed types (e.g. `LoroPageDoc`,
@@ -58,9 +56,6 @@ pub trait CrdtDoc: Send {
 
     /// Export the full document as a snapshot blob.
     fn export_snapshot(&self) -> Result<Snapshot, DocError>;
-
-    /// Import a snapshot blob (used on startup to restore state).
-    fn import_snapshot(&mut self, data: &Snapshot) -> Result<(), DocError>;
 
     /// Whether this document type wants to participate in the snapshot
     /// persistence pipeline. Default: true. Doc types that derive their

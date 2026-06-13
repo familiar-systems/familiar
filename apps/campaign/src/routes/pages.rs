@@ -19,6 +19,7 @@ use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use familiar_systems_campaign_shared::document::pages::{CreatePageRequest, PageResponse};
 use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use fs_id::Nanoid;
 
@@ -89,17 +90,25 @@ pub async fn create_page(
         }
     }
 
-    // Seed one empty paragraph so the new page opens as a schema-valid, editable
-    // ProseMirror document (a `doc` with one `block+` child) rather than an empty,
-    // uneditable `doc`. Mirrors the campaign home-page seed; the block's ULID is
-    // embedded in `attributes.blockId` and reused as its row id for stable identity.
-    let block_id = BlockId::generate();
-    let seed_blocks = vec![NewBlock {
-        id: block_id.clone(),
-        ordering: 0,
-        content: block_codec::empty_paragraph_blob(&block_id),
-        status: Status::GmOnly,
-    }];
+    // Seed one empty paragraph per section so every section opens as a
+    // schema-valid, editable ProseMirror document (a `doc` with one `block+`
+    // child) rather than an empty, uneditable `doc`. Mirrors the campaign
+    // home-page seed; each block's ULID is embedded in `attributes.blockId` and
+    // reused as its row id for stable identity.
+    let seed_blocks: Vec<NewBlock> = PageKind::Entity
+        .sections()
+        .iter()
+        .map(|&section| {
+            let block_id = BlockId::generate();
+            NewBlock {
+                content: block_codec::empty_paragraph_blob(&block_id),
+                id: block_id,
+                section,
+                ordering: 0,
+                status: Status::GmOnly,
+            }
+        })
+        .collect();
 
     match supervisor
         .ask(CreatePage {

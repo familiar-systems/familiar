@@ -8,6 +8,7 @@ use familiar_systems_campaign::embeddings::{EmbeddingsRepo, ViewerKind};
 use familiar_systems_campaign::entities::{blocks, columns::*, pages};
 use familiar_systems_campaign::migrations::Migrator;
 use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::loro::page::SECTION_BODY;
 use familiar_systems_campaign_shared::status::Status;
 use sea_orm::{
     ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, ModelTrait, Set, Statement,
@@ -51,7 +52,7 @@ async fn pages_and_blocks_round_trip_branded_types() {
             status: Set(status.into()),
             ordering: Set(i as i64),
             content: Set(format!("paragraph {i}").into_bytes()),
-            section: Set("content".to_string()),
+            section: Set(SECTION_BODY.to_string()),
             created_at: Set(now),
             updated_at: Set(now),
         }

@@ -22,6 +22,9 @@ use familiar_systems_campaign_shared::status::Status;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewBlock {
     pub id: BlockId,
+    /// The section this block belongs to (a Loro container / `blocks.section`
+    /// value, e.g. `preamble` or `body`). `ordering` is relative to this section.
+    pub section: &'static str,
     pub ordering: i64,
     pub content: Vec<u8>,
     pub status: Status,
@@ -50,17 +53,16 @@ pub struct NewPage {
 /// so the function is deterministic and unit-testable. This is the kernel the
 /// future AI `create_page` suggestion path will reuse.
 ///
-/// `seed_blocks` is the Page's initial content. Most callers pass `vec![]`
-/// (an empty Page whose content is added later through the editor); the
-/// campaign home-page seed passes one empty paragraph so the page opens as a
-/// schema-valid, editable document. The block ids are minted by the caller (an
-/// effect) and embedded in the block content as `attributes.blockId`, keeping
-/// the builder pure.
+/// `seed_blocks` is the Page's initial content, tagged per section. Genesis
+/// callers seed one empty paragraph per section (so each section opens as a
+/// schema-valid, editable document); tests pass `vec![]` when content is
+/// irrelevant. The block ids are minted by the caller (an effect) and embedded
+/// in the block content as `attributes.blockId`, keeping the builder pure.
 ///
 /// TODO: (templates) when `from_template_id` is supported, the template's
 /// blocks are cloned into `seed_blocks` at the call edge — deep-copy each
-/// block's content, mint a fresh `BlockId`, reset `ordering` — and this sets
-/// `template_id` for lineage.
+/// block's content, mint a fresh `BlockId`, **preserve its `section`**, reset
+/// the per-section `ordering` — and this sets `template_id` for lineage.
 pub fn build_new_page(
     id: PageId,
     name: String,
@@ -100,6 +102,7 @@ mod tests {
     fn seed_blocks_are_carried_through() {
         let block = NewBlock {
             id: BlockId::generate(),
+            section: "body",
             ordering: 0,
             content: b"seed".to_vec(),
             status: Status::GmOnly,

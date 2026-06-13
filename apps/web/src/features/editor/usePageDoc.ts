@@ -5,9 +5,8 @@
 // StrictMode double-mount and page-swap teardown are handled in the manager, not
 // here.
 
-import { contentContainerId } from "@familiar-systems/editor";
 import type { PageId } from "@familiar-systems/types-campaign";
-import type { ContainerID, LoroDoc as LoroDocType } from "loro-crdt";
+import type { LoroDoc as LoroDocType } from "loro-crdt";
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { useLoroManager } from "./LoroManagerProvider";
@@ -15,10 +14,13 @@ import type { RoomError } from "./loro-manager";
 
 export type PageDocState =
   | { status: "connecting" }
-  | { status: "synced"; doc: LoroDocType; containerId: ContainerID }
+  // The page has multiple section containers (preamble, body); the consumer
+  // derives each section's `containerId` from the doc, so the doc is all we
+  // expose. The doc reference is stable across a reconnect.
+  | { status: "synced"; doc: LoroDocType }
   // Socket dropped while the doc is open: keep editing (edits buffer locally) and
   // let the editor show a reconnecting indicator rather than tearing down.
-  | { status: "reconnecting"; doc: LoroDocType; containerId: ContainerID }
+  | { status: "reconnecting"; doc: LoroDocType }
   | { status: "error"; error: RoomError };
 
 export function usePageDoc(pageId: PageId): PageDocState {
@@ -40,25 +42,17 @@ export function usePageDoc(pageId: PageId): PageDocState {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot);
 
   // Derive the editor-facing state here (not in getSnapshot, which must return a
-  // stable reference). The room's view is the LoroDoc; containerId is computed
-  // per snapshot. The doc reference is stable across a reconnect, so the editor
-  // (keyed by doc) is not recreated when the socket blips.
+  // stable reference). The room's view is the LoroDoc; the doc reference is
+  // stable across a reconnect, so the editors (keyed by doc) are not recreated
+  // when the socket blips.
   return useMemo<PageDocState>(() => {
     switch (snapshot.status) {
       case "joining":
         return { status: "connecting" };
       case "joined":
-        return {
-          status: "synced",
-          doc: snapshot.view,
-          containerId: contentContainerId(snapshot.view),
-        };
+        return { status: "synced", doc: snapshot.view };
       case "reconnecting":
-        return {
-          status: "reconnecting",
-          doc: snapshot.view,
-          containerId: contentContainerId(snapshot.view),
-        };
+        return { status: "reconnecting", doc: snapshot.view };
       case "error":
         return { status: "error", error: snapshot.error };
     }

@@ -19,6 +19,11 @@ import { expect, test } from "@playwright/test";
 
 const APP = "http://app.localhost:18080";
 
+// A page now has two section editors (preamble + body). The smoke flow edits the
+// freeform body; scope every `.ProseMirror` query to it so the locator is
+// unambiguous (and the harness's DB assertion counts `section = 'body'` blocks).
+const BODY_EDITOR = "[data-testid=body-editor] .ProseMirror";
+
 test.beforeEach(async ({ context }) => {
   // This is the entire "login". The Hanko SDK's getSessionToken() reads the
   // `hanko` cookie (verified: top-level getSessionToken() === cookie
@@ -28,9 +33,9 @@ test.beforeEach(async ({ context }) => {
   await context.addCookies([{ name: "hanko", value: "e2e-token", url: APP }]);
 });
 
-// The editor opens with one empty paragraph. Type the first line into it, press
-// Enter to split off a second block, type the second line -> two content blocks
-// (which is what the harness's DB assertion checks per Page).
+// The body section opens with one empty paragraph. Type the first line into it,
+// press Enter to split off a second block, type the second line -> two body
+// blocks (which is what the harness's DB assertion checks per Page).
 async function typeTwoLines(
   page: import("@playwright/test").Page,
   editor: import("@playwright/test").Locator,
@@ -68,7 +73,7 @@ test("create a campaign, edit two pages, and navigate between them via the ToC",
 
   // --- Home editor ("Campaign Base Camp"), once the Loro doc has synced. ---
   await expect(page).toHaveURL(/\/c\/[^/]+\/p\/[^/]+$/);
-  await expect(page.locator(".ProseMirror")).toBeVisible();
+  await expect(page.locator(BODY_EDITOR)).toBeVisible();
 
   // Sentinel for the no-full-reload invariant: SPA navigation must not reload
   // the document (which would wipe this), so we assert it persists after the
@@ -77,8 +82,8 @@ test("create a campaign, edit two pages, and navigate between them via the ToC",
     (window as unknown as { __smokeNoReload?: boolean }).__smokeNoReload = true;
   });
 
-  // --- Edit the home page: two paragraph blocks. ---
-  await typeTwoLines(page, page.locator(".ProseMirror"), "Home line one", "Home line two");
+  // --- Edit the home page: two body paragraph blocks. ---
+  await typeTwoLines(page, page.locator(BODY_EDITOR), "Home line one", "Home line two");
 
   // --- Create a second page ("Test page") via the ToC. ---
   const sidebar = page.locator("aside");
@@ -89,20 +94,20 @@ test("create a campaign, edit two pages, and navigate between them via the ToC",
 
   // Creation navigates to the new page; the new node arrives over the ToC room.
   await expect(sidebar.getByRole("button", { name: "Test page" })).toBeVisible();
-  await expect(page.locator(".ProseMirror")).toBeVisible();
+  await expect(page.locator(BODY_EDITOR)).toBeVisible();
 
-  // --- Edit the test page: two paragraph blocks. ---
-  await typeTwoLines(page, page.locator(".ProseMirror"), "Test line one", "Test line two");
+  // --- Edit the test page: two body paragraph blocks. ---
+  await typeTwoLines(page, page.locator(BODY_EDITOR), "Test line one", "Test line two");
 
   // --- Navigate back to home via the ToC; its content survived. ---
   await sidebar.getByRole("button", { name: "Campaign Base Camp" }).click();
-  await expect(page.locator(".ProseMirror")).toContainText("Home line one");
-  await expect(page.locator(".ProseMirror")).toContainText("Home line two");
+  await expect(page.locator(BODY_EDITOR)).toContainText("Home line one");
+  await expect(page.locator(BODY_EDITOR)).toContainText("Home line two");
 
   // --- Navigate to the test page via the ToC; its content survived too. ---
   await sidebar.getByRole("button", { name: "Test page" }).click();
-  await expect(page.locator(".ProseMirror")).toContainText("Test line one");
-  await expect(page.locator(".ProseMirror")).toContainText("Test line two");
+  await expect(page.locator(BODY_EDITOR)).toContainText("Test line one");
+  await expect(page.locator(BODY_EDITOR)).toContainText("Test line two");
 
   // --- Rename the open page; the ToC updates live. This is the
   // server-authoritative path: the client writes only `meta.title`, the
@@ -118,7 +123,7 @@ test("create a campaign, edit two pages, and navigate between them via the ToC",
   // Empty titles are not allowed: clearing the field and blurring reverts to the
   // last name (and never blanks the ToC).
   await title.fill("");
-  await page.locator(".ProseMirror").click();
+  await page.locator(BODY_EDITOR).click();
   await expect(title).toHaveValue("The Sunken Bastion");
   await expect(sidebar.getByRole("button", { name: "The Sunken Bastion" })).toBeVisible();
 

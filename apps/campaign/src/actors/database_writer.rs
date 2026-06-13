@@ -11,8 +11,6 @@ use sea_orm::{
     TransactionTrait,
 };
 
-use familiar_systems_campaign_shared::loro::page::SECTION_CONTENT;
-
 use crate::domain::page::NewPage;
 use crate::entities::columns::{BlockIdCol, PageKindCol, StatusCol};
 use crate::entities::{blocks, campaign_metadata, pages, toc_entries};
@@ -457,7 +455,7 @@ impl Message<DbCreatePage> for DatabaseWriteActor {
                     status: Set(StatusCol::from(b.status)),
                     ordering: Set(b.ordering),
                     content: Set(b.content),
-                    section: Set(SECTION_CONTENT.to_string()),
+                    section: Set(b.section.to_string()),
                     created_at: Set(now),
                     updated_at: Set(now),
                 })
@@ -498,6 +496,7 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::migrations::Migrator;
+    use familiar_systems_campaign_shared::loro::page::SECTION_BODY;
     use kameo::actor::Spawn;
     use sea_orm_migration::MigratorTrait;
 
@@ -661,6 +660,7 @@ mod tests {
                     template_id: None,
                     blocks: vec![NewBlock {
                         id: BlockId::generate(),
+                        section: SECTION_BODY,
                         ordering: 0,
                         content: b"hello".to_vec(),
                         status: Status::GmOnly,
@@ -720,7 +720,7 @@ mod tests {
             status: Set(StatusCol::GmOnly),
             ordering: Set(0),
             content: Set(b"original".to_vec()),
-            section: Set(SECTION_CONTENT.to_string()),
+            section: Set(SECTION_BODY.to_string()),
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -740,7 +740,7 @@ mod tests {
             status: Set(StatusCol::GmOnly),
             ordering: Set(0),
             content: Set(b"new-a".to_vec()),
-            section: Set(SECTION_CONTENT.to_string()),
+            section: Set(SECTION_BODY.to_string()),
             created_at: Set(now),
             updated_at: Set(now),
         }];
@@ -810,7 +810,7 @@ mod tests {
                 status: Set(StatusCol::GmOnly),
                 ordering: Set(ord),
                 content: Set(body.to_vec()),
-                section: Set(SECTION_CONTENT.to_string()),
+                section: Set(SECTION_BODY.to_string()),
                 created_at: Set(ts),
                 updated_at: Set(ts),
             };

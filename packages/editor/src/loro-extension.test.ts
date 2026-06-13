@@ -26,7 +26,7 @@ import { LoroDoc } from "loro-crdt";
 import { type LoroDocType, LoroSyncPlugin, updateLoroToPmState } from "loro-prosemirror";
 import { describe, expect, it } from "vitest";
 
-import { contentContainerId } from "./loro-extension";
+import { bodyContainerId } from "./loro-extension";
 import { NODE_DOC, NODE_EXTENSIONS, NODE_PARAGRAPH } from "./schema";
 
 const SEED_TEXT = "The dragon Ashardalon slumbers beneath the Sunless Citadel.";
@@ -39,10 +39,10 @@ describe("loro-prosemirror content-wipe guard", () => {
     // A LoroDoc already populated from the server -- the state `usePageDoc`
     // reaches via `waitForReachingServerVersion()` before mounting the editor.
     // We seed it by writing a content-bearing PM state straight into the same
-    // "content" container the app binds to (the inverse of what the plugin does
-    // at runtime).
+    // "body" section container the app binds to (the inverse of what the plugin
+    // does at runtime).
     const loroDoc = new LoroDoc();
-    const containerId = contentContainerId(loroDoc);
+    const containerId = bodyContainerId(loroDoc);
     const seededDoc = schema.node(NODE_DOC, null, [
       schema.node(NODE_PARAGRAPH, null, [schema.text(SEED_TEXT)]),
     ]);

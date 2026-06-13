@@ -26,6 +26,7 @@ use kameo::prelude::Actor;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use familiar_systems_campaign_shared::id::{BlockId, ClientId, PageId};
+use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use tokio::sync::mpsc;
 
@@ -162,17 +163,24 @@ impl Actor for CampaignSupervisor {
         if is_new {
             let seed_ref = actor_ref.clone();
             tokio::spawn(async move {
-                // Seed one empty paragraph so the home page opens as a
-                // schema-valid, editable document. Its ULID is embedded in the
-                // block content (`attributes.blockId`) and used as the row id,
-                // so the block keeps a stable identity from genesis onward.
-                let block_id = BlockId::generate();
-                let seed_blocks = vec![NewBlock {
-                    id: block_id.clone(),
-                    ordering: 0,
-                    content: block_codec::empty_paragraph_blob(&block_id),
-                    status: Status::GmOnly,
-                }];
+                // Seed one empty paragraph per section so the home page opens as
+                // a schema-valid, editable document in each section. Each ULID is
+                // embedded in the block content (`attributes.blockId`) and used as
+                // the row id, so the block keeps a stable identity from genesis.
+                let seed_blocks: Vec<NewBlock> = PageKind::Entity
+                    .sections()
+                    .iter()
+                    .map(|&section| {
+                        let block_id = BlockId::generate();
+                        NewBlock {
+                            content: block_codec::empty_paragraph_blob(&block_id),
+                            id: block_id,
+                            section,
+                            ordering: 0,
+                            status: Status::GmOnly,
+                        }
+                    })
+                    .collect();
                 match seed_ref
                     .ask(CreatePage {
                         name: "Campaign Base Camp".to_string(),
@@ -1071,10 +1079,11 @@ mod tests {
                     "home_page_id points at the base camp"
                 );
 
-                // The seed must give the home page exactly one block whose row
-                // id equals the ULID embedded in its content (`attributes.blockId`).
-                // This proves the page opens schema-valid (>=1 block) and that
-                // block identity is stable, not minted fresh on each persist.
+                // The seed must give the home page one block per declared section
+                // (preamble + body), each a paragraph whose row id equals the ULID
+                // embedded in its content (`attributes.blockId`). This proves every
+                // section opens schema-valid (>=1 block) and that block identity is
+                // stable, not minted fresh on each persist.
                 let block_rows = crate::entities::blocks::Entity::find()
                     .filter(
                         crate::entities::blocks::Column::PageId
@@ -1085,19 +1094,33 @@ mod tests {
                     .expect("query blocks");
                 assert_eq!(
                     block_rows.len(),
-                    1,
-                    "home page seeded with exactly one block"
+                    PageKind::Entity.sections().len(),
+                    "home page seeded with one block per section",
                 );
-                let block = &block_rows[0];
-                let row_id = BlockId::from(block.id.clone()).to_string();
-                let content: serde_json::Value =
-                    serde_json::from_slice(&block.content).expect("seed block content is JSON");
+                for block in &block_rows {
+                    let row_id = BlockId::from(block.id.clone()).to_string();
+                    let content: serde_json::Value =
+                        serde_json::from_slice(&block.content).expect("seed block content is JSON");
+                    assert_eq!(
+                        content["attributes"]["blockId"].as_str(),
+                        Some(row_id.as_str()),
+                        "block row id equals the blockId embedded in its content",
+                    );
+                    assert_eq!(content["nodeName"].as_str(), Some("paragraph"));
+                }
+                let mut seeded_sections: Vec<String> =
+                    block_rows.iter().map(|b| b.section.clone()).collect();
+                seeded_sections.sort();
+                let mut expected_sections: Vec<String> = PageKind::Entity
+                    .sections()
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
+                expected_sections.sort();
                 assert_eq!(
-                    content["attributes"]["blockId"].as_str(),
-                    Some(row_id.as_str()),
-                    "block row id equals the blockId embedded in its content",
+                    seeded_sections, expected_sections,
+                    "one block seeded in each declared section",
                 );
-                assert_eq!(content["nodeName"].as_str(), Some("paragraph"));
 
                 return page_id;
             }

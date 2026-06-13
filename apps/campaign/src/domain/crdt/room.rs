@@ -158,9 +158,6 @@ mod tests {
         fn export_snapshot(&self) -> Result<Snapshot, DocError> {
             Ok(Snapshot(Vec::new()))
         }
-        fn import_snapshot(&mut self, _data: &Snapshot) -> Result<(), DocError> {
-            Ok(())
-        }
     }
 
     fn join(room: &mut Room<StubDoc>, client: ClientId, capability: Capability) {
