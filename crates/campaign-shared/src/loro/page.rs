@@ -29,14 +29,15 @@ pub const CONTAINER_META: &str = "meta";
 
 /// Top-level LoroMap for the bounded "index card" section of a Page.
 /// Starts empty; AI-authored/maintained per the multi-section design. Must be
-/// pre-initialized in `new()` to avoid the concurrent sub-container creation
-/// hazard.
+/// pre-initialized at doc construction (every declared section is created up
+/// front) to avoid the concurrent sub-container creation hazard.
 pub const CONTAINER_PREAMBLE: &str = "preamble";
 
 /// Top-level LoroMap for the freeform body section of a Page.
 /// Structure inside is managed by loro-prosemirror on the client and by
-/// the block codec on the server. Must be pre-initialized in `new()` to
-/// avoid the concurrent sub-container creation hazard.
+/// the block codec on the server. Must be pre-initialized at doc construction
+/// (every declared section is created up front) to avoid the concurrent
+/// sub-container creation hazard.
 pub const CONTAINER_BODY: &str = "body";
 
 // ── Schema: LoroMap key constants ───────────────────────────────────────────

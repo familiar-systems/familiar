@@ -664,6 +664,55 @@ mod tests {
         .unwrap()
     }
 
+    /// `group_sections` is the one section/kind drift guard: a row tagged with a
+    /// section the kind does not declare binds to no container, so it is dropped
+    /// (and logged loudly) rather than silently rebound. This pins all three of
+    /// its behaviors at once: orphan rows are dropped, declared sections come
+    /// back in `sections()` order, and a declared-but-absent section is empty.
+    /// (The drop is the load-bearing assertion; asserting the `tracing::error!`
+    /// itself would need a log-capture dep, so it is left out.)
+    #[test]
+    fn group_sections_drops_orphans_and_orders_by_kind() {
+        // Two body rows, a legacy "content" orphan the Entity kind does not
+        // declare, and no preamble row (the declared-but-absent case).
+        let rows = vec![
+            (SECTION_BODY.to_string(), b"body-0".to_vec()),
+            ("content".to_string(), b"legacy-orphan".to_vec()),
+            (SECTION_BODY.to_string(), b"body-1".to_vec()),
+        ];
+
+        let grouped = group_sections(&PageKind::Entity, rows.into_iter());
+
+        // Sections come back in the kind's declared order (preamble, body).
+        let names: Vec<&str> = grouped.iter().map(|(n, _)| *n).collect();
+        assert_eq!(names, PageKind::Entity.sections());
+
+        let section = |name: &str| {
+            grouped
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, blobs)| blobs)
+                .unwrap()
+        };
+        // Declared-but-absent section is empty; declared section keeps input order.
+        assert!(
+            section("preamble").is_empty(),
+            "a declared section with no rows yields an empty Vec",
+        );
+        assert_eq!(
+            section("body"),
+            &vec![b"body-0".to_vec(), b"body-1".to_vec()],
+            "the declared section keeps input order and excludes the orphan",
+        );
+
+        // The orphan row binds to no declared section -- dropped, never rebound.
+        let all_blobs: Vec<&Vec<u8>> = grouped.iter().flat_map(|(_, blobs)| blobs).collect();
+        assert!(
+            !all_blobs.iter().any(|b| b.as_slice() == b"legacy-orphan"),
+            "a row tagged with an undeclared section is dropped, not rebound to a declared one",
+        );
+    }
+
     #[tokio::test]
     async fn starts_with_no_blocks() {
         let conn = setup_db().await;
