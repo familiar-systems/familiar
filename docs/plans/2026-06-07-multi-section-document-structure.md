@@ -85,7 +85,7 @@ Both are bounded, dense, no-headings prose, **always loaded** as the cheap tier;
 
 ### Entity / Template
 
-`meta` + `preamble` + `body`, and this is the **Now** work. Both kinds get the same two section containers: `preamble` is the bounded, no-headings index card; `body` is the permissive freeform section. Existing page content (today a single `content` container/section) becomes `body`, and `preamble` starts empty. This is lossless: the LoroDoc is rebuilt from the `blocks` rows on actor start, so renaming the at-rest section is a row update, not a CRDT-history migration.
+`meta` + `preamble` + `body`, and this is the **Now** work. Both kinds get the same two section containers: `preamble` is the bounded, no-headings index card; `body` is the permissive freeform section; `preamble` starts empty. This ships **greenfield**: there is no pre-existing `content` data to carry over, so nothing is migrated. (The mechanism that makes a section rename cheap in general still holds — the LoroDoc is rebuilt from the `blocks` rows on actor start, CRDT history is never the source of truth, so a rename is a row-level concern rather than CRDT-history surgery. But no `content`→`body` backfill runs, and a row whose `section` the page's kind does not declare is **dropped** on restore, not auto-renamed — see the orphan guard in `LoroPageDoc::from_blocks`. Were legacy `content` rows ever to exist, they would need an explicit `UPDATE blocks SET section='body'`.)
 
 Template is not a separate concern here. It is already a page kind alongside Entity (`PageKind::Template`, with `template_id` lineage per [Templates as Pages](2026-02-20-templates-as-pages.md)), and it carries the identical `preamble` + `body` layout so that cloning a template yields an entity with both sections.
 
@@ -183,12 +183,12 @@ What looked relevant but is not the path (kept here so it is not re-litigated):
 
 (References by symbol, not line number, since lines drift.)
 
-- **Containers & schema constants:** `CONTAINER_META` (`"meta"`), `CONTAINER_CONTENT` (`"content"`), `KEY_TITLE` / `KEY_STATUS` / `KEY_KIND`, `SECTION_CONTENT` (`"content"`), `PageHandle`, and the "Future Page types may add additional section containers ... scoped via `containerId` on the client's `LoroSyncPlugin`" comment, all in `crates/campaign-shared/src/loro/page.rs`.
-- **`PageKind`** enum (`Entity`, `Template`; future `Session` / `Skill` / `Memory`) and `as_loro_str`, in `crates/campaign-shared/src/page_kind.rs`.
-- **`LoroPageDoc`** (`new`, `from_blocks`) in `apps/campaign/src/loro/page.rs`; **`CrdtDoc`** trait in `apps/campaign/src/domain/crdt/doc.rs`; **`Room<D>`** in `apps/campaign/src/domain/crdt/room.rs`.
+- **Containers & schema constants:** `CONTAINER_META` (`"meta"`), `CONTAINER_PREAMBLE` (`"preamble"`), `CONTAINER_BODY` (`"body"`), `KEY_TITLE` / `KEY_STATUS` / `KEY_KIND`, the `SECTION_PREAMBLE` / `SECTION_BODY` aliases (each equal to its container name), and `PageHandle`, all in `crates/campaign-shared/src/loro/page.rs`.
+- **`PageKind`** enum (`Entity`, `Template`; future `Session` / `Skill` / `Memory`), `as_loro_str`, and **`sections()`** (the ordered per-kind section list — the one place section layout is declared), in `crates/campaign-shared/src/page_kind.rs`.
+- **`LoroPageDoc`** in `apps/campaign/src/loro/page.rs`: the single constructor `from_blocks` buckets `(section, blob)` rows into the kind's declared containers and seeds each empty section with one paragraph (block ids injected via a minter); plus `extract_sections` and the immutable `kind()`. **`CrdtDoc`** trait in `apps/campaign/src/domain/crdt/doc.rs`; **`Room<D>`** in `apps/campaign/src/domain/crdt/room.rs`.
 - **`PageActor`** / `PageInit` and the room id `page:<PageId>` routing in `apps/campaign/src/actors/page.rs` and `apps/campaign/src/actors/supervisor.rs` (one room per page = one room per LoroDoc).
 - **Block codec:** `extract_blocks` / `restore_content` in `apps/campaign/src/loro/block_codec.rs`.
-- **Schema at rest:** `blocks` table with the `section TEXT NOT NULL` column (all `"content"` today) in `apps/campaign/src/migrations/m20260428_000002_create_blocks.rs`; `pages` table (`kind`, `template_id`) in `m20260428_000001_create_pages.rs`.
+- **Schema at rest:** `blocks` table with the `section TEXT NOT NULL` column (`preamble` / `body`, seeded per the kind's sections at genesis) in `apps/campaign/src/migrations/m20260428_000002_create_blocks.rs`; `pages` table (`kind`, `template_id`) in `m20260428_000001_create_pages.rs`.
 - **Existing Loro patches (files of interest):** `patches/loro-prosemirror@0.4.3.patch` (editor-init ordering; a suppressed cursor-mapping error) and `patches/loro-websocket@0.6.2.patch` (React StrictMode connect/close race; reconnect-after-teardown guard), wired in `pnpm-workspace.yaml` under `patchedDependencies`. Evidence the forks are already ours in practice; vendoring them is **Later**.
 
 ---

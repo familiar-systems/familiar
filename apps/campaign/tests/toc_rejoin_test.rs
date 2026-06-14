@@ -55,7 +55,6 @@ async fn toc_rejoin_after_leave_still_gets_full_snapshot() {
                 name: name.to_string(),
                 status: None,
                 parent: None,
-                seed_blocks: vec![],
             })
             .await
             .expect("create page");

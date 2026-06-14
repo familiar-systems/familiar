@@ -8,7 +8,6 @@
 //! no subscribers and an idle timer fires, so a room that is never joined does
 //! not leak resident until campaign drain.
 
-use std::collections::HashMap;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -36,36 +35,6 @@ use crate::entities::{blocks, pages};
 use crate::loro::page::LoroPageDoc;
 use crate::wire::broadcast::encode_broadcast;
 use crate::wire::fragmenter::BatchFragmenter;
-
-/// Fold `(section, content)` pairs into the `(section, blobs)` shape
-/// [`LoroPageDoc::from_blocks`] consumes, ordered by the kind's declared
-/// [`sections()`](PageKind::sections). Within each section the input order is
-/// preserved (callers pass blocks already ordered, e.g. the restore query's
-/// `ORDER BY section, ordering`). Rows tagged with a section the kind does not
-/// declare cannot bind to a container; they are dropped but logged loudly.
-fn group_sections(
-    kind: &PageKind,
-    blocks: impl Iterator<Item = (String, Vec<u8>)>,
-) -> Vec<(&'static str, Vec<Vec<u8>>)> {
-    let mut by_section: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
-    for (section, content) in blocks {
-        by_section.entry(section).or_default().push(content);
-    }
-    let grouped: Vec<(&'static str, Vec<Vec<u8>>)> = kind
-        .sections()
-        .iter()
-        .map(|&name| (name, by_section.remove(name).unwrap_or_default()))
-        .collect();
-    for (orphan, dropped) in by_section {
-        tracing::error!(
-            section = %orphan,
-            count = dropped.len(),
-            ?kind,
-            "blocks tagged with a section this page kind does not declare; dropped",
-        );
-    }
-    grouped
-}
 
 pub struct PageActor {
     campaign_id: CampaignId,
@@ -143,14 +112,7 @@ pub struct PageActorArgs {
 /// invariant that every write to a Page flows through its owning actor.
 pub enum PageInit {
     Restore,
-    New {
-        name: String,
-        status: Status,
-        /// Initial content blocks, each tagged with its section. Empty
-        /// (`vec![]`) in tests; the create-page and home-page paths seed one
-        /// empty paragraph per section so each section opens editable.
-        seed_blocks: Vec<NewBlock>,
-    },
+    New { name: String, status: Status },
 }
 
 /// Failure modes for `PageActor` startup.
@@ -180,8 +142,8 @@ impl Actor for PageActor {
                     .expect("PageActor spawned for a page that exists in the database");
 
                 // All sections in one query, ordered by (section, ordering) so a
-                // section's blocks arrive contiguous and in-order; `group_sections`
-                // folds them into the kind's declared section list.
+                // section's blocks arrive contiguous and in-order; `from_blocks`
+                // buckets them into the kind's declared section containers.
                 let block_rows = blocks::Entity::find()
                     .filter(blocks::Column::PageId.eq(PageIdCol::from(args.page_id.clone())))
                     .order_by_asc(blocks::Column::Section)
@@ -192,14 +154,15 @@ impl Actor for PageActor {
 
                 let status: Status = page_row.status.into();
                 let kind: PageKind = page_row.kind.into();
-                let sections = group_sections(
+                let block_count = block_rows.len();
+                tracing::info!(block_count, ?status, ?kind, "page actor restored");
+                let (doc, skipped) = LoroPageDoc::from_blocks(
+                    &page_row.name,
+                    &status,
                     &kind,
                     block_rows.into_iter().map(|b| (b.section, b.content)),
+                    BlockId::generate,
                 );
-                let block_count: usize = sections.iter().map(|(_, b)| b.len()).sum();
-                tracing::info!(block_count, ?status, ?kind, "page actor restored");
-                let (doc, skipped) =
-                    LoroPageDoc::from_blocks(&page_row.name, &status, &kind, &sections);
                 // A dropped block means a corrupt blob slipped past the serialize
                 // path -- it should never happen, so log the offending bytes in
                 // full for triage. The Page still opens without it.
@@ -213,31 +176,39 @@ impl Actor for PageActor {
                 }
                 doc
             }
-            PageInit::New {
-                name,
-                status,
-                seed_blocks,
-            } => {
+            PageInit::New { name, status } => {
                 // The actor owns its own birth: build the doc, then persist the
-                // genesis row through the single-writer. Nothing writes a
-                // Page's rows around the actor that owns it.
-                let new_page = build_new_page(args.page_id.clone(), name, status, seed_blocks);
-                // Group seed blocks by section (mirrors restore) so each seeded
-                // section is initialized. Seed blobs are freshly serialized here,
-                // so none can be malformed; discard the (always-empty) skip report.
-                let sections = group_sections(
-                    &new_page.kind,
-                    new_page
-                        .blocks
-                        .iter()
-                        .map(|b| (b.section.to_string(), b.content.clone())),
-                );
+                // genesis rows through the single-writer. Nothing writes a Page's
+                // rows around the actor that owns it.
+                //
+                // The doc's section layout -- and the empty paragraph seeded into
+                // each section so it opens editable -- comes from the kind, inside
+                // `from_blocks`; the create path passes no sections. We then persist
+                // exactly what the seeded doc contains, so the genesis rows carry
+                // the seeds' stable blockIds (a block keeps one identity from
+                // genesis onward) and the future template path slots in the same
+                // way (its cloned blocks would arrive here as `rows`).
+                let mut new_page = build_new_page(args.page_id.clone(), name, status);
                 let (doc, _) = LoroPageDoc::from_blocks(
                     &new_page.name,
                     &new_page.status,
                     &new_page.kind,
-                    &sections,
+                    std::iter::empty::<(String, Vec<u8>)>(),
+                    BlockId::generate,
                 );
+                new_page.blocks = doc
+                    .extract_sections()
+                    .into_iter()
+                    .flat_map(|(section, blocks)| {
+                        blocks.into_iter().map(move |b| NewBlock {
+                            id: b.id.unwrap_or_else(BlockId::generate),
+                            section,
+                            ordering: b.ordering,
+                            content: b.content,
+                            status: Status::GmOnly,
+                        })
+                    })
+                    .collect();
 
                 if let Err(e) = args.db_writer.ask(DbCreatePage { new_page }).await {
                     tracing::error!(error = %e, "page genesis write failed");
@@ -664,55 +635,6 @@ mod tests {
         .unwrap()
     }
 
-    /// `group_sections` is the one section/kind drift guard: a row tagged with a
-    /// section the kind does not declare binds to no container, so it is dropped
-    /// (and logged loudly) rather than silently rebound. This pins all three of
-    /// its behaviors at once: orphan rows are dropped, declared sections come
-    /// back in `sections()` order, and a declared-but-absent section is empty.
-    /// (The drop is the load-bearing assertion; asserting the `tracing::error!`
-    /// itself would need a log-capture dep, so it is left out.)
-    #[test]
-    fn group_sections_drops_orphans_and_orders_by_kind() {
-        // Two body rows, a legacy "content" orphan the Entity kind does not
-        // declare, and no preamble row (the declared-but-absent case).
-        let rows = vec![
-            (SECTION_BODY.to_string(), b"body-0".to_vec()),
-            ("content".to_string(), b"legacy-orphan".to_vec()),
-            (SECTION_BODY.to_string(), b"body-1".to_vec()),
-        ];
-
-        let grouped = group_sections(&PageKind::Entity, rows.into_iter());
-
-        // Sections come back in the kind's declared order (preamble, body).
-        let names: Vec<&str> = grouped.iter().map(|(n, _)| *n).collect();
-        assert_eq!(names, PageKind::Entity.sections());
-
-        let section = |name: &str| {
-            grouped
-                .iter()
-                .find(|(n, _)| *n == name)
-                .map(|(_, blobs)| blobs)
-                .unwrap()
-        };
-        // Declared-but-absent section is empty; declared section keeps input order.
-        assert!(
-            section("preamble").is_empty(),
-            "a declared section with no rows yields an empty Vec",
-        );
-        assert_eq!(
-            section("body"),
-            &vec![b"body-0".to_vec(), b"body-1".to_vec()],
-            "the declared section keeps input order and excludes the orphan",
-        );
-
-        // The orphan row binds to no declared section -- dropped, never rebound.
-        let all_blobs: Vec<&Vec<u8>> = grouped.iter().flat_map(|(_, blobs)| blobs).collect();
-        assert!(
-            !all_blobs.iter().any(|b| b.as_slice() == b"legacy-orphan"),
-            "a row tagged with an undeclared section is dropped, not rebound to a declared one",
-        );
-    }
-
     #[tokio::test]
     async fn starts_with_no_blocks() {
         let conn = setup_db().await;
@@ -766,7 +688,6 @@ mod tests {
             init: PageInit::New {
                 name: "Korgath the Destroyer".into(),
                 status: Status::GmOnly,
-                seed_blocks: vec![],
             },
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
@@ -907,7 +828,6 @@ mod tests {
             init: PageInit::New {
                 name: "Original".into(),
                 status: Status::GmOnly,
-                seed_blocks: vec![],
             },
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
@@ -1023,7 +943,6 @@ mod tests {
             init: PageInit::New {
                 name: "Original".into(),
                 status: Status::GmOnly,
-                seed_blocks: vec![],
             },
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),

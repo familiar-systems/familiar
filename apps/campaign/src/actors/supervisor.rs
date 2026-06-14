@@ -25,8 +25,7 @@ use kameo::prelude::Actor;
 
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
-use familiar_systems_campaign_shared::id::{BlockId, ClientId, PageId};
-use familiar_systems_campaign_shared::page_kind::PageKind;
+use familiar_systems_campaign_shared::id::{ClientId, PageId};
 use familiar_systems_campaign_shared::status::Status;
 use tokio::sync::mpsc;
 
@@ -38,11 +37,9 @@ use crate::actors::page::{PageActor, PageActorArgs, PageInit};
 use crate::actors::toc::{AddPageNode, ResolvePageNode, TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::domain::crdt::room_actor;
-use crate::domain::page::NewBlock;
 use crate::entities::columns::PageIdCol;
 use crate::entities::{campaign_metadata, pages};
 use crate::error::InitError;
-use crate::loro::block_codec;
 use crate::persistence::{CampaignDatabase, CampaignStore};
 
 // TODO: replace `Option<CampaignDatabase>` with a `SupervisorState` enum
@@ -163,30 +160,15 @@ impl Actor for CampaignSupervisor {
         if is_new {
             let seed_ref = actor_ref.clone();
             tokio::spawn(async move {
-                // Seed one empty paragraph per section so the home page opens as
-                // a schema-valid, editable document in each section. Each ULID is
-                // embedded in the block content (`attributes.blockId`) and used as
-                // the row id, so the block keeps a stable identity from genesis.
-                let seed_blocks: Vec<NewBlock> = PageKind::Entity
-                    .sections()
-                    .iter()
-                    .map(|&section| {
-                        let block_id = BlockId::generate();
-                        NewBlock {
-                            content: block_codec::empty_paragraph_blob(&block_id),
-                            id: block_id,
-                            section,
-                            ordering: 0,
-                            status: Status::GmOnly,
-                        }
-                    })
-                    .collect();
+                // The home page's sections (and the editable empty paragraph each
+                // is seeded with, stable-id from genesis) come from its kind inside
+                // the PageActor; this caller names the page and never enumerates
+                // sections.
                 match seed_ref
                     .ask(CreatePage {
                         name: "Campaign Base Camp".to_string(),
                         status: Some(Status::Known),
                         parent: None,
-                        seed_blocks,
                     })
                     .await
                 {
@@ -498,9 +480,6 @@ pub struct CreatePage {
     pub status: Option<Status>,
     /// Parent Page to nest under in the ToC. `None` => ToC root.
     pub parent: Option<PageId>,
-    /// Initial content blocks. Empty for a generic new Page; the home-page
-    /// seed passes one empty paragraph so the page opens editable.
-    pub seed_blocks: Vec<NewBlock>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -571,7 +550,6 @@ impl Message<CreatePage> for CampaignSupervisor {
             init: PageInit::New {
                 name: name.clone(),
                 status,
-                seed_blocks: msg.seed_blocks,
             },
             debounce_duration: Duration::from_secs(2),
             idle_timeout: Duration::from_secs(30),
@@ -851,6 +829,8 @@ mod tests {
     use super::*;
     use crate::db::register_sqlite_vec;
     use crate::persistence::LocalCampaignStore;
+    use familiar_systems_campaign_shared::id::BlockId;
+    use familiar_systems_campaign_shared::page_kind::PageKind;
     use kameo::actor::Spawn;
     use tempfile::TempDir;
 
@@ -1009,7 +989,6 @@ mod tests {
                 name: "Ephemeral".to_string(),
                 status: Some(Status::GmOnly),
                 parent: None,
-                seed_blocks: vec![],
             })
             .await
             .unwrap();
@@ -1216,7 +1195,6 @@ mod tests {
                     name: name.to_string(),
                     status: Some(Status::GmOnly),
                     parent: None,
-                    seed_blocks: vec![],
                 })
                 .await
                 .expect_err("empty name must be rejected");

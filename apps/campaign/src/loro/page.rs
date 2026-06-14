@@ -10,17 +10,19 @@
 //!
 //! The LoroDoc is transient. At rest, blocks are rows in the `blocks` table,
 //! each tagged with its `section`. `from_blocks` reconstructs the doc from those
-//! rows (per section); `extract_sections` decomposes it back. CRDT history is
-//! intentionally discarded across checkout cycles (no tombstone accumulation).
+//! rows (bucketed by section, one container per declared section, empty sections
+//! seeded with a paragraph); `extract_sections` decomposes it back. CRDT history
+//! is intentionally discarded across checkout cycles (no tombstone accumulation).
 //!
 //! The doc's Loro binary snapshot is used only for the wire protocol
 //! (client-join sends `ExportMode::Snapshot`).
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 use loro::{LoroDoc, LoroMap, LoroValue, ValueOrContainer};
 
-use familiar_systems_campaign_shared::id::PageId;
+use familiar_systems_campaign_shared::id::{BlockId, PageId};
 use familiar_systems_campaign_shared::loro::page::{
     CONTAINER_META, KEY_KIND, KEY_STATUS, KEY_TITLE,
 };
@@ -43,21 +45,29 @@ pub struct LoroPageDoc {
 }
 
 impl LoroPageDoc {
-    /// Build a Page document from its identity and per-section block blobs.
+    /// Build a Page document from its identity and at-rest block rows.
     ///
-    /// This is the **only** constructor: genesis passes `build_new_page`'s seed
-    /// blocks, restore passes the `blocks` rows grouped by section. `sections` is a
-    /// list of `(section_name, blobs)`; each section's blobs must be pre-sorted by
-    /// ordering, and each blob is the opaque JSON produced by
-    /// `block_codec::serialize_block`.
+    /// This is the **only** constructor. `rows` is the flat `(section, blob)`
+    /// stream straight from the `blocks` table (restore) or empty (genesis); a
+    /// row's `section` is the at-rest name of its Loro container, and each blob
+    /// is the opaque JSON produced by `block_codec::serialize_block`. Rows are
+    /// bucketed by section here, so callers never have to know a kind's section
+    /// layout -- that is the whole point: **section layout is a property of the
+    /// kind, owned by this constructor, not the create path.**
     ///
     /// Construction is driven off the kind's declared
-    /// [`sections()`](PageKind::sections): every declared section container is
-    /// initialized to a valid (possibly empty) ProseMirror doc, a caller that omits
-    /// a section yields an empty one, and rows under an undeclared section are
-    /// ignored. `meta` carries title/status/kind; `meta.kind` is the client's
-    /// wire/render projection (the SPA reads it to pick the page experience), while
-    /// the persistence authority is the [`kind`](Self::kind) field.
+    /// [`sections()`](PageKind::sections), in order. Each declared section's rows
+    /// are restored into its container; a declared section with **no** rows is
+    /// seeded with one empty paragraph (via `mint`) so it opens as a schema-valid,
+    /// editable ProseMirror doc rather than an empty, uneditable `doc`. Rows tagged
+    /// with a section the kind does not declare bind to no container and are
+    /// dropped (logged loudly) -- the one section/kind drift guard.
+    ///
+    /// `mint` supplies the seed blocks' ids (production passes `BlockId::generate`).
+    /// It is injected rather than called internally so seeding is an explicit
+    /// effect and tests stay deterministic. `meta` carries title/status/kind;
+    /// `meta.kind` is the client's wire/render projection, while the persistence
+    /// authority is the [`kind`](Self::kind) field.
     ///
     /// Returns the doc alongside any [`SkippedBlock`](block_codec::SkippedBlock)s
     /// that could not be reconstructed. Restore is best-effort per block, so a
@@ -67,7 +77,8 @@ impl LoroPageDoc {
         name: &str,
         status: &Status,
         kind: &PageKind,
-        sections: &[(&str, Vec<Vec<u8>>)],
+        rows: impl IntoIterator<Item = (String, Vec<u8>)>,
+        mut mint: impl FnMut() -> BlockId,
     ) -> (Self, Vec<block_codec::SkippedBlock>) {
         let doc = LoroDoc::new();
         let meta = doc.get_map(CONTAINER_META);
@@ -76,15 +87,39 @@ impl LoroPageDoc {
         meta.insert(KEY_KIND, kind.as_loro_str()).unwrap();
         let this = Self { doc, kind: *kind };
 
+        // Bucket rows by their at-rest `section` (identical to the Loro container
+        // name). Restore order within a section is the input order, which the
+        // restore query (`ORDER BY section, ordering`) already makes correct.
+        let mut by_section: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
+        for (section, content) in rows {
+            by_section.entry(section).or_default().push(content);
+        }
+
+        // Initialize every section the kind declares, in order. Restore its rows;
+        // an empty section is seeded with one empty paragraph so it opens as a
+        // schema-valid, editable ProseMirror doc (a `doc` with one `block+` child).
         let mut skipped = Vec::new();
-        for section_name in kind.sections() {
-            let blobs = sections
-                .iter()
-                .find(|(name, _)| name == section_name)
-                .map(|(_, blobs)| blobs.as_slice())
-                .unwrap_or(&[]);
+        for &section_name in kind.sections() {
             let container = this.section(section_name);
-            skipped.extend(block_codec::restore_content(&container, blobs));
+            match by_section.remove(section_name) {
+                Some(blobs) => skipped.extend(block_codec::restore_content(&container, &blobs)),
+                None => {
+                    let seed = block_codec::empty_paragraph_blob(&mint());
+                    skipped.extend(block_codec::restore_content(&container, &[seed]));
+                }
+            }
+        }
+
+        // Rows left in `by_section` were tagged with a section this kind does not
+        // declare: they bind to no container. Drop them, logged loudly (e.g. a
+        // legacy `content` row after the content->body rename), never rebound.
+        for (orphan, dropped) in by_section {
+            tracing::error!(
+                section = %orphan,
+                count = dropped.len(),
+                ?kind,
+                "blocks tagged with a section this page kind does not declare; dropped",
+            );
         }
 
         (this, skipped)
@@ -202,9 +237,41 @@ mod tests {
     };
     use loro::{LoroList, LoroText};
 
+    /// No at-rest rows: every declared section gets seeded. Typed so the empty
+    /// `IntoIterator` resolves without annotations at each call site.
+    fn no_rows() -> Vec<(String, Vec<u8>)> {
+        Vec::new()
+    }
+
+    /// Flatten `(section, blobs)` specs into the flat `(section, blob)` row stream
+    /// `from_blocks` consumes -- keeps tests reading close to "section -> blocks".
+    fn rows(
+        specs: impl IntoIterator<Item = (&'static str, Vec<Vec<u8>>)>,
+    ) -> Vec<(String, Vec<u8>)> {
+        specs
+            .into_iter()
+            .flat_map(|(section, blobs)| blobs.into_iter().map(move |b| (section.to_string(), b)))
+            .collect()
+    }
+
+    fn paragraph_blob(text: &str) -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({
+            NODE_NAME_KEY: "paragraph",
+            ATTRIBUTES_KEY: {},
+            CHILDREN_KEY: [text],
+        }))
+        .unwrap()
+    }
+
     #[test]
     fn from_blocks_creates_meta_and_sections() {
-        let (doc, _) = LoroPageDoc::from_blocks("Test", &Status::GmOnly, &PageKind::Entity, &[]);
+        let (doc, _) = LoroPageDoc::from_blocks(
+            "Test",
+            &Status::GmOnly,
+            &PageKind::Entity,
+            no_rows(),
+            BlockId::generate,
+        );
         let val = doc.debug_value().unwrap();
         assert!(val.get(CONTAINER_META).is_some());
         assert!(val.get(CONTAINER_PREAMBLE).is_some());
@@ -213,7 +280,13 @@ mod tests {
 
     #[test]
     fn from_blocks_populates_meta() {
-        let (doc, _) = LoroPageDoc::from_blocks("Korgath", &Status::Known, &PageKind::Entity, &[]);
+        let (doc, _) = LoroPageDoc::from_blocks(
+            "Korgath",
+            &Status::Known,
+            &PageKind::Entity,
+            no_rows(),
+            BlockId::generate,
+        );
         assert_eq!(doc.read_title(), Some("Korgath".to_string()));
         assert_eq!(doc.read_status(), Some(Status::Known));
     }
@@ -225,7 +298,13 @@ mod tests {
         // An empty name is the should-never-happen state (pages are created
         // name-first); the marker is deterministic and carries the id so the
         // page is findable in the ToC.
-        let (empty, _) = LoroPageDoc::from_blocks("", &Status::GmOnly, &PageKind::Entity, &[]);
+        let (empty, _) = LoroPageDoc::from_blocks(
+            "",
+            &Status::GmOnly,
+            &PageKind::Entity,
+            no_rows(),
+            BlockId::generate,
+        );
         assert_eq!(empty.read_title(), None);
         assert_eq!(
             empty.read_title_or_recovery_marker(&id),
@@ -233,8 +312,13 @@ mod tests {
         );
 
         // A real title passes straight through, untouched.
-        let (named, _) =
-            LoroPageDoc::from_blocks("Korgath", &Status::GmOnly, &PageKind::Entity, &[]);
+        let (named, _) = LoroPageDoc::from_blocks(
+            "Korgath",
+            &Status::GmOnly,
+            &PageKind::Entity,
+            no_rows(),
+            BlockId::generate,
+        );
         assert_eq!(named.read_title_or_recovery_marker(&id), "Korgath");
     }
 
@@ -246,18 +330,14 @@ mod tests {
             CHILDREN_KEY: ["The Iron Citadel"]
         }))
         .unwrap();
-        let para_blob = serde_json::to_vec(&serde_json::json!({
-            NODE_NAME_KEY: "paragraph",
-            ATTRIBUTES_KEY: {},
-            CHILDREN_KEY: ["A fortress at the edge of the world."]
-        }))
-        .unwrap();
+        let para_blob = paragraph_blob("A fortress at the edge of the world.");
 
         let (doc, _) = LoroPageDoc::from_blocks(
             "Iron Citadel",
             &Status::GmOnly,
             &PageKind::Entity,
-            &[(CONTAINER_BODY, vec![heading_blob, para_blob])],
+            rows([(CONTAINER_BODY, vec![heading_blob, para_blob])]),
+            BlockId::generate,
         );
 
         let deep: serde_json::Value = doc.debug_value().unwrap();
@@ -268,11 +348,65 @@ mod tests {
     }
 
     #[test]
-    fn from_blocks_empty() {
-        let (doc, _) =
-            LoroPageDoc::from_blocks("Empty Page", &Status::GmOnly, &PageKind::Entity, &[]);
+    fn from_blocks_seeds_each_empty_section() {
+        // No rows: every declared section is seeded with one empty paragraph so it
+        // opens schema-valid and editable, with a stable blockId persisted at
+        // genesis (the seed's `attributes.blockId` becomes its row id).
+        let (doc, _) = LoroPageDoc::from_blocks(
+            "Empty Page",
+            &Status::GmOnly,
+            &PageKind::Entity,
+            no_rows(),
+            BlockId::generate,
+        );
         let sections = doc.extract_sections();
-        assert!(sections.iter().all(|(_, blocks)| blocks.is_empty()));
+        assert_eq!(sections.len(), PageKind::Entity.sections().len());
+        for (name, blocks) in &sections {
+            assert_eq!(blocks.len(), 1, "section {name} seeded with one paragraph");
+            let v: serde_json::Value = serde_json::from_slice(&blocks[0].content).unwrap();
+            assert_eq!(v[NODE_NAME_KEY], "paragraph");
+            assert!(blocks[0].id.is_some(), "seed carries a stable blockId");
+        }
+    }
+
+    #[test]
+    fn from_blocks_drops_rows_in_undeclared_sections() {
+        // A legacy "content" row -- a section Entity does not declare -- binds to
+        // no container: it is dropped, not rebound to a declared section. The two
+        // body rows restore; the orphan never appears in any section. (The drop is
+        // the load-bearing assertion; asserting the `tracing::error!` itself would
+        // need a log-capture dep, so it is left out.)
+        let input = rows([
+            (CONTAINER_BODY, vec![paragraph_blob("body-0")]),
+            ("content", vec![paragraph_blob("legacy-orphan")]),
+            (CONTAINER_BODY, vec![paragraph_blob("body-1")]),
+        ]);
+
+        let (doc, _) = LoroPageDoc::from_blocks(
+            "Test",
+            &Status::GmOnly,
+            &PageKind::Entity,
+            input,
+            BlockId::generate,
+        );
+
+        let sections = doc.extract_sections();
+        // Sections come back in the kind's declared order.
+        let names: Vec<&str> = sections.iter().map(|(n, _)| *n).collect();
+        assert_eq!(names, PageKind::Entity.sections());
+
+        let body = sections.iter().find(|(n, _)| *n == CONTAINER_BODY).unwrap();
+        assert_eq!(body.1.len(), 2, "two body rows restored, orphan excluded");
+
+        let any_orphan = sections.iter().flat_map(|(_, b)| b).any(|b| {
+            std::str::from_utf8(&b.content)
+                .map(|s| s.contains("legacy-orphan"))
+                .unwrap_or(false)
+        });
+        assert!(
+            !any_orphan,
+            "a row tagged with an undeclared section is dropped, not rebound",
+        );
     }
 
     #[test]
@@ -288,23 +422,36 @@ mod tests {
             "Test",
             &Status::Known,
             &PageKind::Entity,
-            &[(CONTAINER_BODY, vec![heading_blob])],
+            rows([(CONTAINER_BODY, vec![heading_blob])]),
+            BlockId::generate,
         );
         let sections = doc.extract_sections();
         let body = sections.iter().find(|(n, _)| *n == CONTAINER_BODY).unwrap();
         assert_eq!(body.1.len(), 1);
-        // The other section (preamble) extracts cleanly as empty.
+        // The preamble had no rows, so it was seeded with one paragraph.
         let preamble = sections
             .iter()
             .find(|(n, _)| *n == CONTAINER_PREAMBLE)
             .unwrap();
-        assert!(preamble.1.is_empty());
+        assert_eq!(preamble.1.len(), 1);
 
+        // Round-trip the FULL extraction (every section, including the seeded
+        // preamble) so rebuilding re-seeds nothing and the doc comes back byte
+        // identical -- `mint` is never called the second time.
+        let all_rows: Vec<(String, Vec<u8>)> = sections
+            .iter()
+            .flat_map(|(name, blocks)| {
+                blocks
+                    .iter()
+                    .map(move |b| (name.to_string(), b.content.clone()))
+            })
+            .collect();
         let (doc2, _) = LoroPageDoc::from_blocks(
             "Test",
             &Status::Known,
             &PageKind::Entity,
-            &[(CONTAINER_BODY, vec![body.1[0].content.clone()])],
+            all_rows,
+            BlockId::generate,
         );
 
         assert_eq!(doc.debug_value(), doc2.debug_value());
@@ -312,25 +459,20 @@ mod tests {
 
     #[test]
     fn sections_have_independent_ordering() {
-        // Two blocks in body, one in preamble. Each section's ordering starts at
-        // 0 independently: blocks sort within their section, not globally.
-        let blob = |text: &str| {
-            serde_json::to_vec(&serde_json::json!({
-                NODE_NAME_KEY: "paragraph",
-                ATTRIBUTES_KEY: {},
-                CHILDREN_KEY: [text],
-            }))
-            .unwrap()
-        };
-
+        // Two blocks in body, one in preamble: both sections are non-empty, so
+        // neither is seeded. Each section's ordering starts at 0 independently.
         let (doc, _) = LoroPageDoc::from_blocks(
             "Sectioned",
             &Status::GmOnly,
             &PageKind::Entity,
-            &[
-                (CONTAINER_PREAMBLE, vec![blob("card")]),
-                (CONTAINER_BODY, vec![blob("first"), blob("second")]),
-            ],
+            rows([
+                (CONTAINER_PREAMBLE, vec![paragraph_blob("card")]),
+                (
+                    CONTAINER_BODY,
+                    vec![paragraph_blob("first"), paragraph_blob("second")],
+                ),
+            ]),
+            BlockId::generate,
         );
 
         let sections = doc.extract_sections();
@@ -354,7 +496,13 @@ mod tests {
     #[test]
     fn read_status_all_variants() {
         for status in [Status::GmOnly, Status::Known, Status::Retconned] {
-            let (doc, _) = LoroPageDoc::from_blocks("Test", &status, &PageKind::Entity, &[]);
+            let (doc, _) = LoroPageDoc::from_blocks(
+                "Test",
+                &status,
+                &PageKind::Entity,
+                no_rows(),
+                BlockId::generate,
+            );
             assert_eq!(doc.read_status(), Some(status));
         }
     }
@@ -362,7 +510,13 @@ mod tests {
     #[test]
     fn kind_round_trips() {
         for kind in [PageKind::Entity, PageKind::Template] {
-            let (doc, _) = LoroPageDoc::from_blocks("Test", &Status::GmOnly, &kind, &[]);
+            let (doc, _) = LoroPageDoc::from_blocks(
+                "Test",
+                &Status::GmOnly,
+                &kind,
+                no_rows(),
+                BlockId::generate,
+            );
             assert_eq!(doc.kind(), kind);
         }
     }
@@ -380,7 +534,8 @@ mod tests {
             "Snap",
             &Status::Known,
             &PageKind::Entity,
-            &[(CONTAINER_BODY, vec![heading_blob])],
+            rows([(CONTAINER_BODY, vec![heading_blob])]),
+            BlockId::generate,
         );
         let snapshot = doc.export_snapshot().unwrap();
 
@@ -394,7 +549,13 @@ mod tests {
 
     #[test]
     fn convergence_after_client_updates() {
-        let (doc, _) = LoroPageDoc::from_blocks("Server", &Status::GmOnly, &PageKind::Entity, &[]);
+        let (doc, _) = LoroPageDoc::from_blocks(
+            "Server",
+            &Status::GmOnly,
+            &PageKind::Entity,
+            no_rows(),
+            BlockId::generate,
+        );
         let snapshot = doc.export_snapshot().unwrap();
 
         // Simulate a client that received the snapshot and adds content
@@ -433,8 +594,13 @@ mod tests {
 
     #[test]
     fn version_advances_after_update() {
-        let (mut doc, _) =
-            LoroPageDoc::from_blocks("Test", &Status::GmOnly, &PageKind::Entity, &[]);
+        let (mut doc, _) = LoroPageDoc::from_blocks(
+            "Test",
+            &Status::GmOnly,
+            &PageKind::Entity,
+            no_rows(),
+            BlockId::generate,
+        );
         let v1 = doc.version();
 
         let client = LoroDoc::new();
@@ -453,8 +619,13 @@ mod tests {
 
     #[test]
     fn apply_bad_update_returns_error() {
-        let (mut doc, _) =
-            LoroPageDoc::from_blocks("Test", &Status::GmOnly, &PageKind::Entity, &[]);
+        let (mut doc, _) = LoroPageDoc::from_blocks(
+            "Test",
+            &Status::GmOnly,
+            &PageKind::Entity,
+            no_rows(),
+            BlockId::generate,
+        );
         let result = doc.apply_updates(&[vec![0xFF, 0xFE, 0xFD]]);
         assert!(result.is_err());
     }

@@ -18,15 +18,11 @@ use kameo::error::SendError;
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use familiar_systems_campaign_shared::document::pages::{CreatePageRequest, PageResponse};
-use familiar_systems_campaign_shared::id::{BlockId, PageId};
-use familiar_systems_campaign_shared::page_kind::PageKind;
-use familiar_systems_campaign_shared::status::Status;
+use familiar_systems_campaign_shared::id::PageId;
 use fs_id::Nanoid;
 
 use crate::actors::registry::GetCampaign;
 use crate::actors::supervisor::{CreatePage, CreatePageError};
-use crate::domain::page::NewBlock;
-use crate::loro::block_codec;
 use crate::middleware::auth::AuthenticatedUser;
 use crate::state::AppState;
 
@@ -90,32 +86,14 @@ pub async fn create_page(
         }
     }
 
-    // Seed one empty paragraph per section so every section opens as a
-    // schema-valid, editable ProseMirror document (a `doc` with one `block+`
-    // child) rather than an empty, uneditable `doc`. Mirrors the campaign
-    // home-page seed; each block's ULID is embedded in `attributes.blockId` and
-    // reused as its row id for stable identity.
-    let seed_blocks: Vec<NewBlock> = PageKind::Entity
-        .sections()
-        .iter()
-        .map(|&section| {
-            let block_id = BlockId::generate();
-            NewBlock {
-                content: block_codec::empty_paragraph_blob(&block_id),
-                id: block_id,
-                section,
-                ordering: 0,
-                status: Status::GmOnly,
-            }
-        })
-        .collect();
-
+    // The new Page's sections (and the editable empty paragraph each is seeded
+    // with) come from its kind inside the owning PageActor; this handler names
+    // the page and never enumerates sections.
     match supervisor
         .ask(CreatePage {
             name: req.name,
             status: req.status,
             parent: req.parent,
-            seed_blocks,
         })
         .await
     {
