@@ -7,6 +7,7 @@ mod m20260430_000001_create_campaign_metadata;
 mod m20260519_000001_add_wizard_fields;
 mod m20260520_000001_add_owner_user_id;
 mod m20260526_000001_create_toc_entries;
+mod m20260614_000001_create_sessions;
 
 pub struct Migrator;
 
@@ -21,6 +22,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260519_000001_add_wizard_fields::Migration),
             Box::new(m20260520_000001_add_owner_user_id::Migration),
             Box::new(m20260526_000001_create_toc_entries::Migration),
+            Box::new(m20260614_000001_create_sessions::Migration),
         ]
     }
 }

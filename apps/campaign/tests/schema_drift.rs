@@ -24,7 +24,9 @@
 use std::collections::BTreeSet;
 
 use familiar_systems_campaign::db;
-use familiar_systems_campaign::entities::{blocks, campaign_metadata, pages, toc_entries};
+use familiar_systems_campaign::entities::{
+    blocks, campaign_metadata, pages, sessions, toc_entries,
+};
 use familiar_systems_campaign::migrations::Migrator;
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DbBackend, EntityName, EntityTrait,
@@ -49,6 +51,8 @@ async fn setup_via_entities() -> DatabaseConnection {
     apply_entity_schema(&db, &schema, backend, blocks::Entity).await;
     apply_entity_schema(&db, &schema, backend, campaign_metadata::Entity).await;
     apply_entity_schema(&db, &schema, backend, toc_entries::Entity).await;
+    // No FK yet, so ordering relative to `pages` is irrelevant.
+    apply_entity_schema(&db, &schema, backend, sessions::Entity).await;
 
     db
 }
@@ -219,6 +223,7 @@ async fn schema_matches_entities() {
         blocks::Entity.table_name(),
         campaign_metadata::Entity.table_name(),
         toc_entries::Entity.table_name(),
+        sessions::Entity.table_name(),
     ] {
         assert_eq!(
             pragma_columns(&migrated, table).await,
