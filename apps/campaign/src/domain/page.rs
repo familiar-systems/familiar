@@ -14,6 +14,7 @@
 //! Page has live subscribers.
 
 use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::loro::page::Section;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 
@@ -22,6 +23,9 @@ use familiar_systems_campaign_shared::status::Status;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewBlock {
     pub id: BlockId,
+    /// The section this block belongs to (its Loro container). `ordering` is
+    /// relative to this section. Written through `SectionCol` at the DB edge.
+    pub section: Section,
     pub ordering: i64,
     pub content: Vec<u8>,
     pub status: Status,
@@ -46,27 +50,21 @@ pub struct NewPage {
 
 /// Build the description of a new Page.
 ///
-/// Pure: no I/O, no clock, no RNG. The id, status, and `seed_blocks` are inputs
-/// so the function is deterministic and unit-testable. This is the kernel the
-/// future AI `create_page` suggestion path will reuse.
+/// Pure: no I/O, no clock, no RNG, deterministic and unit-testable. This is the
+/// kernel the future AI `create_page` suggestion path will reuse.
 ///
-/// `seed_blocks` is the Page's initial content. Most callers pass `vec![]`
-/// (an empty Page whose content is added later through the editor); the
-/// campaign home-page seed passes one empty paragraph so the page opens as a
-/// schema-valid, editable document. The block ids are minted by the caller (an
-/// effect) and embedded in the block content as `attributes.blockId`, keeping
-/// the builder pure.
+/// `blocks` starts empty: a new Page has no authored content. Its sections — and
+/// the empty paragraph each is seeded with so it opens schema-valid and editable
+/// — are a property of the `kind`, materialized by `LoroPageDoc::from_blocks` at
+/// the genesis call edge; the actor then persists exactly what that seeded doc
+/// contains. Keeping section layout out of this builder is deliberate: the create
+/// path never enumerates sections.
 ///
-/// TODO: (templates) when `from_template_id` is supported, the template's
-/// blocks are cloned into `seed_blocks` at the call edge — deep-copy each
-/// block's content, mint a fresh `BlockId`, reset `ordering` — and this sets
-/// `template_id` for lineage.
-pub fn build_new_page(
-    id: PageId,
-    name: String,
-    status: Status,
-    seed_blocks: Vec<NewBlock>,
-) -> NewPage {
+/// TODO: (templates) when `from_template_id` is supported, the template's blocks
+/// are cloned in at the call edge — deep-copy each block's content, mint a fresh
+/// `BlockId`, preserve its `section`, reset the per-section `ordering` — and fed
+/// to `from_blocks` as the initial rows; this also sets `template_id` for lineage.
+pub fn build_new_page(id: PageId, name: String, status: Status) -> NewPage {
     NewPage {
         id,
         name,
@@ -76,7 +74,7 @@ pub fn build_new_page(
         // `kind: Template` and `template_id` here.
         kind: PageKind::Entity,
         template_id: None,
-        blocks: seed_blocks,
+        blocks: Vec::new(),
     }
 }
 
@@ -85,38 +83,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_page_has_no_blocks_and_no_template() {
+    fn new_page_starts_empty_as_an_entity() {
+        // A new Page carries no authored content; its sections (and the empty
+        // paragraph each is seeded with) are materialized by `from_blocks` from
+        // the kind, not by this builder.
         let id = PageId::generate();
-        let new_page = build_new_page(id.clone(), "Korgath".to_string(), Status::GmOnly, vec![]);
+        let new_page = build_new_page(id.clone(), "Korgath".to_string(), Status::GmOnly);
 
         assert_eq!(new_page.id, id);
         assert_eq!(new_page.name, "Korgath");
         assert_eq!(new_page.status, Status::GmOnly);
+        assert_eq!(new_page.kind, PageKind::Entity);
         assert_eq!(new_page.template_id, None);
         assert!(new_page.blocks.is_empty());
     }
 
     #[test]
-    fn seed_blocks_are_carried_through() {
-        let block = NewBlock {
-            id: BlockId::generate(),
-            ordering: 0,
-            content: b"seed".to_vec(),
-            status: Status::GmOnly,
-        };
-        let nt = build_new_page(
-            PageId::generate(),
-            "Home".to_string(),
-            Status::Known,
-            vec![block.clone()],
-        );
-        assert_eq!(nt.blocks, vec![block]);
-    }
-
-    #[test]
     fn status_is_carried_through() {
         for status in [Status::GmOnly, Status::Known, Status::Retconned] {
-            let nt = build_new_page(PageId::generate(), "X".to_string(), status, vec![]);
+            let nt = build_new_page(PageId::generate(), "X".to_string(), status);
             assert_eq!(nt.status, status);
         }
     }

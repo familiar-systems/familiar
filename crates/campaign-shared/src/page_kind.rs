@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;
 
+use crate::loro::page::Section;
+
 /// What kind of Page this is: its document *structure* and the systemic actions
 /// the engine takes for it. A `kind` exists only when pages differ structurally
 /// (a different Loro schema) or need a systemic action the engine can't infer
@@ -97,6 +99,21 @@ impl PageKind {
             _ => None,
         }
     }
+
+    /// The ordered list of [`Section`]s this kind's document is laid out from.
+    /// Each names a Loro root container; its at-rest `blocks.section` token is
+    /// written through `SectionCol` at the DB edge. The order is the
+    /// render/restore order; [`Section::Body`] is the freeform section and stays
+    /// last so genesis seeds and "content moves into body" stay well-defined.
+    ///
+    /// Modeled as a `match` so adding a kind (Skill, Session) is a new arm the
+    /// compiler forces every section-aware site to handle. See
+    /// `docs/plans/2026-06-07-multi-section-document-structure.md`.
+    pub fn sections(&self) -> &'static [Section] {
+        match self {
+            PageKind::Entity | PageKind::Template => &[Section::Preamble, Section::Body],
+        }
+    }
 }
 
 #[cfg(test)]
@@ -136,5 +153,19 @@ mod tests {
     fn from_loro_str_rejects_unknown() {
         assert_eq!(PageKind::from_loro_str("Entity"), None);
         assert_eq!(PageKind::from_loro_str(""), None);
+    }
+
+    #[test]
+    fn entity_and_template_share_preamble_body_layout() {
+        // The "Now" slice: both kinds are preamble + body. `body` must stay last
+        // so genesis seeds and the content->body rename keep their meaning.
+        for kind in [PageKind::Entity, PageKind::Template] {
+            assert_eq!(kind.sections(), &[Section::Preamble, Section::Body]);
+            assert_eq!(kind.sections().last(), Some(&Section::Body));
+        }
+        // Pin the wire strings: these are the Loro container ids / TS containerIds
+        // the editor hand-mirrors, so they must not drift.
+        assert_eq!(Section::Preamble.as_str(), "preamble");
+        assert_eq!(Section::Body.as_str(), "body");
     }
 }

@@ -13,8 +13,10 @@ export {
 export { BLOCK_ID_ATTR, BlockId } from "./block-id";
 export { META_CONTAINER, META_TITLE_KEY, readPageTitle, writePageTitle } from "./meta";
 export {
-  CONTENT_CONTAINER,
-  contentContainerId,
+  BODY_CONTAINER,
+  bodyContainerId,
   LoroExtension,
   type LoroExtensionOptions,
+  PREAMBLE_CONTAINER,
+  preambleContainerId,
 } from "./loro-extension";

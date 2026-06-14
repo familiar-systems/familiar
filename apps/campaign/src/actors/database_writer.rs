@@ -11,10 +11,8 @@ use sea_orm::{
     TransactionTrait,
 };
 
-use familiar_systems_campaign_shared::loro::page::SECTION_CONTENT;
-
 use crate::domain::page::NewPage;
-use crate::entities::columns::{BlockIdCol, PageKindCol, StatusCol};
+use crate::entities::columns::{BlockIdCol, PageKindCol, SectionCol, StatusCol};
 use crate::entities::{blocks, campaign_metadata, pages, toc_entries};
 
 pub struct DatabaseWriteActor {
@@ -368,12 +366,16 @@ impl Message<WritePageBlocks> for DatabaseWriteActor {
             // Upsert the snapshot. `CreatedAt` is deliberately omitted from the
             // update set so an existing block keeps its original creation time; the
             // `created_at = now` that `flush` stamps only takes effect on the insert
-            // (new-block) path. `PageId`/`Section` are constant per block.
+            // (new-block) path. `PageId` is omitted because a block never changes
+            // pages. `Section` is included defensively: a block normally stays in
+            // one section, but if one ever moves between a page's section editors
+            // the in-place update keeps `blocks.section` truthful instead of stale.
             blocks::Entity::insert_many(msg.blocks)
                 .on_conflict(
                     sea_orm::sea_query::OnConflict::column(blocks::Column::Id)
                         .update_columns([
                             blocks::Column::Status,
+                            blocks::Column::Section,
                             blocks::Column::Ordering,
                             blocks::Column::Content,
                             blocks::Column::UpdatedAt,
@@ -457,7 +459,7 @@ impl Message<DbCreatePage> for DatabaseWriteActor {
                     status: Set(StatusCol::from(b.status)),
                     ordering: Set(b.ordering),
                     content: Set(b.content),
-                    section: Set(SECTION_CONTENT.to_string()),
+                    section: Set(SectionCol::from(b.section)),
                     created_at: Set(now),
                     updated_at: Set(now),
                 })
@@ -639,6 +641,7 @@ mod tests {
     async fn create_page_inserts_row_and_blocks_atomically() {
         use crate::domain::page::{NewBlock, NewPage};
         use familiar_systems_campaign_shared::id::{BlockId, PageId};
+        use familiar_systems_campaign_shared::loro::page::Section;
         use familiar_systems_campaign_shared::page_kind::PageKind;
         use familiar_systems_campaign_shared::status::Status;
 
@@ -661,6 +664,7 @@ mod tests {
                     template_id: None,
                     blocks: vec![NewBlock {
                         id: BlockId::generate(),
+                        section: Section::Body,
                         ordering: 0,
                         content: b"hello".to_vec(),
                         status: Status::GmOnly,
@@ -720,7 +724,7 @@ mod tests {
             status: Set(StatusCol::GmOnly),
             ordering: Set(0),
             content: Set(b"original".to_vec()),
-            section: Set(SECTION_CONTENT.to_string()),
+            section: Set(SectionCol::Body),
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -740,7 +744,7 @@ mod tests {
             status: Set(StatusCol::GmOnly),
             ordering: Set(0),
             content: Set(b"new-a".to_vec()),
-            section: Set(SECTION_CONTENT.to_string()),
+            section: Set(SectionCol::Body),
             created_at: Set(now),
             updated_at: Set(now),
         }];
@@ -810,7 +814,7 @@ mod tests {
                 status: Set(StatusCol::GmOnly),
                 ordering: Set(ord),
                 content: Set(body.to_vec()),
-                section: Set(SECTION_CONTENT.to_string()),
+                section: Set(SectionCol::Body),
                 created_at: Set(ts),
                 updated_at: Set(ts),
             };
@@ -851,6 +855,103 @@ mod tests {
         assert_eq!(
             b.updated_at, t1,
             "updated_at must advance to the latest flush"
+        );
+    }
+
+    /// A block that moves between a page's section editors keeps the same id, so
+    /// the flush upserts it (id is in the keep-set, prune spares it) rather than
+    /// re-inserting. `Section` must be in the conflict-update set or the row's
+    /// `section` would stay stale while its content/ordering reflect the new
+    /// section -- a drift the column lies about. Regression guard for including
+    /// `blocks::Column::Section` in the upsert; `created_at` is still preserved.
+    #[tokio::test]
+    async fn write_page_blocks_updates_section_when_a_block_moves() {
+        use familiar_systems_campaign_shared::id::BlockId;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        let page_id = PageId::generate();
+        let page_id_col = PageIdCol::from(page_id.clone());
+
+        // Fixed whole-second timestamps so the SQLite text round-trip is exact.
+        let t0 = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+        let t1 = chrono::DateTime::from_timestamp(1_700_000_060, 0).unwrap();
+
+        // FK parent: blocks.page_id -> pages.id.
+        pages::ActiveModel {
+            id: Set(page_id_col.clone()),
+            name: Set("Korgath".into()),
+            status: Set(StatusCol::GmOnly),
+            kind: Set(PageKindCol::Entity),
+            template_id: Set(None),
+            created_at: Set(t0),
+            updated_at: Set(t0),
+        }
+        .insert(&conn)
+        .await
+        .expect("seed page");
+
+        let block = BlockId::generate();
+        let row = |section: SectionCol, ord: i64, body: &[u8], ts: chrono::DateTime<Utc>| {
+            blocks::ActiveModel {
+                id: Set(BlockIdCol::from(block.clone())),
+                page_id: Set(page_id_col.clone()),
+                status: Set(StatusCol::GmOnly),
+                ordering: Set(ord),
+                content: Set(body.to_vec()),
+                section: Set(section),
+                created_at: Set(ts),
+                updated_at: Set(ts),
+            }
+        };
+
+        // First flush: the block lives in `body`.
+        actor
+            .ask(WritePageBlocks {
+                page_id: page_id.clone(),
+                blocks: vec![row(SectionCol::Body, 1, b"v1", t0)],
+                name_sync: None,
+            })
+            .await
+            .expect("first flush");
+
+        // Second flush: same id, now in `preamble` at a new ordering/content (as
+        // a flush would after the block moved between section editors).
+        actor
+            .ask(WritePageBlocks {
+                page_id: page_id.clone(),
+                blocks: vec![row(SectionCol::Preamble, 0, b"v2", t1)],
+                name_sync: None,
+            })
+            .await
+            .expect("second flush");
+
+        let rows = blocks::Entity::find().all(&conn).await.unwrap();
+        assert_eq!(
+            rows.len(),
+            1,
+            "the block was updated in place, not duplicated"
+        );
+        let b = &rows[0];
+        assert_eq!(
+            b.section,
+            SectionCol::Preamble,
+            "section must update in place when a block moves, not keep its old value",
+        );
+        assert_eq!(
+            b.content, b"v2",
+            "content updated to the new section's value"
+        );
+        assert_eq!(b.ordering, 0, "ordering updated to the new section's value");
+        assert_eq!(
+            b.created_at, t0,
+            "created_at survives the move (omitted from the conflict-update set)",
         );
     }
 

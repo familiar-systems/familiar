@@ -51,7 +51,7 @@ async fn pages_and_blocks_round_trip_branded_types() {
             status: Set(status.into()),
             ordering: Set(i as i64),
             content: Set(format!("paragraph {i}").into_bytes()),
-            section: Set("content".to_string()),
+            section: Set(SectionCol::Body),
             created_at: Set(now),
             updated_at: Set(now),
         }

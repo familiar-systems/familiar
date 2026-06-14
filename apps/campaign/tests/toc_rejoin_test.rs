@@ -17,18 +17,21 @@ use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::CampaignId;
 use familiar_systems_campaign::actors::registry::CreateCampaign;
 use familiar_systems_campaign::actors::supervisor::{CreatePage, JoinRoom};
-use familiar_systems_campaign::domain::crdt::doc::{CrdtDoc, Snapshot};
-use familiar_systems_campaign::loro::toc::LoroTocDoc;
+use familiar_systems_campaign::domain::crdt::doc::Snapshot;
 use familiar_systems_campaign_shared::id::ClientId;
+use familiar_systems_campaign_shared::loro::toc::CONTAINER_TOC;
+use loro::{LoroDoc, TreeParentId};
 use tokio::sync::mpsc;
 
-/// Decode a room snapshot through the real read path and count root-level nodes.
+/// Decode a room snapshot the way a joining client does (into a raw LoroDoc)
+/// and count root-level ToC tree nodes.
 fn snapshot_root_count(snapshot: &Snapshot) -> usize {
-    let mut probe = LoroTocDoc::new();
-    probe
-        .import_snapshot(snapshot)
+    let doc = LoroDoc::new();
+    doc.import(snapshot.as_bytes())
         .expect("room snapshot imports cleanly into a fresh doc");
-    probe.read_tree().len()
+    doc.get_tree(CONTAINER_TOC)
+        .children(TreeParentId::Root)
+        .map_or(0, |roots| roots.len())
 }
 
 #[tokio::test]
@@ -52,7 +55,6 @@ async fn toc_rejoin_after_leave_still_gets_full_snapshot() {
                 name: name.to_string(),
                 status: None,
                 parent: None,
-                seed_blocks: vec![],
             })
             .await
             .expect("create page");

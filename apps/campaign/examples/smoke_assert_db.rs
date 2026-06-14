@@ -6,8 +6,8 @@
 //!
 //!   - at least 2 Pages exist (the seeded "Campaign Base Camp" home page plus
 //!     the second page the spec created), and
-//!   - each Page has at least 2 `section = 'content'` blocks (the spec types
-//!     two paragraphs into each), and
+//!   - each Page has at least 2 `section = 'body'` blocks (the spec types two
+//!     paragraphs into each page's body section), and
 //!   - one Page is named "The Sunken Bastion": the spec renames "Test page" via
 //!     the in-editor title, so this proves an in-editor rename reached
 //!     `pages.name` (the server-authoritative `meta.title` -> `name_sync` flush).
@@ -28,7 +28,7 @@ use familiar_systems_campaign::entities::{blocks, pages};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 const MIN_PAGES: u64 = 2;
-const MIN_CONTENT_BLOCKS_PER_PAGE: u64 = 2;
+const MIN_BODY_BLOCKS_PER_PAGE: u64 = 2;
 /// The spec renames "Test page" to this via the in-editor title; it must persist
 /// to `pages.name`.
 const RENAMED_PAGE: &str = "The Sunken Bastion";
@@ -79,20 +79,17 @@ async fn main() {
     }
 
     for t in &all_pages {
-        let content_blocks = blocks::Entity::find()
+        let body_blocks = blocks::Entity::find()
             .filter(blocks::Column::PageId.eq(t.id.clone()))
-            .filter(blocks::Column::Section.eq("content"))
+            .filter(blocks::Column::Section.eq("body"))
             .count(&db)
             .await
             .unwrap_or_else(|e| fatal(&format!("count blocks for {:?} failed: {e}", t.id)));
 
-        println!(
-            "page {:?} ({}): {content_blocks} content blocks",
-            t.id, t.name
-        );
-        if content_blocks < MIN_CONTENT_BLOCKS_PER_PAGE {
+        println!("page {:?} ({}): {body_blocks} body blocks", t.id, t.name);
+        if body_blocks < MIN_BODY_BLOCKS_PER_PAGE {
             failures.push(format!(
-                "page {:?} ({}) has {content_blocks} content blocks, expected >= {MIN_CONTENT_BLOCKS_PER_PAGE}",
+                "page {:?} ({}) has {body_blocks} body blocks, expected >= {MIN_BODY_BLOCKS_PER_PAGE}",
                 t.id, t.name
             ));
         }
@@ -100,7 +97,7 @@ async fn main() {
 
     if failures.is_empty() {
         println!(
-            "OK: {page_count} pages, each with >= {MIN_CONTENT_BLOCKS_PER_PAGE} content blocks, one renamed to {RENAMED_PAGE:?}"
+            "OK: {page_count} pages, each with >= {MIN_BODY_BLOCKS_PER_PAGE} body blocks, one renamed to {RENAMED_PAGE:?}"
         );
         exit(0);
     }
