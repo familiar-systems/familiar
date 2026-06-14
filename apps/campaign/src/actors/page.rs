@@ -14,6 +14,7 @@ use chrono::{DateTime, Utc};
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::CampaignId;
 use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::loro::page::Section;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use kameo::actor::{ActorRef, WeakActorRef};
@@ -30,7 +31,7 @@ use crate::domain::crdt::doc::CrdtDoc;
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
 use crate::domain::page::{NewBlock, build_new_page};
-use crate::entities::columns::{BlockIdCol, PageIdCol, StatusCol};
+use crate::entities::columns::{BlockIdCol, PageIdCol, SectionCol, StatusCol};
 use crate::entities::{blocks, pages};
 use crate::loro::page::LoroPageDoc;
 use crate::wire::broadcast::encode_broadcast;
@@ -160,7 +161,9 @@ impl Actor for PageActor {
                     &page_row.name,
                     &status,
                     &kind,
-                    block_rows.into_iter().map(|b| (b.section, b.content)),
+                    block_rows
+                        .into_iter()
+                        .map(|b| (Section::from(b.section), b.content)),
                     BlockId::generate,
                 );
                 // A dropped block means a corrupt blob slipped past the serialize
@@ -193,7 +196,7 @@ impl Actor for PageActor {
                     &new_page.name,
                     &new_page.status,
                     &new_page.kind,
-                    std::iter::empty::<(String, Vec<u8>)>(),
+                    std::iter::empty::<(Section, Vec<u8>)>(),
                     BlockId::generate,
                 );
                 new_page.blocks = doc
@@ -501,7 +504,7 @@ impl PageActor {
                     status: Set(StatusCol::from(Status::GmOnly)),
                     ordering: Set(b.ordering),
                     content: Set(b.content),
-                    section: Set(section.to_string()),
+                    section: Set(SectionCol::from(section)),
                     created_at: Set(now),
                     updated_at: Set(now),
                 });
@@ -580,7 +583,6 @@ mod tests {
     use crate::db;
     use crate::entities::columns::PageKindCol;
     use crate::migrations::Migrator;
-    use familiar_systems_campaign_shared::loro::page::SECTION_BODY;
     use familiar_systems_campaign_shared::loro::prosemirror::{
         ATTRIBUTES_KEY, CHILDREN_KEY, NODE_NAME_KEY,
     };
@@ -724,7 +726,7 @@ mod tests {
             status: Set(StatusCol::from(Status::GmOnly)),
             ordering: Set(0),
             content: Set(make_heading_blob("Korgath the Destroyer")),
-            section: Set(SECTION_BODY.to_string()),
+            section: Set(SectionCol::Body),
             created_at: Set(now),
             updated_at: Set(now),
         }

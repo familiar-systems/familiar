@@ -14,6 +14,7 @@
 //! Page has live subscribers.
 
 use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::loro::page::Section;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 
@@ -22,9 +23,9 @@ use familiar_systems_campaign_shared::status::Status;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewBlock {
     pub id: BlockId,
-    /// The section this block belongs to (a Loro container / `blocks.section`
-    /// value, e.g. `preamble` or `body`). `ordering` is relative to this section.
-    pub section: &'static str,
+    /// The section this block belongs to (its Loro container). `ordering` is
+    /// relative to this section. Written through `SectionCol` at the DB edge.
+    pub section: Section,
     pub ordering: i64,
     pub content: Vec<u8>,
     pub status: Status,

@@ -1087,13 +1087,16 @@ mod tests {
                     );
                     assert_eq!(content["nodeName"].as_str(), Some("paragraph"));
                 }
-                let mut seeded_sections: Vec<String> =
-                    block_rows.iter().map(|b| b.section.clone()).collect();
+                use familiar_systems_campaign_shared::loro::page::Section;
+                let mut seeded_sections: Vec<&str> = block_rows
+                    .iter()
+                    .map(|b| Section::from(b.section).as_str())
+                    .collect();
                 seeded_sections.sort();
-                let mut expected_sections: Vec<String> = PageKind::Entity
+                let mut expected_sections: Vec<&str> = PageKind::Entity
                     .sections()
                     .iter()
-                    .map(|s| s.to_string())
+                    .map(|s| s.as_str())
                     .collect();
                 expected_sections.sort();
                 assert_eq!(

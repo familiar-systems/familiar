@@ -25,20 +25,9 @@ use crate::id::PageId;
 
 /// Top-level LoroMap for Page metadata (title, status).
 /// Values are LWW strings, not LoroText (concurrent edits pick one winner).
+/// `meta` is deliberately not a [`Section`]: it is metadata, not in
+/// [`PageKind::sections`](crate::page_kind::PageKind::sections).
 pub const CONTAINER_META: &str = "meta";
-
-/// Top-level LoroMap for the bounded "index card" section of a Page.
-/// Starts empty; AI-authored/maintained per the multi-section design. Must be
-/// pre-initialized at doc construction (every declared section is created up
-/// front) to avoid the concurrent sub-container creation hazard.
-pub const CONTAINER_PREAMBLE: &str = "preamble";
-
-/// Top-level LoroMap for the freeform body section of a Page.
-/// Structure inside is managed by loro-prosemirror on the client and by
-/// the block codec on the server. Must be pre-initialized at doc construction
-/// (every declared section is created up front) to avoid the concurrent
-/// sub-container creation hazard.
-pub const CONTAINER_BODY: &str = "body";
 
 // ── Schema: LoroMap key constants ───────────────────────────────────────────
 
@@ -50,18 +39,42 @@ pub const KEY_STATUS: &str = "status";
 /// ToC tree nodes, this one on a Page's `meta` map.
 pub const KEY_KIND: &str = "kind";
 
-// ── Schema: section identifiers ─────────────────────────────────────────────
-//
-// A section's at-rest `blocks.section` value is identical to its Loro root
-// container name. These aliases keep that equality explicit and un-driftable:
-// the actor persists rows under `SECTION_*` and the doc opens the matching
-// `CONTAINER_*` map, and they are the same string by construction.
+// ── Schema: sections ────────────────────────────────────────────────────────
 
-/// Section name for the preamble; stored in the `section` column of `blocks`.
-pub const SECTION_PREAMBLE: &str = CONTAINER_PREAMBLE;
+/// A Page section: a named Loro root container. [`as_str`](Section::as_str) is
+/// the container id and the client's `containerId` (the wire string, mirrored
+/// in `@familiar-systems/editor` and pinned by its `section-contract` test).
+/// Every declared section is pre-initialized at doc construction (see
+/// `LoroPageDoc::from_blocks`) to avoid Loro's concurrent sub-container-creation
+/// hazard.
+///
+/// This is the wire/domain view. The at-rest DB token is a separate, frozen
+/// enum (`SectionCol`, app-local to `apps/campaign`): persisting through it
+/// decouples the `blocks.section` column from `as_str`, so a section can be
+/// re-spelled, localized, or have its grammar fixed without a DB migration.
+/// Same split as [`PageKind`](crate::page_kind::PageKind) / `PageKindCol`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Section {
+    /// The bounded "index card" section (AI-authored/maintained; no headings).
+    Preamble,
+    /// The permissive freeform ProseMirror section.
+    Body,
+    // Future kinds declare their own sections: Skill = `Description` + `Body`;
+    // Session = `Prep` / `Summary` / `Journal` / `Transcript`.
+}
 
-/// Section name for the body; stored in the `section` column of `blocks`.
-pub const SECTION_BODY: &str = CONTAINER_BODY;
+impl Section {
+    /// The Loro root-container id and at-rest section string. An explicit
+    /// `match` (the single source of truth) so a rename can't silently migrate
+    /// the wire format; mirrors
+    /// [`PageKind::as_loro_str`](crate::page_kind::PageKind::as_loro_str).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Section::Preamble => "preamble",
+            Section::Body => "body",
+        }
+    }
+}
 
 /// Lightweight reference to a Page: its ID and display name.
 ///

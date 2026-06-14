@@ -24,7 +24,7 @@ use loro::{LoroDoc, LoroMap, LoroValue, ValueOrContainer};
 
 use familiar_systems_campaign_shared::id::{BlockId, PageId};
 use familiar_systems_campaign_shared::loro::page::{
-    CONTAINER_META, KEY_KIND, KEY_STATUS, KEY_TITLE,
+    CONTAINER_META, KEY_KIND, KEY_STATUS, KEY_TITLE, Section,
 };
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
@@ -77,7 +77,7 @@ impl LoroPageDoc {
         name: &str,
         status: &Status,
         kind: &PageKind,
-        rows: impl IntoIterator<Item = (String, Vec<u8>)>,
+        rows: impl IntoIterator<Item = (Section, Vec<u8>)>,
         mut mint: impl FnMut() -> BlockId,
     ) -> (Self, Vec<block_codec::SkippedBlock>) {
         let doc = LoroDoc::new();
@@ -87,10 +87,13 @@ impl LoroPageDoc {
         meta.insert(KEY_KIND, kind.as_loro_str()).unwrap();
         let this = Self { doc, kind: *kind };
 
-        // Bucket rows by their at-rest `section` (identical to the Loro container
-        // name). Restore order within a section is the input order, which the
-        // restore query (`ORDER BY section, ordering`) already makes correct.
-        let mut by_section: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
+        // Bucket rows by section. Rows arrive already typed as `Section` -- the
+        // `SectionCol` boundary converted them at the sea-orm edge and rejected
+        // any unknown at-rest token before we got here -- so this is pure enum
+        // bucketing, no string handling. Restore order within a section is the
+        // input order, which the restore query (`ORDER BY section, ordering`)
+        // already makes correct.
+        let mut by_section: HashMap<Section, Vec<Vec<u8>>> = HashMap::new();
         for (section, content) in rows {
             by_section.entry(section).or_default().push(content);
         }
@@ -99,9 +102,9 @@ impl LoroPageDoc {
         // an empty section is seeded with one empty paragraph so it opens as a
         // schema-valid, editable ProseMirror doc (a `doc` with one `block+` child).
         let mut skipped = Vec::new();
-        for &section_name in kind.sections() {
-            let container = this.section(section_name);
-            match by_section.remove(section_name) {
+        for &section in kind.sections() {
+            let container = this.section(section.as_str());
+            match by_section.remove(&section) {
                 Some(blobs) => skipped.extend(block_codec::restore_content(&container, &blobs)),
                 None => {
                     let seed = block_codec::empty_paragraph_blob(&mint());
@@ -110,12 +113,15 @@ impl LoroPageDoc {
             }
         }
 
-        // Rows left in `by_section` were tagged with a section this kind does not
-        // declare: they bind to no container. Drop them, logged loudly (e.g. a
-        // legacy `content` row after the content->body rename), never rebound.
+        // Rows left in `by_section` are a *known* section this kind does not
+        // declare (a kind-mismatch): they bind to no container, so drop them,
+        // logged loudly, never rebound. Unreachable today (Entity and Template
+        // share both sections); live once a kind declares a divergent set
+        // (Skill/Session). Unknown at-rest tokens never reach here -- `SectionCol`
+        // rejects them at the read.
         for (orphan, dropped) in by_section {
             tracing::error!(
-                section = %orphan,
+                section = orphan.as_str(),
                 count = dropped.len(),
                 ?kind,
                 "blocks tagged with a section this page kind does not declare; dropped",
@@ -193,11 +199,16 @@ impl LoroPageDoc {
     /// not globally. Driven off the immutable [`kind`](Self::kind) field (the
     /// authoritative row value, the same set `from_blocks` restored from), so this
     /// destructive prune-then-upsert never trusts the client-writable `meta.kind`.
-    pub fn extract_sections(&self) -> Vec<(&'static str, Vec<block_codec::ExtractedBlock>)> {
+    pub fn extract_sections(&self) -> Vec<(Section, Vec<block_codec::ExtractedBlock>)> {
         self.kind
             .sections()
             .iter()
-            .map(|&name| (name, block_codec::extract_blocks(&self.section(name))))
+            .map(|&section| {
+                (
+                    section,
+                    block_codec::extract_blocks(&self.section(section.as_str())),
+                )
+            })
             .collect()
     }
 }
@@ -231,7 +242,6 @@ impl CrdtDoc for LoroPageDoc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use familiar_systems_campaign_shared::loro::page::{CONTAINER_BODY, CONTAINER_PREAMBLE};
     use familiar_systems_campaign_shared::loro::prosemirror::{
         ATTRIBUTES_KEY, CHILDREN_KEY, NODE_NAME_KEY,
     };
@@ -239,18 +249,16 @@ mod tests {
 
     /// No at-rest rows: every declared section gets seeded. Typed so the empty
     /// `IntoIterator` resolves without annotations at each call site.
-    fn no_rows() -> Vec<(String, Vec<u8>)> {
+    fn no_rows() -> Vec<(Section, Vec<u8>)> {
         Vec::new()
     }
 
     /// Flatten `(section, blobs)` specs into the flat `(section, blob)` row stream
     /// `from_blocks` consumes -- keeps tests reading close to "section -> blocks".
-    fn rows(
-        specs: impl IntoIterator<Item = (&'static str, Vec<Vec<u8>>)>,
-    ) -> Vec<(String, Vec<u8>)> {
+    fn rows(specs: impl IntoIterator<Item = (Section, Vec<Vec<u8>>)>) -> Vec<(Section, Vec<u8>)> {
         specs
             .into_iter()
-            .flat_map(|(section, blobs)| blobs.into_iter().map(move |b| (section.to_string(), b)))
+            .flat_map(|(section, blobs)| blobs.into_iter().map(move |b| (section, b)))
             .collect()
     }
 
@@ -274,8 +282,8 @@ mod tests {
         );
         let val = doc.debug_value().unwrap();
         assert!(val.get(CONTAINER_META).is_some());
-        assert!(val.get(CONTAINER_PREAMBLE).is_some());
-        assert!(val.get(CONTAINER_BODY).is_some());
+        assert!(val.get(Section::Preamble.as_str()).is_some());
+        assert!(val.get(Section::Body.as_str()).is_some());
     }
 
     #[test]
@@ -336,12 +344,12 @@ mod tests {
             "Iron Citadel",
             &Status::GmOnly,
             &PageKind::Entity,
-            rows([(CONTAINER_BODY, vec![heading_blob, para_blob])]),
+            rows([(Section::Body, vec![heading_blob, para_blob])]),
             BlockId::generate,
         );
 
         let deep: serde_json::Value = doc.debug_value().unwrap();
-        let children = &deep[CONTAINER_BODY][CHILDREN_KEY];
+        let children = &deep[Section::Body.as_str()][CHILDREN_KEY];
         assert_eq!(children.as_array().unwrap().len(), 2);
         assert_eq!(children[0][NODE_NAME_KEY], "heading");
         assert_eq!(children[1][NODE_NAME_KEY], "paragraph");
@@ -361,53 +369,26 @@ mod tests {
         );
         let sections = doc.extract_sections();
         assert_eq!(sections.len(), PageKind::Entity.sections().len());
-        for (name, blocks) in &sections {
-            assert_eq!(blocks.len(), 1, "section {name} seeded with one paragraph");
+        for (section, blocks) in &sections {
+            assert_eq!(
+                blocks.len(),
+                1,
+                "section {} seeded with one paragraph",
+                section.as_str()
+            );
             let v: serde_json::Value = serde_json::from_slice(&blocks[0].content).unwrap();
             assert_eq!(v[NODE_NAME_KEY], "paragraph");
             assert!(blocks[0].id.is_some(), "seed carries a stable blockId");
         }
     }
 
-    #[test]
-    fn from_blocks_drops_rows_in_undeclared_sections() {
-        // A legacy "content" row -- a section Entity does not declare -- binds to
-        // no container: it is dropped, not rebound to a declared section. The two
-        // body rows restore; the orphan never appears in any section. (The drop is
-        // the load-bearing assertion; asserting the `tracing::error!` itself would
-        // need a log-capture dep, so it is left out.)
-        let input = rows([
-            (CONTAINER_BODY, vec![paragraph_blob("body-0")]),
-            ("content", vec![paragraph_blob("legacy-orphan")]),
-            (CONTAINER_BODY, vec![paragraph_blob("body-1")]),
-        ]);
-
-        let (doc, _) = LoroPageDoc::from_blocks(
-            "Test",
-            &Status::GmOnly,
-            &PageKind::Entity,
-            input,
-            BlockId::generate,
-        );
-
-        let sections = doc.extract_sections();
-        // Sections come back in the kind's declared order.
-        let names: Vec<&str> = sections.iter().map(|(n, _)| *n).collect();
-        assert_eq!(names, PageKind::Entity.sections());
-
-        let body = sections.iter().find(|(n, _)| *n == CONTAINER_BODY).unwrap();
-        assert_eq!(body.1.len(), 2, "two body rows restored, orphan excluded");
-
-        let any_orphan = sections.iter().flat_map(|(_, b)| b).any(|b| {
-            std::str::from_utf8(&b.content)
-                .map(|s| s.contains("legacy-orphan"))
-                .unwrap_or(false)
-        });
-        assert!(
-            !any_orphan,
-            "a row tagged with an undeclared section is dropped, not rebound",
-        );
-    }
+    // The "undeclared section is dropped" path moved: an *unknown* at-rest token
+    // can no longer reach `from_blocks` (rows arrive typed as `Section`, the
+    // `SectionCol` boundary having rejected unknowns at the read -- see the
+    // `section_col_rejects_unknown_token` test in `entities::columns`). The
+    // remaining in-`from_blocks` orphan drop is the kind-mismatch case (a known
+    // section a kind doesn't declare), which is unreachable until a kind declares
+    // a divergent section set (Skill/Session); its test lands with that work.
 
     #[test]
     fn extract_sections_round_trip() {
@@ -422,29 +403,25 @@ mod tests {
             "Test",
             &Status::Known,
             &PageKind::Entity,
-            rows([(CONTAINER_BODY, vec![heading_blob])]),
+            rows([(Section::Body, vec![heading_blob])]),
             BlockId::generate,
         );
         let sections = doc.extract_sections();
-        let body = sections.iter().find(|(n, _)| *n == CONTAINER_BODY).unwrap();
+        let body = sections.iter().find(|(n, _)| *n == Section::Body).unwrap();
         assert_eq!(body.1.len(), 1);
         // The preamble had no rows, so it was seeded with one paragraph.
         let preamble = sections
             .iter()
-            .find(|(n, _)| *n == CONTAINER_PREAMBLE)
+            .find(|(n, _)| *n == Section::Preamble)
             .unwrap();
         assert_eq!(preamble.1.len(), 1);
 
         // Round-trip the FULL extraction (every section, including the seeded
         // preamble) so rebuilding re-seeds nothing and the doc comes back byte
         // identical -- `mint` is never called the second time.
-        let all_rows: Vec<(String, Vec<u8>)> = sections
+        let all_rows: Vec<(Section, Vec<u8>)> = sections
             .iter()
-            .flat_map(|(name, blocks)| {
-                blocks
-                    .iter()
-                    .map(move |b| (name.to_string(), b.content.clone()))
-            })
+            .flat_map(|(section, blocks)| blocks.iter().map(move |b| (*section, b.content.clone())))
             .collect();
         let (doc2, _) = LoroPageDoc::from_blocks(
             "Test",
@@ -466,9 +443,9 @@ mod tests {
             &Status::GmOnly,
             &PageKind::Entity,
             rows([
-                (CONTAINER_PREAMBLE, vec![paragraph_blob("card")]),
+                (Section::Preamble, vec![paragraph_blob("card")]),
                 (
-                    CONTAINER_BODY,
+                    Section::Body,
                     vec![paragraph_blob("first"), paragraph_blob("second")],
                 ),
             ]),
@@ -476,15 +453,15 @@ mod tests {
         );
 
         let sections = doc.extract_sections();
-        let by = |name: &str| {
+        let by = |section: Section| {
             sections
                 .iter()
-                .find(|(n, _)| *n == name)
+                .find(|(n, _)| *n == section)
                 .map(|(_, blocks)| blocks)
                 .unwrap()
         };
-        let preamble = by(CONTAINER_PREAMBLE);
-        let body = by(CONTAINER_BODY);
+        let preamble = by(Section::Preamble);
+        let body = by(Section::Body);
         assert_eq!(preamble.iter().map(|b| b.ordering).collect::<Vec<_>>(), [0]);
         assert_eq!(
             body.iter().map(|b| b.ordering).collect::<Vec<_>>(),
@@ -534,7 +511,7 @@ mod tests {
             "Snap",
             &Status::Known,
             &PageKind::Entity,
-            rows([(CONTAINER_BODY, vec![heading_blob])]),
+            rows([(Section::Body, vec![heading_blob])]),
             BlockId::generate,
         );
         let snapshot = doc.export_snapshot().unwrap();
@@ -561,7 +538,7 @@ mod tests {
         // Simulate a client that received the snapshot and adds content
         let client = LoroDoc::new();
         client.import(snapshot.as_bytes()).unwrap();
-        let content = client.get_map(CONTAINER_BODY);
+        let content = client.get_map(Section::Body.as_str());
         content.insert(NODE_NAME_KEY, "doc").unwrap();
         content
             .insert_container(ATTRIBUTES_KEY, LoroMap::new())

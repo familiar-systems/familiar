@@ -12,6 +12,7 @@
 //! `apps/campaign/` imports them.
 
 use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::loro::page::Section;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use sea_orm::sea_query::{ArrayType, ColumnType, Nullable, ValueType, ValueTypeErr};
@@ -156,6 +157,74 @@ impl From<PageKindCol> for PageKind {
         match k {
             PageKindCol::Entity => Self::Entity,
             PageKindCol::Template => Self::Template,
+        }
+    }
+}
+
+// The frozen on-disk token for a Page section. Decoupled from the wire/Loro id
+// (`Section::as_str`): persisting through this boundary means a section can be
+// re-spelled / localized later without a DB migration, because the `From` impls
+// map by *variant*, not by string. The tokens coincide with `as_str` today (a
+// drift test guards that), the same convenience `PageKindCol` notes. The
+// boundary is strict: an unknown at-rest token fails the read (sea-orm rejects
+// an unrecognized `string_value`) rather than dropping silently -- the same
+// posture as `PageKindCol` / `StatusCol`. Adding a `Section` variant adds a line
+// here; the `From` matches below then fail to compile until updated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "Text")]
+pub enum SectionCol {
+    #[sea_orm(string_value = "preamble")]
+    Preamble,
+    #[sea_orm(string_value = "body")]
+    Body,
+}
+
+impl From<Section> for SectionCol {
+    fn from(s: Section) -> Self {
+        match s {
+            Section::Preamble => Self::Preamble,
+            Section::Body => Self::Body,
+        }
+    }
+}
+impl From<SectionCol> for Section {
+    fn from(s: SectionCol) -> Self {
+        match s {
+            SectionCol::Preamble => Self::Preamble,
+            SectionCol::Body => Self::Body,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::ActiveEnum;
+
+    #[test]
+    fn section_col_round_trips_known_tokens() {
+        for col in [SectionCol::Preamble, SectionCol::Body] {
+            assert_eq!(SectionCol::try_from_value(&col.to_value()).unwrap(), col);
+        }
+    }
+
+    #[test]
+    fn section_col_rejects_unknown_token() {
+        // Strict boundary: an at-rest token this binary doesn't know (legacy /
+        // rename debris, or a newer shard's section seen during rollback) fails
+        // the read rather than silently dropping -- the posture `PageKindCol` /
+        // `StatusCol` already take. This is where the unknown-token concern lives
+        // now that `from_blocks` buckets on typed `Section`s.
+        assert!(SectionCol::try_from_value(&"content".to_string()).is_err());
+    }
+
+    #[test]
+    fn section_col_db_token_matches_wire_string_today() {
+        // The DB token and the Loro/wire id coincide now but are decoupled by
+        // design; guard that they still agree, so a divergence has to be a
+        // deliberate edit (and a migration) rather than an accident.
+        for section in [Section::Preamble, Section::Body] {
+            assert_eq!(SectionCol::from(section).to_value(), section.as_str());
         }
     }
 }

@@ -12,7 +12,7 @@ use sea_orm::{
 };
 
 use crate::domain::page::NewPage;
-use crate::entities::columns::{BlockIdCol, PageKindCol, StatusCol};
+use crate::entities::columns::{BlockIdCol, PageKindCol, SectionCol, StatusCol};
 use crate::entities::{blocks, campaign_metadata, pages, toc_entries};
 
 pub struct DatabaseWriteActor {
@@ -459,7 +459,7 @@ impl Message<DbCreatePage> for DatabaseWriteActor {
                     status: Set(StatusCol::from(b.status)),
                     ordering: Set(b.ordering),
                     content: Set(b.content),
-                    section: Set(b.section.to_string()),
+                    section: Set(SectionCol::from(b.section)),
                     created_at: Set(now),
                     updated_at: Set(now),
                 })
@@ -500,7 +500,6 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::migrations::Migrator;
-    use familiar_systems_campaign_shared::loro::page::SECTION_BODY;
     use kameo::actor::Spawn;
     use sea_orm_migration::MigratorTrait;
 
@@ -642,6 +641,7 @@ mod tests {
     async fn create_page_inserts_row_and_blocks_atomically() {
         use crate::domain::page::{NewBlock, NewPage};
         use familiar_systems_campaign_shared::id::{BlockId, PageId};
+        use familiar_systems_campaign_shared::loro::page::Section;
         use familiar_systems_campaign_shared::page_kind::PageKind;
         use familiar_systems_campaign_shared::status::Status;
 
@@ -664,7 +664,7 @@ mod tests {
                     template_id: None,
                     blocks: vec![NewBlock {
                         id: BlockId::generate(),
-                        section: SECTION_BODY,
+                        section: Section::Body,
                         ordering: 0,
                         content: b"hello".to_vec(),
                         status: Status::GmOnly,
@@ -724,7 +724,7 @@ mod tests {
             status: Set(StatusCol::GmOnly),
             ordering: Set(0),
             content: Set(b"original".to_vec()),
-            section: Set(SECTION_BODY.to_string()),
+            section: Set(SectionCol::Body),
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -744,7 +744,7 @@ mod tests {
             status: Set(StatusCol::GmOnly),
             ordering: Set(0),
             content: Set(b"new-a".to_vec()),
-            section: Set(SECTION_BODY.to_string()),
+            section: Set(SectionCol::Body),
             created_at: Set(now),
             updated_at: Set(now),
         }];
@@ -814,7 +814,7 @@ mod tests {
                 status: Set(StatusCol::GmOnly),
                 ordering: Set(ord),
                 content: Set(body.to_vec()),
-                section: Set(SECTION_BODY.to_string()),
+                section: Set(SectionCol::Body),
                 created_at: Set(ts),
                 updated_at: Set(ts),
             };
@@ -867,7 +867,6 @@ mod tests {
     #[tokio::test]
     async fn write_page_blocks_updates_section_when_a_block_moves() {
         use familiar_systems_campaign_shared::id::BlockId;
-        use familiar_systems_campaign_shared::loro::page::SECTION_PREAMBLE;
 
         db::register_sqlite_vec();
         let conn = db::connect("sqlite::memory:").await.expect("sqlite");
@@ -899,23 +898,24 @@ mod tests {
         .expect("seed page");
 
         let block = BlockId::generate();
-        let row =
-            |section: &str, ord: i64, body: &[u8], ts: chrono::DateTime<Utc>| blocks::ActiveModel {
+        let row = |section: SectionCol, ord: i64, body: &[u8], ts: chrono::DateTime<Utc>| {
+            blocks::ActiveModel {
                 id: Set(BlockIdCol::from(block.clone())),
                 page_id: Set(page_id_col.clone()),
                 status: Set(StatusCol::GmOnly),
                 ordering: Set(ord),
                 content: Set(body.to_vec()),
-                section: Set(section.to_string()),
+                section: Set(section),
                 created_at: Set(ts),
                 updated_at: Set(ts),
-            };
+            }
+        };
 
         // First flush: the block lives in `body`.
         actor
             .ask(WritePageBlocks {
                 page_id: page_id.clone(),
-                blocks: vec![row(SECTION_BODY, 1, b"v1", t0)],
+                blocks: vec![row(SectionCol::Body, 1, b"v1", t0)],
                 name_sync: None,
             })
             .await
@@ -926,7 +926,7 @@ mod tests {
         actor
             .ask(WritePageBlocks {
                 page_id: page_id.clone(),
-                blocks: vec![row(SECTION_PREAMBLE, 0, b"v2", t1)],
+                blocks: vec![row(SectionCol::Preamble, 0, b"v2", t1)],
                 name_sync: None,
             })
             .await
@@ -940,7 +940,8 @@ mod tests {
         );
         let b = &rows[0];
         assert_eq!(
-            b.section, SECTION_PREAMBLE,
+            b.section,
+            SectionCol::Preamble,
             "section must update in place when a block moves, not keep its old value",
         );
         assert_eq!(
