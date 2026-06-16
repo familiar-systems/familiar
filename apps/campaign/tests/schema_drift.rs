@@ -51,7 +51,7 @@ async fn setup_via_entities() -> DatabaseConnection {
     apply_entity_schema(&db, &schema, backend, blocks::Entity).await;
     apply_entity_schema(&db, &schema, backend, campaign_metadata::Entity).await;
     apply_entity_schema(&db, &schema, backend, toc_entries::Entity).await;
-    // No FK yet, so ordering relative to `pages` is irrelevant.
+    // `sessions.page_id` FKs to `pages`, so `pages` (applied above) must precede.
     apply_entity_schema(&db, &schema, backend, sessions::Entity).await;
 
     db

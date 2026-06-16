@@ -11,10 +11,9 @@
  * - docs/glossary.md
  * - issue #155.
  *
- * Only `Entity` and `Template` exist today. `Session`, `Skill`, and `Memory`
- * are known future cases (the audio pipeline and the agent system) and get
- * added as variants when those documents are actually built - each addition
- * makes the `match` arms below non-exhaustive, so the compiler points at
- * every site.
+ * `Entity`, `Template`, and `Session` exist today. `Skill` and `Memory` are
+ * known future cases (the agent system) and get added as variants when those
+ * documents are actually built - each addition makes the `match` arms below
+ * non-exhaustive, so the compiler points at every site.
  */
-export type PageKind = "entity" | "template";
+export type PageKind = "entity" | "template" | "session";

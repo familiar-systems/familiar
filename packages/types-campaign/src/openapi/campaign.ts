@@ -9,10 +9,13 @@ import type {
   CampaignMetadataResponse,
   CatalogResponse,
   CreatePageRequest,
+  CreateSessionRequest,
   PageId,
   PageKind,
   PageResponse,
   PatchCampaignRequest,
+  SessionId,
+  SessionResponse,
   Status,
   SystemEntry,
   TemplateRef,
@@ -44,6 +47,22 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations["create_page"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/campaign/{id}/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["create_session"];
     delete?: never;
     options?: never;
     head?: never;
@@ -120,6 +139,16 @@ export interface components {
      */
     CreatePageRequest: CreatePageRequest;
     /**
+     * @description Create a new session in a campaign: its Session page and its temporal record,
+     *     minted together in one genesis transaction.
+     *
+     *     Everything is optional. `name` is the GM's subtitle ("The End of Perth");
+     *     omitted or blank means an unnamed session, identified by its ordinal until
+     *     the GM titles it after play. A missing `status` defaults to `gmOnly`.
+     *     `parent` places the page in the table of contents (omitted => ToC root).
+     */
+    CreateSessionRequest: CreateSessionRequest;
+    /**
      * Format: ulid
      * @description Uniquely identifies a page (NPC, location, item, etc.).
      *     ULID for compact URLs (26 chars) and B-tree-friendly insert ordering.
@@ -136,17 +165,29 @@ export interface components {
      *     - docs/glossary.md
      *     - issue #155.
      *
-     *     Only `Entity` and `Template` exist today. `Session`, `Skill`, and `Memory`
-     *     are known future cases (the audio pipeline and the agent system) and get
-     *     added as variants when those documents are actually built - each addition
-     *     makes the `match` arms below non-exhaustive, so the compiler points at
-     *     every site.
+     *     `Entity`, `Template`, and `Session` exist today. `Skill` and `Memory` are
+     *     known future cases (the agent system) and get added as variants when those
+     *     documents are actually built - each addition makes the `match` arms below
+     *     non-exhaustive, so the compiler points at every site.
      * @enum {string}
      */
     PageKind: PageKind;
     /** @description A created Page, returned with `201 Created`. */
     PageResponse: PageResponse;
     PatchCampaignRequest: PatchCampaignRequest;
+    /**
+     * Format: ulid
+     * @description Identifies a play session (discord call, table session, etc.).
+     */
+    SessionId: SessionId;
+    /**
+     * @description A created session, returned with `201 Created`.
+     *
+     *     The display name is `Session {ordinal}` (plus `: {name}` when the GM named
+     *     it); the client composes it, since the sequence number is the `ordinal` and
+     *     the label is the page title.
+     */
+    SessionResponse: SessionResponse;
     /**
      * @description Visibility status for campaign content. The CRDT syncs all content to all
      *     clients regardless of status; consumers (the browser UI, AI conversations)
@@ -357,6 +398,75 @@ export interface operations {
       };
       /** @description Creating from a template is not yet supported */
       501: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting or platform unreachable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  create_session: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateSessionRequest"];
+      };
+    };
+    responses: {
+      /** @description Session created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionResponse"];
+        };
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller is not a GM of this campaign */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not on this shard */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Parent page not found */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Creation failed */
+      500: {
         headers: {
           [name: string]: unknown;
         };

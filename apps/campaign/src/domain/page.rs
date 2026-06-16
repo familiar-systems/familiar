@@ -38,9 +38,11 @@ pub struct NewPage {
     pub id: PageId,
     pub name: String,
     pub status: Status,
-    /// What kind of page this is. `build_new_page` always produces `Entity`
-    /// today; the `template` kind has no creation path until template
-    /// instantiation lands (which will set it here alongside `template_id`).
+    /// What kind of page this is, chosen by the caller. `Entity` is the plain
+    /// authored-content path; `Session` is created via the supervisor's
+    /// `CreateSession` workflow (which also mints the temporal row). The
+    /// `template` kind has no creation path until template instantiation lands
+    /// (which will set it here alongside `template_id`).
     pub kind: PageKind,
     /// Lineage back to the template this was cloned from, if any. `None` until
     /// template instantiation lands.
@@ -64,15 +66,14 @@ pub struct NewPage {
 /// are cloned in at the call edge — deep-copy each block's content, mint a fresh
 /// `BlockId`, preserve its `section`, reset the per-section `ordering` — and fed
 /// to `from_blocks` as the initial rows; this also sets `template_id` for lineage.
-pub fn build_new_page(id: PageId, name: String, status: Status) -> NewPage {
+pub fn build_new_page(id: PageId, name: String, kind: PageKind, status: Status) -> NewPage {
     NewPage {
         id,
         name,
         status,
-        // Everything created today is authored world content. Template creation
-        // (the only other current kind) is not wired yet; when it lands it sets
-        // `kind: Template` and `template_id` here.
-        kind: PageKind::Entity,
+        kind,
+        // Template lineage is unset until template instantiation lands; it will
+        // be threaded here alongside `kind: Template`.
         template_id: None,
         blocks: Vec::new(),
     }
@@ -88,7 +89,12 @@ mod tests {
         // paragraph each is seeded with) are materialized by `from_blocks` from
         // the kind, not by this builder.
         let id = PageId::generate();
-        let new_page = build_new_page(id.clone(), "Korgath".to_string(), Status::GmOnly);
+        let new_page = build_new_page(
+            id.clone(),
+            "Korgath".to_string(),
+            PageKind::Entity,
+            Status::GmOnly,
+        );
 
         assert_eq!(new_page.id, id);
         assert_eq!(new_page.name, "Korgath");
@@ -101,8 +107,21 @@ mod tests {
     #[test]
     fn status_is_carried_through() {
         for status in [Status::GmOnly, Status::Known, Status::Retconned] {
-            let nt = build_new_page(PageId::generate(), "X".to_string(), status);
+            let nt = build_new_page(
+                PageId::generate(),
+                "X".to_string(),
+                PageKind::Entity,
+                status,
+            );
             assert_eq!(nt.status, status);
+        }
+    }
+
+    #[test]
+    fn kind_is_carried_through() {
+        for kind in [PageKind::Entity, PageKind::Session] {
+            let nt = build_new_page(PageId::generate(), "X".to_string(), kind, Status::GmOnly);
+            assert_eq!(nt.kind, kind);
         }
     }
 }

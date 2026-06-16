@@ -7,8 +7,9 @@
 //! - `"body"` (LoroMap): the freeform ProseMirror document root
 //!
 //! The ordered section list is a function of the page's `kind`
-//! ([`PageKind::sections`](crate::page_kind::PageKind::sections)); future kinds
-//! (Skill, Session) declare their own. Each ProseMirror section maps to its own
+//! ([`PageKind::sections`](crate::page_kind::PageKind::sections)); Session
+//! declares prep / summary / journal / transcript, and the future Skill kind
+//! will declare its own. Each ProseMirror section maps to its own
 //! root-level LoroMap, scoped via `containerId` on the client's
 //! `LoroSyncPlugin`. See
 //! `docs/plans/2026-06-07-multi-section-document-structure.md`.
@@ -56,11 +57,22 @@ pub const KEY_KIND: &str = "kind";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Section {
     /// The bounded "index card" section (AI-authored/maintained; no headings).
+    /// Entity / Template.
     Preamble,
-    /// The permissive freeform ProseMirror section.
+    /// The permissive freeform ProseMirror section. Entity / Template.
     Body,
-    // Future kinds declare their own sections: Skill = `Description` + `Body`;
-    // Session = `Prep` / `Summary` / `Journal` / `Transcript`.
+    // Session sections (kind == Session). See
+    // docs/plans/2026-06-07-multi-section-document-structure.md.
+    /// GM prep written before play: plans, contingencies, @mentions.
+    Prep,
+    /// The post-play recap (the audio GM summary or the no-audio recap).
+    Summary,
+    /// The canonical narrative journal, the session's durable output.
+    Journal,
+    /// The audio transcript, held in-doc for now (a future split into its own
+    /// room/store is lossless; the durable truth is the `blocks` rows).
+    Transcript,
+    // Future kinds declare their own sections too: Skill = `Description` + `Body`.
 }
 
 impl Section {
@@ -72,6 +84,10 @@ impl Section {
         match self {
             Section::Preamble => "preamble",
             Section::Body => "body",
+            Section::Prep => "prep",
+            Section::Summary => "summary",
+            Section::Journal => "journal",
+            Section::Transcript => "transcript",
         }
     }
 }

@@ -38,7 +38,7 @@ The driving question: do sections become multiple Loro **containers in one docum
 Coarse sequencing. Everything in **Now / Soon / After Soon** is the *same* machine: one LoroDoc per page, sections as root containers, one shared default undo manager. **Later** is the refinement pass, the work these kinds defer, clustered because sessions motivate most of it.
 
 - **Now: Entity + Template.** Both kinds ship `meta` + `preamble` + `body` (two real section containers). Existing page content moves into `body`; `preamble` starts empty. See *Entity / Template* below.
-- **Soon: Session.** Adds the `session` kind as one LoroDoc with prep / summary / journal / transcript sections; default undo, transcript in-doc. See *Session* and *Sessions = 1 CRDT* below.
+- **Soon: Session.** Adds the `session` kind as one LoroDoc with prep / summary / transcript / journal sections, minted together with its temporal `sessions` row; default undo, transcript in-doc. See *Session* and *Sessions = 1 CRDT* below.
 - **After Soon: Skill.** Adds the `skill` kind (`meta` + `description` + `body`), a purely additive match arm mapping to the [Agent Skills spec](https://agentskills.io/specification). See *Skill* below.
 - **Later: cleanup & refinement.** A per-section undo manager replacing the single shared one (see *Undo* below); vendoring the already-present `loro-prosemirror` / `loro-websocket` patches into owned forks; possibly ripping the transcript into its own room or server-authoritative data; and section-schema enforcement. The Loro-fork half is the connection-side sibling of [Testing With Full Effect](../discovery/2026-06-04-testing-with-full-effect-whatif.md).
 
@@ -113,7 +113,9 @@ Visibility (`meta.status`) for a GM-authored skill is typically `gm_only` (it is
 
 ### Session
 
-This is the **Soon** work. Ships as **one LoroDoc** with sections roughly along the lines of prep / summary / journal / transcript. The exact set and naming is a Soon-time decision, to be reconciled against the [glossary's Session sub-entities](../glossary.md) (which today enumerates Prep / Sources / Summary / Journal, with the transcript living inside Sources) and the [session template](2026-03-25-ai-serialization-format-v2.md). The transcript is in-doc for now, persisted as ordinary sectioned blocks; ripping it into its own room or server-authoritative data is **Later**. See "Sessions = 1 CRDT" below for the deferral and its trigger.
+Ships as **one LoroDoc** with four sections, ordered by real use: **prep** (written before play), **summary** (the post-play recap), **transcript** (the raw record), **journal** (the polished narrative, written last from the other two). Transcript sits before journal deliberately, since the journal is authored against it. A dedicated `Sources` section (the glossary groups player notes + audio there) is not modeled yet; the transcript is its own section, in-doc for now and persisted as ordinary sectioned blocks - ripping it into its own room or server-authoritative data is **Later** (see "Sessions = 1 CRDT").
+
+Unlike Entity/Skill, a session is **two linked halves**: the `kind = session` page above and a temporal `sessions` row (`SessionId` + GM-curated `ordinal`, the durable identity relationships' `origin` / `invalidated_by` reference). They are minted **together in one genesis transaction** by the supervisor's `CreateSession` workflow (page-first, then the row, so `sessions.page_id -> pages.id` resolves; `ordinal = max + 1`). The page title is a placeholder; the canonical `Session {ordinal}[: name]` display derives from the temporal row. See [Entity Relationship Temporal Model](2026-04-10-entity-relationship-temporal-model.md).
 
 ---
 

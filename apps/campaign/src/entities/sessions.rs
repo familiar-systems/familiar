@@ -1,15 +1,21 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 
-use crate::entities::columns::SessionIdCol;
+use crate::entities::columns::{PageIdCol, SessionIdCol};
 
 /// A session: the campaign's atomic unit of knowledge time.
 ///
-/// This row is the *temporal record* only - the durable identity every
-/// relationship's `origin` / `invalidated_by` points at, plus the GM-curated
-/// sequence number used by snapshot/diff queries. Sessions-as-pages (prose,
-/// prep, journal), ordinal auto-assignment, and the reorder operation are
-/// deferred. See `docs/plans/2026-04-10-entity-relationship-temporal-model.md`.
+/// The temporal record (the durable identity every relationship's `origin` /
+/// `invalidated_by` points at, plus the GM-curated sequence number used by
+/// snapshot/diff queries), now linked to its Session page. Born together with
+/// that page in one transaction by the supervisor's `CreateSession` workflow;
+/// `ordinal` is auto-assigned there as `max + 1`. The reorder operation and the
+/// inbound relationship edges land in later slices.
+///
+/// This row is **purely temporal**: a session's human label is its page title
+/// (`pages.name`), not stored here. Its identity is the `ordinal`, so the label
+/// is an optional convenience, not a unique key. See
+/// `docs/plans/2026-04-10-entity-relationship-temporal-model.md`.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "sessions")]
 pub struct Model {
@@ -25,11 +31,31 @@ pub struct Model {
     /// When the row was written. Immutable; the recording-order axis, kept
     /// distinct from the curated `ordinal`.
     pub created_at: DateTime<Utc>,
+    /// The Session page that documents this session (sessions-as-pages). Set in
+    /// the genesis txn; nullable because the temporal record is the durable half
+    /// and may outlive its page (`ON DELETE SET NULL`). Unique: one session per
+    /// page (mirrors the migration's inline `unique_key`; many NULLs allowed).
+    #[sea_orm(unique)]
+    pub page_id: Option<PageIdCol>,
 }
 
-/// No relations yet: the `page_id` link (sessions-as-pages) and the inbound
-/// relationship edges land in later slices.
+/// `belongs_to` the page it documents. `SetNull` matches the migration's FK so
+/// the temporal row survives a page deletion (provenance is durable).
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::pages::Entity",
+        from = "Column::PageId",
+        to = "super::pages::Column::Id",
+        on_delete = "SetNull"
+    )]
+    Page,
+}
+
+impl Related<super::pages::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Page.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}

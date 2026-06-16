@@ -3,3 +3,4 @@
 
 pub mod crdt;
 pub mod page;
+pub mod session;

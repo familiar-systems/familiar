@@ -38,7 +38,7 @@ use crate::actors::toc::{AddPageNode, ResolvePageNode, TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::domain::crdt::room_actor;
 use crate::entities::columns::PageIdCol;
-use crate::entities::{campaign_metadata, pages};
+use crate::entities::{campaign_metadata, pages, sessions};
 use crate::error::InitError;
 use crate::persistence::{CampaignDatabase, CampaignStore};
 
@@ -587,6 +587,151 @@ impl Message<CreatePage> for CampaignSupervisor {
             .one(&db_reader)
             .await?
             .ok_or(CreatePageError::Genesis)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CreateSession
+// ---------------------------------------------------------------------------
+
+/// Create a new session: its Session page and the temporal `sessions` row,
+/// minted together in one genesis transaction. The supervisor validates
+/// placement, spawns the owning `PageActor` in session-genesis mode (which
+/// drives the atomic `DbCreateSession`), registers it, and adds its node to the
+/// live ToC. Replies with the persisted page + session rows.
+///
+/// This is the reactive-shell orchestration of "mint a session": the effectful
+/// domain write composes into the page's genesis txn; the supervisor sequences
+/// genesis, registration, and ToC placement around it.
+#[derive(Debug, Clone)]
+pub struct CreateSession {
+    /// The GM's optional subtitle. `None` (or blank) means an unnamed session,
+    /// identified by its ordinal until the GM titles it after play.
+    pub name: Option<String>,
+    pub status: Option<Status>,
+    /// Parent to nest under in the ToC. `None` => ToC root.
+    pub parent: Option<PageId>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum CreateSessionError {
+    #[error("parent page not found in toc")]
+    ParentNotFound,
+    #[error("session genesis failed")]
+    Genesis,
+    #[error("a child actor was unavailable")]
+    ActorUnavailable,
+    #[error("database error: {0}")]
+    Db(#[from] sea_orm::DbErr),
+}
+
+/// The page + temporal rows a session genesis produced, for the HTTP response.
+#[derive(Debug, Clone, kameo::Reply)]
+pub struct CreatedSession {
+    pub page: pages::Model,
+    pub session: sessions::Model,
+}
+
+impl Message<CreateSession> for CampaignSupervisor {
+    type Reply = Result<CreatedSession, CreateSessionError>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: CreateSession,
+        ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+
+        // Optional name: trim, and treat blank as absent (unnamed session).
+        let name = msg
+            .name
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        // Validate placement before any write. Bad parent fails cleanly.
+        if let Some(parent) = &msg.parent {
+            match self.toc.ask(ResolvePageNode(parent.clone())).await {
+                Ok(Some(_)) => {}
+                Ok(None) => return Err(CreateSessionError::ParentNotFound),
+                Err(e) => {
+                    tracing::error!(error = %e, "toc unavailable while resolving parent");
+                    return Err(CreateSessionError::ActorUnavailable);
+                }
+            }
+        }
+
+        let status = msg.status.unwrap_or(Status::GmOnly);
+        let page_id = PageId::generate();
+        // The page owns the session's label (`pages.name`), so an unnamed session
+        // gets a neutral default. The canonical "Session {ordinal}" display
+        // derives later from the temporal row's ordinal.
+        let page_name = name.unwrap_or_else(|| "Untitled Session".to_string());
+
+        let (db_reader, db_writer) = {
+            let db = self
+                .db
+                .as_ref()
+                .expect("db must be Some while actor is running");
+            (db.reader().clone(), db.writer().clone())
+        };
+
+        // Spawn the owning actor in session-genesis mode; it persists the page,
+        // its blocks, and the temporal row atomically via `DbCreateSession`.
+        let actor = PageActor::spawn(PageActorArgs {
+            campaign_id: self.campaign_id.clone(),
+            page_id: page_id.clone(),
+            db_reader: db_reader.clone(),
+            db_writer,
+            toc: self.toc.clone(),
+            init: PageInit::NewSession {
+                name: page_name.clone(),
+                status,
+            },
+            debounce_duration: Duration::from_secs(2),
+            idle_timeout: Duration::from_secs(30),
+        });
+        actor.wait_for_startup().await;
+        if !actor.is_alive() {
+            tracing::error!("session page actor died during genesis");
+            return Err(CreateSessionError::Genesis);
+        }
+        self.pages.insert(page_id.clone(), actor.clone());
+        ctx.actor_ref().clone().link(&actor).await;
+
+        // Place it in the live ToC. Best-effort: a failure leaves a valid Page
+        // that `restore_toc` re-surfaces at the root on the next checkout.
+        if let Err(e) = self
+            .toc
+            .ask(AddPageNode {
+                page_id: page_id.clone(),
+                title: page_name,
+                visibility: status,
+                parent: msg.parent.clone(),
+            })
+            .await
+        {
+            tracing::error!(
+                error = %e,
+                "failed to add toc node for new session; it will self-heal on next checkout"
+            );
+        }
+
+        // Read back the committed rows for the response (mirrors `CreatePage`).
+        let page_id_col = PageIdCol::from(page_id);
+        let page = pages::Entity::find_by_id(page_id_col.clone())
+            .one(&db_reader)
+            .await?
+            .ok_or(CreateSessionError::Genesis)?;
+        let session = sessions::Entity::find()
+            .filter(sessions::Column::PageId.eq(page_id_col))
+            .one(&db_reader)
+            .await?
+            .ok_or(CreateSessionError::Genesis)?;
+        Ok(CreatedSession { page, session })
     }
 }
 

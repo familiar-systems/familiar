@@ -5,3 +5,4 @@
 //! under `generated/document/`.
 
 pub mod pages;
+pub mod sessions;

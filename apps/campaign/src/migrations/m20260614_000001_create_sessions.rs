@@ -9,6 +9,13 @@ enum Sessions {
     Id,
     Ordinal,
     CreatedAt,
+    PageId,
+}
+
+#[derive(DeriveIden)]
+enum Pages {
+    Table,
+    Id,
 }
 
 #[async_trait::async_trait]
@@ -44,6 +51,22 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(Sessions::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null(),
+                    )
+                    // The Session page this documents (sessions-as-pages). Nullable:
+                    // the temporal record is the durable half and may exist (or
+                    // outlive its page) without one. `unique_key` enforces one
+                    // session per page - an inline `'u'` auto-index like `ordinal`,
+                    // which `schema_drift` ignores while the entity mirrors it via
+                    // `#[sea_orm(unique)]` (SQLite permits many NULLs under a unique
+                    // index, so page-less sessions are unconstrained).
+                    .col(ColumnDef::new(Sessions::PageId).text().null().unique_key())
+                    // `ON DELETE SET NULL`: the temporal row outlives its page so
+                    // relationship provenance survives a page deletion.
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(Sessions::Table, Sessions::PageId)
+                            .to(Pages::Table, Pages::Id)
+                            .on_delete(ForeignKeyAction::SetNull),
                     )
                     .to_owned(),
             )

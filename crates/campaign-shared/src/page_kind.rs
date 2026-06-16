@@ -14,11 +14,10 @@ use crate::loro::page::Section;
 /// - docs/glossary.md
 /// - issue #155.
 ///
-/// Only `Entity` and `Template` exist today. `Session`, `Skill`, and `Memory`
-/// are known future cases (the audio pipeline and the agent system) and get
-/// added as variants when those documents are actually built - each addition
-/// makes the `match` arms below non-exhaustive, so the compiler points at
-/// every site.
+/// `Entity`, `Template`, and `Session` exist today. `Skill` and `Memory` are
+/// known future cases (the agent system) and get added as variants when those
+/// documents are actually built - each addition makes the `match` arms below
+/// non-exhaustive, so the compiler points at every site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "types-campaign/src/generated/document/")]
@@ -30,29 +29,18 @@ pub enum PageKind {
     /// listings. Has no creation path yet (template instantiation is unbuilt);
     /// the variant exists so the schema and exclusion semantics are in place.
     Template,
+    /// A session: the campaign's central unit and temporal spine. The page holds
+    /// the prep / summary / journal / transcript sections (see [`sections`]);
+    /// its temporal identity - the GM-curated ordinal that relationships'
+    /// `origin` / `invalidated_by` point at - lives in the `sessions` table,
+    /// linked by `sessions.page_id`. Born through the campaign supervisor's
+    /// `CreateSession` workflow, which mints the page and the temporal row in one
+    /// transaction.
+    ///
+    /// [`sections`]: PageKind::sections
+    Session,
     // === FUTURE ===
     // Future pages we know we need but haven't built yet go here.
-
-    // A session is the campaign's central unit and spine.
-    // Has the following sections:
-    // - Prep notes
-    // - (Audio only) GM summary
-    // - (Audio only) Audio upload
-    // - (Audio only) Audio transcription
-    // - (No audio only) GM/player recap
-    // - Session Journal
-    //
-    // Content spine:
-    // TTRPGs are, fundamentally, a collaborative endeavor about what happened at the table.
-    // A session is a record of the events at the table.
-    // All of these other pages and tools help to record state for use by the GMs and players.
-    //
-    // Temporal spine:
-    // Sessions happen sequentially.
-    // Each session is either the start of a new story arc or follows a prior one.
-    // If doing a west-marches style campaign or a living world, things get a bit murkier.
-    // However, even still, coarsely, this still approximately holds.
-    // Session,
 
     // GM-authored, campaign-specific instruction available for agents to load.
     // Has a title, a trigger, and a content block.
@@ -87,6 +75,7 @@ impl PageKind {
         match self {
             PageKind::Entity => "entity",
             PageKind::Template => "template",
+            PageKind::Session => "session",
         }
     }
 
@@ -96,6 +85,7 @@ impl PageKind {
         match s {
             "entity" => Some(PageKind::Entity),
             "template" => Some(PageKind::Template),
+            "session" => Some(PageKind::Session),
             _ => None,
         }
     }
@@ -112,6 +102,16 @@ impl PageKind {
     pub fn sections(&self) -> &'static [Section] {
         match self {
             PageKind::Entity | PageKind::Template => &[Section::Preamble, Section::Body],
+            // A session has no preamble/body. Order follows real use: prep
+            // before play; then the summary recap; the raw transcript sits next
+            // to it as the source; the polished journal is written last, from
+            // both. See `docs/plans/2026-06-07-multi-section-document-structure.md`.
+            PageKind::Session => &[
+                Section::Prep,
+                Section::Summary,
+                Section::Transcript,
+                Section::Journal,
+            ],
         }
     }
 }
@@ -120,11 +120,11 @@ impl PageKind {
 mod tests {
     use super::*;
 
-    /// Every variant the enum can hold. The compiler forces the two `match`
-    /// arms in the impl to stay exhaustive; this list keeps the tests covering
-    /// each variant (and constructs every variant, so none reads as dead code
-    /// even while no creation path produces `Template` yet).
-    const ALL: [PageKind; 2] = [PageKind::Entity, PageKind::Template];
+    /// Every variant the enum can hold. The compiler forces the `match` arms in
+    /// the impl to stay exhaustive; this list keeps the tests covering each
+    /// variant (and constructs every variant, so none reads as dead code even
+    /// while no creation path produces `Template` yet).
+    const ALL: [PageKind; 3] = [PageKind::Entity, PageKind::Template, PageKind::Session];
 
     #[test]
     fn loro_str_round_trips() {
@@ -167,5 +167,24 @@ mod tests {
         // the editor hand-mirrors, so they must not drift.
         assert_eq!(Section::Preamble.as_str(), "preamble");
         assert_eq!(Section::Body.as_str(), "body");
+    }
+
+    #[test]
+    fn session_has_prep_summary_journal_transcript_layout() {
+        // A session is its own section set (no preamble/body), chronological.
+        assert_eq!(
+            PageKind::Session.sections(),
+            &[
+                Section::Prep,
+                Section::Summary,
+                Section::Transcript,
+                Section::Journal,
+            ],
+        );
+        // Pin the wire strings: Loro container ids the at-rest tokens mirror.
+        assert_eq!(Section::Prep.as_str(), "prep");
+        assert_eq!(Section::Summary.as_str(), "summary");
+        assert_eq!(Section::Journal.as_str(), "journal");
+        assert_eq!(Section::Transcript.as_str(), "transcript");
     }
 }

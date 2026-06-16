@@ -24,13 +24,15 @@ use kameo::prelude::Actor;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 
-use crate::actors::database_writer::{DatabaseWriteActor, DbCreatePage, WritePageBlocks};
+use crate::actors::database_writer::{
+    DatabaseWriteActor, DbCreatePage, DbCreateSession, WritePageBlocks,
+};
 use crate::actors::persist::{Persist, PersistError, PersistNow};
 use crate::actors::toc::{TocActor, UpdatePageNode};
 use crate::domain::crdt::doc::CrdtDoc;
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
-use crate::domain::page::{NewBlock, build_new_page};
+use crate::domain::page::{NewBlock, NewPage, build_new_page};
 use crate::entities::columns::{BlockIdCol, PageIdCol, SectionCol, StatusCol};
 use crate::entities::{blocks, pages};
 use crate::loro::page::LoroPageDoc;
@@ -113,7 +115,19 @@ pub struct PageActorArgs {
 /// invariant that every write to a Page flows through its owning actor.
 pub enum PageInit {
     Restore,
-    New { name: String, status: Status },
+    /// Genesis a plain `Entity` page (persists its own birth row via `DbCreatePage`).
+    New {
+        name: String,
+        status: Status,
+    },
+    /// Genesis a `Session` page together with its temporal `sessions` row, in one
+    /// transaction via `DbCreateSession`. `name` is the page title (a neutral
+    /// default when the GM gave none); the session's label lives on the page,
+    /// the temporal row stays nameless.
+    NewSession {
+        name: String,
+        status: Status,
+    },
 }
 
 /// Failure modes for `PageActor` startup.
@@ -123,6 +137,45 @@ pub enum PageInitError {
     Db(#[from] sea_orm::DbErr),
     #[error("genesis write failed")]
     Genesis,
+}
+
+/// Build the seeded `NewPage` for a genesis path and its matching `LoroPageDoc`.
+///
+/// The doc's section layout - and the empty paragraph seeded into each section
+/// so it opens editable - comes from the `kind` inside `from_blocks`; the create
+/// path passes no rows. We then read the seeded doc back into `new_page.blocks`
+/// so the persisted rows are exactly what the doc contains, carrying the seeds'
+/// stable blockIds (a block keeps one identity from genesis onward). Shared by
+/// the entity (`New`) and session (`NewSession`) genesis arms; the future
+/// template path slots in the same way (its cloned blocks arriving as rows).
+fn build_seeded_page(
+    page_id: PageId,
+    name: String,
+    kind: PageKind,
+    status: Status,
+) -> (NewPage, LoroPageDoc) {
+    let mut new_page = build_new_page(page_id, name, kind, status);
+    let (doc, _) = LoroPageDoc::from_blocks(
+        &new_page.name,
+        &new_page.status,
+        &new_page.kind,
+        std::iter::empty::<(Section, Vec<u8>)>(),
+        BlockId::generate,
+    );
+    new_page.blocks = doc
+        .extract_sections()
+        .into_iter()
+        .flat_map(|(section, blocks)| {
+            blocks.into_iter().map(move |b| NewBlock {
+                id: b.id.unwrap_or_else(BlockId::generate),
+                section,
+                ordering: b.ordering,
+                content: b.content,
+                status: Status::GmOnly,
+            })
+        })
+        .collect();
+    (new_page, doc)
 }
 
 impl Actor for PageActor {
@@ -180,44 +233,31 @@ impl Actor for PageActor {
                 doc
             }
             PageInit::New { name, status } => {
-                // The actor owns its own birth: build the doc, then persist the
-                // genesis rows through the single-writer. Nothing writes a Page's
-                // rows around the actor that owns it.
-                //
-                // The doc's section layout -- and the empty paragraph seeded into
-                // each section so it opens editable -- comes from the kind, inside
-                // `from_blocks`; the create path passes no sections. We then persist
-                // exactly what the seeded doc contains, so the genesis rows carry
-                // the seeds' stable blockIds (a block keeps one identity from
-                // genesis onward) and the future template path slots in the same
-                // way (its cloned blocks would arrive here as `rows`).
-                let mut new_page = build_new_page(args.page_id.clone(), name, status);
-                let (doc, _) = LoroPageDoc::from_blocks(
-                    &new_page.name,
-                    &new_page.status,
-                    &new_page.kind,
-                    std::iter::empty::<(Section, Vec<u8>)>(),
-                    BlockId::generate,
-                );
-                new_page.blocks = doc
-                    .extract_sections()
-                    .into_iter()
-                    .flat_map(|(section, blocks)| {
-                        blocks.into_iter().map(move |b| NewBlock {
-                            id: b.id.unwrap_or_else(BlockId::generate),
-                            section,
-                            ordering: b.ordering,
-                            content: b.content,
-                            status: Status::GmOnly,
-                        })
-                    })
-                    .collect();
-
+                // The actor owns its own birth: build the seeded doc, then persist
+                // the genesis rows through the single-writer. Nothing writes a
+                // Page's rows around the actor that owns it.
+                let (new_page, doc) =
+                    build_seeded_page(args.page_id.clone(), name, PageKind::Entity, status);
                 if let Err(e) = args.db_writer.ask(DbCreatePage { new_page }).await {
                     tracing::error!(error = %e, "page genesis write failed");
                     return Err(PageInitError::Genesis);
                 }
                 tracing::info!(?status, "page actor created");
+                doc
+            }
+            PageInit::NewSession { name, status } => {
+                // A session is born page-and-row together: the same seeded-doc
+                // build as any page, but persisted through `DbCreateSession`,
+                // which also mints the temporal `sessions` row (ordinal = max+1)
+                // in the one genesis transaction. The page comes first so the
+                // `sessions.page_id` FK resolves.
+                let (new_page, doc) =
+                    build_seeded_page(args.page_id.clone(), name, PageKind::Session, status);
+                if let Err(e) = args.db_writer.ask(DbCreateSession { new_page }).await {
+                    tracing::error!(error = %e, "session genesis write failed");
+                    return Err(PageInitError::Genesis);
+                }
+                tracing::info!(?status, "session page actor created");
                 doc
             }
         };
@@ -705,6 +745,76 @@ mod tests {
             .expect("genesis page row exists");
         assert_eq!(row.name, "Korgath the Destroyer");
         assert_eq!(Status::from(row.status), Status::GmOnly);
+
+        actor.stop_gracefully().await.unwrap();
+        actor.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    /// Session genesis (`PageInit::NewSession`) persists, in one transaction, a
+    /// Session page, its four seeded section blocks, and the linked temporal
+    /// `sessions` row at ordinal 1 carrying the GM's subtitle.
+    #[tokio::test]
+    async fn new_session_init_persists_page_and_linked_session() {
+        use crate::entities::sessions;
+
+        let conn = setup_db().await;
+        let campaign_id = CampaignId::generate();
+        let db_writer =
+            DatabaseWriteActor::spawn(crate::actors::database_writer::DatabaseWriteActorArgs {
+                campaign_id: campaign_id.clone(),
+                conn: conn.clone(),
+            });
+
+        let page_id = PageId::generate();
+        let toc = spawn_toc(&campaign_id, &conn, &db_writer);
+        let actor = PageActor::spawn(PageActorArgs {
+            campaign_id,
+            page_id: page_id.clone(),
+            db_reader: conn.clone(),
+            db_writer,
+            toc,
+            init: PageInit::NewSession {
+                name: "The Goblin Ambush".into(),
+                status: Status::GmOnly,
+            },
+            debounce_duration: Duration::from_secs(60),
+            idle_timeout: Duration::from_secs(60),
+        });
+        actor.wait_for_startup().await;
+        assert!(actor.is_alive(), "session genesis should succeed");
+
+        // The page is a Session.
+        let page = pages::Entity::find_by_id(PageIdCol::from(page_id.clone()))
+            .one(&conn)
+            .await
+            .unwrap()
+            .expect("page row exists");
+        assert_eq!(PageKind::from(page.kind), PageKind::Session);
+        assert_eq!(
+            page.name, "The Goblin Ambush",
+            "the label lives on the page"
+        );
+
+        // One seeded paragraph per session section (prep/summary/transcript/journal).
+        let block_rows = blocks::Entity::find()
+            .filter(blocks::Column::PageId.eq(PageIdCol::from(page_id.clone())))
+            .all(&conn)
+            .await
+            .unwrap();
+        assert_eq!(
+            block_rows.len(),
+            PageKind::Session.sections().len(),
+            "one seeded block per declared session section",
+        );
+
+        // The linked temporal row, ordinal 1 (nameless - the label is on the page).
+        let session = sessions::Entity::find()
+            .filter(sessions::Column::PageId.eq(PageIdCol::from(page_id.clone())))
+            .one(&conn)
+            .await
+            .unwrap()
+            .expect("session row exists for the page");
+        assert_eq!(session.ordinal, 1);
 
         actor.stop_gracefully().await.unwrap();
         actor.wait_for_shutdown_with_result(|_| ()).await;

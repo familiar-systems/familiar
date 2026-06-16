@@ -11,7 +11,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub name: String,
     pub status: StatusCol,
-    /// Which `PageKind` this page is (entity, template). Default `entity`.
+    /// Which `PageKind` this page is (entity, template, session). Default `entity`.
     pub kind: PageKindCol,
     /// Which template this was cloned from, if any.
     pub template_id: Option<PageIdCol>,

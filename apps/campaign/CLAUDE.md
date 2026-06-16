@@ -14,11 +14,12 @@ Covers `apps/campaign/` only: the `familiar-systems-campaign` Axum + kameo binar
 - `PATCH /campaign/{id}`: Hanko-authenticated, owner-only. Partial metadata update, all fields optional. With `wizard_complete: true`, validates required fields (422 if missing), sets `wizard_completed_at`, and mirrors to platform (best-effort); 409 if the wizard was already completed. Without the flag, updates only the provided fields.
 - `GET /campaign/{id}/ws`: WebSocket upgrade for CRDT collaboration. Auth is `?token=<hanko>` -> validate -> platform membership check (401 bad token, 403 non-member, 503 if the campaign can't be loaded). On upgrade, the connection joins room actors. See "CRDT rooms & collaboration".
 - `POST /campaign/{id}/pages`: Hanko-authenticated, GM-only (403 otherwise; role checked on the platform tier via `check_membership`). Creates a Page. Body: `name` (required), optional `status` (default `gm_only`), optional `parent` (a `PageId` to nest under in the ToC; omitted = ToC root, unknown = 422). `from_template_id` is accepted but returns 501 (templates not built). Returns 201 + the created Page. The owning `PageActor` is spawned to persist the Page and place it in the ToC; nothing writes the rows from the handler. See "CRDT rooms & collaboration".
+- `POST /campaign/{id}/sessions`: Hanko-authenticated, GM-only. Creates a session: a `kind = session` Page (prep/summary/transcript/journal sections) **and** its temporal `sessions` row (ordinal = max+1, the relationship FK target), minted together in one genesis transaction. Body: optional `name` (the GM's subtitle; blank/absent = unnamed, identified by ordinal), optional `status`, optional `parent`. Returns 201 + `{ page_id, session_id, ordinal, name }`. Driven by the supervisor's `CreateSession` workflow via the `PageActor`'s `NewSession` genesis path; nothing writes the rows from the handler. See "CRDT rooms & collaboration".
 - `POST /internal/campaign`: bearer-protected. Creates a new campaign on this shard with the given owner. Idempotent on `campaign_id`.
 - `PUT /internal/campaign/{id}/lease`: bearer-protected. Ensures an existing campaign is checked out on this shard. Idempotent.
 - `DELETE /internal/campaign/{id}/lease`: bearer-protected. Releases a campaign from this shard (platform-initiated eviction). Idempotent; returns 200 even if the campaign is not loaded.
 
-**Live:** ToC + Page CRDT room actors, the WebSocket collaboration path, block/ToC persistence, Page creation, and a `CampaignStore` checkout/release abstraction (local + S3 backends). **Still ahead:** `AgentConversationActor`, `RelationshipGraph`, template instantiation (cloning a template's block structure), periodic mid-session object-storage writeback, and the supervisor `SupervisorState`/`Restoring` phase. See "Design docs" below for where each is specified.
+**Live:** ToC + Page CRDT room actors, the WebSocket collaboration path, block/ToC persistence, Page creation, session creation (page + temporal row), and a `CampaignStore` checkout/release abstraction (local + S3 backends). **Still ahead:** `AgentConversationActor`, `RelationshipGraph` (edges referencing the `sessions` temporal rows), template instantiation (cloning a template's block structure), periodic mid-session object-storage writeback, and the supervisor `SupervisorState`/`Restoring` phase. See "Design docs" below for where each is specified.
 
 ## Architecture
 
@@ -72,6 +73,8 @@ Read rustdoc at each site for detail; this table is a where-to-go index.
 | `/catalog/systems` (locale resolution) | `src/routes/catalog.rs` |
 | `GET` and `PATCH /campaign/{id}` metadata | `src/routes/metadata.rs` |
 | `POST /campaign/{id}/pages` (create a Page) | `src/routes/pages.rs` |
+| `POST /campaign/{id}/sessions` (create a session) | `src/routes/sessions.rs` |
+| pure session ordinal kernel | `src/domain/session.rs` |
 | bearer middleware wiring | `src/middleware/auth.rs` |
 | outbound campaign -> platform client | `src/clients/platform_internal.rs` |
 | typed startup/init/ensure errors | `src/error.rs` |
