@@ -3,11 +3,10 @@ import type { PageId } from "../id/PageId";
 import type { SessionId } from "../id/SessionId";
 
 /**
- * A created session, returned with `201 Created`.
+ * A created `session`: its page plus its temporal record.
  *
  * The display name is `Session {ordinal}` (plus `: {name}` when the GM named
- * it); the client composes it, since the sequence number is the `ordinal` and
- * the label is the page title.
+ * it); the client composes it from `ordinal` and the page title (`name`).
  */
 export type SessionResponse = {
   /**

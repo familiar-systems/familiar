@@ -19,13 +19,14 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Step 1: the picker offers exactly the kinds with a working create route today
-// (Session + Entity). Templates and folders are deliberately absent.
+// Step 1: the picker offers every creatable kind (Session, Entity, Template).
+// Folders are deliberately absent (no create route yet).
 export const Pick: Story = {
   play: async () => {
     await expect(screen.getByText("What are you creating?")).toBeInTheDocument();
     await expect(screen.getByRole("button", { name: /New session/ })).toBeInTheDocument();
     await expect(screen.getByRole("button", { name: /New entity/ })).toBeInTheDocument();
+    await expect(screen.getByRole("button", { name: /New template/ })).toBeInTheDocument();
   },
 };
 
@@ -63,5 +64,18 @@ export const EntityRequiresName: Story = {
     await expect(create).toBeEnabled();
     await userEvent.click(create);
     await expect(args.onSubmit).toHaveBeenCalledWith("entity", "Wren Aldwater");
+  },
+};
+
+// A template must be named too; creating one sends kind "template".
+export const TemplateRequiresName: Story = {
+  play: async ({ args, userEvent }) => {
+    await userEvent.click(screen.getByRole("button", { name: /New template/ }));
+    const create = screen.getByRole("button", { name: "Create" });
+    await expect(create).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Name"), "NPC");
+    await expect(create).toBeEnabled();
+    await userEvent.click(create);
+    await expect(args.onSubmit).toHaveBeenCalledWith("template", "NPC");
   },
 };

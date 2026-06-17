@@ -26,6 +26,7 @@ use kameo::prelude::Actor;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use familiar_systems_campaign_shared::id::{ClientId, PageId};
+use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use tokio::sync::mpsc;
 
@@ -169,6 +170,7 @@ impl Actor for CampaignSupervisor {
                         name: "Campaign Base Camp".to_string(),
                         status: Some(Status::Known),
                         parent: None,
+                        kind: PageKind::Entity,
                     })
                     .await
                 {
@@ -470,16 +472,25 @@ impl Message<SetLandingPage> for CampaignSupervisor {
 // CreatePage
 // ---------------------------------------------------------------------------
 
-/// Create a new Page in this campaign. The supervisor validates placement,
-/// spawns the owning `PageActor` in genesis mode (which persists the Page's
-/// own birth row), registers it, and adds its node to the live ToC. Replies
-/// with the persisted `pages` row for the HTTP response.
+/// Create a new **document page** (an `Entity` or `Template`) in this campaign.
+/// The supervisor validates placement, spawns the owning `PageActor` in genesis
+/// mode (which persists the Page's own birth row), registers it, and adds its
+/// node to the live ToC. Replies with the persisted `pages` row for the HTTP
+/// response.
+///
+/// `kind` selects the document-page genesis path. A `Session` is **not** created
+/// here - it mints a temporal row and has its own [`CreateSession`] message -
+/// so a `Session` kind is refused (`UnsupportedKind`). A future Skill / Memory
+/// kind, being document-shaped, would route through here.
 #[derive(Debug, Clone)]
 pub struct CreatePage {
     pub name: String,
     pub status: Option<Status>,
     /// Parent Page to nest under in the ToC. `None` => ToC root.
     pub parent: Option<PageId>,
+    /// Which document-page kind to genesis. `Entity` or `Template`; `Session`
+    /// is refused (it has its own path).
+    pub kind: PageKind,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -488,6 +499,8 @@ pub enum CreatePageError {
     ParentNotFound,
     #[error("page name must not be empty")]
     EmptyName,
+    #[error("page kind {0:?} is not created through the page path")]
+    UnsupportedKind(PageKind),
     #[error("page genesis failed")]
     Genesis,
     #[error("a child actor was unavailable")]
@@ -529,6 +542,22 @@ impl Message<CreatePage> for CampaignSupervisor {
         }
 
         let status = msg.status.unwrap_or(Status::GmOnly);
+
+        // Pick the document-page genesis path. Exhaustive over `PageKind`, so a
+        // future Skill / Memory kind forces a decision here; `Session` is refused
+        // because it has its own `CreateSession` path (it mints a temporal row).
+        let init = match msg.kind {
+            PageKind::Entity => PageInit::NewEntity {
+                name: name.clone(),
+                status,
+            },
+            PageKind::Template => PageInit::NewTemplate {
+                name: name.clone(),
+                status,
+            },
+            PageKind::Session => return Err(CreatePageError::UnsupportedKind(PageKind::Session)),
+        };
+
         let page_id = PageId::generate();
 
         let (db_reader, db_writer) = {
@@ -547,10 +576,7 @@ impl Message<CreatePage> for CampaignSupervisor {
             db_reader: db_reader.clone(),
             db_writer,
             toc: self.toc.clone(),
-            init: PageInit::New {
-                name: name.clone(),
-                status,
-            },
+            init,
             debounce_duration: Duration::from_secs(2),
             idle_timeout: Duration::from_secs(30),
         });
@@ -1134,6 +1160,7 @@ mod tests {
                 name: "Ephemeral".to_string(),
                 status: Some(Status::GmOnly),
                 parent: None,
+                kind: PageKind::Entity,
             })
             .await
             .unwrap();
@@ -1343,6 +1370,7 @@ mod tests {
                     name: name.to_string(),
                     status: Some(Status::GmOnly),
                     parent: None,
+                    kind: PageKind::Entity,
                 })
                 .await
                 .expect_err("empty name must be rejected");

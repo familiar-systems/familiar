@@ -8,10 +8,12 @@ import type {
   CampaignErrorResponse,
   CampaignMetadataResponse,
   CatalogResponse,
+  CreateEntityBody,
   CreatePageRequest,
-  CreateSessionRequest,
+  CreateSessionBody,
+  CreateTemplateBody,
+  EntityResponse,
   PageId,
-  PageKind,
   PageResponse,
   PatchCampaignRequest,
   SessionId,
@@ -19,6 +21,7 @@ import type {
   Status,
   SystemEntry,
   TemplateRef,
+  TemplateResponse,
 } from "@familiar-systems/types-campaign";
 export interface paths {
   "/campaign/{id}": {
@@ -47,22 +50,6 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations["create_page"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/campaign/{id}/sessions": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post: operations["create_session"];
     delete?: never;
     options?: never;
     head?: never;
@@ -129,25 +116,36 @@ export interface components {
     CampaignMetadataResponse: CampaignMetadataResponse;
     CatalogResponse: CatalogResponse;
     /**
-     * @description Create a new Page in a campaign.
+     * @description Body for creating an `entity` page (authored world content - an NPC, a
+     *     location, a bit of lore). `name` is required.
+     */
+    CreateEntityBody: CreateEntityBody;
+    /**
+     * @description Create a new Page in a campaign, discriminated by `kind`. The wire shape is
+     *     `{ "kind": "entity" | "template" | "session", "content": { ... } }`.
      *
-     *     `name` is required; everything else is optional. A missing `status` defaults
-     *     to `gmOnly` (the domain default for new content). `parent` places the Page
-     *     in the table of contents: omitted appends it at the ToC root; `Some(id)`
-     *     nests it as the last child of that Page's ToC node. `from_template_id` is
-     *     accepted but not yet implemented (the server returns 501).
+     *     A missing `status` defaults to `gmOnly` (the domain default for new content).
+     *     `parent` places the Page in the table of contents: omitted appends it at the
+     *     ToC root; `Some(id)` nests it as the last child of that Page's ToC node.
      */
     CreatePageRequest: CreatePageRequest;
     /**
-     * @description Create a new session in a campaign: its Session page and its temporal record,
+     * @description Body for creating a `session` page - its document plus its temporal record,
      *     minted together in one genesis transaction.
      *
-     *     Everything is optional. `name` is the GM's subtitle ("The End of Perth");
-     *     omitted or blank means an unnamed session, identified by its ordinal until
-     *     the GM titles it after play. A missing `status` defaults to `gmOnly`.
-     *     `parent` places the page in the table of contents (omitted => ToC root).
+     *     `name` is the GM's optional subtitle ("The End of Perth"); omitted or blank
+     *     means an unnamed session, identified by its ordinal until the GM titles it
+     *     after play.
      */
-    CreateSessionRequest: CreateSessionRequest;
+    CreateSessionBody: CreateSessionBody;
+    /**
+     * @description Body for creating a `template` page - the prototype other entities clone
+     *     from. A template never clones from another template, so it carries no
+     *     `from_template_id`. `name` is required.
+     */
+    CreateTemplateBody: CreateTemplateBody;
+    /** @description A created `entity` page. */
+    EntityResponse: EntityResponse;
     /**
      * Format: ulid
      * @description Uniquely identifies a page (NPC, location, item, etc.).
@@ -155,24 +153,9 @@ export interface components {
      */
     PageId: PageId;
     /**
-     * @description What kind of Page this is: its document *structure* and the systemic actions
-     *     the engine takes for it. A `kind` exists only when pages differ structurally
-     *     (a different Loro schema) or need a systemic action the engine can't infer
-     *     from content; editorial differences (NPC vs Location) live in tags,
-     *     relationships, and template lineage, not here.
-     *     See
-     *     - docs/plans/2026-03-25-ai-serialization-format-v2.md
-     *     - docs/glossary.md
-     *     - issue #155.
-     *
-     *     `Entity`, `Template`, and `Session` exist today. `Skill` and `Memory` are
-     *     known future cases (the agent system) and get added as variants when those
-     *     documents are actually built - each addition makes the `match` arms below
-     *     non-exhaustive, so the compiler points at every site.
-     * @enum {string}
+     * @description A created Page, returned with `201 Created`, discriminated by `kind`. The
+     *     wire shape mirrors the request: `{ "kind": "...", "content": { ... } }`.
      */
-    PageKind: PageKind;
-    /** @description A created Page, returned with `201 Created`. */
     PageResponse: PageResponse;
     PatchCampaignRequest: PatchCampaignRequest;
     /**
@@ -181,11 +164,10 @@ export interface components {
      */
     SessionId: SessionId;
     /**
-     * @description A created session, returned with `201 Created`.
+     * @description A created `session`: its page plus its temporal record.
      *
      *     The display name is `Session {ordinal}` (plus `: {name}` when the GM named
-     *     it); the client composes it, since the sequence number is the `ordinal` and
-     *     the label is the page title.
+     *     it); the client composes it from `ordinal` and the page title (`name`).
      */
     SessionResponse: SessionResponse;
     /**
@@ -198,6 +180,11 @@ export interface components {
     Status: Status;
     SystemEntry: SystemEntry;
     TemplateRef: TemplateRef;
+    /**
+     * @description A created `template` page. A template has no `template_id` lineage of its own
+     *     (it is the source, not a clone).
+     */
+    TemplateResponse: TemplateResponse;
   };
   responses: never;
   parameters: never;
@@ -396,77 +383,8 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Creating from a template is not yet supported */
+      /** @description Creating an entity from a template is not yet supported */
       501: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Server restarting or platform unreachable */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  create_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Campaign ID */
-        id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateSessionRequest"];
-      };
-    };
-    responses: {
-      /** @description Session created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SessionResponse"];
-        };
-      };
-      /** @description Missing or invalid session */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Caller is not a GM of this campaign */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Campaign not on this shard */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Parent page not found */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Creation failed */
-      500: {
         headers: {
           [name: string]: unknown;
         };

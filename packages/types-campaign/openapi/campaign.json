@@ -168,64 +168,7 @@
             "description": "Creation failed"
           },
           "501": {
-            "description": "Creating from a template is not yet supported"
-          },
-          "503": {
-            "description": "Server restarting or platform unreachable"
-          }
-        }
-      }
-    },
-    "/campaign/{id}/sessions": {
-      "post": {
-        "tags": ["sessions"],
-        "operationId": "create_session",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Campaign ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateSessionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Session created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid session"
-          },
-          "403": {
-            "description": "Caller is not a GM of this campaign"
-          },
-          "404": {
-            "description": "Campaign not on this shard"
-          },
-          "422": {
-            "description": "Parent page not found"
-          },
-          "500": {
-            "description": "Creation failed"
+            "description": "Creating an entity from a template is not yet supported"
           },
           "503": {
             "description": "Server restarting or platform unreachable"
@@ -367,9 +310,9 @@
           }
         }
       },
-      "CreatePageRequest": {
+      "CreateEntityBody": {
         "type": "object",
-        "description": "Create a new Page in a campaign.\n\n`name` is required; everything else is optional. A missing `status` defaults\nto `gmOnly` (the domain default for new content). `parent` places the Page\nin the table of contents: omitted appends it at the ToC root; `Some(id)`\nnests it as the last child of that Page's ToC node. `from_template_id` is\naccepted but not yet implemented (the server returns 501).",
+        "description": "Body for creating an `entity` page (authored world content - an NPC, a\nlocation, a bit of lore). `name` is required.",
         "required": ["name"],
         "properties": {
           "from_template_id": {
@@ -409,9 +352,53 @@
           }
         }
       },
-      "CreateSessionRequest": {
+      "CreatePageRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/CreateEntityBody"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["entity"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/CreateTemplateBody"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["template"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/CreateSessionBody"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["session"]
+              }
+            }
+          }
+        ],
+        "description": "Create a new Page in a campaign, discriminated by `kind`. The wire shape is\n`{ \"kind\": \"entity\" | \"template\" | \"session\", \"content\": { ... } }`.\n\nA missing `status` defaults to `gmOnly` (the domain default for new content).\n`parent` places the Page in the table of contents: omitted appends it at the\nToC root; `Some(id)` nests it as the last child of that Page's ToC node."
+      },
+      "CreateSessionBody": {
         "type": "object",
-        "description": "Create a new session in a campaign: its Session page and its temporal record,\nminted together in one genesis transaction.\n\nEverything is optional. `name` is the GM's subtitle (\"The End of Perth\");\nomitted or blank means an unnamed session, identified by its ordinal until\nthe GM titles it after play. A missing `status` defaults to `gmOnly`.\n`parent` places the page in the table of contents (omitted => ToC root).",
+        "description": "Body for creating a `session` page - its document plus its temporal record,\nminted together in one genesis transaction.\n\n`name` is the GM's optional subtitle (\"The End of Perth\"); omitted or blank\nmeans an unnamed session, identified by its ordinal until the GM titles it\nafter play.",
         "properties": {
           "name": {
             "type": ["string", "null"]
@@ -439,20 +426,41 @@
           }
         }
       },
-      "PageId": {
-        "type": "string",
-        "format": "ulid",
-        "description": "Uniquely identifies a page (NPC, location, item, etc.).\nULID for compact URLs (26 chars) and B-tree-friendly insert ordering."
-      },
-      "PageKind": {
-        "type": "string",
-        "description": "What kind of Page this is: its document *structure* and the systemic actions\nthe engine takes for it. A `kind` exists only when pages differ structurally\n(a different Loro schema) or need a systemic action the engine can't infer\nfrom content; editorial differences (NPC vs Location) live in tags,\nrelationships, and template lineage, not here.\nSee\n- docs/plans/2026-03-25-ai-serialization-format-v2.md\n- docs/glossary.md\n- issue #155.\n\n`Entity`, `Template`, and `Session` exist today. `Skill` and `Memory` are\nknown future cases (the agent system) and get added as variants when those\ndocuments are actually built - each addition makes the `match` arms below\nnon-exhaustive, so the compiler points at every site.",
-        "enum": ["entity", "template", "session"]
-      },
-      "PageResponse": {
+      "CreateTemplateBody": {
         "type": "object",
-        "description": "A created Page, returned with `201 Created`.",
-        "required": ["id", "name", "status", "kind", "created_at", "updated_at"],
+        "description": "Body for creating a `template` page - the prototype other entities clone\nfrom. A template never clones from another template, so it carries no\n`from_template_id`. `name` is required.",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "parent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PageId",
+                "description": "Parent Page to nest under in the table of contents. `None` => ToC root."
+              }
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Status"
+              }
+            ]
+          }
+        }
+      },
+      "EntityResponse": {
+        "type": "object",
+        "description": "A created `entity` page.",
+        "required": ["id", "name", "status", "created_at", "updated_at"],
         "properties": {
           "created_at": {
             "type": "string",
@@ -460,9 +468,6 @@
           },
           "id": {
             "$ref": "#/components/schemas/PageId"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/PageKind"
           },
           "name": {
             "type": "string"
@@ -476,7 +481,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/PageId"
+                "$ref": "#/components/schemas/PageId",
+                "description": "Lineage: the template this entity was cloned from, if any."
               }
             ]
           },
@@ -485,6 +491,55 @@
             "description": "RFC 3339 timestamp."
           }
         }
+      },
+      "PageId": {
+        "type": "string",
+        "format": "ulid",
+        "description": "Uniquely identifies a page (NPC, location, item, etc.).\nULID for compact URLs (26 chars) and B-tree-friendly insert ordering."
+      },
+      "PageResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/EntityResponse"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["entity"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/TemplateResponse"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["template"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/SessionResponse"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["session"]
+              }
+            }
+          }
+        ],
+        "description": "A created Page, returned with `201 Created`, discriminated by `kind`. The\nwire shape mirrors the request: `{ \"kind\": \"...\", \"content\": { ... } }`."
       },
       "PatchCampaignRequest": {
         "type": "object",
@@ -536,7 +591,7 @@
       },
       "SessionResponse": {
         "type": "object",
-        "description": "A created session, returned with `201 Created`.\n\nThe display name is `Session {ordinal}` (plus `: {name}` when the GM named\nit); the client composes it, since the sequence number is the `ordinal` and\nthe label is the page title.",
+        "description": "A created `session`: its page plus its temporal record.\n\nThe display name is `Session {ordinal}` (plus `: {name}` when the GM named\nit); the client composes it from `ordinal` and the page title (`name`).",
         "required": ["page_id", "session_id", "ordinal", "name", "created_at"],
         "properties": {
           "created_at": {
@@ -613,6 +668,30 @@
           "slug": {
             "type": "string",
             "description": "`<system-id>/<template-name>` slug, e.g. `common/npc`."
+          }
+        }
+      },
+      "TemplateResponse": {
+        "type": "object",
+        "description": "A created `template` page. A template has no `template_id` lineage of its own\n(it is the source, not a clone).",
+        "required": ["id", "name", "status", "created_at", "updated_at"],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "RFC 3339 timestamp."
+          },
+          "id": {
+            "$ref": "#/components/schemas/PageId"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "RFC 3339 timestamp."
           }
         }
       }

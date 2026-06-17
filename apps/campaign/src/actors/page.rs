@@ -2,8 +2,8 @@
 //!
 //! Spawned by the `CampaignSupervisor` either lazily, when a client first
 //! joins a Page room (`PageInit::Restore`, reconstructing a `LoroPageDoc`
-//! from block rows in SQLite), or at creation time (`PageInit::New`, where the
-//! actor builds its doc and persists its own genesis row). Either way the actor
+//! from block rows in SQLite), or at creation time (a `PageInit::New*` variant,
+//! where the actor builds its doc and persists its own genesis row). Either way the actor
 //! is the sole mutator of its Page. Born vacating, it self-evicts once it has
 //! no subscribers and an idle timer fires, so a room that is never joined does
 //! not leak resident until campaign drain.
@@ -110,13 +110,26 @@ pub struct PageActorArgs {
 /// How a `PageActor` comes into being.
 ///
 /// `Restore` loads an existing Page's blocks from SQLite (the room-join path).
-/// `New` originates a Page: the actor builds its `LoroPageDoc` and persists
-/// its own genesis row. Keeping creation inside the actor preserves the
+/// The `New*` variants originate a Page: the actor builds its `LoroPageDoc` and
+/// persists its own genesis row. Keeping creation inside the actor preserves the
 /// invariant that every write to a Page flows through its owning actor.
+///
+/// `NewEntity` and `NewTemplate` are the two **document-page** genesis paths -
+/// structurally identical (`preamble` + `body`, persisted via `DbCreatePage`),
+/// differing only in the `kind` stamped on the `pages` row. A future Skill /
+/// Memory kind slots in here the same way. `NewSession` is the odd one out: it
+/// mints a temporal `sessions` row alongside the page.
 pub enum PageInit {
     Restore,
-    /// Genesis a plain `Entity` page (persists its own birth row via `DbCreatePage`).
-    New {
+    /// Genesis an `Entity` page (persists its own birth row via `DbCreatePage`).
+    NewEntity {
+        name: String,
+        status: Status,
+    },
+    /// Genesis a `Template` page (persists its own birth row via `DbCreatePage`).
+    /// Same `preamble` + `body` layout as an entity, so cloning a template later
+    /// yields an entity with both sections; the only difference is `kind`.
+    NewTemplate {
         name: String,
         status: Status,
     },
@@ -146,8 +159,9 @@ pub enum PageInitError {
 /// path passes no rows. We then read the seeded doc back into `new_page.blocks`
 /// so the persisted rows are exactly what the doc contains, carrying the seeds'
 /// stable blockIds (a block keeps one identity from genesis onward). Shared by
-/// the entity (`New`) and session (`NewSession`) genesis arms; the future
-/// template path slots in the same way (its cloned blocks arriving as rows).
+/// the entity (`NewEntity`), template (`NewTemplate`), and session
+/// (`NewSession`) genesis arms; a future template-clone path slots in the same
+/// way (its cloned blocks arriving as rows).
 fn build_seeded_page(
     page_id: PageId,
     name: String,
@@ -232,7 +246,7 @@ impl Actor for PageActor {
                 }
                 doc
             }
-            PageInit::New { name, status } => {
+            PageInit::NewEntity { name, status } => {
                 // The actor owns its own birth: build the seeded doc, then persist
                 // the genesis rows through the single-writer. Nothing writes a
                 // Page's rows around the actor that owns it.
@@ -242,7 +256,20 @@ impl Actor for PageActor {
                     tracing::error!(error = %e, "page genesis write failed");
                     return Err(PageInitError::Genesis);
                 }
-                tracing::info!(?status, "page actor created");
+                tracing::info!(?status, "entity page actor created");
+                doc
+            }
+            PageInit::NewTemplate { name, status } => {
+                // A template is a document page like an entity (same sections,
+                // same `DbCreatePage` write); only the `kind` stamped on the row
+                // differs, so an entity later cloned from it inherits the layout.
+                let (new_page, doc) =
+                    build_seeded_page(args.page_id.clone(), name, PageKind::Template, status);
+                if let Err(e) = args.db_writer.ask(DbCreatePage { new_page }).await {
+                    tracing::error!(error = %e, "template genesis write failed");
+                    return Err(PageInitError::Genesis);
+                }
+                tracing::info!(?status, "template page actor created");
                 doc
             }
             PageInit::NewSession { name, status } => {
@@ -727,7 +754,7 @@ mod tests {
             db_reader: conn.clone(),
             db_writer,
             toc,
-            init: PageInit::New {
+            init: PageInit::NewEntity {
                 name: "Korgath the Destroyer".into(),
                 status: Status::GmOnly,
             },
@@ -745,6 +772,67 @@ mod tests {
             .expect("genesis page row exists");
         assert_eq!(row.name, "Korgath the Destroyer");
         assert_eq!(Status::from(row.status), Status::GmOnly);
+
+        actor.stop_gracefully().await.unwrap();
+        actor.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    /// Template genesis (`PageInit::NewTemplate`) persists a `kind = template`
+    /// page with the same `preamble` + `body` section seeds as an entity - the
+    /// layout an entity later cloned from it inherits - and no `template_id`
+    /// lineage of its own.
+    #[tokio::test]
+    async fn new_template_init_persists_template_kind() {
+        let conn = setup_db().await;
+        let campaign_id = CampaignId::generate();
+        let db_writer =
+            DatabaseWriteActor::spawn(crate::actors::database_writer::DatabaseWriteActorArgs {
+                campaign_id: campaign_id.clone(),
+                conn: conn.clone(),
+            });
+
+        let page_id = PageId::generate();
+        let toc = spawn_toc(&campaign_id, &conn, &db_writer);
+        let actor = PageActor::spawn(PageActorArgs {
+            campaign_id,
+            page_id: page_id.clone(),
+            db_reader: conn.clone(),
+            db_writer,
+            toc,
+            init: PageInit::NewTemplate {
+                name: "NPC".into(),
+                status: Status::GmOnly,
+            },
+            debounce_duration: Duration::from_secs(60),
+            idle_timeout: Duration::from_secs(60),
+        });
+        actor.wait_for_startup().await;
+        assert!(actor.is_alive(), "template genesis should succeed");
+
+        let row = pages::Entity::find_by_id(PageIdCol::from(page_id.clone()))
+            .one(&conn)
+            .await
+            .unwrap()
+            .expect("genesis template row exists");
+        assert_eq!(row.name, "NPC");
+        assert_eq!(PageKind::from(row.kind), PageKind::Template);
+        assert!(
+            row.template_id.is_none(),
+            "a template is the source, not a clone, so it has no lineage"
+        );
+
+        // One seeded paragraph per declared section (preamble + body), identical
+        // to an entity - that shared layout is the whole point of cloning.
+        let block_rows = blocks::Entity::find()
+            .filter(blocks::Column::PageId.eq(PageIdCol::from(page_id.clone())))
+            .all(&conn)
+            .await
+            .unwrap();
+        assert_eq!(
+            block_rows.len(),
+            PageKind::Template.sections().len(),
+            "one seeded block per declared template section",
+        );
 
         actor.stop_gracefully().await.unwrap();
         actor.wait_for_shutdown_with_result(|_| ()).await;
@@ -937,7 +1025,7 @@ mod tests {
             db_reader: conn.clone(),
             db_writer,
             toc: toc.clone(),
-            init: PageInit::New {
+            init: PageInit::NewEntity {
                 name: "Original".into(),
                 status: Status::GmOnly,
             },
@@ -1052,7 +1140,7 @@ mod tests {
             db_reader: conn.clone(),
             db_writer,
             toc: toc.clone(),
-            init: PageInit::New {
+            init: PageInit::NewEntity {
                 name: "Original".into(),
                 status: Status::GmOnly,
             },

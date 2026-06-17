@@ -38,14 +38,14 @@ pub struct NewPage {
     pub id: PageId,
     pub name: String,
     pub status: Status,
-    /// What kind of page this is, chosen by the caller. `Entity` is the plain
-    /// authored-content path; `Session` is created via the supervisor's
-    /// `CreateSession` workflow (which also mints the temporal row). The
-    /// `template` kind has no creation path until template instantiation lands
-    /// (which will set it here alongside `template_id`).
+    /// What kind of page this is, chosen by the caller. `Entity` and `Template`
+    /// are document pages persisted via `DbCreatePage`; `Session` is created via
+    /// the supervisor's `CreateSession` workflow (which also mints the temporal
+    /// row). All three flow through this builder; only the `kind` differs.
     pub kind: PageKind,
     /// Lineage back to the template this was cloned from, if any. `None` until
-    /// template instantiation lands.
+    /// template *instantiation* (cloning a template into an entity) lands -
+    /// creating a template page itself sets `kind: Template` with no lineage.
     pub template_id: Option<PageId>,
     pub blocks: Vec<NewBlock>,
 }

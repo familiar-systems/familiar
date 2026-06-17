@@ -7,11 +7,11 @@
 // on the Rust side (crates/campaign-shared/src/page_kind.rs). ts-rs emits a
 // *type only* (no runtime value), so this hand-written mapping is unavoidable;
 // keying it off the union is what keeps it honest. `null` = a real kind that is
-// not creatable from this menu yet (Template: instantiation is unbuilt, the
-// server returns 501).
+// not creatable from this menu (reserved for a future kind that should not be
+// hand-authored); all current kinds are creatable.
 
 import type { PageKind } from "@familiar-systems/types-campaign";
-import { FileText, Mic, type LucideIcon } from "lucide-react";
+import { FileText, LayoutTemplate, Mic, type LucideIcon } from "lucide-react";
 
 /**
  * Which accent a row paints with. The session row is the gold "main event";
@@ -56,7 +56,14 @@ export const NEW_MENU = {
     nameRequired: true,
     color: "primary",
   },
-  template: null,
+  template: {
+    label: "New template",
+    subtitle: "a reusable blueprint you clone new entities from",
+    icon: LayoutTemplate,
+    defaultName: "",
+    nameRequired: true,
+    color: "primary",
+  },
 } satisfies Record<PageKind, NewMenuEntry | null>;
 
 /**
