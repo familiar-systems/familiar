@@ -58,7 +58,7 @@ A **page kind** declares an ordered list of sections. Illustrative shape (names 
 match kind {
     Entity | Template => [ (preamble, no-headings), (body, permissive) ]
     Skill             => [ (description, bounded routing prose), (body, permissive) ]
-    Session           => [ (prep, ...), (summary, ...), (journal, ...), (transcript, ...) ]
+    Session           => [ (prep, ...), (summary, ...), (transcript, ...), (journal, ...) ]
 }
 ```
 

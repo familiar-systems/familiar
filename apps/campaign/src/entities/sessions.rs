@@ -31,6 +31,10 @@ pub struct Model {
     /// When the row was written. Immutable; the recording-order axis, kept
     /// distinct from the curated `ordinal`.
     pub created_at: DateTime<Utc>,
+    /// Last mutation. Equals `created_at` at genesis; the future reorder
+    /// operation bumps it when it reflows `ordinal`. Distinct from the immutable
+    /// `created_at` so "renumbered when" is recoverable (mirrors `pages`/`blocks`).
+    pub updated_at: DateTime<Utc>,
     /// The Session page that documents this session (sessions-as-pages). Set in
     /// the genesis txn; nullable because the temporal record is the durable half
     /// and may outlive its page (`ON DELETE SET NULL`). Unique: one session per

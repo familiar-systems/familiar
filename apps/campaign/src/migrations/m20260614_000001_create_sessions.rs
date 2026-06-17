@@ -9,6 +9,7 @@ enum Sessions {
     Id,
     Ordinal,
     CreatedAt,
+    UpdatedAt,
     PageId,
 }
 
@@ -49,6 +50,14 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(Sessions::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    // Last mutation (e.g. an ordinal reorder); equals `created_at`
+                    // at genesis. Distinct from the immutable `created_at`
+                    // recording-order axis, mirroring `pages`/`blocks`.
+                    .col(
+                        ColumnDef::new(Sessions::UpdatedAt)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )

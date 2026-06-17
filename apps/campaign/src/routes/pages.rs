@@ -15,15 +15,11 @@ use axum::{
 };
 use kameo::error::SendError;
 
-use familiar_systems_app_shared::campaigns::internal::CampaignRole;
-use familiar_systems_app_shared::id::{CampaignId, UserId};
 use familiar_systems_campaign_shared::document::pages::{CreatePageRequest, PageResponse};
 use familiar_systems_campaign_shared::id::PageId;
-use fs_id::Nanoid;
 
-use crate::actors::registry::GetCampaign;
 use crate::actors::supervisor::{CreatePage, CreatePageError};
-use crate::middleware::auth::AuthenticatedUser;
+use crate::middleware::auth::{AuthenticatedUser, authorize_gm};
 use crate::state::AppState;
 
 #[utoipa::path(
@@ -54,6 +50,8 @@ pub async fn create_page(
     Json(req): Json<CreatePageRequest>,
 ) -> impl IntoResponse {
     // Templates do not exist yet; refuse rather than store a dangling lineage.
+    // This is body-shaped and route-specific, so it precedes authorization (as
+    // it always has) - a template create is refused before the membership probe.
     if req.from_template_id.is_some() {
         return (
             StatusCode::NOT_IMPLEMENTED,
@@ -62,29 +60,10 @@ pub async fn create_page(
             .into_response();
     }
 
-    let cid = CampaignId::from(Nanoid::from(campaign_id));
-
-    let supervisor = match state.registry.ask(GetCampaign(cid.clone())).await {
-        Ok(Some(sup)) => sup,
-        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
-        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    let (_campaign_id, supervisor) = match authorize_gm(&state, campaign_id, &user).await {
+        Ok(resolved) => resolved,
+        Err(resp) => return resp,
     };
-
-    // Authorize: creating content is a GM action. This is the cross-user
-    // boundary, so it must be checked server-side (on the platform tier).
-    let caller = UserId(user.id);
-    match state
-        .platform_internal
-        .check_membership(&cid.0.0, &caller)
-        .await
-    {
-        Ok(Some(CampaignRole::Gm)) => {}
-        Ok(Some(_)) | Ok(None) => return StatusCode::FORBIDDEN.into_response(),
-        Err(e) => {
-            tracing::warn!(error = %e, "membership check failed during create_page");
-            return StatusCode::SERVICE_UNAVAILABLE.into_response();
-        }
-    }
 
     // The new Page's sections (and the editable empty paragraph each is seeded
     // with) come from its kind inside the owning PageActor; this handler names

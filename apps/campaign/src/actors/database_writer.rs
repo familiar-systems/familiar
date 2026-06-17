@@ -568,6 +568,8 @@ impl Message<DbCreateSession> for DatabaseWriteActor {
             id: Set(SessionIdCol::from(session_id.clone())),
             ordinal: Set(ordinal),
             created_at: Set(now),
+            // Equal at genesis; the future reorder op is what diverges them.
+            updated_at: Set(now),
             page_id: Set(Some(page_id_col)),
         }
         .insert(&txn)

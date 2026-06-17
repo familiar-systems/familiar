@@ -85,10 +85,13 @@ test("create a campaign, edit two pages, and navigate between them via the ToC",
   // --- Edit the home page: two body paragraph blocks. ---
   await typeTwoLines(page, page.locator(BODY_EDITOR), "Home line one", "Home line two");
 
-  // --- Create a second page ("Test page") via the ToC. ---
+  // --- Create a second page ("Test page") via the New menu modal. ---
   const sidebar = page.locator("aside");
   await sidebar.getByRole("button", { name: "New page" }).click();
-  const nameInput = page.getByPlaceholder("Page name");
+  // Pick Entity, then name it. The modal is portaled to <body>, so query the
+  // page (not the sidebar locator).
+  await page.getByRole("button", { name: /New entity/ }).click();
+  const nameInput = page.getByLabel("Name");
   await nameInput.fill("Test page");
   await nameInput.press("Enter");
 

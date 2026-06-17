@@ -486,7 +486,7 @@ mod tests {
 
     #[test]
     fn kind_round_trips() {
-        for kind in [PageKind::Entity, PageKind::Template] {
+        for kind in [PageKind::Entity, PageKind::Template, PageKind::Session] {
             let (doc, _) = LoroPageDoc::from_blocks(
                 "Test",
                 &Status::GmOnly,

@@ -14,15 +14,11 @@ use axum::{
 };
 use kameo::error::SendError;
 
-use familiar_systems_app_shared::campaigns::internal::CampaignRole;
-use familiar_systems_app_shared::id::{CampaignId, UserId};
 use familiar_systems_campaign_shared::document::sessions::{CreateSessionRequest, SessionResponse};
 use familiar_systems_campaign_shared::id::{PageId, SessionId};
-use fs_id::Nanoid;
 
-use crate::actors::registry::GetCampaign;
 use crate::actors::supervisor::{CreateSession, CreateSessionError};
-use crate::middleware::auth::AuthenticatedUser;
+use crate::middleware::auth::{AuthenticatedUser, authorize_gm};
 use crate::state::AppState;
 
 #[utoipa::path(
@@ -51,29 +47,10 @@ pub async fn create_session(
     Path(campaign_id): Path<String>,
     Json(req): Json<CreateSessionRequest>,
 ) -> impl IntoResponse {
-    let cid = CampaignId::from(Nanoid::from(campaign_id));
-
-    let supervisor = match state.registry.ask(GetCampaign(cid.clone())).await {
-        Ok(Some(sup)) => sup,
-        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
-        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    let (_campaign_id, supervisor) = match authorize_gm(&state, campaign_id, &user).await {
+        Ok(resolved) => resolved,
+        Err(resp) => return resp,
     };
-
-    // Authorize: creating a session is a GM action. This is the cross-user
-    // boundary, so it must be checked server-side (on the platform tier).
-    let caller = UserId(user.id);
-    match state
-        .platform_internal
-        .check_membership(&cid.0.0, &caller)
-        .await
-    {
-        Ok(Some(CampaignRole::Gm)) => {}
-        Ok(Some(_)) | Ok(None) => return StatusCode::FORBIDDEN.into_response(),
-        Err(e) => {
-            tracing::warn!(error = %e, "membership check failed during create_session");
-            return StatusCode::SERVICE_UNAVAILABLE.into_response();
-        }
-    }
 
     match supervisor
         .ask(CreateSession {

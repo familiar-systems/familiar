@@ -30,7 +30,6 @@ import type { TreeID } from "loro-crdt";
 import { useMemo, useState } from "react";
 
 import type { TocTreeNode } from "./toc-doc";
-import { TocCreateRow } from "./TocCreateRow";
 import { TocRow } from "./TocRow";
 import {
   flattenToc,
@@ -50,26 +49,17 @@ interface TocTreeProps {
   tree: TocTreeNode[];
   /** The page currently open in the editor (for active-row highlight). */
   activePageId: PageId | null;
-  /** undefined = not creating, null = creating at root, PageId = under that page. */
-  pendingParent: PageId | null | undefined;
-  creating: boolean;
   onNavigate: (pageId: PageId) => void;
   onMove: (node: TreeID, parent: TreeID | null, index: number) => void;
   onAddChild: (parent: PageId) => void;
-  onSubmitCreate: (name: string) => void;
-  onCancelCreate: () => void;
 }
 
 export function TocTree({
   tree,
   activePageId,
-  pendingParent,
-  creating,
   onNavigate,
   onMove,
   onAddChild,
-  onSubmitCreate,
-  onCancelCreate,
 }: TocTreeProps): React.ReactElement {
   const [collapsed, setCollapsed] = useState<ReadonlySet<TreeID>>(new Set());
   const [activeId, setActiveId] = useState<TreeID | null>(null);
@@ -163,26 +153,13 @@ export function TocTree({
     reset();
   }
 
-  // Render list, splicing the inline create-row in at root or under its parent.
-  const rows: React.ReactNode[] = [];
-  if (pendingParent === null) {
-    rows.push(
-      <TocCreateRow
-        key={`create-${pendingParent ?? "root"}`}
-        depth={0}
-        indentWidth={INDENT_WIDTH}
-        busy={creating}
-        onSubmit={onSubmitCreate}
-        onCancel={onCancelCreate}
-      />,
-    );
-  }
-  for (const node of items) {
+  // Render the rows. Creation happens in the New menu modal now, not inline, so
+  // the tree is a plain map over the flattened items.
+  const rows: React.ReactNode[] = items.map((node) => {
     const isActive = node.treeId === activeId;
     const depth = isActive && projection !== null ? projection.depth : node.depth;
-    const entry = node.entry;
-    const open = entry.kind === "page" && entry.pageId === activePageId;
-    rows.push(
+    const open = node.entry.kind === "page" && node.entry.pageId === activePageId;
+    return (
       <TocRow
         key={node.treeId}
         node={node}
@@ -192,26 +169,9 @@ export function TocTree({
         onNavigate={onNavigate}
         onToggleCollapse={toggleCollapse}
         onAddChild={handleAddChild}
-      />,
+      />
     );
-    if (
-      pendingParent !== null &&
-      pendingParent !== undefined &&
-      entry.kind === "page" &&
-      entry.pageId === pendingParent
-    ) {
-      rows.push(
-        <TocCreateRow
-          key={`create-${pendingParent ?? "root"}`}
-          depth={node.depth + 1}
-          indentWidth={INDENT_WIDTH}
-          busy={creating}
-          onSubmit={onSubmitCreate}
-          onCancel={onCancelCreate}
-        />,
-      );
-    }
-  }
+  });
 
   return (
     <DndContext

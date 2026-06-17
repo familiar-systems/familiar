@@ -94,13 +94,9 @@ const meta = {
   args: {
     tree,
     activePageId: null,
-    pendingParent: undefined,
-    creating: false,
     onNavigate: fn(),
     onMove: fn(),
     onAddChild: fn(),
-    onSubmitCreate: fn(),
-    onCancelCreate: fn(),
   },
 } satisfies Meta<typeof TocTree>;
 
@@ -139,12 +135,18 @@ export const Navigates: Story = {
   },
 };
 
-// The inline create-row spliced in at root (the create-switch the strategy doc
-// flagged). Shows the input renders in isolation.
-export const CreatingAtRoot: Story = {
-  args: { pendingParent: null },
-  play: async ({ canvas }) => {
-    await expect(canvas.getByRole("textbox")).toBeInTheDocument();
+// Clicking a page row's "Add sub-page" fires onAddChild with that page's id.
+// This is the seam the New-menu modal hangs off: TocSidebar turns the call into
+// `setNewMenu({ parent })`, which becomes `createPage(kind, name, parent)`. The
+// add-sub-page button renders for pages only, so flatten order
+// [Lore, King, Greymoor, Factions, Ashen, Notes] makes index 0 King's.
+export const AddsChild: Story = {
+  play: async ({ args, canvas, userEvent }) => {
+    const adders = canvas.getAllByRole("button", { name: "Add sub-page" });
+    const kingAdder = adders[0];
+    if (kingAdder === undefined) throw new Error("expected King's add-sub-page button");
+    await userEvent.click(kingAdder);
+    await expect(args.onAddChild).toHaveBeenCalledWith(HOLLOW_KING);
   },
 };
 

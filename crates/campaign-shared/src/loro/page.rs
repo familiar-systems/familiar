@@ -8,7 +8,7 @@
 //!
 //! The ordered section list is a function of the page's `kind`
 //! ([`PageKind::sections`](crate::page_kind::PageKind::sections)); Session
-//! declares prep / summary / journal / transcript, and the future Skill kind
+//! declares prep / summary / transcript / journal, and the future Skill kind
 //! will declare its own. Each ProseMirror section maps to its own
 //! root-level LoroMap, scoped via `containerId` on the client's
 //! `LoroSyncPlugin`. See

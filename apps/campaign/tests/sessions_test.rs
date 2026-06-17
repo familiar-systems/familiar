@@ -29,6 +29,7 @@ async fn session_round_trips_branded_id_and_ordinal() {
         id: Set(id.clone().into()),
         ordinal: Set(1),
         created_at: Set(now),
+        updated_at: Set(now),
         page_id: Set(None),
     }
     .insert(&db)
@@ -56,6 +57,7 @@ async fn duplicate_ordinal_is_rejected() {
         id: Set(SessionId::generate().into()),
         ordinal: Set(7),
         created_at: Set(now),
+        updated_at: Set(now),
         page_id: Set(None),
     }
     .insert(&db)
@@ -68,6 +70,7 @@ async fn duplicate_ordinal_is_rejected() {
         id: Set(SessionId::generate().into()),
         ordinal: Set(7),
         created_at: Set(now),
+        updated_at: Set(now),
         page_id: Set(None),
     }
     .insert(&db)
@@ -107,6 +110,7 @@ async fn duplicate_page_id_is_rejected() {
         id: Set(SessionId::generate().into()),
         ordinal: Set(1),
         created_at: Set(now),
+        updated_at: Set(now),
         page_id: Set(Some(PageIdCol::from(page_id.clone()))),
     }
     .insert(&db)
@@ -119,6 +123,7 @@ async fn duplicate_page_id_is_rejected() {
         id: Set(SessionId::generate().into()),
         ordinal: Set(2),
         created_at: Set(now),
+        updated_at: Set(now),
         page_id: Set(Some(PageIdCol::from(page_id))),
     }
     .insert(&db)
