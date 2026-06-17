@@ -145,20 +145,31 @@ export const WithActivePage: Story = {
   args: { activePageId: HOLLOW_KING },
 };
 
-// Templates and sessions compose their kind/ordinal into the row label; an
-// unnamed session shows just "Session {ordinal}".
+// The page kind drives both the row label and the row icon. Templates and
+// sessions compose their kind/ordinal into the label (an unnamed session shows
+// just "Session {ordinal}"); an entity carries no prefix. The icon follows the
+// kind: template -> layout-template, session -> mic, entity -> scroll-text.
 export const KindPrefixes: Story = {
   args: {
     tree: [
       node(tid(1), templatePage("NPC Statblock", HOLLOW_KING)),
       node(tid(2), sessionPage("The Fall of Perth", GREYMOOR, 3)),
       node(tid(3), sessionPage("", ASHEN_PACT, 4)),
+      node(tid(4), page("Korgath", LOOSE_NOTES)),
     ],
   },
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     await expect(canvas.getByText("Template: NPC Statblock")).toBeInTheDocument();
     await expect(canvas.getByText("Session 3: The Fall of Perth")).toBeInTheDocument();
     await expect(canvas.getByText("Session 4")).toBeInTheDocument();
+    // An entity carries no kind prefix - just its name.
+    await expect(canvas.getByText("Korgath")).toBeInTheDocument();
+
+    // lucide-react stamps a `lucide-{name}` class on each icon, so the kind icon
+    // is assertable: one template glyph, one entity glyph, two session glyphs.
+    await expect(canvasElement.querySelector(".lucide-layout-template")).toBeInTheDocument();
+    await expect(canvasElement.querySelector(".lucide-scroll-text")).toBeInTheDocument();
+    await expect(canvasElement.querySelectorAll(".lucide-mic")).toHaveLength(2);
   },
 };
 

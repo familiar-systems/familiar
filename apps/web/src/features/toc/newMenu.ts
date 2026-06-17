@@ -11,7 +11,9 @@
 // hand-authored); all current kinds are creatable.
 
 import type { PageKind } from "@familiar-systems/types-campaign";
-import { FileText, LayoutTemplate, Mic, type LucideIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+import { PAGE_KIND_ICON } from "./pageKindIcon";
 
 /**
  * Which accent a row paints with. The session row is the gold "main event";
@@ -43,7 +45,7 @@ export const NEW_MENU = {
   session: {
     label: "New session",
     subtitle: "record audio, paste notes, upload a transcript",
-    icon: Mic,
+    icon: PAGE_KIND_ICON.session,
     defaultName: "Untitled Session",
     nameRequired: false,
     color: "gold",
@@ -51,7 +53,7 @@ export const NEW_MENU = {
   entity: {
     label: "New entity",
     subtitle: "a person, place, thing, or bit of lore",
-    icon: FileText,
+    icon: PAGE_KIND_ICON.entity,
     defaultName: "",
     nameRequired: true,
     color: "primary",
@@ -59,7 +61,7 @@ export const NEW_MENU = {
   template: {
     label: "New template",
     subtitle: "a reusable blueprint you clone new entities from",
-    icon: LayoutTemplate,
+    icon: PAGE_KIND_ICON.template,
     defaultName: "",
     nameRequired: true,
     color: "primary",
