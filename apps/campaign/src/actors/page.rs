@@ -653,6 +653,7 @@ mod tests {
     use familiar_systems_campaign_shared::loro::prosemirror::{
         ATTRIBUTES_KEY, CHILDREN_KEY, NODE_NAME_KEY,
     };
+    use familiar_systems_campaign_shared::loro::toc::TocPageKind;
     use kameo::actor::Spawn;
     use sea_orm::ActiveModelTrait;
     use sea_orm_migration::MigratorTrait;
@@ -1038,6 +1039,7 @@ mod tests {
         toc.ask(AddPageNode {
             page_id: page_id.clone(),
             title: "Original".into(),
+            page_kind: TocPageKind::Entity,
             visibility: Status::GmOnly,
             parent: None,
         })
@@ -1153,6 +1155,7 @@ mod tests {
         toc.ask(AddPageNode {
             page_id: page_id.clone(),
             title: "Original".into(),
+            page_kind: TocPageKind::Entity,
             visibility: Status::GmOnly,
             parent: None,
         })

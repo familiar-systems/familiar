@@ -17,6 +17,7 @@ import {
   Plus,
 } from "lucide-react";
 
+import { pageDisplayName } from "./pageDisplayName";
 import { ROW_INDENT_BASE, type FlatTocNode } from "./tree-utils";
 
 interface TocRowProps {
@@ -48,6 +49,12 @@ export function TocRow({
   // Narrow once into a const so the closures below stay type-safe.
   const pageId: PageId | null = entry.kind === "page" ? entry.pageId : null;
   const gmOnly = entry.visibility === "gmOnly";
+  // Pages compose their kind/ordinal into the label ("Template: X",
+  // "Session 3: X"); a folder is just its title.
+  const label =
+    entry.kind === "page"
+      ? pageDisplayName(entry.pageKind, entry.title)
+      : (entry.title ?? "Untitled");
 
   return (
     <div
@@ -90,7 +97,7 @@ export function TocRow({
         ) : (
           <Folder className="size-4 shrink-0 text-bronze" />
         )}
-        <span className="truncate font-sans">{entry.title ?? "Untitled"}</span>
+        <span className="truncate font-sans">{label}</span>
       </button>
 
       {gmOnly ? (

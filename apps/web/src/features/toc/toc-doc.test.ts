@@ -1,7 +1,9 @@
 import {
   TOC_CONTAINER,
   TOC_KEY_KIND,
+  TOC_KEY_ORDINAL,
   TOC_KEY_PAGE_ID,
+  TOC_KEY_PAGE_KIND,
   TOC_KEY_TITLE,
   TOC_KEY_VISIBILITY,
   TOC_KIND_FOLDER,
@@ -25,12 +27,21 @@ function addFolder(doc: LoroDoc, parent: TreeID | undefined, title: string): Tre
   return node.id;
 }
 
-function addPage(doc: LoroDoc, parent: TreeID | undefined, title: string, pageId: string): TreeID {
+function addPage(
+  doc: LoroDoc,
+  parent: TreeID | undefined,
+  title: string,
+  pageId: string,
+  opts?: { pageKind?: string; ordinal?: number },
+): TreeID {
   const node = getTocTree(doc).createNode(parent);
   node.data.set(TOC_KEY_KIND, TOC_KIND_PAGE);
   node.data.set(TOC_KEY_TITLE, title);
   node.data.set(TOC_KEY_PAGE_ID, pageId);
   node.data.set(TOC_KEY_VISIBILITY, "gmOnly");
+  // Pages always carry a pageKind now (strict decode); default to entity.
+  node.data.set(TOC_KEY_PAGE_KIND, opts?.pageKind ?? "entity");
+  if (opts?.ordinal !== undefined) node.data.set(TOC_KEY_ORDINAL, opts.ordinal);
   return node.id;
 }
 
@@ -106,6 +117,33 @@ describe("readTocTree", () => {
     // The fractional-index flag is set by the server and survives import, so reads
     // never need to (and must not) enable it.
     expect(client.getTree(TOC_CONTAINER).isFractionalIndexEnabled()).toBe(true);
+  });
+
+  it("decodes the pageKind sum, with a session carrying its ordinal", () => {
+    const doc = new LoroDoc();
+    addPage(doc, undefined, "Korgath", PAGE_A); // defaults to entity
+    addPage(doc, undefined, "The Fall", PAGE_B, { pageKind: "session", ordinal: 3 });
+    doc.commit();
+
+    const [entity, session] = readTocTree(doc);
+    expect(entity?.entry).toMatchObject({ kind: "page", pageKind: { kind: "entity" } });
+    expect(session?.entry).toMatchObject({
+      kind: "page",
+      pageKind: { kind: "session", ordinal: 3 },
+    });
+  });
+
+  it("skips a page node missing its pageKind (strict decode)", () => {
+    const doc = new LoroDoc();
+    const node = getTocTree(doc).createNode();
+    node.data.set(TOC_KEY_KIND, TOC_KIND_PAGE);
+    node.data.set(TOC_KEY_TITLE, "No kind");
+    node.data.set(TOC_KEY_PAGE_ID, PAGE_A);
+    node.data.set(TOC_KEY_VISIBILITY, "gmOnly");
+    // no pageKind set
+    doc.commit();
+
+    expect(readTocTree(doc)).toHaveLength(0);
   });
 
   it("skips suggestion and malformed nodes rather than throwing", () => {

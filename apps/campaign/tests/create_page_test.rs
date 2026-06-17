@@ -131,7 +131,9 @@ async fn gm_creates_session_via_pages() {
         body["content"]["ordinal"], 1,
         "first session in the campaign"
     );
-    assert_eq!(body["content"]["name"], "Untitled Session");
+    // An unnamed session stores an empty name: it is identified by its ordinal,
+    // and the client composes "Session {ordinal}" for display.
+    assert_eq!(body["content"]["name"], "");
     assert!(body["content"]["page_id"].as_str().is_some());
     assert!(body["content"]["session_id"].as_str().is_some());
 }

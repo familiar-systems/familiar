@@ -2,6 +2,7 @@ import {
   pageIdSchema,
   TOC_KEY_KIND,
   TOC_KEY_PAGE_ID,
+  TOC_KEY_PAGE_KIND,
   TOC_KEY_TITLE,
   TOC_KEY_VISIBILITY,
   TOC_KIND_FOLDER,
@@ -26,7 +27,34 @@ function folder(title: string): TocEntry {
   return { kind: "folder", title, visibility: "known", suggestions: [] };
 }
 function page(title: string, pageId: PageId): TocEntry {
-  return { kind: "page", title, pageId, visibility: "known", suggestions: [] };
+  return {
+    kind: "page",
+    title,
+    pageId,
+    pageKind: { kind: "entity" },
+    visibility: "known",
+    suggestions: [],
+  };
+}
+function templatePage(title: string, pageId: PageId): TocEntry {
+  return {
+    kind: "page",
+    title,
+    pageId,
+    pageKind: { kind: "template" },
+    visibility: "known",
+    suggestions: [],
+  };
+}
+function sessionPage(title: string, pageId: PageId, ordinal: number): TocEntry {
+  return {
+    kind: "page",
+    title,
+    pageId,
+    pageKind: { kind: "session", ordinal },
+    visibility: "known",
+    suggestions: [],
+  };
 }
 function node(id: TreeID, entry: TocEntry, children: TocTreeNode[] = []): TocTreeNode {
   return { treeId: id, entry, children };
@@ -64,6 +92,7 @@ function addPage(doc: LoroDoc, parent: TreeID | undefined, title: string, pageId
   created.data.set(TOC_KEY_KIND, TOC_KIND_PAGE);
   created.data.set(TOC_KEY_TITLE, title);
   created.data.set(TOC_KEY_PAGE_ID, pageId);
+  created.data.set(TOC_KEY_PAGE_KIND, "entity");
   created.data.set(TOC_KEY_VISIBILITY, "known");
   return created.id;
 }
@@ -114,6 +143,23 @@ export const Default: Story = {
 // The active page is highlighted; a visual-only state for the workshop.
 export const WithActivePage: Story = {
   args: { activePageId: HOLLOW_KING },
+};
+
+// Templates and sessions compose their kind/ordinal into the row label; an
+// unnamed session shows just "Session {ordinal}".
+export const KindPrefixes: Story = {
+  args: {
+    tree: [
+      node(tid(1), templatePage("NPC Statblock", HOLLOW_KING)),
+      node(tid(2), sessionPage("The Fall of Perth", GREYMOOR, 3)),
+      node(tid(3), sessionPage("", ASHEN_PACT, 4)),
+    ],
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText("Template: NPC Statblock")).toBeInTheDocument();
+    await expect(canvas.getByText("Session 3: The Fall of Perth")).toBeInTheDocument();
+    await expect(canvas.getByText("Session 4")).toBeInTheDocument();
+  },
 };
 
 // Identical content to Default, but the tree is derived from a real LoroDoc.

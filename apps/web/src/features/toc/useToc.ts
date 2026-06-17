@@ -6,9 +6,12 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
+import type { PageId } from "@familiar-systems/types-campaign";
+
 import { useLoroManager } from "../editor/LoroManagerProvider";
 import type { RoomError } from "../editor/loro-manager";
-import type { TocTreeNode } from "./toc-doc";
+import { pagePrefix } from "./pageDisplayName";
+import { findTocPageEntry, type TocTreeNode } from "./toc-doc";
 
 export type TocSnapshot =
   | { status: "loading" }
@@ -48,4 +51,19 @@ export function useToc(): TocSnapshot {
         return { status: "error", error: snapshot.error };
     }
   }, [snapshot]);
+}
+
+/**
+ * The non-editable display prefix for a page (e.g. "Session 3:", "Template:"),
+ * or null for an entity / before the page appears in the synced ToC. Reads the
+ * immutable kind/ordinal off the ToC entry; the editable name stays sourced from
+ * the live page doc, so the header composes prefix + live title.
+ */
+export function usePagePrefix(pageId: PageId): string | null {
+  const snapshot = useToc();
+  return useMemo(() => {
+    if (snapshot.status !== "ready" && snapshot.status !== "reconnecting") return null;
+    const entry = findTocPageEntry(snapshot.tree, pageId);
+    return entry === null ? null : pagePrefix(entry.pageKind);
+  }, [snapshot, pageId]);
 }

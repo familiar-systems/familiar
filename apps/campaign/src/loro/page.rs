@@ -166,15 +166,26 @@ impl LoroPageDoc {
     }
 
     /// Title for display, or a loud, deterministic recovery marker when
-    /// `meta.title` is unexpectedly empty. Pages are created name-first, so an
-    /// empty title should never happen; if it does, we surface it visibly and
-    /// editably (the GM can just rename it) rather than panicking or silently
-    /// dropping the node update. The `{id}` makes the broken page findable in the
-    /// ToC. Distinct from [`read_title`](Self::read_title) -> `Option`, which
+    /// `meta.title` is unexpectedly empty.
+    ///
+    /// Entity/Template pages are created name-first, so an empty title should
+    /// never happen; if it does, we surface it visibly and editably (the GM can
+    /// just rename it) rather than panicking or silently dropping the node
+    /// update, and the `{id}` makes the broken page findable in the ToC.
+    ///
+    /// A `Session` is the exception: it is identified by its ordinal, and its
+    /// page title is an *optional* subtitle, so an empty title is legitimate
+    /// (the client composes "Session {ordinal}"). Returning `""` rather than a
+    /// marker keeps the ToC node title empty so a session renamed-then-cleared
+    /// doesn't push "ERROR LOADING TITLE ..." into the tree.
+    ///
+    /// Distinct from [`read_title`](Self::read_title) -> `Option`, which
     /// `name_sync` uses to tell a real title from "leave `pages.name` alone".
     pub fn read_title_or_recovery_marker(&self, id: &PageId) -> String {
-        self.read_title()
-            .unwrap_or_else(|| format!("ERROR LOADING TITLE {}", id.0))
+        self.read_title().unwrap_or_else(|| match self.kind {
+            PageKind::Session => String::new(),
+            _ => format!("ERROR LOADING TITLE {}", id.0),
+        })
     }
 
     /// Read the status from the meta section.
@@ -328,6 +339,19 @@ mod tests {
             BlockId::generate,
         );
         assert_eq!(named.read_title_or_recovery_marker(&id), "Korgath");
+
+        // A session's empty title is legitimate (identified by ordinal): it
+        // resolves to "" so the client composes "Session {ordinal}" and the ToC
+        // node title stays empty rather than a recovery marker.
+        let (unnamed_session, _) = LoroPageDoc::from_blocks(
+            "",
+            &Status::GmOnly,
+            &PageKind::Session,
+            no_rows(),
+            BlockId::generate,
+        );
+        assert_eq!(unnamed_session.read_title(), None);
+        assert_eq!(unnamed_session.read_title_or_recovery_marker(&id), "");
     }
 
     #[test]

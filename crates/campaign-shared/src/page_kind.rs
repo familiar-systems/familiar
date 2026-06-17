@@ -26,8 +26,9 @@ pub enum PageKind {
     /// The default kind for everything a GM writes about the world.
     Entity,
     /// A template that `Entity` pages clone. Excluded from `kind == entity`
-    /// listings. Has no creation path yet (template instantiation is unbuilt);
-    /// the variant exists so the schema and exclusion semantics are in place.
+    /// listings. Created like any page (`POST /pages` with `kind: template`);
+    /// what remains unbuilt is *instantiation* - cloning a template's block
+    /// structure into a new entity (`from_template_id`, currently 501).
     Template,
     /// A session: the campaign's central unit and temporal spine. The page holds
     /// the prep / summary / journal / transcript sections (see [`sections`]);

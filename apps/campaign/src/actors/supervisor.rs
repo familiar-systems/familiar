@@ -26,6 +26,7 @@ use kameo::prelude::Actor;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use familiar_systems_campaign_shared::id::{ClientId, PageId};
+use familiar_systems_campaign_shared::loro::toc::TocPageKind;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use tokio::sync::mpsc;
@@ -546,15 +547,21 @@ impl Message<CreatePage> for CampaignSupervisor {
         // Pick the document-page genesis path. Exhaustive over `PageKind`, so a
         // future Skill / Memory kind forces a decision here; `Session` is refused
         // because it has its own `CreateSession` path (it mints a temporal row).
-        let init = match msg.kind {
-            PageKind::Entity => PageInit::NewEntity {
-                name: name.clone(),
-                status,
-            },
-            PageKind::Template => PageInit::NewTemplate {
-                name: name.clone(),
-                status,
-            },
+        let (init, toc_page_kind) = match msg.kind {
+            PageKind::Entity => (
+                PageInit::NewEntity {
+                    name: name.clone(),
+                    status,
+                },
+                TocPageKind::Entity,
+            ),
+            PageKind::Template => (
+                PageInit::NewTemplate {
+                    name: name.clone(),
+                    status,
+                },
+                TocPageKind::Template,
+            ),
             PageKind::Session => return Err(CreatePageError::UnsupportedKind(PageKind::Session)),
         };
 
@@ -597,6 +604,8 @@ impl Message<CreatePage> for CampaignSupervisor {
             .ask(AddPageNode {
                 page_id: page_id.clone(),
                 title: name,
+                // Entity or Template here (Session has its own path).
+                page_kind: toc_page_kind,
                 visibility: status,
                 parent: msg.parent.clone(),
             })
@@ -692,10 +701,13 @@ impl Message<CreateSession> for CampaignSupervisor {
 
         let status = msg.status.unwrap_or(Status::GmOnly);
         let page_id = PageId::generate();
-        // The page owns the session's label (`pages.name`), so an unnamed session
-        // gets a neutral default. The canonical "Session {ordinal}" display
-        // derives later from the temporal row's ordinal.
-        let page_name = name.unwrap_or_else(|| "Untitled Session".to_string());
+        // The page owns the session's optional subtitle (`pages.name`). An unnamed
+        // session stores an empty name: it is identified by its ordinal, and the
+        // client composes the canonical "Session {ordinal}" display from the
+        // temporal row's ordinal (carried on the ToC node). Empty is legitimate
+        // here (unlike entities), so the page doc's title stays empty rather than
+        // a recovery marker (see `LoroPageDoc::read_title_or_recovery_marker`).
+        let page_name = name.unwrap_or_default();
 
         let (db_reader, db_writer) = {
             let db = self
@@ -728,13 +740,30 @@ impl Message<CreateSession> for CampaignSupervisor {
         self.pages.insert(page_id.clone(), actor.clone());
         ctx.actor_ref().clone().link(&actor).await;
 
-        // Place it in the live ToC. Best-effort: a failure leaves a valid Page
-        // that `restore_toc` re-surfaces at the root on the next checkout.
+        // Read back the committed rows first: the ToC node needs the genesis-
+        // assigned `ordinal`, which only exists once `DbCreateSession` has run.
+        let page_id_col = PageIdCol::from(page_id.clone());
+        let page = pages::Entity::find_by_id(page_id_col.clone())
+            .one(&db_reader)
+            .await?
+            .ok_or(CreateSessionError::Genesis)?;
+        let session = sessions::Entity::find()
+            .filter(sessions::Column::PageId.eq(page_id_col))
+            .one(&db_reader)
+            .await?
+            .ok_or(CreateSessionError::Genesis)?;
+
+        // Place it in the live ToC, carrying the kind and ordinal so clients can
+        // render "Session {ordinal}". Best-effort: a failure leaves a valid Page
+        // that `restore_toc` re-surfaces (with its ordinal) on the next checkout.
         if let Err(e) = self
             .toc
             .ask(AddPageNode {
                 page_id: page_id.clone(),
                 title: page_name,
+                page_kind: TocPageKind::Session {
+                    ordinal: session.ordinal,
+                },
                 visibility: status,
                 parent: msg.parent.clone(),
             })
@@ -746,17 +775,6 @@ impl Message<CreateSession> for CampaignSupervisor {
             );
         }
 
-        // Read back the committed rows for the response (mirrors `CreatePage`).
-        let page_id_col = PageIdCol::from(page_id);
-        let page = pages::Entity::find_by_id(page_id_col.clone())
-            .one(&db_reader)
-            .await?
-            .ok_or(CreateSessionError::Genesis)?;
-        let session = sessions::Entity::find()
-            .filter(sessions::Column::PageId.eq(page_id_col))
-            .one(&db_reader)
-            .await?
-            .ok_or(CreateSessionError::Genesis)?;
         Ok(CreatedSession { page, session })
     }
 }

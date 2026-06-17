@@ -14,4 +14,5 @@ export * from "./Status";
 export * from "./TemplateResponse";
 export * from "./TocEntry";
 export * from "./TocEntryKind";
+export * from "./TocPageKind";
 export * from "./TocSuggestion";

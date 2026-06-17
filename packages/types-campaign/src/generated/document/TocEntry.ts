@@ -2,6 +2,7 @@
 import type { ConversationId } from "../id/ConversationId";
 import type { PageId } from "../id/PageId";
 import type { Status } from "./Status";
+import type { TocPageKind } from "./TocPageKind";
 import type { TocSuggestion } from "./TocSuggestion";
 
 /**
@@ -24,6 +25,12 @@ export type TocEntry =
       kind: "page";
       title: string;
       pageId: PageId;
+      /**
+       * The page's kind and any kind-specific display data, denormalized from
+       * `pages.kind` (+ `sessions.ordinal`). A session carries its ordinal
+       * *inside* the variant, so a non-session ordinal is unrepresentable.
+       */
+      pageKind: TocPageKind;
       visibility: Status;
       suggestions: Array<TocSuggestion>;
     }
