@@ -28,19 +28,16 @@ impl MigrationTrait for Migration {
                     .table(Sessions::Table)
                     .if_not_exists()
                     .col(ColumnDef::new(Sessions::Id).text().not_null().primary_key())
-                    // GM-curated "Session N". Unique within the campaign; the
-                    // unique constraint is an inline column key (a `'u'` SQLite
-                    // auto-index), declared identically by the entity's
-                    // `#[sea_orm(unique)]`. `schema_drift` compares only explicit
-                    // (`'c'`) indexes, so the two stay in lockstep through the
-                    // column definition, not an index comparison.
+                    // GM-curated "Session N". Unique within the campaign; an
+                    // inline column key, mirrored by the entity's
+                    // `#[sea_orm(unique)]`.
                     //
                     // CHECK (ordinal >= 0): forbids negative session numbers but
                     // allows Session 0 (a real "Session Zero": setup / character
                     // creation). "Before any session" is Prior (a NULL origin on
-                    // the relationship), not a negative ordinal. `schema_drift`
-                    // can't see CHECKs; this one is non-load-bearing (assignment
-                    // is `MAX+1`, never < 0), so it ships without a guard test.
+                    // the relationship), not a negative ordinal. Non-load-bearing
+                    // (assignment is `MAX+1`, never < 0), so it ships without a
+                    // behavioral guard test.
                     .col(
                         ColumnDef::new(Sessions::Ordinal)
                             .big_integer()
@@ -64,10 +61,10 @@ impl MigrationTrait for Migration {
                     // The Session page this documents (sessions-as-pages). Nullable:
                     // the temporal record is the durable half and may exist (or
                     // outlive its page) without one. `unique_key` enforces one
-                    // session per page - an inline `'u'` auto-index like `ordinal`,
-                    // which `schema_drift` ignores while the entity mirrors it via
-                    // `#[sea_orm(unique)]` (SQLite permits many NULLs under a unique
-                    // index, so page-less sessions are unconstrained).
+                    // session per page, an inline unique constraint like `ordinal`,
+                    // mirrored by the entity's `#[sea_orm(unique)]` (SQLite permits
+                    // many NULLs under a unique index, so page-less sessions are
+                    // unconstrained).
                     .col(ColumnDef::new(Sessions::PageId).text().null().unique_key())
                     // `ON DELETE SET NULL`: the temporal row outlives its page so
                     // relationship provenance survives a page deletion.

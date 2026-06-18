@@ -82,7 +82,7 @@ impl MigrationTrait for Migration {
 mod tests {
     //! Migration-specific invariants for `campaign_metadata`. Generic
     //! "entity matches migrated schema" coverage lives in
-    //! `tests/schema_drift.rs`.
+    //! `tests/schema.rs`.
 
     use chrono::Utc;
     use familiar_systems_app_shared::id::CampaignId;

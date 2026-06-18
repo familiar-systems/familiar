@@ -65,4 +65,4 @@ Convention across auth-failure tests (not obvious from any one file): **assert b
 - **New config value**: choose panic-on-missing or defaulted; add a `#[serial]` test.
 - **New `AppError` variant**: follow the policy comment in `error.rs` (generic public message, distinct `kind` for logs).
 - **New API response type**: live in `crates/app-shared/src/auth/api.rs` (or sibling) with `#[derive(Serialize, TS, ToSchema)]` and `#[ts(export_to = "types-app/src/generated/...")]`. Run `mise run generate-types`.
-- **New migration**: new file under `src/migrations/`, register in `migrations/mod.rs`. Every test migrates from empty, so an "only works on populated DB" migration is a real bug.
+- **New migration**: new file under `src/migrations/`, register in `migrations/mod.rs`. Every test migrates from empty, so an "only works on populated DB" migration is a real bug. `tests/schema.rs` asserts the entities line up with the migrated schema (table set, column names + type affinity, FKs, unique constraints), so add or update the matching entity when a migration changes the schema.
