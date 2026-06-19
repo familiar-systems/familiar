@@ -23,13 +23,6 @@
       "Bash(gh search *)",
       "Bash(gh issue view *)"
     ],
-    "deny": [
-      "Read(./**/.envrc)",
-      "Read(./**/.env)"
-    ]
-  },
-  "enabledPlugins": {
-    "typescript-lsp@claude-plugins-official": false,
-    "rust-analyzer-lsp@claude-plugins-official": false
+    "deny": ["Read(./**/.envrc)", "Read(./**/.env)"]
   }
 }

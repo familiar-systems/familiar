@@ -826,7 +826,6 @@ mod tests {
             }],
         };
 
-        // First session -> ordinal 1, page is a Session carrying the label.
         let first = actor
             .ask(DbCreateSession {
                 new_page: session_page("The Heist"),
@@ -837,16 +836,14 @@ mod tests {
         assert_eq!(PageKind::from(first.page.kind), PageKind::Session);
         assert_eq!(first.page.name, "The Heist", "the label lives on the page");
 
-        // Second session -> ordinal 2 (max + 1).
         let second = actor
             .ask(DbCreateSession {
                 new_page: session_page("Untitled Session"),
             })
             .await
             .expect("create second session");
-        assert_eq!(second.session.ordinal, 2);
+        assert_eq!(second.session.ordinal, 2, "max + 1");
 
-        // The temporal row is linked to its page (it carries no name of its own).
         let s1 = sessions::Entity::find()
             .filter(sessions::Column::PageId.eq(first.page.id.clone()))
             .one(&conn)
@@ -856,7 +853,6 @@ mod tests {
         assert_eq!(s1.ordinal, 1);
         assert_eq!(s1.page_id, Some(first.page.id.clone()));
 
-        // Both pages' blocks were persisted in their genesis txns.
         assert_eq!(blocks::Entity::find().all(&conn).await.unwrap().len(), 2);
     }
 
@@ -904,7 +900,6 @@ mod tests {
             .await
             .expect_err("a duplicate block id must fail the genesis");
 
-        // Nothing persisted: page, blocks, and the temporal row all rolled back.
         assert_eq!(
             pages::Entity::find().all(&conn).await.unwrap().len(),
             0,

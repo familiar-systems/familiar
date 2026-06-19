@@ -912,7 +912,6 @@ mod tests {
         // re-reading them.
         let threaded = reply_rx.await.expect("genesis reply received");
 
-        // The page is a Session.
         let page = pages::Entity::find_by_id(PageIdCol::from(page_id.clone()))
             .one(&conn)
             .await
@@ -940,7 +939,6 @@ mod tests {
             "one seeded block per declared session section",
         );
 
-        // The linked temporal row, ordinal 1 (nameless - the label is on the page).
         let session = sessions::Entity::find()
             .filter(sessions::Column::PageId.eq(PageIdCol::from(page_id.clone())))
             .one(&conn)

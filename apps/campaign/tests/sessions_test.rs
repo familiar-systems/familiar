@@ -1,7 +1,7 @@
-//! Sessions schema: the temporal record round-trips through branded types, and
-//! the `ordinal` unique constraint is live. No HTTP/actor path yet (the
-//! create-session flow and ordinal auto-assignment are later slices); this
-//! exercises the migration + entity directly.
+//! Sessions schema, at the DB layer: the temporal record round-trips through
+//! branded types, and the `ordinal` and `page_id` unique constraints are live.
+//! The create-session flow and `ordinal = max + 1` assignment are tested with
+//! their actors (`create_page_test`, `DbCreateSession`).
 
 use chrono::Utc;
 use familiar_systems_campaign::db;

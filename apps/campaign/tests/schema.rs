@@ -5,11 +5,11 @@
 //! Against a freshly-migrated in-memory DB and an entity-derived in-memory DB,
 //! `entities_match_schema` asserts: the set of migrated user tables (minus the
 //! vec0 `block_embeddings` table and `sqlite_`/`seaql_` internals) equals the set
-//! of entity `table_name()`s; and per table, the entity's columns (by name and
-//! SQLite type affinity, so `bigint`/`integer` don't false-positive), foreign
-//! keys, and unique constraints (incl. PRIMARY KEY) match the migrated table, and
-//! `Entity::find().all()` executes against the live schema. That is the
-//! entity<->migration runtime-safety guarantee.
+//! of entity `table_name()`s; and per table, the entity's columns (by name,
+//! SQLite type affinity so `bigint`/`integer` don't false-positive, and
+//! nullability), foreign keys, and unique constraints (incl. PRIMARY KEY) match
+//! the migrated table, and `Entity::find().all()` executes against the live
+//! schema. That is the entity<->migration runtime-safety guarantee.
 //!
 //! Out of scope (sea-orm entities can't express these): CHECK constraints,
 //! non-unique (performance) indexes, column defaults, and the vec0 table shape.
@@ -54,12 +54,18 @@ fn affinity(declared_type: &str) -> &'static str {
     }
 }
 
-/// Column name -> affinity for `table`, read from the live DB.
-async fn col_affinities(db: &DatabaseConnection, table: &str) -> BTreeMap<String, &'static str> {
+#[derive(Debug, PartialEq, Eq)]
+struct ColAttr {
+    affinity: &'static str,
+    notnull: bool,
+}
+
+/// Column name -> `(affinity, notnull)` for `table`, read from the live DB.
+async fn col_attrs(db: &DatabaseConnection, table: &str) -> BTreeMap<String, ColAttr> {
     let rows = db
         .query_all(Statement::from_string(
             DatabaseBackend::Sqlite,
-            format!("SELECT name, type FROM pragma_table_info('{table}')"),
+            format!("SELECT name, type, \"notnull\" FROM pragma_table_info('{table}')"),
         ))
         .await
         .expect("pragma_table_info");
@@ -68,7 +74,14 @@ async fn col_affinities(db: &DatabaseConnection, table: &str) -> BTreeMap<String
         .map(|r| {
             let name: String = r.try_get("", "name").unwrap();
             let ty: String = r.try_get("", "type").unwrap();
-            (name, affinity(&ty))
+            let notnull = r.try_get::<i32>("", "notnull").unwrap() != 0;
+            (
+                name,
+                ColAttr {
+                    affinity: affinity(&ty),
+                    notnull,
+                },
+            )
         })
         .collect()
 }
@@ -159,9 +172,10 @@ async fn user_tables(db: &DatabaseConnection) -> BTreeSet<String> {
 }
 
 /// Materialize `entity`'s table in the entity-derived DB, then assert its columns
-/// (name + affinity), foreign keys, and unique constraints match the migrated
-/// table, and that a SELECT of every entity column executes against the migrated
-/// schema. Returns the table name so the caller can assert full table-set coverage.
+/// (name + affinity + nullability), foreign keys, and unique constraints match the
+/// migrated table, and that a SELECT of every entity column executes against the
+/// migrated schema. Returns the table name so the caller can assert full table-set
+/// coverage.
 ///
 /// `create_table_from_entity` tolerates FK targets that don't exist yet, so entities
 /// can be applied in any order.
@@ -181,9 +195,9 @@ async fn check_entity<E: EntityTrait>(
         .expect("create table from entity");
 
     assert_eq!(
-        col_affinities(migrated, &table).await,
-        col_affinities(entity_db, &table).await,
-        "column drift (name or type affinity) in `{table}` between entity and migration"
+        col_attrs(migrated, &table).await,
+        col_attrs(entity_db, &table).await,
+        "column drift (name, type affinity, or nullability) in `{table}` between entity and migration"
     );
     assert_eq!(
         foreign_keys(migrated, &table).await,
