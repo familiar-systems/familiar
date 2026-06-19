@@ -39,6 +39,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::id::{ConversationId, PageId};
+use crate::page_kind::PageKind;
 use crate::status::Status;
 
 // ── Schema: Loro container names ────────────────────────────────────────────
@@ -53,6 +54,15 @@ pub const KEY_TITLE: &str = "title";
 pub const KEY_PAGE_ID: &str = "pageId";
 pub const KEY_VISIBILITY: &str = "visibility";
 pub const KEY_CONVERSATION_ID: &str = "conversationId";
+/// The page's `PageKind` (`entity` | `template` | `session`), denormalized onto
+/// the Page node so the client can compose its display name without a second
+/// fetch. Re-derived from `pages.kind` on every checkout (the ToC doc is a hot
+/// cache), so it is never persisted to `toc_entries`.
+pub const KEY_PAGE_KIND: &str = "pageKind";
+/// The session ordinal for a `session` Page node; absent on other kinds.
+/// Re-derived from `sessions.ordinal` on checkout. Lets the client render
+/// "Session {ordinal}" without querying the temporal table.
+pub const KEY_ORDINAL: &str = "ordinal";
 
 /// Maximum nesting depth for ToC entries. Ex:
 /// - One
@@ -107,6 +117,11 @@ pub enum TocEntry {
         title: String,
         #[serde(rename = "pageId")]
         page_id: PageId,
+        /// The page's kind and any kind-specific display data, denormalized from
+        /// `pages.kind` (+ `sessions.ordinal`). A session carries its ordinal
+        /// *inside* the variant, so a non-session ordinal is unrepresentable.
+        #[serde(rename = "pageKind")]
+        page_kind: TocPageKind,
         visibility: Status,
         #[serde(default)]
         suggestions: Vec<TocSuggestion>,
@@ -119,6 +134,41 @@ pub enum TocEntry {
         title: Option<String>,
         visibility: Status,
     },
+}
+
+/// A page's kind and its kind-specific display data, as carried on a
+/// `TocEntry::Page`. Orthogonal to the structural `TocEntryKind` (folder / page /
+/// suggestion): that says *what role the node plays in the tree*; this says *what
+/// kind of document a page backs*.
+///
+/// Only `Session` carries data (its `ordinal`); modeling it as a sum keeps the
+/// ordinal out of `Entity`/`Template` entirely, so "entity with an ordinal" and
+/// "session without one" are both unrepresentable. The at-rest token comes from
+/// [`page_kind`](TocPageKind::page_kind) -> [`PageKind::as_loro_str`], the single
+/// source of truth for the string, so the Loro/wire value can't drift.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export, export_to = "types-campaign/src/generated/document/")]
+pub enum TocPageKind {
+    Entity,
+    Template,
+    Session {
+        #[ts(type = "number")]
+        ordinal: i64,
+    },
+}
+
+impl TocPageKind {
+    /// The canonical [`PageKind`] this corresponds to. Sole source of the at-rest
+    /// token string (via [`PageKind::as_loro_str`]), so the Loro codec never
+    /// restates `"entity"` / `"template"` / `"session"`.
+    pub fn page_kind(&self) -> PageKind {
+        match self {
+            Self::Entity => PageKind::Entity,
+            Self::Template => PageKind::Template,
+            Self::Session { .. } => PageKind::Session,
+        }
+    }
 }
 
 /// An inline suggestion on an existing content entry (Folder or Page).

@@ -36,6 +36,19 @@ async fn mount_membership(app: &common::TestApp, campaign_id: &CampaignId, role:
         .await;
 }
 
+/// POST a kind-tagged `{ kind, content }` page body and return the HTTP status.
+async fn post_page(app: &common::TestApp, campaign_id: &CampaignId, body: Value) -> u16 {
+    reqwest::Client::new()
+        .post(format!("{}/campaign/{}/pages", app.base_url, campaign_id.0))
+        .header("authorization", app.auth_header())
+        .json(&body)
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .as_u16()
+}
+
 #[tokio::test]
 async fn gm_creates_page_and_nests_under_parent() {
     let app = common::spawn_app().await;
@@ -46,27 +59,32 @@ async fn gm_creates_page_and_nests_under_parent() {
     let client = reqwest::Client::new();
     let url = format!("{}/campaign/{}/pages", app.base_url, campaign_id.0);
 
-    // Create a root-level Page.
+    // Create a root-level entity. The request and response are kind-tagged:
+    // `{ kind, content: { ... } }`.
     let resp = client
         .post(&url)
         .header("authorization", app.auth_header())
-        .json(&json!({ "name": "Korgath" }))
+        .json(&json!({ "kind": "entity", "content": { "name": "Korgath" } }))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status().as_u16(), 201);
 
     let body: Value = resp.json().await.unwrap();
-    assert_eq!(body["name"], "Korgath");
-    assert_eq!(body["status"], "gmOnly", "defaults to gm_only");
-    assert!(body["template_id"].is_null());
-    let parent_id = body["id"].as_str().expect("id is a string").to_string();
+    assert_eq!(body["kind"], "entity");
+    assert_eq!(body["content"]["name"], "Korgath");
+    assert_eq!(body["content"]["status"], "gmOnly", "defaults to gm_only");
+    assert!(body["content"]["template_id"].is_null());
+    let parent_id = body["content"]["id"]
+        .as_str()
+        .expect("id is a string")
+        .to_string();
 
-    // Create a child nested under the first Page.
+    // Create a child nested under the first entity.
     let resp = client
         .post(&url)
         .header("authorization", app.auth_header())
-        .json(&json!({ "name": "Korgath's Lair", "parent": parent_id }))
+        .json(&json!({ "kind": "entity", "content": { "name": "Korgath's Lair", "parent": parent_id } }))
         .send()
         .await
         .unwrap();
@@ -74,6 +92,113 @@ async fn gm_creates_page_and_nests_under_parent() {
         resp.status().as_u16(),
         201,
         "nesting under a real parent succeeds"
+    );
+}
+
+#[tokio::test]
+async fn gm_creates_template() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
+    mount_membership(&app, &campaign_id, "gm").await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{}/campaign/{}/pages", app.base_url, campaign_id.0))
+        .header("authorization", app.auth_header())
+        .json(&json!({ "kind": "template", "content": { "name": "NPC" } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 201);
+
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["kind"], "template");
+    assert_eq!(body["content"]["name"], "NPC");
+    // A template carries no `template_id` lineage of its own; the response
+    // variant has no such field.
+    assert!(body["content"]["template_id"].is_null());
+    assert!(body["content"]["id"].as_str().is_some());
+}
+
+#[tokio::test]
+async fn gm_creates_session_via_pages() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
+    mount_membership(&app, &campaign_id, "gm").await;
+
+    // A session is named like every other page kind.
+    let resp = reqwest::Client::new()
+        .post(format!("{}/campaign/{}/pages", app.base_url, campaign_id.0))
+        .header("authorization", app.auth_header())
+        .json(&json!({ "kind": "session", "content": { "name": "The End of Perth" } }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 201);
+
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["kind"], "session");
+    // The session response carries the temporal record the page form does not.
+    assert_eq!(
+        body["content"]["ordinal"], 1,
+        "first session in the campaign"
+    );
+    assert_eq!(body["content"]["name"], "The End of Perth");
+    assert!(body["content"]["page_id"].as_str().is_some());
+    assert!(body["content"]["session_id"].as_str().is_some());
+}
+
+/// A blank session name is rejected (422), like every other page kind - a session
+/// is no longer the unnamed exception.
+#[tokio::test]
+async fn creating_a_blank_session_is_rejected() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
+    mount_membership(&app, &campaign_id, "gm").await;
+
+    let status = post_page(
+        &app,
+        &campaign_id,
+        json!({ "kind": "session", "content": { "name": "   " } }),
+    )
+    .await;
+    assert_eq!(status, 422, "a whitespace-only session name is rejected");
+}
+
+/// Names are unique per kind: a second page of the same kind with the same name
+/// is a 409, but the same name on a *different* kind is fine - "The Fall of
+/// Perth" can be both an entity and a session.
+#[tokio::test]
+async fn duplicate_name_is_rejected_per_kind() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
+    mount_membership(&app, &campaign_id, "gm").await;
+
+    let entity = |name: &str| json!({ "kind": "entity", "content": { "name": name } });
+    let session = |name: &str| json!({ "kind": "session", "content": { "name": name } });
+
+    assert_eq!(
+        post_page(&app, &campaign_id, entity("The Fall of Perth")).await,
+        201,
+        "first entity with the name is created"
+    );
+    assert_eq!(
+        post_page(&app, &campaign_id, entity("The Fall of Perth")).await,
+        409,
+        "a second entity with the same name collides"
+    );
+    assert_eq!(
+        post_page(&app, &campaign_id, session("The Fall of Perth")).await,
+        201,
+        "the same name on a different kind (session) is allowed"
+    );
+    assert_eq!(
+        post_page(&app, &campaign_id, session("The Fall of Perth")).await,
+        409,
+        "a second session with the same name collides"
     );
 }
 
@@ -87,7 +212,7 @@ async fn create_page_with_unknown_parent_returns_422() {
     let resp = reqwest::Client::new()
         .post(format!("{}/campaign/{}/pages", app.base_url, campaign_id.0))
         .header("authorization", app.auth_header())
-        .json(&json!({ "name": "Orphan", "parent": PageId::generate().to_string() }))
+        .json(&json!({ "kind": "entity", "content": { "name": "Orphan", "parent": PageId::generate().to_string() } }))
         .send()
         .await
         .unwrap();
@@ -104,7 +229,7 @@ async fn player_cannot_create_page() {
     let resp = reqwest::Client::new()
         .post(format!("{}/campaign/{}/pages", app.base_url, campaign_id.0))
         .header("authorization", app.auth_header())
-        .json(&json!({ "name": "Forbidden" }))
+        .json(&json!({ "kind": "entity", "content": { "name": "Forbidden" } }))
         .send()
         .await
         .unwrap();
@@ -115,11 +240,12 @@ async fn player_cannot_create_page() {
 async fn create_page_unknown_campaign_returns_404() {
     let app = common::spawn_app().await;
 
-    // Not checked out on this shard -> 404 before the membership check.
+    // Not checked out on this shard -> 404 (after the body parses but before the
+    // membership check).
     let resp = reqwest::Client::new()
         .post(format!("{}/campaign/nonexistent-id/pages", app.base_url))
         .header("authorization", app.auth_header())
-        .json(&json!({ "name": "Ghost" }))
+        .json(&json!({ "kind": "entity", "content": { "name": "Ghost" } }))
         .send()
         .await
         .unwrap();
@@ -132,14 +258,15 @@ async fn create_page_from_template_returns_501() {
     let campaign_id = CampaignId::generate();
     create_campaign(&app, &campaign_id).await;
 
-    // `from_template_id` is refused before any other work, so no membership
-    // mock is needed.
+    // `from_template_id` (entity clone) is refused before any other work, so no
+    // membership mock is needed.
     let resp = reqwest::Client::new()
         .post(format!("{}/campaign/{}/pages", app.base_url, campaign_id.0))
         .header("authorization", app.auth_header())
-        .json(
-            &json!({ "name": "From Template", "from_template_id": PageId::generate().to_string() }),
-        )
+        .json(&json!({
+            "kind": "entity",
+            "content": { "name": "From Template", "from_template_id": PageId::generate().to_string() }
+        }))
         .send()
         .await
         .unwrap();
@@ -154,7 +281,7 @@ async fn create_page_without_auth_returns_401() {
 
     let resp = reqwest::Client::new()
         .post(format!("{}/campaign/{}/pages", app.base_url, campaign_id.0))
-        .json(&json!({ "name": "Anon" }))
+        .json(&json!({ "kind": "entity", "content": { "name": "Anon" } }))
         .send()
         .await
         .unwrap();

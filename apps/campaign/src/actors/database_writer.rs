@@ -8,12 +8,13 @@ use familiar_systems_app_shared::id::CampaignId;
 use kameo::prelude::{Actor, Context, Message};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    TransactionTrait,
+    QueryOrder, TransactionTrait,
 };
 
 use crate::domain::page::NewPage;
-use crate::entities::columns::{BlockIdCol, PageKindCol, SectionCol, StatusCol};
-use crate::entities::{blocks, campaign_metadata, pages, toc_entries};
+use crate::domain::session::next_session_ordinal;
+use crate::entities::columns::{BlockIdCol, PageKindCol, SectionCol, SessionIdCol, StatusCol};
+use crate::entities::{blocks, campaign_metadata, pages, sessions, toc_entries};
 
 pub struct DatabaseWriteActor {
     campaign_id: CampaignId,
@@ -298,7 +299,7 @@ impl Message<WriteTocSnapshot> for DatabaseWriteActor {
 // WritePageBlocks
 // ---------------------------------------------------------------------------
 
-use familiar_systems_campaign_shared::id::PageId;
+use familiar_systems_campaign_shared::id::{PageId, SessionId};
 
 use crate::entities::columns::PageIdCol;
 
@@ -470,6 +471,115 @@ impl Message<DbCreatePage> for DatabaseWriteActor {
         txn.commit().await?;
         tracing::debug!(block_count, "page created");
         Ok(model)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DbCreateSession (session genesis write)
+// ---------------------------------------------------------------------------
+
+/// Persist a brand-new session atomically: its `pages` row, the seeded section
+/// `blocks`, and the temporal `sessions` row, in one transaction. Invoked once,
+/// from the `PageActor`'s session-genesis path (`PageInit::NewSession`), so the
+/// actor that owns the Session page owns its birth write.
+///
+/// This is the effectful half of "mint a session". Page-first insert order
+/// satisfies the `sessions.page_id -> pages.id` FK; the ordinal is assigned
+/// `max + 1` via the pure [`next_session_ordinal`] kernel; and the `SessionId`
+/// is generated here, inside the txn, because nothing upstream consumes it.
+pub struct DbCreateSession {
+    /// The Session page to persist (`kind == Session`, blocks already seeded).
+    /// Its `name` is the session's label (required and non-blank); the `sessions`
+    /// row stays purely temporal and stores no name.
+    pub new_page: NewPage,
+}
+
+/// What a session genesis produced: the persisted `pages` row and its temporal
+/// `sessions` row. The `PageActor`'s genesis path threads this back to the
+/// supervisor through a reply oneshot, so the HTTP response is built without a
+/// read-after-write round-trip on the reader pool.
+#[derive(Debug, Clone, kameo::Reply)]
+pub struct CreatedSession {
+    pub page: pages::Model,
+    pub session: sessions::Model,
+}
+
+impl Message<DbCreateSession> for DatabaseWriteActor {
+    type Reply = Result<CreatedSession, sea_orm::DbErr>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, page_id = %msg.new_page.id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: DbCreateSession,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let nt = msg.new_page;
+        let page_id_col = PageIdCol::from(nt.id.clone());
+        let block_count = nt.blocks.len();
+        let now = Utc::now();
+
+        tracing::debug!(block_count, "creating session");
+
+        let txn = self.conn.begin().await?;
+
+        // 1. The page first: the `sessions.page_id` FK requires it to exist.
+        let page = pages::ActiveModel {
+            id: Set(page_id_col.clone()),
+            name: Set(nt.name),
+            status: Set(StatusCol::from(nt.status)),
+            kind: Set(PageKindCol::from(nt.kind)),
+            template_id: Set(nt.template_id.map(PageIdCol::from)),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&txn)
+        .await?;
+
+        // 2. The seeded section blocks.
+        if !nt.blocks.is_empty() {
+            let block_rows: Vec<blocks::ActiveModel> = nt
+                .blocks
+                .into_iter()
+                .map(|b| blocks::ActiveModel {
+                    id: Set(BlockIdCol::from(b.id)),
+                    page_id: Set(page_id_col.clone()),
+                    status: Set(StatusCol::from(b.status)),
+                    ordering: Set(b.ordering),
+                    content: Set(b.content),
+                    section: Set(SectionCol::from(b.section)),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                })
+                .collect();
+            blocks::Entity::insert_many(block_rows).exec(&txn).await?;
+        }
+
+        // 3. The temporal row. Read the campaign's current highest ordinal
+        //    in-txn, assign `max + 1` via the pure kernel, mint the id here.
+        let prev_max = sessions::Entity::find()
+            .order_by_desc(sessions::Column::Ordinal)
+            .one(&txn)
+            .await?
+            .map(|m| m.ordinal);
+        let ordinal =
+            next_session_ordinal(prev_max).map_err(|e| sea_orm::DbErr::Custom(e.to_string()))?;
+        let session = sessions::ActiveModel {
+            id: Set(SessionIdCol::from(SessionId::generate())),
+            ordinal: Set(ordinal),
+            created_at: Set(now),
+            // Equal at genesis; the future reorder op is what diverges them.
+            updated_at: Set(now),
+            page_id: Set(Some(page_id_col)),
+        }
+        .insert(&txn)
+        .await?;
+
+        txn.commit().await?;
+        tracing::debug!(block_count, ordinal, "session created");
+        Ok(CreatedSession { page, session })
     }
 }
 
@@ -680,6 +790,131 @@ mod tests {
         let block_rows = blocks::Entity::find().all(&conn).await.unwrap();
         assert_eq!(block_rows.len(), 1, "block row inserted");
         assert_eq!(block_rows[0].content, b"hello");
+    }
+
+    /// `DbCreateSession` mints the temporal `sessions` row atomically with the
+    /// page + blocks, links it via `page_id`, and assigns `ordinal = max + 1`.
+    /// The session's label is the page title; the temporal row stores no name.
+    #[tokio::test]
+    async fn db_create_session_mints_linked_temporal_rows_with_sequential_ordinals() {
+        use crate::domain::page::{NewBlock, NewPage};
+        use familiar_systems_campaign_shared::id::{BlockId, PageId};
+        use familiar_systems_campaign_shared::loro::page::Section;
+        use familiar_systems_campaign_shared::page_kind::PageKind;
+        use familiar_systems_campaign_shared::status::Status;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        let session_page = |name: &str| NewPage {
+            id: PageId::generate(),
+            name: name.into(),
+            status: Status::GmOnly,
+            kind: PageKind::Session,
+            template_id: None,
+            blocks: vec![NewBlock {
+                id: BlockId::generate(),
+                section: Section::Prep,
+                ordering: 0,
+                content: b"prep".to_vec(),
+                status: Status::GmOnly,
+            }],
+        };
+
+        let first = actor
+            .ask(DbCreateSession {
+                new_page: session_page("The Heist"),
+            })
+            .await
+            .expect("create session");
+        assert_eq!(first.session.ordinal, 1);
+        assert_eq!(PageKind::from(first.page.kind), PageKind::Session);
+        assert_eq!(first.page.name, "The Heist", "the label lives on the page");
+
+        let second = actor
+            .ask(DbCreateSession {
+                new_page: session_page("Untitled Session"),
+            })
+            .await
+            .expect("create second session");
+        assert_eq!(second.session.ordinal, 2, "max + 1");
+
+        let s1 = sessions::Entity::find()
+            .filter(sessions::Column::PageId.eq(first.page.id.clone()))
+            .one(&conn)
+            .await
+            .unwrap()
+            .expect("session row exists for the page");
+        assert_eq!(s1.ordinal, 1);
+        assert_eq!(s1.page_id, Some(first.page.id.clone()));
+
+        assert_eq!(blocks::Entity::find().all(&conn).await.unwrap().len(), 2);
+    }
+
+    /// A `DbCreateSession` that fails mid-genesis (here a duplicate block id trips
+    /// the blocks insert, after the page row is already in the txn) rolls the
+    /// whole thing back: no orphan page, no orphan temporal row. Page + blocks +
+    /// session are atomic.
+    #[tokio::test]
+    async fn db_create_session_rolls_back_atomically_on_failure() {
+        use crate::domain::page::{NewBlock, NewPage};
+        use familiar_systems_campaign_shared::id::{BlockId, PageId};
+        use familiar_systems_campaign_shared::loro::page::Section;
+        use familiar_systems_campaign_shared::page_kind::PageKind;
+        use familiar_systems_campaign_shared::status::Status;
+
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        // Two blocks share one id: the blocks insert trips the PK constraint
+        // after the page row has been inserted in the same txn.
+        let dup = BlockId::generate();
+        let block = |section| NewBlock {
+            id: dup.clone(),
+            section,
+            ordering: 0,
+            content: b"x".to_vec(),
+            status: Status::GmOnly,
+        };
+        let doomed = NewPage {
+            id: PageId::generate(),
+            name: "Untitled Session".into(),
+            status: Status::GmOnly,
+            kind: PageKind::Session,
+            template_id: None,
+            blocks: vec![block(Section::Prep), block(Section::Summary)],
+        };
+
+        actor
+            .ask(DbCreateSession { new_page: doomed })
+            .await
+            .expect_err("a duplicate block id must fail the genesis");
+
+        assert_eq!(
+            pages::Entity::find().all(&conn).await.unwrap().len(),
+            0,
+            "page must roll back"
+        );
+        assert_eq!(
+            blocks::Entity::find().all(&conn).await.unwrap().len(),
+            0,
+            "blocks must roll back"
+        );
+        assert_eq!(
+            sessions::Entity::find().all(&conn).await.unwrap().len(),
+            0,
+            "no orphan temporal row"
+        );
     }
 
     /// A `WritePageBlocks` whose upsert fails must not destroy the blocks it

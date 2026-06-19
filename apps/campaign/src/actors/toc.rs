@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
 use familiar_systems_app_shared::id::CampaignId;
 use familiar_systems_campaign_shared::id::PageId;
-use familiar_systems_campaign_shared::loro::toc::TocEntry;
+use familiar_systems_campaign_shared::loro::toc::{TocEntry, TocPageKind};
+use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use kameo::actor::{ActorRef, WeakActorRef};
 use kameo::error::ActorStopReason;
@@ -19,7 +20,7 @@ use crate::domain::crdt::doc::{CrdtDoc, DocError, VersionVector};
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
 use crate::entities::columns::{PageIdCol, StatusCol};
-use crate::entities::{pages, toc_entries};
+use crate::entities::{pages, sessions, toc_entries};
 use crate::loro::toc::{LoroTocDoc, TocTreeNode};
 use crate::wire::broadcast::encode_broadcast;
 use crate::wire::fragmenter::BatchFragmenter;
@@ -93,22 +94,54 @@ impl Actor for TocActor {
             .await
             .inspect_err(|e| tracing::error!(error = %e, "failed to query pages"))?;
 
+        // Session ordinals, keyed by the page they document. Sessions are sparse
+        // (most pages are entities), so this is a small map; a page absent here
+        // simply has no ordinal.
+        let session_ordinals: HashMap<PageId, i64> = sessions::Entity::find()
+            .all(&args.db_reader)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "failed to query sessions"))?
+            .into_iter()
+            .filter_map(|s| s.page_id.map(|pid| (PageId::from(pid), s.ordinal)))
+            .collect();
+
         tracing::debug!(
             toc_entries = toc_rows.len(),
             pages = page_rows.len(),
+            sessions = session_ordinals.len(),
             "restoring toc"
         );
 
         let pages_map: HashMap<PageId, PageInfo> = page_rows
             .into_iter()
-            .map(|t| {
-                (
-                    PageId::from(t.id),
+            .filter_map(|t| {
+                let page_id = PageId::from(t.id);
+                // Build the page-kind sum; a session pulls its ordinal from the
+                // temporal map. A session page with no temporal row is a data-
+                // integrity violation (genesis writes both atomically), so log
+                // and skip it -- it self-heals once the row exists.
+                let page_kind = match PageKind::from(t.kind) {
+                    PageKind::Entity => TocPageKind::Entity,
+                    PageKind::Template => TocPageKind::Template,
+                    PageKind::Session => match session_ordinals.get(&page_id) {
+                        Some(&ordinal) => TocPageKind::Session { ordinal },
+                        None => {
+                            tracing::error!(
+                                page_id = %page_id.0,
+                                "session page has no temporal row; skipping in toc restore"
+                            );
+                            return None;
+                        }
+                    },
+                };
+                Some((
+                    page_id,
                     PageInfo {
                         name: t.name,
                         status: t.status.into(),
+                        page_kind,
                     },
-                )
+                ))
             })
             .collect();
 
@@ -272,6 +305,9 @@ impl Message<ResolvePageNode> for TocActor {
 pub struct AddPageNode {
     pub page_id: PageId,
     pub title: String,
+    /// The page's kind (a session carries its ordinal here), so the new ToC node
+    /// carries it for display composition.
+    pub page_kind: TocPageKind,
     pub visibility: Status,
     pub parent: Option<PageId>,
 }
@@ -309,6 +345,7 @@ impl Message<AddPageNode> for TocActor {
         let entry = TocEntry::Page {
             title: msg.title,
             page_id: msg.page_id.clone(),
+            page_kind: msg.page_kind,
             visibility: msg.visibility,
             suggestions: Vec::new(),
         };
@@ -398,18 +435,39 @@ impl Message<UpdatePageNode> for TocActor {
             "applying toc node update (version-gating not yet wired)"
         );
 
-        // Only a visibility change needs a DB write: titles live in `pages.name`
-        // and are re-derived on checkout, never persisted from the ToC side.
-        let visibility_changed = self
-            .doc_room
-            .doc()
-            .read_entry(tree_id)
-            .map(|entry| *entry.visibility() != msg.visibility)
-            .unwrap_or(true);
+        // Read the current entry once: it tells us whether visibility changed
+        // (the only field that needs a DB write) and carries the immutable
+        // kind/ordinal we must preserve. This push only mutates title/visibility,
+        // so threading kind/ordinal through the PageActor would be redundant --
+        // the ToC already holds them.
+        let existing = self.doc_room.doc().read_entry(tree_id);
+        // `find_page_node` already proved this resolves to a Page node, so a
+        // non-Page (or unreadable) entry here means the ToC doc is corrupt. Do not
+        // invent a kind: defaulting to `Entity` would silently strip a session's
+        // ordinal from the live tree until the next checkout healed it. Refuse to
+        // guess -- log loudly and skip the write (it self-heals on checkout, like
+        // the not-in-toc case above). We moved to Rust to make "shouldn't happen"
+        // a handled case, not undefined behavior.
+        let Some(TocEntry::Page {
+            page_kind,
+            visibility,
+            ..
+        }) = &existing
+        else {
+            tracing::error!(
+                entry = ?existing,
+                "UpdatePageNode: node resolved as a page but read back as a non-page \
+                 entry; refusing to default its kind. Skipping; self-heals on checkout."
+            );
+            return Ok(());
+        };
+        let visibility_changed = *visibility != msg.visibility;
+        let page_kind = page_kind.clone();
 
         let entry = TocEntry::Page {
             title: msg.title,
             page_id: msg.page_id,
+            page_kind,
             visibility: msg.visibility,
             suggestions: Vec::new(),
         };
@@ -504,10 +562,13 @@ impl Message<PersistNow> for TocActor {
 // Persistence: snapshot & restore
 // ---------------------------------------------------------------------------
 
-/// Info about a Page needed during ToC restore (title and visibility).
+/// Info about a Page needed during ToC restore: the denormalized fields the ToC
+/// node carries (title, visibility) plus the `page_kind` sum the client uses to
+/// compose the display name (a session's ordinal lives inside that sum).
 pub struct PageInfo {
     pub name: String,
     pub status: Status,
+    pub page_kind: TocPageKind,
 }
 
 /// Serialize the current LoroTree state into flat rows for persistence.
@@ -626,6 +687,7 @@ pub fn restore_toc(
             let entry = TocEntry::Page {
                 title: info.name.clone(),
                 page_id: page_id.clone(),
+                page_kind: info.page_kind.clone(),
                 visibility: info.status,
                 suggestions: Vec::new(),
             };
@@ -652,6 +714,7 @@ fn row_to_entry(row: &toc_entries::Model, pages: &HashMap<PageId, PageInfo>) -> 
         Some(TocEntry::Page {
             title: info.name.clone(),
             page_id,
+            page_kind: info.page_kind.clone(),
             visibility,
             suggestions: Vec::new(),
         })
@@ -738,6 +801,7 @@ mod tests {
         let entry = TocEntry::Page {
             title: title.to_string(),
             page_id: page_id.clone(),
+            page_kind: TocPageKind::Entity,
             visibility: Status::Known,
             suggestions: Vec::new(),
         };
@@ -759,6 +823,7 @@ mod tests {
         PageInfo {
             name: name.to_string(),
             status,
+            page_kind: TocPageKind::Entity,
         }
     }
 
@@ -929,6 +994,38 @@ mod tests {
 
         let (doc, _, _) = restore_toc(Vec::new(), &pages);
         assert_eq!(*doc.read_tree()[0].entry.visibility(), Status::Known);
+    }
+
+    #[test]
+    fn restored_session_entry_carries_kind_and_ordinal() {
+        // A session page surfaces as a Page entry that carries its kind and
+        // ordinal, so the client can render "Session {ordinal}: {name}" without
+        // querying the temporal table.
+        let id = PageId::generate();
+        let mut pages = HashMap::new();
+        pages.insert(
+            id.clone(),
+            PageInfo {
+                name: "The Gathering Storm".to_string(),
+                status: Status::GmOnly,
+                page_kind: TocPageKind::Session { ordinal: 7 },
+            },
+        );
+
+        let (doc, _, _) = restore_toc(Vec::new(), &pages);
+        let tree = doc.read_tree();
+        match &tree[0].entry {
+            TocEntry::Page {
+                page_kind, title, ..
+            } => {
+                assert_eq!(*page_kind, TocPageKind::Session { ordinal: 7 });
+                assert_eq!(
+                    title, "The Gathering Storm",
+                    "the session's name carries through restore"
+                );
+            }
+            other => panic!("expected a session Page entry, got {other:?}"),
+        }
     }
 
     // -- Restore edge cases --
@@ -1142,6 +1239,7 @@ mod tests {
         toc.ask(AddPageNode {
             page_id: page_id.clone(),
             title: "Korgath".into(),
+            page_kind: TocPageKind::Entity,
             visibility: Status::GmOnly,
             parent: None,
         })
@@ -1203,6 +1301,7 @@ mod tests {
         toc.ask(AddPageNode {
             page_id: PageId::generate(),
             title: "Korgath".into(),
+            page_kind: TocPageKind::Entity,
             visibility: Status::GmOnly,
             parent: None,
         })

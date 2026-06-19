@@ -72,7 +72,7 @@ pub enum Relation {
     /// Soft reference to the home / landing-page Page. `ON DELETE SET NULL`
     /// so deleting the Page clears the pointer instead of cascading into the
     /// singleton campaign row. Mirrors the FK declared in the create migration;
-    /// `schema_drift` asserts the two stay in lockstep.
+    /// `tests/schema.rs` asserts the two stay in lockstep.
     #[sea_orm(
         belongs_to = "super::pages::Entity",
         from = "Column::HomePageId",

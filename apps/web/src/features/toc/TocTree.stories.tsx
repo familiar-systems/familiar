@@ -2,6 +2,7 @@ import {
   pageIdSchema,
   TOC_KEY_KIND,
   TOC_KEY_PAGE_ID,
+  TOC_KEY_PAGE_KIND,
   TOC_KEY_TITLE,
   TOC_KEY_VISIBILITY,
   TOC_KIND_FOLDER,
@@ -26,7 +27,34 @@ function folder(title: string): TocEntry {
   return { kind: "folder", title, visibility: "known", suggestions: [] };
 }
 function page(title: string, pageId: PageId): TocEntry {
-  return { kind: "page", title, pageId, visibility: "known", suggestions: [] };
+  return {
+    kind: "page",
+    title,
+    pageId,
+    pageKind: { kind: "entity" },
+    visibility: "known",
+    suggestions: [],
+  };
+}
+function templatePage(title: string, pageId: PageId): TocEntry {
+  return {
+    kind: "page",
+    title,
+    pageId,
+    pageKind: { kind: "template" },
+    visibility: "known",
+    suggestions: [],
+  };
+}
+function sessionPage(title: string, pageId: PageId, ordinal: number): TocEntry {
+  return {
+    kind: "page",
+    title,
+    pageId,
+    pageKind: { kind: "session", ordinal },
+    visibility: "known",
+    suggestions: [],
+  };
 }
 function node(id: TreeID, entry: TocEntry, children: TocTreeNode[] = []): TocTreeNode {
   return { treeId: id, entry, children };
@@ -64,6 +92,7 @@ function addPage(doc: LoroDoc, parent: TreeID | undefined, title: string, pageId
   created.data.set(TOC_KEY_KIND, TOC_KIND_PAGE);
   created.data.set(TOC_KEY_TITLE, title);
   created.data.set(TOC_KEY_PAGE_ID, pageId);
+  created.data.set(TOC_KEY_PAGE_KIND, "entity");
   created.data.set(TOC_KEY_VISIBILITY, "known");
   return created.id;
 }
@@ -94,13 +123,9 @@ const meta = {
   args: {
     tree,
     activePageId: null,
-    pendingParent: undefined,
-    creating: false,
     onNavigate: fn(),
     onMove: fn(),
     onAddChild: fn(),
-    onSubmitCreate: fn(),
-    onCancelCreate: fn(),
   },
 } satisfies Meta<typeof TocTree>;
 
@@ -118,6 +143,34 @@ export const Default: Story = {
 // The active page is highlighted; a visual-only state for the workshop.
 export const WithActivePage: Story = {
   args: { activePageId: HOLLOW_KING },
+};
+
+// The page kind drives both the row label and the row icon. Templates and
+// sessions compose their kind/ordinal into the label ("Session {ordinal}: {name}");
+// an entity carries no prefix. The icon follows the kind: template ->
+// layout-template, session -> mic, entity -> scroll-text.
+export const KindPrefixes: Story = {
+  args: {
+    tree: [
+      node(tid(1), templatePage("NPC Statblock", HOLLOW_KING)),
+      node(tid(2), sessionPage("The Fall of Perth", GREYMOOR, 3)),
+      node(tid(3), sessionPage("The Ashen Pact", ASHEN_PACT, 4)),
+      node(tid(4), page("Korgath", LOOSE_NOTES)),
+    ],
+  },
+  play: async ({ canvas, canvasElement }) => {
+    await expect(canvas.getByText("Template: NPC Statblock")).toBeInTheDocument();
+    await expect(canvas.getByText("Session 3: The Fall of Perth")).toBeInTheDocument();
+    await expect(canvas.getByText("Session 4: The Ashen Pact")).toBeInTheDocument();
+    // An entity carries no kind prefix - just its name.
+    await expect(canvas.getByText("Korgath")).toBeInTheDocument();
+
+    // lucide-react stamps a `lucide-{name}` class on each icon, so the kind icon
+    // is assertable: one template glyph, one entity glyph, two session glyphs.
+    await expect(canvasElement.querySelector(".lucide-layout-template")).toBeInTheDocument();
+    await expect(canvasElement.querySelector(".lucide-scroll-text")).toBeInTheDocument();
+    await expect(canvasElement.querySelectorAll(".lucide-mic")).toHaveLength(2);
+  },
 };
 
 // Identical content to Default, but the tree is derived from a real LoroDoc.
@@ -139,12 +192,18 @@ export const Navigates: Story = {
   },
 };
 
-// The inline create-row spliced in at root (the create-switch the strategy doc
-// flagged). Shows the input renders in isolation.
-export const CreatingAtRoot: Story = {
-  args: { pendingParent: null },
-  play: async ({ canvas }) => {
-    await expect(canvas.getByRole("textbox")).toBeInTheDocument();
+// Clicking a page row's "Add sub-page" fires onAddChild with that page's id.
+// This is the seam the New-menu modal hangs off: TocSidebar turns the call into
+// `setNewMenu({ parent })`, which becomes `createPage(kind, name, parent)`. The
+// add-sub-page button renders for pages only, so flatten order
+// [Lore, King, Greymoor, Factions, Ashen, Notes] makes index 0 King's.
+export const AddsChild: Story = {
+  play: async ({ args, canvas, userEvent }) => {
+    const adders = canvas.getAllByRole("button", { name: "Add sub-page" });
+    const kingAdder = adders[0];
+    if (kingAdder === undefined) throw new Error("expected King's add-sub-page button");
+    await userEvent.click(kingAdder);
+    await expect(args.onAddChild).toHaveBeenCalledWith(HOLLOW_KING);
   },
 };
 

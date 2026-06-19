@@ -1,6 +1,5 @@
 {
   "permissions": {
-    "deny": ["Read(./**/.envrc)", "Read(./**/.env)"],
     "allow": [
       "Bash(cargo test *)",
       "Bash(cargo check *)",
@@ -23,10 +22,7 @@
       "Bash(mise settings get *)",
       "Bash(gh search *)",
       "Bash(gh issue view *)"
-    ]
-  },
-  "enabledPlugins": {
-    "typescript-lsp@claude-plugins-official": true,
-    "rust-analyzer-lsp@claude-plugins-official": true
+    ],
+    "deny": ["Read(./**/.envrc)", "Read(./**/.env)"]
   }
 }

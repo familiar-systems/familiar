@@ -7,16 +7,10 @@ import type { PageId } from "@familiar-systems/types-campaign";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { TreeID } from "loro-crdt";
-import {
-  ChevronDown,
-  ChevronRight,
-  EyeOff,
-  FileText,
-  Folder,
-  GripVertical,
-  Plus,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, EyeOff, Folder, GripVertical, Plus } from "lucide-react";
 
+import { pageDisplayName } from "./pageDisplayName";
+import { tocRowIcon } from "./pageKindIcon";
 import { ROW_INDENT_BASE, type FlatTocNode } from "./tree-utils";
 
 interface TocRowProps {
@@ -48,6 +42,16 @@ export function TocRow({
   // Narrow once into a const so the closures below stay type-safe.
   const pageId: PageId | null = entry.kind === "page" ? entry.pageId : null;
   const gmOnly = entry.visibility === "gmOnly";
+  // Pages compose their kind/ordinal into the label ("Template: X",
+  // "Session 3: X"); a folder is just its title.
+  const label =
+    entry.kind === "page"
+      ? pageDisplayName(entry.pageKind, entry.title)
+      : (entry.title ?? "Untitled");
+  // A page renders its kind icon (template / session / entity); a folder keeps
+  // the folder glyph. Resolved through tocRowIcon, the one seam where per-page
+  // custom icons will later override the kind default.
+  const pageIcon = entry.kind === "page" ? tocRowIcon(entry.pageKind) : null;
 
   return (
     <div
@@ -85,12 +89,12 @@ export function TocRow({
         onClick={() => (pageId !== null ? onNavigate(pageId) : onToggleCollapse(node.treeId))}
         className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
       >
-        {pageId !== null ? (
-          <FileText className="size-4 shrink-0 text-muted-foreground" />
+        {pageIcon !== null ? (
+          <pageIcon.Icon className={`size-4 shrink-0 ${pageIcon.className}`} />
         ) : (
           <Folder className="size-4 shrink-0 text-bronze" />
         )}
-        <span className="truncate font-sans">{entry.title ?? "Untitled"}</span>
+        <span className="truncate font-sans">{label}</span>
       </button>
 
       {gmOnly ? (

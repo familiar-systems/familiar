@@ -18,6 +18,7 @@ use familiar_systems_app_shared::id::CampaignId;
 use familiar_systems_campaign::actors::registry::CreateCampaign;
 use familiar_systems_campaign::actors::supervisor::{CreatePage, JoinRoom};
 use familiar_systems_campaign::domain::crdt::doc::Snapshot;
+use familiar_systems_campaign::domain::page::DocumentPageKind;
 use familiar_systems_campaign_shared::id::ClientId;
 use familiar_systems_campaign_shared::loro::toc::CONTAINER_TOC;
 use loro::{LoroDoc, TreeParentId};
@@ -55,6 +56,7 @@ async fn toc_rejoin_after_leave_still_gets_full_snapshot() {
                 name: name.to_string(),
                 status: None,
                 parent: None,
+                kind: DocumentPageKind::Entity,
             })
             .await
             .expect("create page");

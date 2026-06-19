@@ -11,7 +11,7 @@
 //! The `*Col` types live entirely inside this crate; nothing outside
 //! `apps/campaign/` imports them.
 
-use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::id::{BlockId, PageId, SessionId};
 use familiar_systems_campaign_shared::loro::page::Section;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
@@ -101,6 +101,7 @@ macro_rules! ulid_id_column {
 
 ulid_id_column!(PageIdCol, PageId);
 ulid_id_column!(BlockIdCol, BlockId);
+ulid_id_column!(SessionIdCol, SessionId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "Text")]
@@ -142,6 +143,8 @@ pub enum PageKindCol {
     Entity,
     #[sea_orm(string_value = "template")]
     Template,
+    #[sea_orm(string_value = "session")]
+    Session,
 }
 
 impl From<PageKind> for PageKindCol {
@@ -149,6 +152,7 @@ impl From<PageKind> for PageKindCol {
         match k {
             PageKind::Entity => Self::Entity,
             PageKind::Template => Self::Template,
+            PageKind::Session => Self::Session,
         }
     }
 }
@@ -157,6 +161,7 @@ impl From<PageKindCol> for PageKind {
         match k {
             PageKindCol::Entity => Self::Entity,
             PageKindCol::Template => Self::Template,
+            PageKindCol::Session => Self::Session,
         }
     }
 }
@@ -177,6 +182,14 @@ pub enum SectionCol {
     Preamble,
     #[sea_orm(string_value = "body")]
     Body,
+    #[sea_orm(string_value = "prep")]
+    Prep,
+    #[sea_orm(string_value = "summary")]
+    Summary,
+    #[sea_orm(string_value = "transcript")]
+    Transcript,
+    #[sea_orm(string_value = "journal")]
+    Journal,
 }
 
 impl From<Section> for SectionCol {
@@ -184,6 +197,10 @@ impl From<Section> for SectionCol {
         match s {
             Section::Preamble => Self::Preamble,
             Section::Body => Self::Body,
+            Section::Prep => Self::Prep,
+            Section::Summary => Self::Summary,
+            Section::Transcript => Self::Transcript,
+            Section::Journal => Self::Journal,
         }
     }
 }
@@ -192,6 +209,10 @@ impl From<SectionCol> for Section {
         match s {
             SectionCol::Preamble => Self::Preamble,
             SectionCol::Body => Self::Body,
+            SectionCol::Prep => Self::Prep,
+            SectionCol::Summary => Self::Summary,
+            SectionCol::Transcript => Self::Transcript,
+            SectionCol::Journal => Self::Journal,
         }
     }
 }
@@ -203,7 +224,14 @@ mod tests {
 
     #[test]
     fn section_col_round_trips_known_tokens() {
-        for col in [SectionCol::Preamble, SectionCol::Body] {
+        for col in [
+            SectionCol::Preamble,
+            SectionCol::Body,
+            SectionCol::Prep,
+            SectionCol::Summary,
+            SectionCol::Transcript,
+            SectionCol::Journal,
+        ] {
             assert_eq!(SectionCol::try_from_value(&col.to_value()).unwrap(), col);
         }
     }
@@ -223,7 +251,14 @@ mod tests {
         // The DB token and the Loro/wire id coincide now but are decoupled by
         // design; guard that they still agree, so a divergence has to be a
         // deliberate edit (and a migration) rather than an accident.
-        for section in [Section::Preamble, Section::Body] {
+        for section in [
+            Section::Preamble,
+            Section::Body,
+            Section::Prep,
+            Section::Summary,
+            Section::Transcript,
+            Section::Journal,
+        ] {
             assert_eq!(SectionCol::from(section).to_value(), section.as_str());
         }
     }

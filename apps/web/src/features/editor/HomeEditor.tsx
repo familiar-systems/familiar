@@ -25,6 +25,7 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { usePagePrefix } from "../toc/useToc";
 import { roomErrorMessage } from "./loro-manager";
 import { usePageDoc } from "./usePageDoc";
 
@@ -46,6 +47,10 @@ interface HomeEditorProps {
 
 export function HomeEditor({ pageId }: HomeEditorProps): React.ReactElement {
   const state = usePageDoc(pageId);
+  // The immutable kind/ordinal prefix ("Session 3:", "Template:") comes from the
+  // ToC entry; the editable name comes from the live page doc (below). Null for
+  // an entity or before the page appears in the synced ToC.
+  const prefix = usePagePrefix(pageId);
 
   if (state.status === "error") {
     return (
@@ -69,12 +74,19 @@ export function HomeEditor({ pageId }: HomeEditorProps): React.ReactElement {
   return (
     // Key by page so the title draft state (below) resets on navigation rather
     // than briefly showing the previous page's title.
-    <BoundEditor key={pageId} doc={state.doc} reconnecting={state.status === "reconnecting"} />
+    <BoundEditor
+      key={pageId}
+      doc={state.doc}
+      prefix={prefix}
+      reconnecting={state.status === "reconnecting"}
+    />
   );
 }
 
 interface BoundEditorProps {
   doc: LoroDoc;
+  /** Non-editable kind/ordinal prefix shown before the editable title, or null. */
+  prefix: string | null;
   reconnecting: boolean;
 }
 
@@ -92,7 +104,7 @@ function usePageTitle(doc: LoroDoc): string {
 // only after the doc has synced. The editors are created once per doc. The page
 // has two section containers (preamble + body); each binds its own editor to the
 // same doc, separated by a horizontal bar.
-function BoundEditor({ doc, reconnecting }: BoundEditorProps): React.ReactElement {
+function BoundEditor({ doc, prefix, reconnecting }: BoundEditorProps): React.ReactElement {
   const committedTitle = usePageTitle(doc);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   // The title field is a draft over the committed Loro title. It may be empty
@@ -157,45 +169,57 @@ function BoundEditor({ doc, reconnecting }: BoundEditorProps): React.ReactElemen
           Reconnecting...
         </p>
       ) : null}
-      {/* The title is a single logical line that soft-wraps (a textarea, not an
-          input, so long fantasy nouns wrap rather than truncate). Newlines are
-          stripped and Enter jumps to the body, so it never holds a literal `\n`,
-          matching the `meta.title` LWW-string model. */}
-      <textarea
-        ref={titleRef}
-        value={draft}
-        onFocus={() => {
-          editingRef.current = true;
-        }}
-        onChange={(e) => {
-          const next = e.target.value.replace(/\n/g, "");
-          setDraft(next);
-          // Never commit an empty title; the field can show empty while editing,
-          // but it reverts on blur (below).
-          if (next.trim() !== "") writePageTitle(doc, next);
-        }}
-        onBlur={() => {
-          editingRef.current = false;
-          const trimmed = draft.trim();
-          if (trimmed === "") {
-            setDraft(committedTitle); // leaving it empty reverts to the last title
-          } else if (trimmed !== committedTitle) {
-            writePageTitle(doc, trimmed); // normalize surrounding whitespace
-            setDraft(trimmed);
-          }
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            preambleEditor?.commands.focus("start");
-          }
-        }}
-        rows={1}
-        placeholder="Untitled"
-        aria-label="Page title"
-        spellCheck={false}
-        className="mb-8 w-full resize-none overflow-hidden border-0 bg-transparent p-0 font-display text-3xl font-medium tracking-tight outline-none placeholder:text-muted-foreground/40"
-      />
+      {/* The title row: an optional non-editable kind/ordinal prefix ("Session
+          3:", "Template:") sits inline before the editable name, so the prefix
+          never enters the `meta.title` value. The title itself is a single
+          logical line that soft-wraps (a textarea, not an input, so long fantasy
+          nouns wrap rather than truncate); newlines are stripped and Enter jumps
+          to the body, so it never holds a literal `\n`, matching the `meta.title`
+          LWW-string model. */}
+      <div className="mb-8 flex items-baseline gap-2">
+        {prefix !== null ? (
+          <span className="shrink-0 font-display text-3xl font-medium tracking-tight text-muted-foreground/70">
+            {prefix}
+          </span>
+        ) : null}
+        <textarea
+          ref={titleRef}
+          value={draft}
+          onFocus={() => {
+            editingRef.current = true;
+          }}
+          onChange={(e) => {
+            const next = e.target.value.replace(/\n/g, "");
+            setDraft(next);
+            // Never commit an empty title; the field can show empty while editing,
+            // but it reverts on blur (below).
+            if (next.trim() !== "") writePageTitle(doc, next);
+          }}
+          onBlur={() => {
+            editingRef.current = false;
+            const trimmed = draft.trim();
+            if (trimmed === "") {
+              setDraft(committedTitle); // leaving it empty reverts to the last title
+            } else if (trimmed !== committedTitle) {
+              writePageTitle(doc, trimmed); // normalize surrounding whitespace
+              setDraft(trimmed);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              preambleEditor?.commands.focus("start");
+            }
+          }}
+          rows={1}
+          // A prefixed page (template/session) carries its own label, so an empty
+          // name needs no "Untitled" filler; an entity keeps it.
+          placeholder={prefix === null ? "Untitled" : ""}
+          aria-label="Page title"
+          spellCheck={false}
+          className="min-w-0 flex-1 resize-none overflow-hidden border-0 bg-transparent p-0 font-display text-3xl font-medium tracking-tight outline-none placeholder:text-muted-foreground/40"
+        />
+      </div>
       {/* Preamble: the bounded "index card" section. */}
       <div data-testid="preamble-editor">
         <EditorContent

@@ -16,7 +16,10 @@ use crate::routes::health::*;
 use crate::routes::metadata::*;
 use crate::routes::pages::*;
 use crate::state::AppState;
-use familiar_systems_campaign_shared::document::pages::{CreatePageRequest, PageResponse};
+use familiar_systems_campaign_shared::document::pages::{
+    CreateEntityBody, CreatePageRequest, CreateSessionBody, CreateTemplateBody, EntityResponse,
+    PageResponse, SessionResponse, TemplateResponse,
+};
 use familiar_systems_campaign_shared::onboarding::catalog::{
     ByoEntry, CatalogResponse, SystemEntry, TemplateRef,
 };
@@ -46,7 +49,13 @@ use utoipa_axum::{router::OpenApiRouter, routes};
         AudioMode,
         CampaignMetadataResponse,
         CreatePageRequest,
+        CreateEntityBody,
+        CreateTemplateBody,
+        CreateSessionBody,
         PageResponse,
+        EntityResponse,
+        TemplateResponse,
+        SessionResponse,
         Status,
     ))
 )]

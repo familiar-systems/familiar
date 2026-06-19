@@ -2,8 +2,8 @@
 //!
 //! Spawned by the `CampaignSupervisor` either lazily, when a client first
 //! joins a Page room (`PageInit::Restore`, reconstructing a `LoroPageDoc`
-//! from block rows in SQLite), or at creation time (`PageInit::New`, where the
-//! actor builds its doc and persists its own genesis row). Either way the actor
+//! from block rows in SQLite), or at creation time (a `PageInit::New*` variant,
+//! where the actor builds its doc and persists its own genesis row). Either way the actor
 //! is the sole mutator of its Page. Born vacating, it self-evicts once it has
 //! no subscribers and an idle timer fires, so a room that is never joined does
 //! not leak resident until campaign drain.
@@ -23,14 +23,17 @@ use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use tokio::sync::oneshot;
 
-use crate::actors::database_writer::{DatabaseWriteActor, DbCreatePage, WritePageBlocks};
+use crate::actors::database_writer::{
+    CreatedSession, DatabaseWriteActor, DbCreatePage, DbCreateSession, WritePageBlocks,
+};
 use crate::actors::persist::{Persist, PersistError, PersistNow};
 use crate::actors::toc::{TocActor, UpdatePageNode};
 use crate::domain::crdt::doc::CrdtDoc;
 use crate::domain::crdt::room;
 use crate::domain::crdt::room_actor;
-use crate::domain::page::{NewBlock, build_new_page};
+use crate::domain::page::{DocumentPageKind, NewBlock, NewPage, build_new_page};
 use crate::entities::columns::{BlockIdCol, PageIdCol, SectionCol, StatusCol};
 use crate::entities::{blocks, pages};
 use crate::loro::page::LoroPageDoc;
@@ -83,9 +86,8 @@ enum Occupancy {
     Vacating(tokio::task::JoinHandle<()>),
 }
 
-/// The Page's node-facing state, as last pushed to the ToC. Named (rather than a
-/// bare `(String, Status)` tuple) so the equality compare reads clearly and the
-/// anticipated third field (icon) is a one-line add, not a `.0/.1/.2` churn.
+/// The Page's node-facing state, as last pushed to the ToC.
+/// TODO add icons
 #[derive(Clone, PartialEq, Eq)]
 struct NodeState {
     title: String,
@@ -108,12 +110,44 @@ pub struct PageActorArgs {
 /// How a `PageActor` comes into being.
 ///
 /// `Restore` loads an existing Page's blocks from SQLite (the room-join path).
-/// `New` originates a Page: the actor builds its `LoroPageDoc` and persists
-/// its own genesis row. Keeping creation inside the actor preserves the
+/// The `New*` variants originate a Page: the actor builds its `LoroPageDoc` and
+/// persists its own genesis row. Keeping creation inside the actor preserves the
 /// invariant that every write to a Page flows through its owning actor.
+///
+/// `NewDocumentPage` is the **document-page** genesis path - `Entity` or
+/// `Template`, structurally identical (`preamble` + `body`, persisted via
+/// `DbCreatePage`), differing only in the [`DocumentPageKind`] stamped on the
+/// `pages` row. A future Skill / Memory kind joins that sum. `NewSession` is the
+/// odd one out: it mints a temporal `sessions` row alongside the page.
 pub enum PageInit {
     Restore,
-    New { name: String, status: Status },
+    /// Genesis a document page - `Entity` or `Template`, selected by
+    /// [`DocumentPageKind`]. Both share the `preamble` + `body` layout and the
+    /// `DbCreatePage` write; only the stamped `kind` differs, so an entity later
+    /// cloned from a template inherits the same sections.
+    NewDocumentPage {
+        name: String,
+        kind: DocumentPageKind,
+        status: Status,
+        /// Genesis hands the committed `pages::Model` back to the spawner (the
+        /// supervisor) here, so it builds the HTTP response from the write edge
+        /// rather than re-reading the row on the reader pool. The sender lives
+        /// in the genesis variants, not on `PageActorArgs`: `Restore` produces
+        /// no genesis payload, so an `Option<Sender>` there would be
+        /// variant-specific state bolted onto a shared struct.
+        reply: oneshot::Sender<pages::Model>,
+    },
+    /// Genesis a `Session` page together with its temporal `sessions` row, in one
+    /// transaction via `DbCreateSession`. `name` is the page title (a neutral
+    /// default when the GM gave none); the session's label lives on the page,
+    /// the temporal row stays nameless.
+    NewSession {
+        name: String,
+        status: Status,
+        /// As `NewDocumentPage`, but the threaded payload also carries the
+        /// temporal `sessions` row (the response needs its ordinal/created_at).
+        reply: oneshot::Sender<CreatedSession>,
+    },
 }
 
 /// Failure modes for `PageActor` startup.
@@ -123,6 +157,46 @@ pub enum PageInitError {
     Db(#[from] sea_orm::DbErr),
     #[error("genesis write failed")]
     Genesis,
+}
+
+/// Build the seeded `NewPage` for a genesis path and its matching `LoroPageDoc`.
+///
+/// The doc's section layout - and the empty paragraph seeded into each section
+/// so it opens editable - comes from the `kind` inside `from_blocks`; the create
+/// path passes no rows. We then read the seeded doc back into `new_page.blocks`
+/// so the persisted rows are exactly what the doc contains, carrying the seeds'
+/// stable blockIds (a block keeps one identity from genesis onward). Shared by
+/// the entity (`NewEntity`), template (`NewTemplate`), and session
+/// (`NewSession`) genesis arms; a future template-clone path slots in the same
+/// way (its cloned blocks arriving as rows).
+fn build_seeded_page(
+    page_id: PageId,
+    name: String,
+    kind: PageKind,
+    status: Status,
+) -> (NewPage, LoroPageDoc) {
+    let mut new_page = build_new_page(page_id, name, kind, status);
+    let (doc, _) = LoroPageDoc::from_blocks(
+        &new_page.name,
+        &new_page.status,
+        &new_page.kind,
+        std::iter::empty::<(Section, Vec<u8>)>(),
+        BlockId::generate,
+    );
+    new_page.blocks = doc
+        .extract_sections()
+        .into_iter()
+        .flat_map(|(section, blocks)| {
+            blocks.into_iter().map(move |b| NewBlock {
+                id: b.id.unwrap_or_else(BlockId::generate),
+                section,
+                ordering: b.ordering,
+                content: b.content,
+                status: Status::GmOnly,
+            })
+        })
+        .collect();
+    (new_page, doc)
 }
 
 impl Actor for PageActor {
@@ -179,45 +253,58 @@ impl Actor for PageActor {
                 }
                 doc
             }
-            PageInit::New { name, status } => {
-                // The actor owns its own birth: build the doc, then persist the
-                // genesis rows through the single-writer. Nothing writes a Page's
-                // rows around the actor that owns it.
-                //
-                // The doc's section layout -- and the empty paragraph seeded into
-                // each section so it opens editable -- comes from the kind, inside
-                // `from_blocks`; the create path passes no sections. We then persist
-                // exactly what the seeded doc contains, so the genesis rows carry
-                // the seeds' stable blockIds (a block keeps one identity from
-                // genesis onward) and the future template path slots in the same
-                // way (its cloned blocks would arrive here as `rows`).
-                let mut new_page = build_new_page(args.page_id.clone(), name, status);
-                let (doc, _) = LoroPageDoc::from_blocks(
-                    &new_page.name,
-                    &new_page.status,
-                    &new_page.kind,
-                    std::iter::empty::<(Section, Vec<u8>)>(),
-                    BlockId::generate,
-                );
-                new_page.blocks = doc
-                    .extract_sections()
-                    .into_iter()
-                    .flat_map(|(section, blocks)| {
-                        blocks.into_iter().map(move |b| NewBlock {
-                            id: b.id.unwrap_or_else(BlockId::generate),
-                            section,
-                            ordering: b.ordering,
-                            content: b.content,
-                            status: Status::GmOnly,
-                        })
-                    })
-                    .collect();
-
-                if let Err(e) = args.db_writer.ask(DbCreatePage { new_page }).await {
-                    tracing::error!(error = %e, "page genesis write failed");
-                    return Err(PageInitError::Genesis);
+            PageInit::NewDocumentPage {
+                name,
+                kind,
+                status,
+                reply,
+            } => {
+                // The actor owns its own birth: build the seeded doc, then persist
+                // the genesis rows through the single-writer. Nothing writes a
+                // Page's rows around the actor that owns it. Entity and Template
+                // share this path (same `preamble` + `body` layout, same
+                // `DbCreatePage` write); only the stamped `kind` differs, so an
+                // entity later cloned from a template inherits the same sections.
+                let (new_page, doc) =
+                    build_seeded_page(args.page_id.clone(), name, kind.into(), status);
+                match args.db_writer.ask(DbCreatePage { new_page }).await {
+                    // Hand the committed row to the spawner. There is no fallible
+                    // step after this in `on_start`, so a started actor always
+                    // implies the send fired. A dropped receiver (the supervisor
+                    // gave up) must not fail genesis, hence `let _`.
+                    Ok(model) => {
+                        let _ = reply.send(model);
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "document page genesis write failed");
+                        return Err(PageInitError::Genesis);
+                    }
                 }
-                tracing::info!(?status, "page actor created");
+                tracing::info!(?status, ?kind, "document page actor created");
+                doc
+            }
+            PageInit::NewSession {
+                name,
+                status,
+                reply,
+            } => {
+                // A session is born page-and-row together: the same seeded-doc
+                // build as any page, but persisted through `DbCreateSession`,
+                // which also mints the temporal `sessions` row (ordinal = max+1)
+                // in the one genesis transaction. The page comes first so the
+                // `sessions.page_id` FK resolves.
+                let (new_page, doc) =
+                    build_seeded_page(args.page_id.clone(), name, PageKind::Session, status);
+                match args.db_writer.ask(DbCreateSession { new_page }).await {
+                    Ok(created) => {
+                        let _ = reply.send(created);
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "session genesis write failed");
+                        return Err(PageInitError::Genesis);
+                    }
+                }
+                tracing::info!(?status, "session page actor created");
                 doc
             }
         };
@@ -586,6 +673,7 @@ mod tests {
     use familiar_systems_campaign_shared::loro::prosemirror::{
         ATTRIBUTES_KEY, CHILDREN_KEY, NODE_NAME_KEY,
     };
+    use familiar_systems_campaign_shared::loro::toc::TocPageKind;
     use kameo::actor::Spawn;
     use sea_orm::ActiveModelTrait;
     use sea_orm_migration::MigratorTrait;
@@ -681,21 +769,28 @@ mod tests {
 
         let page_id = PageId::generate();
         let toc = spawn_toc(&campaign_id, &conn, &db_writer);
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         let actor = PageActor::spawn(PageActorArgs {
             campaign_id,
             page_id: page_id.clone(),
             db_reader: conn.clone(),
             db_writer,
             toc,
-            init: PageInit::New {
+            init: PageInit::NewDocumentPage {
                 name: "Korgath the Destroyer".into(),
+                kind: DocumentPageKind::Entity,
                 status: Status::GmOnly,
+                reply: reply_tx,
             },
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
         });
         actor.wait_for_startup().await;
         assert!(actor.is_alive(), "genesis should succeed");
+
+        // Genesis threads the committed row back, rather than the supervisor
+        // re-reading it.
+        let threaded = reply_rx.await.expect("genesis reply received");
 
         // The actor wrote its own birth row.
         let row = pages::Entity::find_by_id(PageIdCol::from(page_id.clone()))
@@ -705,6 +800,156 @@ mod tests {
             .expect("genesis page row exists");
         assert_eq!(row.name, "Korgath the Destroyer");
         assert_eq!(Status::from(row.status), Status::GmOnly);
+        assert_eq!(threaded, row, "threaded reply matches the persisted row");
+
+        actor.stop_gracefully().await.unwrap();
+        actor.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    /// Template genesis (`PageInit::NewTemplate`) persists a `kind = template`
+    /// page with the same `preamble` + `body` section seeds as an entity - the
+    /// layout an entity later cloned from it inherits - and no `template_id`
+    /// lineage of its own.
+    #[tokio::test]
+    async fn new_template_init_persists_template_kind() {
+        let conn = setup_db().await;
+        let campaign_id = CampaignId::generate();
+        let db_writer =
+            DatabaseWriteActor::spawn(crate::actors::database_writer::DatabaseWriteActorArgs {
+                campaign_id: campaign_id.clone(),
+                conn: conn.clone(),
+            });
+
+        let page_id = PageId::generate();
+        let toc = spawn_toc(&campaign_id, &conn, &db_writer);
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        let actor = PageActor::spawn(PageActorArgs {
+            campaign_id,
+            page_id: page_id.clone(),
+            db_reader: conn.clone(),
+            db_writer,
+            toc,
+            init: PageInit::NewDocumentPage {
+                name: "NPC".into(),
+                kind: DocumentPageKind::Template,
+                status: Status::GmOnly,
+                reply: reply_tx,
+            },
+            debounce_duration: Duration::from_secs(60),
+            idle_timeout: Duration::from_secs(60),
+        });
+        actor.wait_for_startup().await;
+        assert!(actor.is_alive(), "template genesis should succeed");
+
+        let threaded = reply_rx.await.expect("genesis reply received");
+
+        let row = pages::Entity::find_by_id(PageIdCol::from(page_id.clone()))
+            .one(&conn)
+            .await
+            .unwrap()
+            .expect("genesis template row exists");
+        assert_eq!(row.name, "NPC");
+        assert_eq!(PageKind::from(row.kind), PageKind::Template);
+        assert_eq!(threaded, row, "threaded reply matches the persisted row");
+        assert!(
+            row.template_id.is_none(),
+            "a template is the source, not a clone, so it has no lineage"
+        );
+
+        // One seeded paragraph per declared section (preamble + body), identical
+        // to an entity - that shared layout is the whole point of cloning.
+        let block_rows = blocks::Entity::find()
+            .filter(blocks::Column::PageId.eq(PageIdCol::from(page_id.clone())))
+            .all(&conn)
+            .await
+            .unwrap();
+        assert_eq!(
+            block_rows.len(),
+            PageKind::Template.sections().len(),
+            "one seeded block per declared template section",
+        );
+
+        actor.stop_gracefully().await.unwrap();
+        actor.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    /// Session genesis (`PageInit::NewSession`) persists, in one transaction, a
+    /// Session page, its four seeded section blocks, and the linked temporal
+    /// `sessions` row at ordinal 1 carrying the GM's subtitle.
+    #[tokio::test]
+    async fn new_session_init_persists_page_and_linked_session() {
+        use crate::entities::sessions;
+
+        let conn = setup_db().await;
+        let campaign_id = CampaignId::generate();
+        let db_writer =
+            DatabaseWriteActor::spawn(crate::actors::database_writer::DatabaseWriteActorArgs {
+                campaign_id: campaign_id.clone(),
+                conn: conn.clone(),
+            });
+
+        let page_id = PageId::generate();
+        let toc = spawn_toc(&campaign_id, &conn, &db_writer);
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        let actor = PageActor::spawn(PageActorArgs {
+            campaign_id,
+            page_id: page_id.clone(),
+            db_reader: conn.clone(),
+            db_writer,
+            toc,
+            init: PageInit::NewSession {
+                name: "The Goblin Ambush".into(),
+                status: Status::GmOnly,
+                reply: reply_tx,
+            },
+            debounce_duration: Duration::from_secs(60),
+            idle_timeout: Duration::from_secs(60),
+        });
+        actor.wait_for_startup().await;
+        assert!(actor.is_alive(), "session genesis should succeed");
+
+        // Genesis threads both committed rows back, rather than the supervisor
+        // re-reading them.
+        let threaded = reply_rx.await.expect("genesis reply received");
+
+        let page = pages::Entity::find_by_id(PageIdCol::from(page_id.clone()))
+            .one(&conn)
+            .await
+            .unwrap()
+            .expect("page row exists");
+        assert_eq!(PageKind::from(page.kind), PageKind::Session);
+        assert_eq!(
+            page.name, "The Goblin Ambush",
+            "the label lives on the page"
+        );
+        assert_eq!(
+            threaded.page, page,
+            "threaded page matches the persisted row"
+        );
+
+        // One seeded paragraph per session section (prep/summary/transcript/journal).
+        let block_rows = blocks::Entity::find()
+            .filter(blocks::Column::PageId.eq(PageIdCol::from(page_id.clone())))
+            .all(&conn)
+            .await
+            .unwrap();
+        assert_eq!(
+            block_rows.len(),
+            PageKind::Session.sections().len(),
+            "one seeded block per declared session section",
+        );
+
+        let session = sessions::Entity::find()
+            .filter(sessions::Column::PageId.eq(PageIdCol::from(page_id.clone())))
+            .one(&conn)
+            .await
+            .unwrap()
+            .expect("session row exists for the page");
+        assert_eq!(session.ordinal, 1);
+        assert_eq!(
+            threaded.session, session,
+            "threaded session matches the persisted row"
+        );
 
         actor.stop_gracefully().await.unwrap();
         actor.wait_for_shutdown_with_result(|_| ()).await;
@@ -821,15 +1066,20 @@ mod tests {
 
         // Genesis a Page named "Original" (writes its own row), wired to the toc.
         let page_id = PageId::generate();
+        // This test exercises the title-rename path, not genesis; ignore the
+        // threaded reply.
+        let (genesis_tx, _genesis_rx) = tokio::sync::oneshot::channel();
         let page = PageActor::spawn(PageActorArgs {
             campaign_id: campaign_id.clone(),
             page_id: page_id.clone(),
             db_reader: conn.clone(),
             db_writer,
             toc: toc.clone(),
-            init: PageInit::New {
+            init: PageInit::NewDocumentPage {
                 name: "Original".into(),
+                kind: DocumentPageKind::Entity,
                 status: Status::GmOnly,
+                reply: genesis_tx,
             },
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
@@ -840,6 +1090,7 @@ mod tests {
         toc.ask(AddPageNode {
             page_id: page_id.clone(),
             title: "Original".into(),
+            page_kind: TocPageKind::Entity,
             visibility: Status::GmOnly,
             parent: None,
         })
@@ -936,15 +1187,20 @@ mod tests {
 
         // Genesis a Page named "Original" (writes its own row), wired to the toc.
         let page_id = PageId::generate();
+        // This test exercises the title-rename path, not genesis; ignore the
+        // threaded reply.
+        let (genesis_tx, _genesis_rx) = tokio::sync::oneshot::channel();
         let page = PageActor::spawn(PageActorArgs {
             campaign_id: campaign_id.clone(),
             page_id: page_id.clone(),
             db_reader: conn.clone(),
             db_writer,
             toc: toc.clone(),
-            init: PageInit::New {
+            init: PageInit::NewDocumentPage {
                 name: "Original".into(),
+                kind: DocumentPageKind::Entity,
                 status: Status::GmOnly,
+                reply: genesis_tx,
             },
             debounce_duration: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(60),
@@ -955,6 +1211,7 @@ mod tests {
         toc.ask(AddPageNode {
             page_id: page_id.clone(),
             title: "Original".into(),
+            page_kind: TocPageKind::Entity,
             visibility: Status::GmOnly,
             parent: None,
         })

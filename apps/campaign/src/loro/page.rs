@@ -166,11 +166,16 @@ impl LoroPageDoc {
     }
 
     /// Title for display, or a loud, deterministic recovery marker when
-    /// `meta.title` is unexpectedly empty. Pages are created name-first, so an
-    /// empty title should never happen; if it does, we surface it visibly and
-    /// editably (the GM can just rename it) rather than panicking or silently
-    /// dropping the node update. The `{id}` makes the broken page findable in the
-    /// ToC. Distinct from [`read_title`](Self::read_title) -> `Option`, which
+    /// `meta.title` is unexpectedly empty.
+    ///
+    /// Every page kind is created name-first - a non-blank name is required on
+    /// every creation path (sessions included; they are no longer the exception),
+    /// so an empty title should never happen. If it does, we surface it visibly
+    /// and editably (the GM can just rename it) rather than panicking or silently
+    /// dropping the node update, and the `{id}` makes the broken page findable in
+    /// the ToC.
+    ///
+    /// Distinct from [`read_title`](Self::read_title) -> `Option`, which
     /// `name_sync` uses to tell a real title from "leave `pages.name` alone".
     pub fn read_title_or_recovery_marker(&self, id: &PageId) -> String {
         self.read_title()
@@ -328,6 +333,22 @@ mod tests {
             BlockId::generate,
         );
         assert_eq!(named.read_title_or_recovery_marker(&id), "Korgath");
+
+        // A session is named like every other kind now (names are required), so
+        // an empty session title is the same should-never-happen state and gets
+        // the same recovery marker - sessions are no longer the exception.
+        let (empty_session, _) = LoroPageDoc::from_blocks(
+            "",
+            &Status::GmOnly,
+            &PageKind::Session,
+            no_rows(),
+            BlockId::generate,
+        );
+        assert_eq!(empty_session.read_title(), None);
+        assert_eq!(
+            empty_session.read_title_or_recovery_marker(&id),
+            format!("ERROR LOADING TITLE {}", id.0),
+        );
     }
 
     #[test]
@@ -486,7 +507,7 @@ mod tests {
 
     #[test]
     fn kind_round_trips() {
-        for kind in [PageKind::Entity, PageKind::Template] {
+        for kind in [PageKind::Entity, PageKind::Template, PageKind::Session] {
             let (doc, _) = LoroPageDoc::from_blocks(
                 "Test",
                 &Status::GmOnly,

@@ -16,6 +16,7 @@ import {
   TOC_CONTAINER,
   TOC_KEY_KIND,
   TOC_KEY_PAGE_ID,
+  TOC_KEY_PAGE_KIND,
   TOC_KEY_TITLE,
   TOC_KEY_VISIBILITY,
   TOC_KIND_PAGE,
@@ -200,6 +201,7 @@ function addPageNode(doc: LoroDocType, title: string, pageId: string): void {
   node.data.set(TOC_KEY_KIND, TOC_KIND_PAGE);
   node.data.set(TOC_KEY_TITLE, title);
   node.data.set(TOC_KEY_PAGE_ID, pageId);
+  node.data.set(TOC_KEY_PAGE_KIND, "entity");
   node.data.set(TOC_KEY_VISIBILITY, "gmOnly");
 }
 

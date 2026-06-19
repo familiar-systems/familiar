@@ -11,9 +11,10 @@ use std::borrow::Cow;
 
 use familiar_systems_campaign_shared::id::{ConversationId, PageId};
 use familiar_systems_campaign_shared::loro::toc::{
-    CONTAINER_TOC, KEY_CONVERSATION_ID, KEY_KIND, KEY_PAGE_ID, KEY_TITLE, KEY_VISIBILITY,
-    KIND_FOLDER, KIND_PAGE, KIND_SUGGESTION, TocEntry,
+    CONTAINER_TOC, KEY_CONVERSATION_ID, KEY_KIND, KEY_ORDINAL, KEY_PAGE_ID, KEY_PAGE_KIND,
+    KEY_TITLE, KEY_VISIBILITY, KIND_FOLDER, KIND_PAGE, KIND_SUGGESTION, TocEntry, TocPageKind,
 };
+use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use loro::{LoroDoc, LoroMap, LoroTree, LoroValue, TreeID, ValueOrContainer};
 
@@ -39,7 +40,9 @@ pub struct TocTreeNode {
 ///       "kind": "folder" | "page" | "suggestion"
 ///       "title": string
 ///       "visibility": "gmOnly" | "known" | "retconned"
-///       "pageId": string          (Page only)
+///       "pageId": string           (Page only)
+///       "pageKind": "entity" | "template" | "session"   (Page only)
+///       "ordinal": i64             (Page only, sessions)
 ///       "conversationId": string   (Suggestion only)
 /// ```
 pub struct LoroTocDoc {
@@ -82,6 +85,31 @@ impl LoroTocDoc {
         }
     }
 
+    /// Read a Page node's `TocPageKind` from its meta. Strict: a missing/unknown
+    /// `pageKind`, or a `session` with no `ordinal`, returns `None` (the caller
+    /// then skips the node). There is no legacy data -- the doc is server-authored
+    /// and rebuilt from SQLite each checkout -- so a malformed node is corruption,
+    /// not an old format to tolerate, and it self-heals on the next restore.
+    fn read_page_kind(meta: &LoroMap) -> Option<TocPageKind> {
+        let token = match meta.get(KEY_PAGE_KIND)? {
+            ValueOrContainer::Value(LoroValue::String(s)) => s.to_string(),
+            _ => return None,
+        };
+        // `from_loro_str` is exhaustive over `PageKind`; a future kind (skill /
+        // memory) makes this `match` non-exhaustive, forcing a decision here.
+        match PageKind::from_loro_str(&token)? {
+            PageKind::Entity => Some(TocPageKind::Entity),
+            PageKind::Template => Some(TocPageKind::Template),
+            PageKind::Session => {
+                let ordinal = match meta.get(KEY_ORDINAL)? {
+                    ValueOrContainer::Value(LoroValue::I64(n)) => n,
+                    _ => return None,
+                };
+                Some(TocPageKind::Session { ordinal })
+            }
+        }
+    }
+
     /// Write a `TocEntry` into a tree node's metadata map.
     ///
     /// TODO: Inline suggestions (`TocSuggestion`) on Folder/Page entries are
@@ -102,12 +130,20 @@ impl LoroTocDoc {
             TocEntry::Page {
                 title,
                 page_id,
+                page_kind,
                 visibility,
                 ..
             } => {
                 meta.insert(KEY_KIND, KIND_PAGE).unwrap();
                 meta.insert(KEY_TITLE, title.as_str()).unwrap();
                 meta.insert(KEY_PAGE_ID, page_id.0.to_string()).unwrap();
+                meta.insert(KEY_PAGE_KIND, page_kind.page_kind().as_loro_str())
+                    .unwrap();
+                // Only a session carries an ordinal; other kinds leave the key
+                // absent rather than writing a sentinel.
+                if let TocPageKind::Session { ordinal } = page_kind {
+                    meta.insert(KEY_ORDINAL, *ordinal).unwrap();
+                }
                 meta.insert(KEY_VISIBILITY, visibility.as_loro_str())
                     .unwrap();
             }
@@ -159,9 +195,11 @@ impl LoroTocDoc {
                     }
                     _ => return None,
                 };
+                let page_kind = Self::read_page_kind(meta)?;
                 Some(TocEntry::Page {
                     title,
                     page_id,
+                    page_kind,
                     visibility,
                     suggestions: Vec::new(),
                 })
@@ -351,6 +389,21 @@ mod tests {
         let entry = TocEntry::Page {
             title: title.to_string(),
             page_id: page_id.clone(),
+            page_kind: TocPageKind::Entity,
+            visibility: Status::Known,
+            suggestions: Vec::new(),
+        };
+        (entry, page_id)
+    }
+
+    /// A `session` Page entry carrying an ordinal, for the kind/ordinal
+    /// round-trip test.
+    fn session_page(title: &str, ordinal: i64) -> (TocEntry, PageId) {
+        let page_id = PageId::generate();
+        let entry = TocEntry::Page {
+            title: title.to_string(),
+            page_id: page_id.clone(),
+            page_kind: TocPageKind::Session { ordinal },
             visibility: Status::Known,
             suggestions: Vec::new(),
         };
@@ -390,6 +443,29 @@ mod tests {
         } else {
             panic!("expected Page variant");
         }
+    }
+
+    #[test]
+    fn page_kind_and_ordinal_round_trip() {
+        let mut doc = LoroTocDoc::new();
+        let (entity_entry, _) = page("Korgath");
+        let (session_entry, _) = session_page("The Fall of Perth", 3);
+        doc.add_entry(None, &entity_entry).unwrap();
+        doc.add_entry(None, &session_entry).unwrap();
+
+        // Read back through the meta codec: the structured kind/ordinal survive.
+        let tree = doc.read_tree();
+        assert_eq!(tree[0].entry, entity_entry, "entity kind/ordinal preserved");
+        assert_eq!(
+            tree[1].entry, session_entry,
+            "session carries its ordinal through the meta codec"
+        );
+
+        // And through a full snapshot -> raw client import (the join path).
+        let snapshot = doc.export_snapshot().unwrap();
+        let client = LoroDoc::new();
+        client.import(snapshot.as_bytes()).unwrap();
+        assert_eq!(doc.debug_value(), Some(client.get_deep_value().into()));
     }
 
     #[test]

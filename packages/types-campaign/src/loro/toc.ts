@@ -25,6 +25,11 @@ export const TOC_KEY_TITLE = "title";
 export const TOC_KEY_PAGE_ID = "pageId";
 export const TOC_KEY_VISIBILITY = "visibility";
 export const TOC_KEY_CONVERSATION_ID = "conversationId";
+// The page's PageKind, denormalized onto the Page node so the client composes
+// its display name ("Template: {name}", "Session {ordinal}") without a fetch.
+export const TOC_KEY_PAGE_KIND = "pageKind";
+// The session ordinal on a `session` Page node; absent on other kinds.
+export const TOC_KEY_ORDINAL = "ordinal";
 
 // Kind discriminant values. `satisfies TocEntryKind` pins them to the generated
 // union, so a rename on the Rust/ts-rs side fails to compile here.
