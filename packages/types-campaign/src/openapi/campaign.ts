@@ -133,9 +133,9 @@ export interface components {
      * @description Body for creating a `session` page - its document plus its temporal record,
      *     minted together in one genesis transaction.
      *
-     *     `name` is the GM's optional subtitle ("The End of Perth"); omitted or blank
-     *     means an unnamed session, identified by its ordinal until the GM titles it
-     *     after play.
+     *     `name` is required and non-blank, like every other page kind, and unique among
+     *     sessions ("The End of Perth"). The client renders `Session {ordinal}: {name}`
+     *     from the response's `ordinal` and `name`.
      */
     CreateSessionBody: CreateSessionBody;
     /**
@@ -364,6 +364,13 @@ export interface operations {
       };
       /** @description Campaign not on this shard */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Another page of the same kind already uses this name */
+      409: {
         headers: {
           [name: string]: unknown;
         };

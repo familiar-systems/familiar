@@ -21,9 +21,9 @@ use familiar_systems_campaign_shared::document::pages::{
     CreatePageRequest, EntityResponse, PageResponse, SessionResponse, TemplateResponse,
 };
 use familiar_systems_campaign_shared::id::{PageId, SessionId};
-use familiar_systems_campaign_shared::page_kind::PageKind;
 
 use crate::actors::supervisor::{CreatePage, CreatePageError, CreateSession, CreateSessionError};
+use crate::domain::page::DocumentPageKind;
 use crate::middleware::auth::{AuthenticatedUser, authorize_gm};
 use crate::state::AppState;
 
@@ -41,6 +41,7 @@ use crate::state::AppState;
         (status = UNAUTHORIZED, description = "Missing or invalid session"),
         (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
         (status = NOT_FOUND, description = "Campaign not on this shard"),
+        (status = CONFLICT, description = "Another page of the same kind already uses this name"),
         // 5XX
         (status = UNPROCESSABLE_ENTITY, description = "Parent page not found, or the page name is empty"),
         (status = NOT_IMPLEMENTED, description = "Creating an entity from a template is not yet supported"),
@@ -83,7 +84,7 @@ pub async fn create_page(
                     name: body.name,
                     status: body.status,
                     parent: body.parent,
-                    kind: PageKind::Entity,
+                    kind: DocumentPageKind::Entity,
                 })
                 .await
             {
@@ -108,7 +109,7 @@ pub async fn create_page(
                     name: body.name,
                     status: body.status,
                     parent: body.parent,
-                    kind: PageKind::Template,
+                    kind: DocumentPageKind::Template,
                 })
                 .await
             {
@@ -152,47 +153,77 @@ pub async fn create_page(
     }
 }
 
-/// Map a document-page (`Entity`/`Template`) creation failure to an HTTP
-/// response. Shared by the two document-page arms, which differ only in their
-/// success shape.
-fn create_page_error(e: SendError<CreatePage, CreatePageError>) -> Response {
+/// Map a create failure to an HTTP response. `classify` handles the typed
+/// handler-error arms a path cares about (bad parent -> 422, empty name -> 422,
+/// duplicate name -> 409); every other handler error and any transport failure
+/// collapse to a logged 500. Shared by the document-page and session paths, which
+/// differ only in their error enum and success shape. Each call site enumerates
+/// its 500 arms explicitly (no `_` catch-all), so a new error variant is a
+/// compile error rather than a silent 500.
+fn create_error_response<M, E: std::fmt::Display>(
+    e: SendError<M, E>,
+    context: &'static str,
+    classify: impl Fn(&E) -> Option<(StatusCode, String)>,
+) -> Response {
     match e {
-        SendError::HandlerError(CreatePageError::ParentNotFound) => (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "Parent page not found in the table of contents.",
-        )
-            .into_response(),
-        SendError::HandlerError(CreatePageError::EmptyName) => (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "Page name must not be empty.",
-        )
-            .into_response(),
-        SendError::HandlerError(e) => {
-            tracing::error!(error = %e, "create page failed");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-        e => {
-            tracing::error!(error = %e, "supervisor unreachable during create page");
+        SendError::HandlerError(err) => match classify(&err) {
+            Some((status, body)) => (status, body).into_response(),
+            None => {
+                tracing::error!(error = %err, context, "page create failed");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        },
+        other => {
+            tracing::error!(error = %other, context, "supervisor unreachable during page create");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }
 
+/// Map a document-page (`Entity`/`Template`) creation failure to an HTTP response.
+fn create_page_error(e: SendError<CreatePage, CreatePageError>) -> Response {
+    create_error_response(e, "create_page", |err| match err {
+        CreatePageError::ParentNotFound => Some((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Parent page not found in the table of contents.".to_string(),
+        )),
+        CreatePageError::EmptyName => Some((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Page name must not be empty.".to_string(),
+        )),
+        CreatePageError::NameTaken(kind, name) => Some((
+            StatusCode::CONFLICT,
+            format!(
+                "Another {} already uses the name {name:?}.",
+                kind.as_loro_str()
+            ),
+        )),
+        CreatePageError::Genesis | CreatePageError::ActorUnavailable | CreatePageError::Db(_) => {
+            None
+        }
+    })
+}
+
 /// Map a session-creation failure to an HTTP response.
 fn create_session_error(e: SendError<CreateSession, CreateSessionError>) -> Response {
-    match e {
-        SendError::HandlerError(CreateSessionError::ParentNotFound) => (
+    create_error_response(e, "create_session", |err| match err {
+        CreateSessionError::ParentNotFound => Some((
             StatusCode::UNPROCESSABLE_ENTITY,
-            "Parent page not found in the table of contents.",
-        )
-            .into_response(),
-        SendError::HandlerError(e) => {
-            tracing::error!(error = %e, "create session failed");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-        e => {
-            tracing::error!(error = %e, "supervisor unreachable during create session");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-    }
+            "Parent page not found in the table of contents.".to_string(),
+        )),
+        CreateSessionError::EmptyName => Some((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Session name must not be empty.".to_string(),
+        )),
+        CreateSessionError::NameTaken(kind, name) => Some((
+            StatusCode::CONFLICT,
+            format!(
+                "Another {} already uses the name {name:?}.",
+                kind.as_loro_str()
+            ),
+        )),
+        CreateSessionError::Genesis
+        | CreateSessionError::ActorUnavailable
+        | CreateSessionError::Db(_) => None,
+    })
 }

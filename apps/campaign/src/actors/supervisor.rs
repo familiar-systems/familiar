@@ -23,24 +23,25 @@ use kameo::error::{ActorStopReason, SendError};
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
 
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 
 use familiar_systems_campaign_shared::id::{ClientId, PageId};
 use familiar_systems_campaign_shared::loro::toc::TocPageKind;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::actors::database_writer::{
-    DbSetLandingPage, GetMetadata, MetadataError, PatchCampaignError,
+    CreatedSession, DbSetLandingPage, GetMetadata, MetadataError, PatchCampaignError,
     PatchCampaignMetadata as DbPatchCampaign, PatchCampaignResult,
 };
 use crate::actors::page::{PageActor, PageActorArgs, PageInit};
 use crate::actors::toc::{AddPageNode, ResolvePageNode, TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::domain::crdt::room_actor;
-use crate::entities::columns::PageIdCol;
-use crate::entities::{campaign_metadata, pages, sessions};
+use crate::domain::page::DocumentPageKind;
+use crate::entities::columns::{PageIdCol, PageKindCol};
+use crate::entities::{campaign_metadata, pages};
 use crate::error::InitError;
 use crate::persistence::{CampaignDatabase, CampaignStore};
 
@@ -171,7 +172,7 @@ impl Actor for CampaignSupervisor {
                         name: "Campaign Base Camp".to_string(),
                         status: Some(Status::Known),
                         parent: None,
-                        kind: PageKind::Entity,
+                        kind: DocumentPageKind::Entity,
                     })
                     .await
                 {
@@ -479,19 +480,17 @@ impl Message<SetLandingPage> for CampaignSupervisor {
 /// node to the live ToC. Replies with the persisted `pages` row for the HTTP
 /// response.
 ///
-/// `kind` selects the document-page genesis path. A `Session` is **not** created
-/// here - it mints a temporal row and has its own [`CreateSession`] message -
-/// so a `Session` kind is refused (`UnsupportedKind`). A future Skill / Memory
-/// kind, being document-shaped, would route through here.
+/// `kind` is a [`DocumentPageKind`], so a `Session` is **unrepresentable** here:
+/// it mints a temporal row and has its own [`CreateSession`] message. A future
+/// Skill / Memory kind, being document-shaped, joins that sum and routes here.
 #[derive(Debug, Clone)]
 pub struct CreatePage {
     pub name: String,
     pub status: Option<Status>,
     /// Parent Page to nest under in the ToC. `None` => ToC root.
     pub parent: Option<PageId>,
-    /// Which document-page kind to genesis. `Entity` or `Template`; `Session`
-    /// is refused (it has its own path).
-    pub kind: PageKind,
+    /// Which document-page kind to genesis (`Entity` or `Template`).
+    pub kind: DocumentPageKind,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -500,14 +499,37 @@ pub enum CreatePageError {
     ParentNotFound,
     #[error("page name must not be empty")]
     EmptyName,
-    #[error("page kind {0:?} is not created through the page path")]
-    UnsupportedKind(PageKind),
+    #[error("a {0:?} page named {1:?} already exists")]
+    NameTaken(PageKind, String),
     #[error("page genesis failed")]
     Genesis,
     #[error("a child actor was unavailable")]
     ActorUnavailable,
     #[error("database error: {0}")]
     Db(#[from] sea_orm::DbErr),
+}
+
+/// Whether a page of `kind` already carries `name` (exact, case-sensitive match;
+/// the caller has already trimmed). Names are unique **per kind**, so an entity
+/// and a session may share "The Fall of Perth", but two sessions may not.
+///
+/// Enforced here at the application layer rather than with a DB constraint: a
+/// composite `(kind, name)` unique index is not expressible on the sea-orm entity
+/// (`Schema::create_table_from_entity` only sees single-column `unique`), so it
+/// would break the schema-drift test with no entity-side mirror. This
+/// read-then-insert is race-free under the single-writer + serialized-supervisor
+/// invariant - the same property the ordinal `MAX + 1` relies on.
+async fn name_taken_for_kind(
+    db_reader: &DatabaseConnection,
+    kind: PageKind,
+    name: &str,
+) -> Result<bool, sea_orm::DbErr> {
+    let existing = pages::Entity::find()
+        .filter(pages::Column::Kind.eq(PageKindCol::from(kind)))
+        .filter(pages::Column::Name.eq(name))
+        .one(db_reader)
+        .await?;
+    Ok(existing.is_some())
 }
 
 impl Message<CreatePage> for CampaignSupervisor {
@@ -543,29 +565,7 @@ impl Message<CreatePage> for CampaignSupervisor {
         }
 
         let status = msg.status.unwrap_or(Status::GmOnly);
-
-        // Pick the document-page genesis path. Exhaustive over `PageKind`, so a
-        // future Skill / Memory kind forces a decision here; `Session` is refused
-        // because it has its own `CreateSession` path (it mints a temporal row).
-        let (init, toc_page_kind) = match msg.kind {
-            PageKind::Entity => (
-                PageInit::NewEntity {
-                    name: name.clone(),
-                    status,
-                },
-                TocPageKind::Entity,
-            ),
-            PageKind::Template => (
-                PageInit::NewTemplate {
-                    name: name.clone(),
-                    status,
-                },
-                TocPageKind::Template,
-            ),
-            PageKind::Session => return Err(CreatePageError::UnsupportedKind(PageKind::Session)),
-        };
-
-        let page_id = PageId::generate();
+        let kind = PageKind::from(msg.kind);
 
         let (db_reader, db_writer) = {
             let db = self
@@ -574,6 +574,26 @@ impl Message<CreatePage> for CampaignSupervisor {
                 .expect("db must be Some while actor is running");
             (db.reader().clone(), db.writer().clone())
         };
+
+        // Names are unique per kind (see `name_taken_for_kind`).
+        if name_taken_for_kind(&db_reader, kind, &name).await? {
+            return Err(CreatePageError::NameTaken(kind, name));
+        }
+
+        // `DocumentPageKind::toc_page_kind` owns the kind -> ToC-node map, so this
+        // path no longer restates it; document pages carry no ordinal.
+        let toc_page_kind = msg.kind.toc_page_kind();
+        // The owning actor threads its committed `pages::Model` back here instead
+        // of us re-reading it from the reader pool after genesis.
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let init = PageInit::NewDocumentPage {
+            name: name.clone(),
+            kind: msg.kind,
+            status,
+            reply: reply_tx,
+        };
+
+        let page_id = PageId::generate();
 
         // Spawn the owning actor in genesis mode; it persists its own birth row
         // through the single-writer. Nothing writes a Page's rows around it.
@@ -617,11 +637,10 @@ impl Message<CreatePage> for CampaignSupervisor {
             );
         }
 
-        // Read back the committed row for the response.
-        pages::Entity::find_by_id(PageIdCol::from(page_id.clone()))
-            .one(&db_reader)
-            .await?
-            .ok_or(CreatePageError::Genesis)
+        // The owning actor threaded its committed row back through the genesis
+        // oneshot; return it directly, no read-after-write. The actor is alive
+        // (checked above), so the send fired; a recv error is defensive only.
+        reply_rx.await.map_err(|_| CreatePageError::Genesis)
     }
 }
 
@@ -640,9 +659,9 @@ impl Message<CreatePage> for CampaignSupervisor {
 /// genesis, registration, and ToC placement around it.
 #[derive(Debug, Clone)]
 pub struct CreateSession {
-    /// The GM's optional subtitle. `None` (or blank) means an unnamed session,
-    /// identified by its ordinal until the GM titles it after play.
-    pub name: Option<String>,
+    /// The session's name. Required and non-blank, and unique among sessions,
+    /// like every other page kind; the client renders `Session {ordinal}: {name}`.
+    pub name: String,
     pub status: Option<Status>,
     /// Parent to nest under in the ToC. `None` => ToC root.
     pub parent: Option<PageId>,
@@ -652,19 +671,16 @@ pub struct CreateSession {
 pub enum CreateSessionError {
     #[error("parent page not found in toc")]
     ParentNotFound,
+    #[error("session name must not be empty")]
+    EmptyName,
+    #[error("a {0:?} page named {1:?} already exists")]
+    NameTaken(PageKind, String),
     #[error("session genesis failed")]
     Genesis,
     #[error("a child actor was unavailable")]
     ActorUnavailable,
     #[error("database error: {0}")]
     Db(#[from] sea_orm::DbErr),
-}
-
-/// The page + temporal rows a session genesis produced, for the HTTP response.
-#[derive(Debug, Clone, kameo::Reply)]
-pub struct CreatedSession {
-    pub page: pages::Model,
-    pub session: sessions::Model,
 }
 
 impl Message<CreateSession> for CampaignSupervisor {
@@ -681,11 +697,11 @@ impl Message<CreateSession> for CampaignSupervisor {
     ) -> Self::Reply {
         self.last_activity = Instant::now();
 
-        // Optional name: trim, and treat blank as absent (unnamed session).
-        let name = msg
-            .name
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
+        // A session is named like every other page kind: required and non-blank.
+        let name = msg.name.trim().to_string();
+        if name.is_empty() {
+            return Err(CreateSessionError::EmptyName);
+        }
 
         // Validate placement before any write. Bad parent fails cleanly.
         if let Some(parent) = &msg.parent {
@@ -700,14 +716,6 @@ impl Message<CreateSession> for CampaignSupervisor {
         }
 
         let status = msg.status.unwrap_or(Status::GmOnly);
-        let page_id = PageId::generate();
-        // The page owns the session's optional subtitle (`pages.name`). An unnamed
-        // session stores an empty name: it is identified by its ordinal, and the
-        // client composes the canonical "Session {ordinal}" display from the
-        // temporal row's ordinal (carried on the ToC node). Empty is legitimate
-        // here (unlike entities), so the page doc's title stays empty rather than
-        // a recovery marker (see `LoroPageDoc::read_title_or_recovery_marker`).
-        let page_name = name.unwrap_or_default();
 
         let (db_reader, db_writer) = {
             let db = self
@@ -716,6 +724,17 @@ impl Message<CreateSession> for CampaignSupervisor {
                 .expect("db must be Some while actor is running");
             (db.reader().clone(), db.writer().clone())
         };
+
+        // Names are unique per kind, sessions included (see `name_taken_for_kind`).
+        if name_taken_for_kind(&db_reader, PageKind::Session, &name).await? {
+            return Err(CreateSessionError::NameTaken(PageKind::Session, name));
+        }
+
+        let page_id = PageId::generate();
+
+        // The owning actor threads both committed rows (page + temporal session)
+        // back here instead of us re-reading them from the reader pool.
+        let (reply_tx, reply_rx) = oneshot::channel();
 
         // Spawn the owning actor in session-genesis mode; it persists the page,
         // its blocks, and the temporal row atomically via `DbCreateSession`.
@@ -726,8 +745,9 @@ impl Message<CreateSession> for CampaignSupervisor {
             db_writer,
             toc: self.toc.clone(),
             init: PageInit::NewSession {
-                name: page_name.clone(),
+                name: name.clone(),
                 status,
+                reply: reply_tx,
             },
             debounce_duration: Duration::from_secs(2),
             idle_timeout: Duration::from_secs(30),
@@ -740,18 +760,11 @@ impl Message<CreateSession> for CampaignSupervisor {
         self.pages.insert(page_id.clone(), actor.clone());
         ctx.actor_ref().clone().link(&actor).await;
 
-        // Read back the committed rows first: the ToC node needs the genesis-
-        // assigned `ordinal`, which only exists once `DbCreateSession` has run.
-        let page_id_col = PageIdCol::from(page_id.clone());
-        let page = pages::Entity::find_by_id(page_id_col.clone())
-            .one(&db_reader)
-            .await?
-            .ok_or(CreateSessionError::Genesis)?;
-        let session = sessions::Entity::find()
-            .filter(sessions::Column::PageId.eq(page_id_col))
-            .one(&db_reader)
-            .await?
-            .ok_or(CreateSessionError::Genesis)?;
+        // The owning actor threaded both committed rows back through the genesis
+        // oneshot; no read-after-write. The ToC node below needs the genesis-
+        // assigned `ordinal`, which rides along on `created.session`. Alive
+        // (checked above) implies the send fired; a recv error is defensive.
+        let created = reply_rx.await.map_err(|_| CreateSessionError::Genesis)?;
 
         // Place it in the live ToC, carrying the kind and ordinal so clients can
         // render "Session {ordinal}". Best-effort: a failure leaves a valid Page
@@ -760,9 +773,9 @@ impl Message<CreateSession> for CampaignSupervisor {
             .toc
             .ask(AddPageNode {
                 page_id: page_id.clone(),
-                title: page_name,
+                title: name,
                 page_kind: TocPageKind::Session {
-                    ordinal: session.ordinal,
+                    ordinal: created.session.ordinal,
                 },
                 visibility: status,
                 parent: msg.parent.clone(),
@@ -775,7 +788,7 @@ impl Message<CreateSession> for CampaignSupervisor {
             );
         }
 
-        Ok(CreatedSession { page, session })
+        Ok(created)
     }
 }
 
@@ -1178,7 +1191,7 @@ mod tests {
                 name: "Ephemeral".to_string(),
                 status: Some(Status::GmOnly),
                 parent: None,
-                kind: PageKind::Entity,
+                kind: DocumentPageKind::Entity,
             })
             .await
             .unwrap();
@@ -1388,12 +1401,43 @@ mod tests {
                     name: name.to_string(),
                     status: Some(Status::GmOnly),
                     parent: None,
-                    kind: PageKind::Entity,
+                    kind: DocumentPageKind::Entity,
                 })
                 .await
                 .expect_err("empty name must be rejected");
             assert!(
                 matches!(err, SendError::HandlerError(CreatePageError::EmptyName)),
+                "expected EmptyName, got {err:?}"
+            );
+        }
+
+        supervisor.stop_gracefully().await.unwrap();
+        supervisor.wait_for_shutdown_with_result(|_| ()).await;
+    }
+
+    /// Sessions are named like every other page kind: an empty or whitespace-only
+    /// name is rejected before anything is persisted (the empty-name guard is no
+    /// longer entity/template-only).
+    #[tokio::test]
+    async fn create_session_rejects_empty_name() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let store = store_in(tmp.path());
+        let args = fast_args(CampaignId::generate(), store, 60_000, 60_000);
+        let supervisor = CampaignSupervisor::spawn(args);
+        supervisor.wait_for_startup().await;
+
+        for name in ["", "   "] {
+            let err = supervisor
+                .ask(CreateSession {
+                    name: name.to_string(),
+                    status: Some(Status::GmOnly),
+                    parent: None,
+                })
+                .await
+                .expect_err("empty session name must be rejected");
+            assert!(
+                matches!(err, SendError::HandlerError(CreateSessionError::EmptyName)),
                 "expected EmptyName, got {err:?}"
             );
         }

@@ -48,11 +48,11 @@ async fn session_toc_node_carries_kind_and_ordinal() {
         .await
         .expect("create campaign");
 
-    // Create an unnamed session. CreateSession awaits its AddPageNode, so the
-    // node is live in the toc doc by the time the call returns.
+    // Create a session. CreateSession awaits its AddPageNode, so the node is live
+    // in the toc doc by the time the call returns.
     let created = supervisor
         .ask(CreateSession {
-            name: None,
+            name: "The Gathering Storm".to_string(),
             status: None,
             parent: None,
         })

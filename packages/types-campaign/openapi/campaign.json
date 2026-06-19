@@ -161,6 +161,9 @@
           "404": {
             "description": "Campaign not on this shard"
           },
+          "409": {
+            "description": "Another page of the same kind already uses this name"
+          },
           "422": {
             "description": "Parent page not found, or the page name is empty"
           },
@@ -398,10 +401,11 @@
       },
       "CreateSessionBody": {
         "type": "object",
-        "description": "Body for creating a `session` page - its document plus its temporal record,\nminted together in one genesis transaction.\n\n`name` is the GM's optional subtitle (\"The End of Perth\"); omitted or blank\nmeans an unnamed session, identified by its ordinal until the GM titles it\nafter play.",
+        "description": "Body for creating a `session` page - its document plus its temporal record,\nminted together in one genesis transaction.\n\n`name` is required and non-blank, like every other page kind, and unique among\nsessions (\"The End of Perth\"). The client renders `Session {ordinal}: {name}`\nfrom the response's `ordinal` and `name`.",
+        "required": ["name"],
         "properties": {
           "name": {
-            "type": ["string", "null"]
+            "type": "string"
           },
           "parent": {
             "oneOf": [
@@ -600,7 +604,7 @@
           },
           "name": {
             "type": "string",
-            "description": "The session's label: its page title (a neutral default when unnamed)."
+            "description": "The session's label: its page title (required and unique among sessions)."
           },
           "ordinal": {
             "type": "integer",

@@ -24,7 +24,7 @@ export type SessionResponse = {
    */
   ordinal: number;
   /**
-   * The session's label: its page title (a neutral default when unnamed).
+   * The session's label: its page title (required and unique among sessions).
    */
   name: string;
   /**

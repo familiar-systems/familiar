@@ -18,11 +18,11 @@ export const PAGE_KIND_ICON = {
 // "main event" accent (matching the New menu's session row); the other kinds stay
 // quiet so session rows stand out in the dense nav list. Literal Tailwind classes
 // so the JIT can see them - the same token->class discipline as NewPageModal.
-const TOC_ICON_ACCENT: Record<PageKind, string> = {
+const TOC_ICON_ACCENT = {
   entity: "text-muted-foreground",
   template: "text-muted-foreground",
   session: "text-gold",
-};
+} satisfies Record<PageKind, string>;
 
 /**
  * The icon + accent class for a ToC page row. The one place a row's icon is

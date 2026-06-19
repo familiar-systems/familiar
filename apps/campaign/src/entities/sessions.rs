@@ -13,8 +13,10 @@ use crate::entities::columns::{PageIdCol, SessionIdCol};
 /// inbound relationship edges land in later slices.
 ///
 /// This row is **purely temporal**: a session's human label is its page title
-/// (`pages.name`), not stored here. Its identity is the `ordinal`, so the label
-/// is an optional convenience, not a unique key. See
+/// (`pages.name`), not stored here. Its DB identity is the `ordinal` (a unique
+/// key). The page title is now required and unique among sessions too - like
+/// every page kind - but that name-uniqueness is enforced in the supervisor's
+/// create path, not by a constraint here. See
 /// `docs/plans/2026-04-10-entity-relationship-temporal-model.md`.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "sessions")]

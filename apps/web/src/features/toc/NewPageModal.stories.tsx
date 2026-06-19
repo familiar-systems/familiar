@@ -30,27 +30,20 @@ export const Pick: Story = {
   },
 };
 
-// Choosing Session prefills "Untitled Session" and lands the cursor in the
-// field; Create sends that name straight through.
-export const SessionDefault: Story = {
+// A session is named like every other kind now: the field opens empty with the
+// cursor in it, Create stays disabled until it's non-empty, then sends the name.
+export const SessionRequiresName: Story = {
   play: async ({ args, userEvent }) => {
     await userEvent.click(screen.getByRole("button", { name: /New session/ }));
     const input = screen.getByLabelText("Name");
-    await expect(input).toHaveValue("Untitled Session");
+    await expect(input).toHaveValue("");
     await waitFor(() => expect(input).toHaveFocus());
-    await userEvent.click(screen.getByRole("button", { name: "Create" }));
-    await expect(args.onSubmit).toHaveBeenCalledWith("session", "Untitled Session");
-  },
-};
-
-// A session may be left unnamed: clearing the field sends null so the server
-// applies its own "Untitled Session".
-export const SessionBlankSendsNull: Story = {
-  play: async ({ args, userEvent }) => {
-    await userEvent.click(screen.getByRole("button", { name: /New session/ }));
-    await userEvent.clear(screen.getByLabelText("Name"));
-    await userEvent.click(screen.getByRole("button", { name: "Create" }));
-    await expect(args.onSubmit).toHaveBeenCalledWith("session", null);
+    const create = screen.getByRole("button", { name: "Create" });
+    await expect(create).toBeDisabled();
+    await userEvent.type(input, "The Fall of Perth");
+    await expect(create).toBeEnabled();
+    await userEvent.click(create);
+    await expect(args.onSubmit).toHaveBeenCalledWith("session", "The Fall of Perth");
   },
 };
 

@@ -33,9 +33,10 @@ const ROW_ACCENT: Record<NewMenuColor, { row: string; iconBox: string; label: st
 
 interface NewPageModalProps {
   /**
-   * Create the chosen kind with the given name (a blank session is sent as
-   * `null`). Throws on failure so the modal can surface it; resolves once
-   * navigation is under way (the parent then unmounts this modal).
+   * Create the chosen kind with the given name. Every kind requires a non-blank
+   * name (the modal gates an empty submit). Throws on failure so the modal can
+   * surface it; resolves once navigation is under way (the parent then unmounts
+   * this modal).
    */
   onSubmit: (kind: PageKind, name: string | null) => Promise<void>;
   onClose: () => void;
@@ -49,6 +50,11 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Synchronous double-submit guard: `busy` is async React state, so a same-tick
+  // Enter-keydown + button-click (or a fast double-click) can both clear the
+  // `canSubmit` gate before the first `setBusy(true)` re-renders -- firing two
+  // POSTs and creating two pages. A ref flips synchronously, closing that window.
+  const submittingRef = useRef(false);
 
   // Escape closes the dialog, but never mid-request: an in-flight create should
   // not be orphaned with its UI gone.
@@ -80,9 +86,11 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
   const canSubmit = chosen !== null && (!chosen.entry.nameRequired || trimmed !== "") && !busy;
 
   async function submit(): Promise<void> {
-    if (chosen === null || !canSubmit) return;
-    // Entity requires a name (already gated above); a blank session goes as
-    // null so the server applies its own "Untitled Session" default.
+    if (chosen === null || !canSubmit || submittingRef.current) return;
+    submittingRef.current = true;
+    // All page kinds require a name today (the gate above enforces non-empty), so
+    // `value` is the trimmed string; the per-kind `nameRequired` keeps the door
+    // open for a future optional-name kind (which would send null when blank).
     const value = chosen.entry.nameRequired ? trimmed : trimmed || null;
     setBusy(true);
     setError(null);
@@ -92,6 +100,7 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create.");
       setBusy(false);
+      submittingRef.current = false;
     }
   }
 

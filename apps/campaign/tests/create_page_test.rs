@@ -36,6 +36,19 @@ async fn mount_membership(app: &common::TestApp, campaign_id: &CampaignId, role:
         .await;
 }
 
+/// POST a kind-tagged `{ kind, content }` page body and return the HTTP status.
+async fn post_page(app: &common::TestApp, campaign_id: &CampaignId, body: Value) -> u16 {
+    reqwest::Client::new()
+        .post(format!("{}/campaign/{}/pages", app.base_url, campaign_id.0))
+        .header("authorization", app.auth_header())
+        .json(&body)
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .as_u16()
+}
+
 #[tokio::test]
 async fn gm_creates_page_and_nests_under_parent() {
     let app = common::spawn_app().await;
@@ -114,11 +127,11 @@ async fn gm_creates_session_via_pages() {
     create_campaign(&app, &campaign_id).await;
     mount_membership(&app, &campaign_id, "gm").await;
 
-    // An unnamed session: all body fields are optional.
+    // A session is named like every other page kind.
     let resp = reqwest::Client::new()
         .post(format!("{}/campaign/{}/pages", app.base_url, campaign_id.0))
         .header("authorization", app.auth_header())
-        .json(&json!({ "kind": "session", "content": {} }))
+        .json(&json!({ "kind": "session", "content": { "name": "The End of Perth" } }))
         .send()
         .await
         .unwrap();
@@ -131,11 +144,62 @@ async fn gm_creates_session_via_pages() {
         body["content"]["ordinal"], 1,
         "first session in the campaign"
     );
-    // An unnamed session stores an empty name: it is identified by its ordinal,
-    // and the client composes "Session {ordinal}" for display.
-    assert_eq!(body["content"]["name"], "");
+    assert_eq!(body["content"]["name"], "The End of Perth");
     assert!(body["content"]["page_id"].as_str().is_some());
     assert!(body["content"]["session_id"].as_str().is_some());
+}
+
+/// A blank session name is rejected (422), like every other page kind - a session
+/// is no longer the unnamed exception.
+#[tokio::test]
+async fn creating_a_blank_session_is_rejected() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
+    mount_membership(&app, &campaign_id, "gm").await;
+
+    let status = post_page(
+        &app,
+        &campaign_id,
+        json!({ "kind": "session", "content": { "name": "   " } }),
+    )
+    .await;
+    assert_eq!(status, 422, "a whitespace-only session name is rejected");
+}
+
+/// Names are unique per kind: a second page of the same kind with the same name
+/// is a 409, but the same name on a *different* kind is fine - "The Fall of
+/// Perth" can be both an entity and a session.
+#[tokio::test]
+async fn duplicate_name_is_rejected_per_kind() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
+    mount_membership(&app, &campaign_id, "gm").await;
+
+    let entity = |name: &str| json!({ "kind": "entity", "content": { "name": name } });
+    let session = |name: &str| json!({ "kind": "session", "content": { "name": name } });
+
+    assert_eq!(
+        post_page(&app, &campaign_id, entity("The Fall of Perth")).await,
+        201,
+        "first entity with the name is created"
+    );
+    assert_eq!(
+        post_page(&app, &campaign_id, entity("The Fall of Perth")).await,
+        409,
+        "a second entity with the same name collides"
+    );
+    assert_eq!(
+        post_page(&app, &campaign_id, session("The Fall of Perth")).await,
+        201,
+        "the same name on a different kind (session) is allowed"
+    );
+    assert_eq!(
+        post_page(&app, &campaign_id, session("The Fall of Perth")).await,
+        409,
+        "a second session with the same name collides"
+    );
 }
 
 #[tokio::test]

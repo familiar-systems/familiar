@@ -489,21 +489,23 @@ impl Message<DbCreatePage> for DatabaseWriteActor {
 /// is generated here, inside the txn, because nothing upstream consumes it.
 pub struct DbCreateSession {
     /// The Session page to persist (`kind == Session`, blocks already seeded).
-    /// Its `name` is the session's label (a neutral default when the GM gave
-    /// none); the `sessions` row stays purely temporal and stores no name.
+    /// Its `name` is the session's label (required and non-blank); the `sessions`
+    /// row stays purely temporal and stores no name.
     pub new_page: NewPage,
 }
 
-/// What a session genesis produced, for the HTTP response.
+/// What a session genesis produced: the persisted `pages` row and its temporal
+/// `sessions` row. The `PageActor`'s genesis path threads this back to the
+/// supervisor through a reply oneshot, so the HTTP response is built without a
+/// read-after-write round-trip on the reader pool.
 #[derive(Debug, Clone, kameo::Reply)]
-pub struct SessionCreated {
+pub struct CreatedSession {
     pub page: pages::Model,
-    pub session_id: SessionId,
-    pub ordinal: i64,
+    pub session: sessions::Model,
 }
 
 impl Message<DbCreateSession> for DatabaseWriteActor {
-    type Reply = Result<SessionCreated, sea_orm::DbErr>;
+    type Reply = Result<CreatedSession, sea_orm::DbErr>;
 
     #[tracing::instrument(
         skip_all,
@@ -562,10 +564,10 @@ impl Message<DbCreateSession> for DatabaseWriteActor {
             .one(&txn)
             .await?
             .map(|m| m.ordinal);
-        let ordinal = next_session_ordinal(prev_max);
-        let session_id = SessionId::generate();
-        sessions::ActiveModel {
-            id: Set(SessionIdCol::from(session_id.clone())),
+        let ordinal =
+            next_session_ordinal(prev_max).map_err(|e| sea_orm::DbErr::Custom(e.to_string()))?;
+        let session = sessions::ActiveModel {
+            id: Set(SessionIdCol::from(SessionId::generate())),
             ordinal: Set(ordinal),
             created_at: Set(now),
             // Equal at genesis; the future reorder op is what diverges them.
@@ -577,11 +579,7 @@ impl Message<DbCreateSession> for DatabaseWriteActor {
 
         txn.commit().await?;
         tracing::debug!(block_count, ordinal, "session created");
-        Ok(SessionCreated {
-            page,
-            session_id,
-            ordinal,
-        })
+        Ok(CreatedSession { page, session })
     }
 }
 
@@ -835,7 +833,7 @@ mod tests {
             })
             .await
             .expect("create session");
-        assert_eq!(first.ordinal, 1);
+        assert_eq!(first.session.ordinal, 1);
         assert_eq!(PageKind::from(first.page.kind), PageKind::Session);
         assert_eq!(first.page.name, "The Heist", "the label lives on the page");
 
@@ -846,7 +844,7 @@ mod tests {
             })
             .await
             .expect("create second session");
-        assert_eq!(second.ordinal, 2);
+        assert_eq!(second.session.ordinal, 2);
 
         // The temporal row is linked to its page (it carries no name of its own).
         let s1 = sessions::Entity::find()

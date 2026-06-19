@@ -78,9 +78,9 @@ function bodyFor(kind: PageKind, name: string | null, parent: PageId | null): Cr
       // another template, so it has no from_template_id.
       return { kind: "template", content: { name: name ?? "", status: null, parent } };
     case "session":
-      // A session may be unnamed: a null/blank name becomes "Untitled Session"
-      // on the server.
-      return { kind: "session", content: { name, status: null, parent } };
+      // A session is named like every other kind now (the modal gates a blank
+      // submit), and its name is unique among sessions (a duplicate yields 409).
+      return { kind: "session", content: { name: name ?? "", status: null, parent } };
     default: {
       const _exhaustive: never = kind;
       throw new Error(`Unhandled PageKind: ${String(_exhaustive)}`);

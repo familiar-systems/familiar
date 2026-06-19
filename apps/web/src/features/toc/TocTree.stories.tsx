@@ -146,22 +146,22 @@ export const WithActivePage: Story = {
 };
 
 // The page kind drives both the row label and the row icon. Templates and
-// sessions compose their kind/ordinal into the label (an unnamed session shows
-// just "Session {ordinal}"); an entity carries no prefix. The icon follows the
-// kind: template -> layout-template, session -> mic, entity -> scroll-text.
+// sessions compose their kind/ordinal into the label ("Session {ordinal}: {name}");
+// an entity carries no prefix. The icon follows the kind: template ->
+// layout-template, session -> mic, entity -> scroll-text.
 export const KindPrefixes: Story = {
   args: {
     tree: [
       node(tid(1), templatePage("NPC Statblock", HOLLOW_KING)),
       node(tid(2), sessionPage("The Fall of Perth", GREYMOOR, 3)),
-      node(tid(3), sessionPage("", ASHEN_PACT, 4)),
+      node(tid(3), sessionPage("The Ashen Pact", ASHEN_PACT, 4)),
       node(tid(4), page("Korgath", LOOSE_NOTES)),
     ],
   },
   play: async ({ canvas, canvasElement }) => {
     await expect(canvas.getByText("Template: NPC Statblock")).toBeInTheDocument();
     await expect(canvas.getByText("Session 3: The Fall of Perth")).toBeInTheDocument();
-    await expect(canvas.getByText("Session 4")).toBeInTheDocument();
+    await expect(canvas.getByText("Session 4: The Ashen Pact")).toBeInTheDocument();
     // An entity carries no kind prefix - just its name.
     await expect(canvas.getByText("Korgath")).toBeInTheDocument();
 

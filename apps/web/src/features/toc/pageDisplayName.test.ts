@@ -32,12 +32,15 @@ describe("pageDisplayName", () => {
     expect(pageDisplayName(session(3), "The Fall of Perth")).toBe("Session 3: The Fall of Perth");
   });
 
-  it("drops the colon for an unnamed session", () => {
+  // Names are required on every kind now, so a blank name shouldn't occur; these
+  // guard the defensive fallback for stale CRDT data (render "Session 4", not the
+  // dangling "Session 4:").
+  it("defensively drops the trailing colon for a blank session name", () => {
     expect(pageDisplayName(session(4), "")).toBe("Session 4");
     expect(pageDisplayName(session(4), "   ")).toBe("Session 4");
   });
 
-  it("drops the colon for an unnamed template", () => {
+  it("defensively drops the trailing colon for a blank template name", () => {
     expect(pageDisplayName(template, "")).toBe("Template");
   });
 });

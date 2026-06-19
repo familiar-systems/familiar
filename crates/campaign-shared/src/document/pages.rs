@@ -3,9 +3,9 @@
 //! Page creation is one endpoint over a kind-tagged union: both the request and
 //! the response are **adjacent-tagged** discriminated unions over `PageKind`
 //! (`{ "kind": "...", "content": { ... } }`). Each kind carries only the fields
-//! it actually has - a template has no `from_template_id`, a session's name is
-//! optional and its response carries `ordinal`/`session_id`. Adding a page kind
-//! is adding a variant the compiler points at, end to end (Rust + TS).
+//! it actually has - a template has no `from_template_id`, a session's response
+//! carries `ordinal`/`session_id`. Adding a page kind is adding a variant the
+//! compiler points at, end to end (Rust + TS).
 //!
 //! Adjacent (not internal) tagging is deliberate: utoipa 5.x emits a clean
 //! `oneOf` + discriminator for `#[serde(tag, content)]` that survives codegen,
@@ -65,13 +65,13 @@ pub struct CreateTemplateBody {
 /// Body for creating a `session` page - its document plus its temporal record,
 /// minted together in one genesis transaction.
 ///
-/// `name` is the GM's optional subtitle ("The End of Perth"); omitted or blank
-/// means an unnamed session, identified by its ordinal until the GM titles it
-/// after play.
+/// `name` is required and non-blank, like every other page kind, and unique among
+/// sessions ("The End of Perth"). The client renders `Session {ordinal}: {name}`
+/// from the response's `ordinal` and `name`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/document/")]
 pub struct CreateSessionBody {
-    pub name: Option<String>,
+    pub name: String,
     pub status: Option<Status>,
     /// Parent to nest under in the table of contents. `None` => ToC root.
     pub parent: Option<PageId>,
@@ -133,7 +133,7 @@ pub struct SessionResponse {
     /// rather than ts-rs's default `bigint` for `i64`.
     #[ts(type = "number")]
     pub ordinal: i64,
-    /// The session's label: its page title (a neutral default when unnamed).
+    /// The session's label: its page title (required and unique among sessions).
     pub name: String,
     /// RFC 3339 timestamp (the session's recording time).
     pub created_at: String,

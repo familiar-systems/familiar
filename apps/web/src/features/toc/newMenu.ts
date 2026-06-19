@@ -32,9 +32,9 @@ export interface NewMenuEntry {
   /** Pre-filled into the name field when this kind is chosen. */
   defaultName: string;
   /**
-   * Whether a non-empty name is required. An entity must be named (`POST
-   * /pages` rejects a blank name); a session may be blank (the server fills in
-   * "Untitled Session").
+   * Whether a non-empty name is required. Every kind requires one today (`POST
+   * /pages` rejects a blank name on every kind, sessions included); kept
+   * per-kind so a future kind could opt out.
    */
   nameRequired: boolean;
   /** Accent the picker row paints with. */
@@ -46,8 +46,8 @@ export const NEW_MENU = {
     label: "New session",
     subtitle: "record audio, paste notes, upload a transcript",
     icon: PAGE_KIND_ICON.session,
-    defaultName: "Untitled Session",
-    nameRequired: false,
+    defaultName: "",
+    nameRequired: true,
     color: "gold",
   },
   entity: {

@@ -15,8 +15,44 @@
 
 use familiar_systems_campaign_shared::id::{BlockId, PageId};
 use familiar_systems_campaign_shared::loro::page::Section;
+use familiar_systems_campaign_shared::loro::toc::TocPageKind;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
+
+/// The subset of [`PageKind`] that genesis through the plain **document-page**
+/// path: `preamble` + `body`, persisted via `DbCreatePage`, with no temporal
+/// row. Threading this (rather than a full `PageKind`) through `CreatePage` makes
+/// `Session` *unrepresentable* on the document path - a session mints a temporal
+/// `sessions` row and has its own `CreateSession` workflow, so it can never reach
+/// here. That turns the old runtime "unsupported kind" rejection into a
+/// compile-time impossibility. A future document-shaped kind (Skill / Memory)
+/// joins as a variant, and the compiler points at every site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentPageKind {
+    Entity,
+    Template,
+}
+
+impl DocumentPageKind {
+    /// The matching ToC node kind. Total (unlike `TocPageKind::Session`, which
+    /// needs a genesis-assigned ordinal), so it replaces the supervisor's
+    /// hand-written `kind -> TocPageKind` match rather than restating it.
+    pub fn toc_page_kind(self) -> TocPageKind {
+        match self {
+            DocumentPageKind::Entity => TocPageKind::Entity,
+            DocumentPageKind::Template => TocPageKind::Template,
+        }
+    }
+}
+
+impl From<DocumentPageKind> for PageKind {
+    fn from(kind: DocumentPageKind) -> Self {
+        match kind {
+            DocumentPageKind::Entity => PageKind::Entity,
+            DocumentPageKind::Template => PageKind::Template,
+        }
+    }
+}
 
 /// A block to persist as part of a new Page. A neutral domain value with no
 /// sea-orm dependency; the `DatabaseWriteActor` maps it to a `blocks::ActiveModel`.

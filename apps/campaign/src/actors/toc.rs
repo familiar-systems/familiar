@@ -439,17 +439,30 @@ impl Message<UpdatePageNode> for TocActor {
         // (the only field that needs a DB write) and carries the immutable
         // kind/ordinal we must preserve. This push only mutates title/visibility,
         // so threading kind/ordinal through the PageActor would be redundant --
-        // the ToC already holds them. A node that resolved as a page but reads
-        // back as something else degrades to Entity/None (shouldn't happen).
+        // the ToC already holds them.
         let existing = self.doc_room.doc().read_entry(tree_id);
-        let visibility_changed = existing
-            .as_ref()
-            .map(|entry| *entry.visibility() != msg.visibility)
-            .unwrap_or(true);
-        let page_kind = match &existing {
-            Some(TocEntry::Page { page_kind, .. }) => page_kind.clone(),
-            _ => TocPageKind::Entity,
+        // `find_page_node` already proved this resolves to a Page node, so a
+        // non-Page (or unreadable) entry here means the ToC doc is corrupt. Do not
+        // invent a kind: defaulting to `Entity` would silently strip a session's
+        // ordinal from the live tree until the next checkout healed it. Refuse to
+        // guess -- log loudly and skip the write (it self-heals on checkout, like
+        // the not-in-toc case above). We moved to Rust to make "shouldn't happen"
+        // a handled case, not undefined behavior.
+        let Some(TocEntry::Page {
+            page_kind,
+            visibility,
+            ..
+        }) = &existing
+        else {
+            tracing::error!(
+                entry = ?existing,
+                "UpdatePageNode: node resolved as a page but read back as a non-page \
+                 entry; refusing to default its kind. Skipping; self-heals on checkout."
+            );
+            return Ok(());
         };
+        let visibility_changed = *visibility != msg.visibility;
+        let page_kind = page_kind.clone();
 
         let entry = TocEntry::Page {
             title: msg.title,
@@ -985,15 +998,15 @@ mod tests {
 
     #[test]
     fn restored_session_entry_carries_kind_and_ordinal() {
-        // An (unnamed) session page surfaces as a Page entry that carries its
-        // kind and ordinal, so the client can render "Session {ordinal}" without
+        // A session page surfaces as a Page entry that carries its kind and
+        // ordinal, so the client can render "Session {ordinal}: {name}" without
         // querying the temporal table.
         let id = PageId::generate();
         let mut pages = HashMap::new();
         pages.insert(
             id.clone(),
             PageInfo {
-                name: String::new(),
+                name: "The Gathering Storm".to_string(),
                 status: Status::GmOnly,
                 page_kind: TocPageKind::Session { ordinal: 7 },
             },
@@ -1006,7 +1019,10 @@ mod tests {
                 page_kind, title, ..
             } => {
                 assert_eq!(*page_kind, TocPageKind::Session { ordinal: 7 });
-                assert_eq!(title, "", "unnamed session keeps an empty title");
+                assert_eq!(
+                    title, "The Gathering Storm",
+                    "the session's name carries through restore"
+                );
             }
             other => panic!("expected a session Page entry, got {other:?}"),
         }

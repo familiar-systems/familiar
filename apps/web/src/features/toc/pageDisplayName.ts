@@ -28,13 +28,17 @@ export function pagePrefix(pageKind: TocPageKind): string | null {
 
 /**
  * The full display name for a non-editable context (the ToC sidebar). Built on
- * `pagePrefix`: a blank name drops the trailing colon ("Session 3", "Template"),
- * and an entity with no name falls back to "Untitled".
+ * `pagePrefix`: a prefixed kind renders "Session 3: Name" / "Template: Name"; an
+ * unnamed entity (no prefix) falls back to "Untitled".
+ *
+ * Every kind requires a name now, so a blank name shouldn't reach here. The
+ * blank-name branches stay as a defensive fallback for stale CRDT data, so we'd
+ * still render "Session 3" rather than a dangling "Session 3:".
  */
 export function pageDisplayName(pageKind: TocPageKind, name: string): string {
   const trimmed = name.trim();
   const prefix = pagePrefix(pageKind);
   if (prefix === null) return trimmed === "" ? "Untitled" : trimmed;
-  // Drop the trailing colon when there is no name to follow it.
+  // Defensive (see above): drop the trailing colon when there is no name.
   return trimmed === "" ? prefix.replace(/:$/, "") : `${prefix} ${trimmed}`;
 }
