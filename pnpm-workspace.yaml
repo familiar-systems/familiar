@@ -34,10 +34,17 @@ catalog:
   loro-prosemirror: ^0.4.3
   loro-websocket: ^0.6.2
   loro-adaptors: ^0.6.1
-  prosemirror-model: ^1.24.1
-  prosemirror-state: ^1.4.3
-  prosemirror-view: ^1.38.1
+  prosemirror-model: ^1.25.8
+  prosemirror-state: ^1.4.4
+  prosemirror-view: ^1.41.9
   ulidx: ^2.4.1
+  # @vitest/browser-playwright tracks vitest and @playwright/test tracks playwright;
+  # a runner/companion version skew breaks browser-mode tests.
+  vitest: ^4.1.8
+  "@vitest/browser-playwright": ^4.1.8
+  playwright: ^1.60.0
+  "@playwright/test": ^1.60.0
+  zod: ^4.4.3
 minimumReleaseAge: 10080
 # loro-crdt 1.13.4 fixes an O(n^2) editing regression but published inside the
 # 7-day cooldown. Remove this exception after 2026-06-23, once 1.13.4 clears it.
@@ -84,9 +91,9 @@ overrides:
   fast-xml-builder: ^1.1.7
   # Force a single ProseMirror instance across @tiptap/pm and loro-prosemirror;
   # two copies of prosemirror-model silently break `instanceof` checks.
-  prosemirror-model: ^1.24.1
-  prosemirror-state: ^1.4.3
-  prosemirror-view: ^1.38.1
+  prosemirror-model: ^1.25.8
+  prosemirror-state: ^1.4.4
+  prosemirror-view: ^1.41.9
   "@tanstack/react-router": 1.170.15
   "@tanstack/router-cli": 1.167.17
   "@tanstack/router-plugin": 1.168.18
