@@ -60,7 +60,7 @@ For comprehensive API details beyond this skill, fetch the LLM-optimized referen
 
 The `loro-protocol` library provides a complete WebSocket sync protocol on top of Loro's raw `export`/`import` primitives: handshake, room management, fragmentation, and an adaptor trait.
 
-**The crates.io version is stale; use a Git dependency for Rust.** See [issue #57](https://github.com/loro-dev/protocol/issues/57).
+**On crates.io** as `loro-protocol` (0.3.0+) -- use a normal crate dependency for Rust.
 
 - [Blog post (design rationale)](https://loro.dev/blog/loro-protocol)
 - [GitHub repo](https://github.com/loro-dev/protocol)
