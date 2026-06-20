@@ -8,8 +8,8 @@
     "generate:campaign": "tsx generate.ts campaign"
   },
   "devDependencies": {
-    "openapi-typescript": "^7.13",
-    "tsx": "^4.21",
+    "openapi-typescript": "^7.13.0",
+    "tsx": "^4.22.4",
     "typescript": "catalog:"
   }
 }

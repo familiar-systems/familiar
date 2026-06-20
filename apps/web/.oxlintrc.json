@@ -1,6 +1,11 @@
 {
   "$schema": "../../node_modules/oxlint/configuration_schema.json",
   "jsPlugins": ["oxlint-tailwindcss"],
+  "settings": {
+    "tailwindcss": {
+      "entryPoint": "src/styles/global.css"
+    }
+  },
   "rules": {
     // From: https://github.com/sergioazoc/oxlint-tailwindcss
     // Correctness

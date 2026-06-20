@@ -25,14 +25,14 @@
     "@tiptap/pm": "catalog:",
     "loro-crdt": "catalog:",
     "loro-prosemirror": "catalog:",
-    "prosemirror-model": "catalog:",
-    "prosemirror-state": "catalog:",
-    "prosemirror-view": "catalog:",
+    "prosemirror-model": "^1.25.8",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.41.9",
     "ulidx": "catalog:"
   },
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",
     "typescript": "catalog:",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.8"
   }
 }
