@@ -48,8 +48,12 @@ catalog:
 minimumReleaseAge: 10080
 # loro-crdt 1.13.4 fixes an O(n^2) editing regression but published inside the
 # 7-day cooldown. Remove this exception after 2026-06-23, once 1.13.4 clears it.
+# dompurify 3.4.11 patches GHSA-cmwh-pvxp-8882 (ALLOWED_ATTR pollution, via mermaid),
+# also published inside the cooldown; the override below forces it past mermaid's
+# range. Remove both after 2026-06-24, once 3.4.11 clears the cooldown on its own.
 minimumReleaseAgeExclude:
   - loro-crdt
+  - dompurify
 allowBuilds:
   esbuild: true
   sharp: true
@@ -89,6 +93,7 @@ overrides:
   yaml: ^2.8.3
   fast-uri: ^3.1.2
   fast-xml-builder: ^1.1.7
+  dompurify: 3.4.11
   # Force a single ProseMirror instance across @tiptap/pm and loro-prosemirror;
   # two copies of prosemirror-model silently break `instanceof` checks.
   prosemirror-model: ^1.25.8
