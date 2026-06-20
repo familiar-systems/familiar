@@ -23,9 +23,7 @@ libsqlite3-sys = "0.30"
 loro = { workspace = true }
 object_store = { version = "0.13", features = ["aws"] }
 async-trait = "0.1"
-# Not on crates.io (upstream publishing issue); pinned via git tag.
-# Bump when upstream cuts a newer release.
-loro-protocol = { git = "https://github.com/loro-dev/protocol.git", tag = "loro-protocol-v0.3.0" }
+loro-protocol = "0.3.0"
 reqwest = { workspace = true }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }

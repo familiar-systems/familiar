@@ -65,7 +65,7 @@ export function TocSidebar({ campaignId }: TocSidebarProps): React.ReactElement 
   return (
     <>
       <aside className="flex h-full w-64 shrink-0 flex-col border-r border-foreground/10 bg-background/50 backdrop-blur-sm">
-        <div className="flex items-center justify-between gap-2 px-3 py-3">
+        <div className="flex items-center justify-between gap-2 p-3">
           <span className="font-sans text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
             Contents
           </span>
@@ -115,12 +115,10 @@ function SidebarBody({
 }: SidebarBodyProps): React.ReactElement {
   switch (snapshot.status) {
     case "loading":
-      return (
-        <p className="px-2 py-2 text-sm text-muted-foreground">Opening table of contents...</p>
-      );
+      return <p className="p-2 text-sm text-muted-foreground">Opening table of contents...</p>;
     case "error":
       return (
-        <p className="px-2 py-2 text-sm text-red-700 dark:text-red-400">
+        <p className="p-2 text-sm text-red-700 dark:text-red-400">
           {roomErrorMessage(snapshot.error)}
         </p>
       );
@@ -134,7 +132,7 @@ function SidebarBody({
           <button
             type="button"
             onClick={onNew}
-            className="mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-primary/5 hover:text-primary"
+            className="mt-2 flex w-full items-center gap-1.5 rounded-md p-2 text-left text-sm text-muted-foreground transition-colors hover:bg-primary/5 hover:text-primary"
           >
             <Plus className="size-4" />
             <span>Create your first page</span>

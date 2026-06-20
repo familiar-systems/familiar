@@ -60,8 +60,6 @@ For comprehensive API details beyond this skill, fetch the LLM-optimized referen
 
 The `loro-protocol` library provides a complete WebSocket sync protocol on top of Loro's raw `export`/`import` primitives: handshake, room management, fragmentation, and an adaptor trait.
 
-**The crates.io version is stale; use a Git dependency for Rust.** See [issue #57](https://github.com/loro-dev/protocol/issues/57).
-
 - [Blog post (design rationale)](https://loro.dev/blog/loro-protocol)
 - [GitHub repo](https://github.com/loro-dev/protocol)
 - [Wire spec (protocol.md)](https://github.com/loro-dev/protocol/blob/main/protocol.md)
@@ -180,10 +178,10 @@ TypeScript uses UTF-16 offsets by default. Rust uses Unicode scalar positions. W
 | Text index unit | Unicode scalar | UTF-16 |
 | PeerID type | `u64` | `bigint` / decimal string |
 | Unsubscribe | Drop the `Subscription` object | Call returned function |
-| Ephemeral state | `awareness` module | `EphemeralStore` (v1.5.0+) |
+| Ephemeral state | `awareness` module | `EphemeralStore` |
 | Deep copy | `fork()` (NOT `clone()`) | `fork()` |
 | Counter feature | `features = ["counter"]` | Built-in |
-| Events | Synchronous (always) | Synchronous (v1.8.0+) |
+| Events | Synchronous | Synchronous |
 | Map set method | `map.insert(key, value)` | `map.set(key, value)` |
 | Sub-containers | `map.insert_container(key, T::new())` | `map.setContainer(key, new T())` |
 

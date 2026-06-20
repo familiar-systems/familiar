@@ -33,6 +33,6 @@
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",
     "typescript": "catalog:",
-    "vitest": "^4.1.6"
+    "vitest": "catalog:"
   }
 }

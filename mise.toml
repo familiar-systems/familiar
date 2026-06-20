@@ -1,7 +1,7 @@
 [tools]
 "github:bnjbvr/cargo-machete" = "latest"
 node = "24"
-"npm:pnpm" = "11.1"
+"npm:pnpm" = "11"
 # Owns both channel and components. Mise delegates to rustup: it exports
 # RUSTUP_TOOLCHAIN at activation and runs `rustup component add` for anything
 # missing from this CSV. The toolchain lives under ~/.rustup, not under
