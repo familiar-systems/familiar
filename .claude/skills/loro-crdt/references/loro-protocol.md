@@ -2,11 +2,9 @@
 
 The `loro-protocol` library provides a WebSocket sync protocol for Loro documents: wire format, handshake, room management, fragmentation, and an adaptor trait for plugging in your own LoroDoc management.
 
-**`loro-protocol` is on crates.io (0.3.0+)** -- use it directly. Caveat: the repo's git tags
-track the npm package versions, and the Rust crates are versioned independently. The Rust client
-crate `loro-websocket-client` still publishes only `0.1.0` on crates.io, which pins
-`loro-protocol = 0.1.x`; to pair the Rust client with protocol 0.3 you still need a git dep at a
-matched commit.
+`loro-protocol` must stay in sync between cargo and npm: the Rust server and the JS client speak
+the same wire protocol, so both track the same protocol release. If publishing one side to a
+registry lags, a dependency may point at a git ref in the affected ecosystem until it catches up.
 
 ```toml
 [dependencies]

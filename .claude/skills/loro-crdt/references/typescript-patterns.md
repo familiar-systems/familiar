@@ -115,7 +115,7 @@ const unsub = doc.subscribeLocalUpdates((bytes: Uint8Array) => {
   websocket.send(bytes);
 });
 
-// Pre-commit hook (v1.5.0+)
+// Pre-commit hook
 const unsub = doc.subscribePreCommit((payload) => {
   payload.modifier.setMessage("auto-tagged");
 });
@@ -126,7 +126,7 @@ unsub(); // call the returned function to unsubscribe
 
 Docs: [Events tutorial](https://loro.dev/docs/tutorial/event)
 
-## EphemeralStore (v1.5.0+)
+## EphemeralStore
 
 Replaces the older Awareness API. Timestamp-based LWW for ephemeral state (cursors, selections, presence). Not persisted in the document.
 
