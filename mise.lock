@@ -392,6 +392,10 @@ provenance = "github-attestations"
 version = "1.96.0"
 backend = "core:rust"
 
+[tools.rust.options]
+components = "rust-analyzer,rust-src"
+profile = "default"
+
 [[tools.trufflehog]]
 version = "3.95.3"
 backend = "aqua:trufflesecurity/trufflehog"

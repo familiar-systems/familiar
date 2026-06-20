@@ -8,6 +8,7 @@ mod m20260519_000001_add_wizard_fields;
 mod m20260520_000001_add_owner_user_id;
 mod m20260526_000001_create_toc_entries;
 mod m20260614_000001_create_sessions;
+mod m20260620_000001_create_relationships;
 
 pub struct Migrator;
 
@@ -23,6 +24,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260520_000001_add_owner_user_id::Migration),
             Box::new(m20260526_000001_create_toc_entries::Migration),
             Box::new(m20260614_000001_create_sessions::Migration),
+            Box::new(m20260620_000001_create_relationships::Migration),
         ]
     }
 }

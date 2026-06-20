@@ -1,6 +1,14 @@
-//! Schema consistency: one self-contained check that the sea-orm entities match
-//! the schema the migrations build. `cargo test` runs it; there is nothing else
-//! to run and no committed artifact to maintain.
+//! Schema consistency: two checks that keep the sea-orm entities and the
+//! migrations honest. `cargo test` runs both; nothing to regenerate by hand.
+//!
+//! `entities_match_schema` compares the migrated DB against an entity-derived one
+//! (the runtime-safety guarantee). `migrated_schema_matches_golden` snapshots the
+//! realized DDL (`sqlite_master`) against the committed `tests/schema.sql`,
+//! catching what the entity comparison structurally can't: CHECK constraints,
+//! non-unique indexes, defaults. The golden is *derived, not authored* -
+//! recomputed from the same `Migrator` production runs and asserted equal on every
+//! run, so it can't silently drift from the migrations; re-bless an intentional
+//! change with `mise run bless-schema` and review the `schema.sql` diff.
 //!
 //! Against a freshly-migrated in-memory DB and an entity-derived in-memory DB,
 //! `entities_match_schema` asserts: the set of migrated user tables (minus
@@ -10,10 +18,12 @@
 //! composite PRIMARY KEY) match the migrated table, and `Entity::find().all()`
 //! executes against the live schema.
 //!
-//! Out of scope (sea-orm entities can't express these): CHECK constraints (the
+//! The *entity* comparison can't express CHECK constraints (the
 //! `campaign_members.role` IN-list), non-unique (performance) indexes
-//! (`idx_campaigns_owner_user_id`, `idx_campaign_members_user_id`), and column
-//! defaults. Those are created by the migrations and exercised by behavioral tests.
+//! (`idx_campaigns_owner_user_id`, `idx_campaign_members_user_id`), or column
+//! defaults - sea-orm entities have no syntax for them. Those are caught instead
+//! by the golden snapshot (and, where their behavior is load-bearing, by
+//! behavioral tests).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -230,5 +240,65 @@ async fn entities_match_schema() {
         user_tables(&migrated).await,
         covered,
         "table-set drift: every migrated user table must have an entity, and vice versa"
+    );
+}
+
+/// The realized schema as `sqlite_master` stores it after a full migration: every
+/// `CREATE TABLE`/`CREATE INDEX` verbatim, so CHECK constraints, non-unique
+/// indexes, and defaults are all captured (no pragma exposes those). `sql IS NOT
+/// NULL` drops the implicit `sqlite_autoindex_*` rows; `seaql_%` is sea-orm's
+/// migration bookkeeping.
+async fn dump_schema(db: &DatabaseConnection) -> String {
+    let rows = db
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "SELECT sql FROM sqlite_master \
+             WHERE sql IS NOT NULL \
+             AND name NOT LIKE 'sqlite_%' \
+             AND name NOT LIKE 'seaql_%' \
+             ORDER BY type, name"
+                .to_owned(),
+        ))
+        .await
+        .expect("sqlite_master");
+    let mut sql = rows
+        .into_iter()
+        .map(|r| r.try_get::<String>("", "sql").unwrap())
+        .collect::<Vec<_>>()
+        .join(";\n\n");
+    sql.push_str(";\n");
+    sql
+}
+
+/// Golden snapshot of the realized schema. Derived, not authored: recomputed from
+/// the same `Migrator` production runs and asserted equal to `tests/schema.sql`
+/// every run, so it can't silently drift from the migrations. This is where the
+/// `campaign_members.role` CHECK and the non-unique indexes (invisible to
+/// `entities_match_schema`) get caught. Re-bless an intentional change with
+/// `mise run bless-schema`.
+#[tokio::test]
+async fn migrated_schema_matches_golden() {
+    let db = setup_via_migrations().await;
+    let actual = dump_schema(&db).await;
+    let golden = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/schema.sql");
+
+    if std::env::var_os("UPDATE_SCHEMA_GOLDEN").is_some() {
+        std::fs::write(golden, &actual).expect("write schema golden");
+        eprintln!("blessed schema golden: {golden}");
+        return;
+    }
+
+    let expected = std::fs::read_to_string(golden).unwrap_or_else(|_| {
+        panic!(
+            "missing {golden}; create it with `mise run bless-schema` \
+             (or UPDATE_SCHEMA_GOLDEN=1 cargo test -p familiar-systems-platform \
+             --test schema migrated_schema_matches_golden)"
+        )
+    });
+    assert_eq!(
+        actual, expected,
+        "schema drift: the migrated schema no longer matches tests/schema.sql. \
+         If this change is intentional, re-bless with `mise run bless-schema` and \
+         review the diff."
     );
 }

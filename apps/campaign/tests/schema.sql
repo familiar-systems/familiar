@@ -1,0 +1,13 @@
+CREATE UNIQUE INDEX "idx_relationships_live_fact_unique" ON "relationships" ("page_a", "page_b", "predicate_a_to_b", "predicate_b_to_a") WHERE "invalidation_reason" IS NULL;
+
+CREATE TABLE "blocks" ( "id" text NOT NULL PRIMARY KEY, "page_id" text NOT NULL, "status" text NOT NULL, "ordering" bigint NOT NULL, "content" blob NOT NULL, "section" text NOT NULL, "created_at" timestamp_with_timezone_text NOT NULL, "updated_at" timestamp_with_timezone_text NOT NULL, FOREIGN KEY ("page_id") REFERENCES "pages" ("id") ON DELETE CASCADE );
+
+CREATE TABLE "campaign_metadata" ( "id" integer NOT NULL CHECK ("id" = 1) PRIMARY KEY, "campaign_id" text NOT NULL, "name" text NOT NULL, "tagline" text, "home_page_id" text, "created_at" timestamp_with_timezone_text NOT NULL, "updated_at" timestamp_with_timezone_text NOT NULL, "game_system" text, "content_locale" text, "wizard_completed_at" timestamp_with_timezone_text, owner_user_id TEXT NOT NULL DEFAULT '', FOREIGN KEY ("home_page_id") REFERENCES "pages" ("id") ON DELETE SET NULL );
+
+CREATE TABLE "pages" ( "id" text NOT NULL PRIMARY KEY, "name" text NOT NULL, "status" text NOT NULL, "kind" text NOT NULL, "template_id" text NULL, "created_at" timestamp_with_timezone_text NOT NULL, "updated_at" timestamp_with_timezone_text NOT NULL, FOREIGN KEY ("template_id") REFERENCES "pages" ("id") );
+
+CREATE TABLE "relationships" ( "id" text NOT NULL PRIMARY KEY, "page_a" text NOT NULL, "page_b" text NOT NULL, "predicate_a_to_b" text NOT NULL, "predicate_b_to_a" text NOT NULL, "visibility" text NOT NULL, "origin_session_id" text NULL, "created_at" timestamp_with_timezone_text NOT NULL, "invalidation_reason" text NULL, "invalidated_by_session_id" text NULL, "invalidated_at" timestamp_with_timezone_text NULL, FOREIGN KEY ("page_a") REFERENCES "pages" ("id") ON DELETE CASCADE, FOREIGN KEY ("page_b") REFERENCES "pages" ("id") ON DELETE CASCADE, FOREIGN KEY ("origin_session_id") REFERENCES "sessions" ("id"), FOREIGN KEY ("invalidated_by_session_id") REFERENCES "sessions" ("id"), CHECK (("invalidation_reason" IS NULL) = ("invalidated_at" IS NULL)) );
+
+CREATE TABLE "sessions" ( "id" text NOT NULL PRIMARY KEY, "ordinal" bigint NOT NULL UNIQUE CHECK ("ordinal" >= 0), "created_at" timestamp_with_timezone_text NOT NULL, "updated_at" timestamp_with_timezone_text NOT NULL, "page_id" text NULL UNIQUE, FOREIGN KEY ("page_id") REFERENCES "pages" ("id") ON DELETE SET NULL );
+
+CREATE TABLE "toc_entries" ( "id" text NOT NULL PRIMARY KEY, "page_id" text NULL, "folder_title" text NULL, "visibility" text NOT NULL, "parent_id" text NULL, "position" integer NOT NULL, FOREIGN KEY ("page_id") REFERENCES "pages" ("id") ON DELETE CASCADE );

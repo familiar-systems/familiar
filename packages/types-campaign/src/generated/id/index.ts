@@ -4,5 +4,6 @@ export * from "./BlockId";
 export * from "./ClientId";
 export * from "./ConversationId";
 export * from "./PageId";
+export * from "./RelationshipId";
 export * from "./SessionId";
 export * from "./SuggestionId";

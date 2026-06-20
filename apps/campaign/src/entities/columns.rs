@@ -11,9 +11,10 @@
 //! The `*Col` types live entirely inside this crate; nothing outside
 //! `apps/campaign/` imports them.
 
-use familiar_systems_campaign_shared::id::{BlockId, PageId, SessionId};
+use familiar_systems_campaign_shared::id::{BlockId, PageId, RelationshipId, SessionId};
 use familiar_systems_campaign_shared::loro::page::Section;
 use familiar_systems_campaign_shared::page_kind::PageKind;
+use familiar_systems_campaign_shared::relationship::{InvalidationReason, Visibility};
 use familiar_systems_campaign_shared::status::Status;
 use sea_orm::sea_query::{ArrayType, ColumnType, Nullable, ValueType, ValueTypeErr};
 use sea_orm::{
@@ -102,6 +103,7 @@ macro_rules! ulid_id_column {
 ulid_id_column!(PageIdCol, PageId);
 ulid_id_column!(BlockIdCol, BlockId);
 ulid_id_column!(SessionIdCol, SessionId);
+ulid_id_column!(RelationshipIdCol, RelationshipId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "Text")]
@@ -217,6 +219,68 @@ impl From<SectionCol> for Section {
     }
 }
 
+// Relationship visibility at rest. Same decoupled-by-variant boundary as
+// `StatusCol`: the tokens coincide with the wire/serde form today (a drift test
+// guards that), but the `From` impls map by *variant*, so a token can be
+// re-spelled without a migration and an unknown at-rest token fails the read.
+// Adding a `Visibility` variant adds a line here; the matches then fail to
+// compile until updated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "Text")]
+pub enum VisibilityCol {
+    #[sea_orm(string_value = "gm")]
+    Gm,
+    #[sea_orm(string_value = "players")]
+    Players,
+}
+
+impl From<Visibility> for VisibilityCol {
+    fn from(v: Visibility) -> Self {
+        match v {
+            Visibility::Gm => Self::Gm,
+            Visibility::Players => Self::Players,
+        }
+    }
+}
+impl From<VisibilityCol> for Visibility {
+    fn from(v: VisibilityCol) -> Self {
+        match v {
+            VisibilityCol::Gm => Self::Gm,
+            VisibilityCol::Players => Self::Players,
+        }
+    }
+}
+
+// Why a relationship row was invalidated, at rest. The *presence* of this column
+// is the live/invalidated discriminant (NULL = live); the value distinguishes a
+// narrative end/replacement from a retcon. Same boundary discipline as
+// `VisibilityCol` above.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "Text")]
+pub enum InvalidationReasonCol {
+    #[sea_orm(string_value = "superseded")]
+    Superseded,
+    #[sea_orm(string_value = "retconned")]
+    Retconned,
+}
+
+impl From<InvalidationReason> for InvalidationReasonCol {
+    fn from(r: InvalidationReason) -> Self {
+        match r {
+            InvalidationReason::Superseded => Self::Superseded,
+            InvalidationReason::Retconned => Self::Retconned,
+        }
+    }
+}
+impl From<InvalidationReasonCol> for InvalidationReason {
+    fn from(r: InvalidationReasonCol) -> Self {
+        match r {
+            InvalidationReasonCol::Superseded => Self::Superseded,
+            InvalidationReasonCol::Retconned => Self::Retconned,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,6 +324,61 @@ mod tests {
             Section::Journal,
         ] {
             assert_eq!(SectionCol::from(section).to_value(), section.as_str());
+        }
+    }
+
+    #[test]
+    fn visibility_col_round_trips_known_tokens() {
+        for col in [VisibilityCol::Gm, VisibilityCol::Players] {
+            assert_eq!(VisibilityCol::try_from_value(&col.to_value()).unwrap(), col);
+        }
+    }
+
+    #[test]
+    fn visibility_col_rejects_unknown_token() {
+        assert!(VisibilityCol::try_from_value(&"everyone".to_string()).is_err());
+    }
+
+    #[test]
+    fn visibility_col_db_token_matches_serde_today() {
+        // The at-rest token and the wire (serde/TS) form are decoupled by the
+        // by-variant `From` impls; guard that they still coincide so a divergence
+        // is a deliberate edit + migration, not an accident.
+        for v in [Visibility::Gm, Visibility::Players] {
+            let wire = serde_json::to_value(v).unwrap();
+            assert_eq!(VisibilityCol::from(v).to_value(), wire.as_str().unwrap());
+        }
+    }
+
+    #[test]
+    fn invalidation_reason_col_round_trips_known_tokens() {
+        for col in [
+            InvalidationReasonCol::Superseded,
+            InvalidationReasonCol::Retconned,
+        ] {
+            assert_eq!(
+                InvalidationReasonCol::try_from_value(&col.to_value()).unwrap(),
+                col
+            );
+        }
+    }
+
+    #[test]
+    fn invalidation_reason_col_rejects_unknown_token() {
+        assert!(InvalidationReasonCol::try_from_value(&"deleted".to_string()).is_err());
+    }
+
+    #[test]
+    fn invalidation_reason_col_db_token_matches_serde_today() {
+        for r in [
+            InvalidationReason::Superseded,
+            InvalidationReason::Retconned,
+        ] {
+            let wire = serde_json::to_value(r).unwrap();
+            assert_eq!(
+                InvalidationReasonCol::from(r).to_value(),
+                wire.as_str().unwrap()
+            );
         }
     }
 }

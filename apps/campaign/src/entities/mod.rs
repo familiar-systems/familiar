@@ -2,6 +2,7 @@ pub mod blocks;
 pub mod campaign_metadata;
 pub mod columns;
 pub mod pages;
+pub mod relationships;
 pub mod sessions;
 pub mod toc_entries;
 

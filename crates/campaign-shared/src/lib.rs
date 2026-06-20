@@ -13,6 +13,7 @@
 //!   entry types (`PageHandle`, `TocEntry`, etc).
 //! - `notification`: WebSocket side-channel notification types.
 //! - `page_kind`: The `PageKind` discriminant (entity, template).
+//! - `relationship`: Relationship wire enums + the oriented read DTO.
 //! - `status`: Campaign view-status enum (GM only, Known, Retconned).
 
 pub mod document;
@@ -21,4 +22,5 @@ pub mod loro;
 pub mod notification;
 pub mod onboarding;
 pub mod page_kind;
+pub mod relationship;
 pub mod status;

@@ -4,6 +4,7 @@
 export * from "./generated/id";
 export * from "./generated/document";
 export * from "./generated/onboarding";
+export * from "./generated/relationship";
 
 // `paths` describes every route the campaign server exposes. Generated
 // from utoipa's OpenAPI spec; component schemas resolve back to the
