@@ -25,11 +25,15 @@ use kameo::error::{ActorStopReason, SendError};
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
 
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect,
+};
 
-use familiar_systems_campaign_shared::id::{ClientId, PageId};
+use familiar_systems_campaign_shared::id::{ClientId, PageId, SessionId};
 use familiar_systems_campaign_shared::loro::toc::TocPageKind;
 use familiar_systems_campaign_shared::page_kind::PageKind;
+use familiar_systems_campaign_shared::relationship::RelationshipView;
 use familiar_systems_campaign_shared::status::Status;
 use tokio::sync::{mpsc, oneshot};
 
@@ -38,13 +42,17 @@ use crate::actors::database_writer::{
     PatchCampaignMetadata as DbPatchCampaign, PatchCampaignResult,
 };
 use crate::actors::page::{PageActor, PageActorArgs, PageInit};
-use crate::actors::relationship_graph::{RelationshipGraph, RelationshipGraphArgs};
+use crate::actors::relationship_graph::{
+    ApplyOp, ApplyOpError, CreateRelationship, CreateRelationshipError, KnownPredicatePairs,
+    RelationshipGraph, RelationshipGraphArgs, RelationshipsForPage,
+};
 use crate::actors::toc::{AddPageNode, ResolvePageNode, TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::domain::crdt::room_actor;
 use crate::domain::page::DocumentPageKind;
+use crate::domain::relationship::PredicatePair;
 use crate::entities::columns::{PageIdCol, PageKindCol};
-use crate::entities::{campaign_metadata, pages};
+use crate::entities::{campaign_metadata, pages, sessions};
 use crate::error::InitError;
 use crate::persistence::{CampaignDatabase, CampaignStore};
 
@@ -1003,6 +1011,174 @@ impl Message<Ping> for CampaignSupervisor {
     async fn handle(&mut self, _: Ping, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
         self.last_activity = Instant::now();
         Pong
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Relationships (forwarded to the RelationshipGraph singleton)
+// ---------------------------------------------------------------------------
+//
+// The supervisor is the only front door; the `RelationshipGraph` ref stays private.
+// Each handler forwards and folds a transport failure (the actor unreachable) into
+// the message's own error channel, matching the `GetMetadata`/`CreatePage` idiom.
+
+impl Message<RelationshipsForPage> for CampaignSupervisor {
+    type Reply = Result<Vec<RelationshipView>, sea_orm::DbErr>;
+
+    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
+    async fn handle(
+        &mut self,
+        msg: RelationshipsForPage,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        match self.relationship_graph.ask(msg).await {
+            Ok(views) => Ok(views),
+            Err(SendError::HandlerError(e)) => Err(e),
+            Err(e) => {
+                tracing::error!(error = %e, "relationship graph unavailable reading relationships");
+                Err(sea_orm::DbErr::Custom(
+                    "relationship graph unavailable".into(),
+                ))
+            }
+        }
+    }
+}
+
+impl Message<CreateRelationship> for CampaignSupervisor {
+    type Reply = Result<RelationshipView, CreateRelationshipError>;
+
+    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
+    async fn handle(
+        &mut self,
+        msg: CreateRelationship,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        match self.relationship_graph.ask(msg).await {
+            Ok(view) => Ok(view),
+            Err(SendError::HandlerError(e)) => Err(e),
+            Err(e) => {
+                tracing::error!(error = %e, "relationship graph unavailable creating relationship");
+                Err(CreateRelationshipError::ActorUnavailable)
+            }
+        }
+    }
+}
+
+impl Message<ApplyOp> for CampaignSupervisor {
+    type Reply = Result<(), ApplyOpError>;
+
+    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
+    async fn handle(&mut self, msg: ApplyOp, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
+        self.last_activity = Instant::now();
+        match self.relationship_graph.ask(msg).await {
+            Ok(()) => Ok(()),
+            Err(SendError::HandlerError(e)) => Err(e),
+            Err(e) => {
+                tracing::error!(error = %e, "relationship graph unavailable applying op");
+                Err(ApplyOpError::ActorUnavailable)
+            }
+        }
+    }
+}
+
+impl Message<KnownPredicatePairs> for CampaignSupervisor {
+    // The actor's reply is infallible; the supervisor wraps it so an unreachable
+    // actor (transport failure) is representable rather than panicking.
+    type Reply = Result<Vec<PredicatePair>, sea_orm::DbErr>;
+
+    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
+    async fn handle(
+        &mut self,
+        _: KnownPredicatePairs,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        match self.relationship_graph.ask(KnownPredicatePairs).await {
+            Ok(pairs) => Ok(pairs),
+            Err(e) => {
+                tracing::error!(error = %e, "relationship graph unavailable reading predicates");
+                Err(sea_orm::DbErr::Custom(
+                    "relationship graph unavailable".into(),
+                ))
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Session + entity reads (the relationship modals' pickers)
+// ---------------------------------------------------------------------------
+//
+// Plain reads off the shared reader pool (the `GetMetadata` idiom), not graph
+// concerns, so they live on the supervisor rather than the RelationshipGraph.
+
+/// Every session, ascending by ordinal, as `(id, ordinal)` - the as-of pickers'
+/// source. The id is durable; ordinals can be renumbered.
+#[derive(Debug, Clone, Copy)]
+pub struct ListSessions;
+
+impl Message<ListSessions> for CampaignSupervisor {
+    type Reply = Result<Vec<(SessionId, i64)>, sea_orm::DbErr>;
+
+    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
+    async fn handle(
+        &mut self,
+        _: ListSessions,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        let db = self
+            .db
+            .as_ref()
+            .expect("db must be Some while actor is running");
+        let rows = sessions::Entity::find()
+            .order_by_asc(sessions::Column::Ordinal)
+            .all(db.reader())
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|s| (SessionId::from(s.id), s.ordinal))
+            .collect())
+    }
+}
+
+/// Entity-page name matches for the create modal's object typeahead. Substring
+/// match on the title; templates are a separate kind, so selecting `Entity`
+/// excludes them. Minimal `LIKE`; contract frozen for a later Tantivy /
+/// `CampaignVocabulary` swap.
+#[derive(Debug, Clone)]
+pub struct SearchEntities {
+    pub query: String,
+    pub limit: u64,
+}
+
+impl Message<SearchEntities> for CampaignSupervisor {
+    type Reply = Result<Vec<(PageId, String)>, sea_orm::DbErr>;
+
+    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
+    async fn handle(
+        &mut self,
+        msg: SearchEntities,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        let db = self
+            .db
+            .as_ref()
+            .expect("db must be Some while actor is running");
+        let rows = pages::Entity::find()
+            .filter(pages::Column::Kind.eq(PageKindCol::Entity))
+            .filter(pages::Column::Name.contains(msg.query.as_str()))
+            .order_by_asc(pages::Column::Name)
+            .limit(msg.limit)
+            .all(db.reader())
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|p| (PageId::from(p.id), p.name))
+            .collect())
     }
 }
 

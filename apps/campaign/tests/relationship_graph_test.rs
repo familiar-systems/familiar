@@ -95,6 +95,7 @@ fn create(subject: &PageId, other: &PageId, fwd: &str, rev: &str) -> CreateRelat
         visibility: Visibility::Players,
         origin: Origin::Prior,
         ending: None,
+        supersedes: None,
     }
 }
 
@@ -322,23 +323,32 @@ async fn supersede_ends_old_and_creates_new() {
             visibility: Visibility::Players,
             origin: Origin::Session(s6),
             ending: None,
+            supersedes: None,
         })
         .await
         .expect("create");
 
-    graph
-        .ask(ApplyOp {
-            rel_id: original.id.clone(),
-            op: RelationshipOp::Supersede {
-                subject: a.clone(),
-                as_of: s12,
-                predicate_forward: "is quartermaster of".into(),
-                predicate_reverse: "is quartermastered by".into(),
-                visibility: Visibility::Players,
-            },
+    // Supersede = a create that points at the row it replaces; the old is ended in
+    // the same transaction, and the reply is the new row's view.
+    let replacement = graph
+        .ask(CreateRelationship {
+            subject: a.clone(),
+            other: b.clone(),
+            predicate_forward: "is quartermaster of".into(),
+            predicate_reverse: "is quartermastered by".into(),
+            visibility: Visibility::Players,
+            origin: Origin::Session(s12),
+            ending: None,
+            supersedes: Some(original.id.clone()),
         })
         .await
         .expect("supersede");
+    assert_eq!(replacement.predicate, "is quartermaster of");
+    assert!(
+        replacement.invalidation.is_none(),
+        "the reply is the live new row"
+    );
+    assert_eq!(session_origin_ordinal(&replacement.origin), 12);
 
     let from_a = graph
         .ask(RelationshipsForPage { page_id: a.clone() })
@@ -393,20 +403,22 @@ async fn supersede_rejecting_a_duplicate_new_fact_leaves_the_old_live() {
         .expect("R2");
 
     let res = graph
-        .ask(ApplyOp {
-            rel_id: r2.id.clone(),
-            op: RelationshipOp::Supersede {
-                subject: a.clone(),
-                as_of: s12,
-                predicate_forward: "rules".into(),
-                predicate_reverse: "is ruled by".into(),
-                visibility: Visibility::Players,
-            },
+        .ask(CreateRelationship {
+            subject: a.clone(),
+            other: b.clone(),
+            predicate_forward: "rules".into(),
+            predicate_reverse: "is ruled by".into(),
+            visibility: Visibility::Players,
+            origin: Origin::Session(s12),
+            ending: None,
+            supersedes: Some(r2.id.clone()),
         })
         .await;
     assert!(matches!(
         res,
-        Err(SendError::HandlerError(ApplyOpError::DuplicateLiveFact))
+        Err(SendError::HandlerError(
+            CreateRelationshipError::DuplicateLiveFact
+        ))
     ));
 
     // The create tripped the unique index and rolled the batch back: R2 untouched,
@@ -449,6 +461,7 @@ async fn create_can_birth_a_finalized_relationship() {
                 reason: InvalidationReason::Superseded,
                 by: Origin::Session(s6),
             }),
+            supersedes: None,
         })
         .await
         .expect("create finalized");
@@ -638,4 +651,73 @@ async fn restart_reloads_graph_from_table() {
         .unwrap();
     assert_eq!(from_a.len(), 1, "reloaded from the table");
     assert_eq!(from_a[0].predicate, "keeps the key to");
+}
+
+#[tokio::test]
+async fn end_on_an_ended_row_is_rejected() {
+    let conn = setup().await;
+    let a = seed_page(&conn, "A").await;
+    let b = seed_page(&conn, "B").await;
+    let s12 = seed_session(&conn, 12).await;
+    let (_writer, graph) = spawn_graph(&conn).await;
+
+    let view = graph
+        .ask(create(&a, &b, "is captain of", "is captained by"))
+        .await
+        .expect("create");
+    graph
+        .ask(ApplyOp {
+            rel_id: view.id.clone(),
+            op: RelationshipOp::End { as_of: s12.clone() },
+        })
+        .await
+        .expect("end");
+
+    // The one-way door: a second End on the same row is rejected, not silently reapplied.
+    let res = graph
+        .ask(ApplyOp {
+            rel_id: view.id,
+            op: RelationshipOp::End { as_of: s12 },
+        })
+        .await;
+    assert!(matches!(
+        res,
+        Err(SendError::HandlerError(ApplyOpError::AlreadyInvalidated))
+    ));
+}
+
+#[tokio::test]
+async fn end_before_origin_is_rejected() {
+    let conn = setup().await;
+    let a = seed_page(&conn, "A").await;
+    let b = seed_page(&conn, "B").await;
+    let s6 = seed_session(&conn, 6).await;
+    let s3 = seed_session(&conn, 3).await;
+    let (_writer, graph) = spawn_graph(&conn).await;
+
+    // Born at S6, then asked to end as of the earlier S3: a fact cannot end before it began.
+    let view = graph
+        .ask(CreateRelationship {
+            subject: a.clone(),
+            other: b.clone(),
+            predicate_forward: "is captain of".into(),
+            predicate_reverse: "is captained by".into(),
+            visibility: Visibility::Players,
+            origin: Origin::Session(s6),
+            ending: None,
+            supersedes: None,
+        })
+        .await
+        .expect("create");
+
+    let res = graph
+        .ask(ApplyOp {
+            rel_id: view.id,
+            op: RelationshipOp::End { as_of: s3 },
+        })
+        .await;
+    assert!(matches!(
+        res,
+        Err(SendError::HandlerError(ApplyOpError::EndBeforeOrigin))
+    ));
 }

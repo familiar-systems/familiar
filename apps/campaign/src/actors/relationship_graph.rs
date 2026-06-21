@@ -291,6 +291,17 @@ impl RelationshipGraph {
         Ok(ordinals)
     }
 
+    /// One session's curated ordinal, or `None` if no such session exists. Distinct
+    /// from [`read_session_ordinals`](Self::read_session_ordinals), which treats a gap
+    /// as a broken FK invariant (a 500): here a missing session is *client input* (a
+    /// stale id from the create/end body), so the caller maps `None` to a clean 404.
+    async fn session_ordinal(&self, s: &SessionId) -> Result<Option<i64>, sea_orm::DbErr> {
+        Ok(sessions::Entity::find_by_id(SessionIdCol::from(s.clone()))
+            .one(&self.db_reader)
+            .await?
+            .map(|row| row.ordinal))
+    }
+
     /// The session ids an edge references (origin + invalidation), for batch ordinal
     /// resolution.
     fn referenced_sessions(rel: &Relationship, out: &mut Vec<SessionId>) {
@@ -422,6 +433,11 @@ impl Message<RelationshipsForPage> for RelationshipGraph {
 /// subject->other; the actor canonicalizes and returns the view oriented to
 /// `subject` (the page the create came from). `ending` is `None` for the v1 create
 /// UI; `Some` births the relationship already finalized (a retrofit/correction).
+///
+/// `supersedes` makes it an atomic *replace*: the named live row is ended in the
+/// same transaction, at this create's origin session (so `origin` must be a
+/// session). The new row births live, so `ending` is ignored when `supersedes` is
+/// set. This is the manual analog of an AI-proposed replacement.
 #[derive(Debug, Clone)]
 pub struct CreateRelationship {
     pub subject: PageId,
@@ -431,6 +447,7 @@ pub struct CreateRelationship {
     pub visibility: Visibility,
     pub origin: Origin,
     pub ending: Option<Ending>,
+    pub supersedes: Option<RelationshipId>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -443,6 +460,18 @@ pub enum CreateRelationshipError {
     PageNotFound(PageId),
     #[error("a live relationship with this predicate pair already exists")]
     DuplicateLiveFact,
+    #[error("the relationship being superseded does not exist")]
+    SupersedesNotFound,
+    #[error("the relationship being superseded is already invalidated")]
+    SupersedesNotLive,
+    #[error("a supersede must replace a fact between the same two pages")]
+    SupersedesDifferentPair,
+    #[error("a supersede must originate at a session, not before the campaign began")]
+    PriorOriginCannotSupersede,
+    #[error("referenced session not found: {0}")]
+    SessionNotFound(SessionId),
+    #[error("a supersede cannot take effect before the fact it replaces began")]
+    EndBeforeOrigin,
     #[error("relationship write actor unavailable")]
     ActorUnavailable,
     #[error("database error: {0}")]
@@ -484,14 +513,87 @@ impl Message<CreateRelationship> for RelationshipGraph {
         self.ensure_page_exists(&edge.page_a).await?;
         self.ensure_page_exists(&edge.page_b).await?;
 
-        let new = edge.into_new(msg.visibility, msg.origin, msg.ending);
-        let outcomes = match self
-            .db_writer
-            .ask(ApplyRelationshipWrites {
-                writes: vec![RelationshipWrite::Create(new)],
-            })
-            .await
-        {
+        // A session origin must reference a real session: a stale id is a clean 404,
+        // not the FK-violation 500 it would otherwise become at write time (symmetric
+        // with the page pre-check above). The resolved ordinal also dates a supersede
+        // against the row it replaces (below).
+        let origin_ordinal = match &msg.origin {
+            Origin::Prior => None,
+            Origin::Session(s) => Some(
+                self.session_ordinal(s)
+                    .await?
+                    .ok_or_else(|| CreateRelationshipError::SessionNotFound(s.clone()))?,
+            ),
+        };
+
+        // A plain create is one `Create` write. A supersede also ends the named live
+        // row in the same batch, create-first: a new fact that already exists live
+        // trips the partial unique index on the insert and rolls the whole batch back,
+        // so the old is never ended without its replacement (and the GM can fall back
+        // to a plain End).
+        let writes = match msg.supersedes {
+            None => vec![RelationshipWrite::Create(edge.into_new(
+                msg.visibility,
+                msg.origin,
+                msg.ending,
+            ))],
+            Some(old_id) => {
+                let existing = self
+                    .store
+                    .get(&old_id)
+                    .ok_or(CreateRelationshipError::SupersedesNotFound)?;
+                if existing.invalidation.is_some() {
+                    return Err(CreateRelationshipError::SupersedesNotLive);
+                }
+                // `edge` and `existing` are both canonical (page_a < page_b), so a
+                // direct endpoint comparison decides "same fact".
+                if existing.page_a != edge.page_a || existing.page_b != edge.page_b {
+                    return Err(CreateRelationshipError::SupersedesDifferentPair);
+                }
+                // Capture the old row's origin before any further reader borrow of self.
+                let old_origin = existing.origin.clone();
+
+                // The new fact's origin session is also when the old ends, so a
+                // supersede cannot originate before the campaign.
+                let as_of = match &msg.origin {
+                    Origin::Session(s) => s.clone(),
+                    Origin::Prior => {
+                        return Err(CreateRelationshipError::PriorOriginCannotSupersede);
+                    }
+                };
+
+                // That origin session is when the old fact ends, so it cannot precede
+                // the old fact's own origin (a fact cannot end before it began).
+                if let Origin::Session(old_origin_s) = &old_origin {
+                    let old_ordinal =
+                        self.session_ordinal(old_origin_s).await?.ok_or_else(|| {
+                            CreateRelationshipError::Db(sea_orm::DbErr::Custom(
+                                "superseded row's origin session missing ordinal (FK invariant broken)"
+                                    .into(),
+                            ))
+                        })?;
+                    let new_ordinal = origin_ordinal
+                        .expect("a supersede origin is a session (Prior rejected above)");
+                    if new_ordinal < old_ordinal {
+                        return Err(CreateRelationshipError::EndBeforeOrigin);
+                    }
+                }
+
+                // The replacement births live (`ending` = None); the old row carries the
+                // superseded invalidation.
+                let new = edge.into_new(msg.visibility, msg.origin, None);
+                vec![
+                    RelationshipWrite::Create(new),
+                    RelationshipWrite::Invalidate {
+                        rel_id: old_id,
+                        reason: InvalidationReason::Superseded,
+                        by: Some(as_of),
+                    },
+                ]
+            }
+        };
+
+        let outcomes = match self.db_writer.ask(ApplyRelationshipWrites { writes }).await {
             Ok(o) => o,
             Err(SendError::HandlerError(e)) => return Err(create_err_from_write(e)),
             Err(e) => {
@@ -500,8 +602,10 @@ impl Message<CreateRelationship> for RelationshipGraph {
             }
         };
 
-        // A single-`Create` batch commits exactly one upserted row.
-        let model = match outcomes.into_iter().next() {
+        // The `Create` is always the first write, so the first outcome is the new row;
+        // reflect any remaining outcome (the invalidated old row, on supersede).
+        let mut outcomes = outcomes.into_iter();
+        let model = match outcomes.next() {
             Some(RelationshipWriteOutcome::Upserted(model)) => model,
             _ => {
                 return Err(CreateRelationshipError::Db(sea_orm::DbErr::Custom(
@@ -511,51 +615,43 @@ impl Message<CreateRelationship> for RelationshipGraph {
         };
         let rel = relationship_from_model(model);
         self.store.upsert(rel.clone());
+        self.reflect(outcomes.collect());
         Ok(self.view_for(&rel, &subject).await?)
     }
 }
 
-/// Apply one of the five GM ops to an existing relationship. The widget refetches
-/// on success (v1 live-update model), so the reply is just success/typed-failure.
+/// Apply an in-place op to an existing relationship. The widget refetches on success
+/// (v1 live-update model), so the reply is just success/typed-failure.
 #[derive(Debug, Clone)]
 pub struct ApplyOp {
     pub rel_id: RelationshipId,
     pub op: RelationshipOp,
 }
 
-/// The op union. `End`/`Supersede` carry a `SessionId` as-of (their pickers are
-/// sessions-only); `Supersede` also carries the new subject-oriented predicates and
-/// the new row's `visibility` (the modal's persistent toggle). `Retcon`/`Delete`
-/// carry nothing.
+/// The in-place ops on an existing relationship. `End` carries the `SessionId` it
+/// ended at; `SetVisibility` the new visibility; `Retcon`/`Delete` carry nothing.
+/// Supersede is *not* here - it mints a new row, so it rides
+/// [`CreateRelationship::supersedes`].
 #[derive(Debug, Clone)]
 pub enum RelationshipOp {
-    End {
-        as_of: SessionId,
-    },
-    Supersede {
-        subject: PageId,
-        as_of: SessionId,
-        predicate_forward: String,
-        predicate_reverse: String,
-        visibility: Visibility,
-    },
+    End { as_of: SessionId },
     Retcon,
     Delete,
-    SetVisibility {
-        visibility: Visibility,
-    },
+    SetVisibility { visibility: Visibility },
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApplyOpError {
     #[error("relationship not found")]
     NotFound,
-    #[error("the given page is not an endpoint of this relationship")]
-    SubjectNotEndpoint,
-    #[error("relationship predicates cannot be empty")]
-    EmptyPredicate,
     #[error("a live relationship with this predicate pair already exists")]
     DuplicateLiveFact,
+    #[error("relationship is already invalidated")]
+    AlreadyInvalidated,
+    #[error("referenced session not found: {0}")]
+    SessionNotFound(SessionId),
+    #[error("a relationship cannot end before it began")]
+    EndBeforeOrigin,
     #[error("relationship write actor unavailable")]
     ActorUnavailable,
     #[error("database error: {0}")]
@@ -574,11 +670,36 @@ impl Message<ApplyOp> for RelationshipGraph {
         // writer runs in one transaction; the actor then reflects the committed
         // outcome(s) into the graph. Supersede is the only multi-write op.
         let writes: Vec<RelationshipWrite> = match msg.op {
-            RelationshipOp::End { as_of } => vec![RelationshipWrite::Invalidate {
-                rel_id: msg.rel_id,
-                reason: InvalidationReason::Superseded,
-                by: Some(as_of),
-            }],
+            RelationshipOp::End { as_of } => {
+                // The as-of session must exist (a stale id is a clean 404), and the end
+                // cannot precede the fact's origin (a fact cannot end before it began).
+                let as_of_ordinal = self
+                    .session_ordinal(&as_of)
+                    .await?
+                    .ok_or_else(|| ApplyOpError::SessionNotFound(as_of.clone()))?;
+                let origin = self
+                    .store
+                    .get(&msg.rel_id)
+                    .ok_or(ApplyOpError::NotFound)?
+                    .origin
+                    .clone();
+                if let Origin::Session(origin_s) = &origin {
+                    let origin_ordinal =
+                        self.session_ordinal(origin_s).await?.ok_or_else(|| {
+                            ApplyOpError::Db(sea_orm::DbErr::Custom(
+                                "origin session missing ordinal (FK invariant broken)".into(),
+                            ))
+                        })?;
+                    if as_of_ordinal < origin_ordinal {
+                        return Err(ApplyOpError::EndBeforeOrigin);
+                    }
+                }
+                vec![RelationshipWrite::Invalidate {
+                    rel_id: msg.rel_id,
+                    reason: InvalidationReason::Superseded,
+                    by: Some(as_of),
+                }]
+            }
             RelationshipOp::Retcon => vec![RelationshipWrite::Invalidate {
                 rel_id: msg.rel_id,
                 reason: InvalidationReason::Retconned,
@@ -591,51 +712,6 @@ impl Message<ApplyOp> for RelationshipGraph {
                 }]
             }
             RelationshipOp::Delete => vec![RelationshipWrite::Delete { rel_id: msg.rel_id }],
-            RelationshipOp::Supersede {
-                subject,
-                as_of,
-                predicate_forward,
-                predicate_reverse,
-                visibility,
-            } => {
-                // Canonicalize the new fact against the existing edge's endpoints.
-                let existing = self.store.get(&msg.rel_id).ok_or(ApplyOpError::NotFound)?;
-                let other = if existing.page_a == subject {
-                    existing.page_b.clone()
-                } else if existing.page_b == subject {
-                    existing.page_a.clone()
-                } else {
-                    return Err(ApplyOpError::SubjectNotEndpoint);
-                };
-                let edge = match canonicalize(subject, other, predicate_forward, predicate_reverse)
-                {
-                    Ok(e) => e,
-                    Err(EdgeError::EmptyPredicate) => return Err(ApplyOpError::EmptyPredicate),
-                    // Unreachable: `subject` and the existing edge's other endpoint
-                    // are distinct pages. Surface loudly rather than guess.
-                    Err(EdgeError::SelfEdge) => {
-                        return Err(ApplyOpError::Db(sea_orm::DbErr::Custom(
-                            "supersede produced a self-edge (unreachable)".into(),
-                        )));
-                    }
-                };
-
-                // Supersede = Create + Invalidate in one transaction. Create-first
-                // preserves the duplicate semantics: a new fact that already exists
-                // live (the "wait, they're already X" case) trips the partial unique
-                // index on the insert and rolls the whole batch back, so the old is
-                // never ended. Atomicity makes this all-or-nothing rather than relying
-                // on the two writes' relative ordering.
-                let new = edge.into_new(visibility, Origin::Session(as_of.clone()), None);
-                vec![
-                    RelationshipWrite::Create(new),
-                    RelationshipWrite::Invalidate {
-                        rel_id: msg.rel_id,
-                        reason: InvalidationReason::Superseded,
-                        by: Some(as_of),
-                    },
-                ]
-            }
         };
 
         let outcomes = match self.db_writer.ask(ApplyRelationshipWrites { writes }).await {
@@ -675,10 +751,14 @@ impl Message<KnownPredicatePairs> for RelationshipGraph {
 fn create_err_from_write(e: RelationshipWriteError) -> CreateRelationshipError {
     match e {
         RelationshipWriteError::DuplicateLiveFact => CreateRelationshipError::DuplicateLiveFact,
-        // Create never targets an existing row; a NotFound here is a logic error.
+        // Create never targets an existing row; a NotFound / AlreadyInvalidated here is
+        // a logic error (the supersede path pre-checks `SupersedesNotLive`).
         RelationshipWriteError::NotFound => CreateRelationshipError::Db(sea_orm::DbErr::Custom(
             "unexpected NotFound creating relationship".into(),
         )),
+        RelationshipWriteError::AlreadyInvalidated => CreateRelationshipError::Db(
+            sea_orm::DbErr::Custom("unexpected AlreadyInvalidated creating relationship".into()),
+        ),
         RelationshipWriteError::Db(e) => CreateRelationshipError::Db(e),
     }
 }
@@ -687,6 +767,7 @@ fn apply_err_from_write(e: RelationshipWriteError) -> ApplyOpError {
     match e {
         RelationshipWriteError::DuplicateLiveFact => ApplyOpError::DuplicateLiveFact,
         RelationshipWriteError::NotFound => ApplyOpError::NotFound,
+        RelationshipWriteError::AlreadyInvalidated => ApplyOpError::AlreadyInvalidated,
         RelationshipWriteError::Db(e) => ApplyOpError::Db(e),
     }
 }

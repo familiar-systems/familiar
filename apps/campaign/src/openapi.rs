@@ -15,6 +15,7 @@ use crate::routes::catalog::*;
 use crate::routes::health::*;
 use crate::routes::metadata::*;
 use crate::routes::pages::*;
+use crate::routes::relationships::*;
 use crate::state::AppState;
 use familiar_systems_campaign_shared::document::pages::{
     CreateEntityBody, CreatePageRequest, CreateSessionBody, CreateTemplateBody, EntityResponse,
@@ -27,6 +28,12 @@ use familiar_systems_campaign_shared::onboarding::initialize::{
     AudioMode, CampaignErrorResponse, PatchCampaignRequest,
 };
 use familiar_systems_campaign_shared::onboarding::metadata::CampaignMetadataResponse;
+use familiar_systems_campaign_shared::relationship::{
+    CreateRelationshipRequest, EntitySearchResult, InvalidationInput, InvalidationReason,
+    OriginInput, PatchRelationshipRequest, PredicatePairView, RelatedPage, RelationshipView,
+    SessionRef, SessionsResponse, ViewInvalidation, ViewSessionOrdinal, ViewSessionPoint,
+    Visibility,
+};
 use familiar_systems_campaign_shared::status::Status;
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -57,6 +64,22 @@ use utoipa_axum::{router::OpenApiRouter, routes};
         TemplateResponse,
         SessionResponse,
         Status,
+        // Relationships
+        RelationshipView,
+        RelatedPage,
+        Visibility,
+        InvalidationReason,
+        ViewSessionPoint,
+        ViewSessionOrdinal,
+        ViewInvalidation,
+        CreateRelationshipRequest,
+        OriginInput,
+        PatchRelationshipRequest,
+        InvalidationInput,
+        PredicatePairView,
+        SessionRef,
+        SessionsResponse,
+        EntitySearchResult,
     ))
 )]
 pub struct ApiDoc;
@@ -67,4 +90,10 @@ pub fn api_router() -> OpenApiRouter<AppState> {
         .routes(routes!(list_systems))
         .routes(routes!(get_campaign, patch_campaign))
         .routes(routes!(create_page))
+        .routes(routes!(get_relationships))
+        .routes(routes!(create_relationship))
+        .routes(routes!(patch_relationship, delete_relationship))
+        .routes(routes!(known_predicates))
+        .routes(routes!(list_sessions))
+        .routes(routes!(search_entities))
 }

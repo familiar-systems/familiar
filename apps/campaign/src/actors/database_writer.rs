@@ -599,6 +599,8 @@ pub enum RelationshipWriteError {
     DuplicateLiveFact,
     #[error("relationship not found")]
     NotFound,
+    #[error("relationship is already invalidated")]
+    AlreadyInvalidated,
     #[error("database error: {0}")]
     Db(#[from] sea_orm::DbErr),
 }
@@ -669,6 +671,14 @@ async fn invalidate_relationship(
         .one(txn)
         .await?
         .ok_or(RelationshipWriteError::NotFound)?;
+    // Invalidation is a one-way door: a row carries at most one reason for stopping
+    // being live. Re-ending or re-classifying an already-invalidated row would rewrite
+    // history (e.g. flip superseded -> retconned, changing snapshot visibility), so
+    // reject it. The create-supersede path guards this earlier as `SupersedesNotLive`;
+    // this is the backstop for the plain End/Retcon ops.
+    if existing.invalidation_reason.is_some() {
+        return Err(RelationshipWriteError::AlreadyInvalidated);
+    }
     let mut am: relationships::ActiveModel = existing.into();
     am.invalidation_reason = Set(Some(InvalidationReasonCol::from(reason)));
     am.invalidated_by_session_id = Set(by.map(SessionIdCol::from));

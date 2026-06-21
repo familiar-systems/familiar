@@ -10,18 +10,34 @@ import type {
   CatalogResponse,
   CreateEntityBody,
   CreatePageRequest,
+  CreateRelationshipRequest,
   CreateSessionBody,
   CreateTemplateBody,
   EntityResponse,
+  EntitySearchResult,
+  InvalidationInput,
+  InvalidationReason,
+  OriginInput,
   PageId,
   PageResponse,
   PatchCampaignRequest,
+  PatchRelationshipRequest,
+  PredicatePairView,
+  RelatedPage,
+  RelationshipId,
+  RelationshipView,
   SessionId,
+  SessionRef,
   SessionResponse,
+  SessionsResponse,
   Status,
   SystemEntry,
   TemplateRef,
   TemplateResponse,
+  ViewInvalidation,
+  ViewSessionOrdinal,
+  ViewSessionPoint,
+  Visibility,
 } from "@familiar-systems/types-campaign";
 export interface paths {
   "/campaign/{id}": {
@@ -40,6 +56,22 @@ export interface paths {
     patch: operations["patch_campaign"];
     trace?: never;
   };
+  "/campaign/{id}/entities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["search_entities"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/campaign/{id}/pages": {
     parameters: {
       query?: never;
@@ -50,6 +82,86 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations["create_page"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/campaign/{id}/pages/{pageId}/relationships": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["get_relationships"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/campaign/{id}/relationships": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["create_relationship"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/campaign/{id}/relationships/predicates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["known_predicates"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/campaign/{id}/relationships/{relId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations["delete_relationship"];
+    options?: never;
+    head?: never;
+    patch: operations["patch_relationship"];
+    trace?: never;
+  };
+  "/campaign/{id}/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_sessions"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -130,6 +242,15 @@ export interface components {
      */
     CreatePageRequest: CreatePageRequest;
     /**
+     * @description `POST /campaign/{id}/relationships` body. Creating a relationship names both
+     *     endpoints (it is undirected, owned by neither page); `subject_page_id` /
+     *     `other_page_id` set the orientation and the server canonicalizes by id.
+     *     `supersedes` makes it an atomic replace: the named live relationship is ended in
+     *     the same transaction at this create's origin session (so `origin` must be a
+     *     session, not `Prior`, when `supersedes` is set).
+     */
+    CreateRelationshipRequest: CreateRelationshipRequest;
+    /**
      * @description Body for creating a `session` page - its document plus its temporal record,
      *     minted together in one genesis transaction.
      *
@@ -147,6 +268,34 @@ export interface components {
     /** @description A created `entity` page. */
     EntityResponse: EntityResponse;
     /**
+     * @description A matched entity page from `GET /campaign/{id}/entities?q=`, for the object
+     *     typeahead.
+     */
+    EntitySearchResult: EntitySearchResult;
+    /**
+     * @description The lifecycle transition a PATCH applies: end (`reason: superseded`, with the
+     *     session it ended at) or retcon (`reason: retconned`, timeless). Setting it is a
+     *     one-way door - the server rejects re-invalidating an already-invalidated row.
+     */
+    InvalidationInput: InvalidationInput;
+    /**
+     * @description Why a relationship row stopped being live. The *presence* of a reason is the
+     *     at-rest live/invalidated discriminant (a live row has none). `Superseded`
+     *     covers both narrative end and replacement (it stays visible in historical
+     *     snapshots); `Retconned` means "never true in the fiction" (excluded from
+     *     snapshots, kept in the database as part of the tapestry).
+     * @enum {string}
+     */
+    InvalidationReason: InvalidationReason;
+    /**
+     * @description Where a relationship became true, as a create supplies it: the input analog of
+     *     the output [`ViewSessionPoint`]. A sum, not a nullable `SessionId`, so `Prior`
+     *     is a first-class choice the picker offers. The client sends back a `SessionId`
+     *     it got from `GET /sessions`, so a raw `SessionId` crossing the wire as *input*
+     *     is fine (the no-raw-`SessionId` rule is about the read view's ordinals).
+     */
+    OriginInput: OriginInput;
+    /**
      * Format: ulid
      * @description Uniquely identifies a page (NPC, location, item, etc.).
      *     ULID for compact URLs (26 chars) and B-tree-friendly insert ordering.
@@ -159,10 +308,41 @@ export interface components {
     PageResponse: PageResponse;
     PatchCampaignRequest: PatchCampaignRequest;
     /**
+     * @description `PATCH /campaign/{id}/relationships/{relId}` body: the relationship's mutable
+     *     surface. Both fields optional; at least one must be present. Predicates and
+     *     origin are immutable, so they are absent here.
+     */
+    PatchRelationshipRequest: PatchRelationshipRequest;
+    /**
+     * @description One known predicate pair and its usage count, for the create modal's predicate
+     *     typeahead + reverse autofill. Wire form of the server-internal `PredicatePair`.
+     */
+    PredicatePairView: PredicatePairView;
+    /** @description The other endpoint of a relationship, as the viewer of one page sees it. */
+    RelatedPage: RelatedPage;
+    /**
+     * Format: ulid
+     * @description Identifies one relationship edge (an undirected page-to-page fact with a
+     *     predicate at each end). ULID for compact, B-tree-friendly identity.
+     */
+    RelationshipId: RelationshipId;
+    /**
+     * @description One relationship as rendered on a given page: oriented so the client never
+     *     computes direction. The server picks `predicate` (forward *from the viewed
+     *     page*) and `predicate_reverse` (back toward it) from the stored undirected
+     *     pair, and resolves session identities to ordinals.
+     */
+    RelationshipView: RelationshipView;
+    /**
      * Format: ulid
      * @description Identifies a play session (discord call, table session, etc.).
      */
     SessionId: SessionId;
+    /**
+     * @description A session by its durable id + curated ordinal, for the as-of pickers. The id is
+     *     what create/patch send back (ordinals can be renumbered; ids are stable).
+     */
+    SessionRef: SessionRef;
     /**
      * @description A created `session`: its page plus its temporal record.
      *
@@ -170,6 +350,12 @@ export interface components {
      *     it); the client composes it from `ordinal` and the page title (`name`).
      */
     SessionResponse: SessionResponse;
+    /**
+     * @description `GET /campaign/{id}/sessions`: every session ascending by ordinal, plus the
+     *     current (max-ordinal) one for the picker's default. `current` is `None` when the
+     *     campaign has no sessions yet (the picker then offers `Prior` only).
+     */
+    SessionsResponse: SessionsResponse;
     /**
      * @description Visibility status for campaign content. The CRDT syncs all content to all
      *     clients regardless of status; consumers (the browser UI, AI conversations)
@@ -185,6 +371,34 @@ export interface components {
      *     (it is the source, not a clone).
      */
     TemplateResponse: TemplateResponse;
+    /**
+     * @description How a no-longer-live relationship was invalidated, in the viewer's terms. The
+     *     reason is the discriminant, each variant carrying only what it renders:
+     *     `Superseded` (narrative end or replacement) carries when it ended - a session
+     *     point, possibly `Prior` for the rare ended-before-the-campaign case; `Retconned`
+     *     ("never true in the fiction") carries nothing and renders off the `origin`.
+     *     Adjacent tagging per the convention guard.
+     */
+    ViewInvalidation: ViewInvalidation;
+    /** @description The session a `ViewSessionPoint::Session` refers to, by its curated ordinal. */
+    ViewSessionOrdinal: ViewSessionOrdinal;
+    /**
+     * @description A point in knowledge time, in the viewer's terms: before the campaign began, or
+     *     at a session (by its curated ordinal). A sum rather than a nullable ordinal so
+     *     `Prior` is a first-class value the client can't confuse with a missing field.
+     *     Reused by both a relationship's `origin` and a superseded end, mirroring the
+     *     server-internal `Origin` sum that backs both. Adjacent tagging
+     *     (`{ "kind": "...", "content": { ... } }`) per the convention guard in
+     *     `crates/app-shared/tests/conventions.rs`.
+     */
+    ViewSessionPoint: ViewSessionPoint;
+    /**
+     * @description Who may see a relationship. Mutable and independent of `origin`: the GM can
+     *     reveal or hide a fact at any time without invalidating it. Two values for
+     *     now; per-player visibility is a future expansion.
+     * @enum {string}
+     */
+    Visibility: Visibility;
   };
   responses: never;
   parameters: never;
@@ -323,6 +537,67 @@ export interface operations {
       };
     };
   };
+  search_entities: {
+    parameters: {
+      query: {
+        /** @description Substring to match entity names */
+        q: string;
+      };
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Matching entity pages (excludes templates) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EntitySearchResult"][];
+        };
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller is not a GM of this campaign */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not on this shard */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Read failed */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting or platform unreachable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   create_page: {
     parameters: {
       query?: never;
@@ -392,6 +667,413 @@ export interface operations {
       };
       /** @description Creating an entity from a template is not yet supported */
       501: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting or platform unreachable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_relationships: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+        /** @description Page whose relationships to read */
+        pageId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The page's relationships, oriented to it */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RelationshipView"][];
+        };
+      };
+      /** @description Malformed page id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller is not a GM of this campaign */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not on this shard */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Read failed */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting or platform unreachable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  create_relationship: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateRelationshipRequest"];
+      };
+    };
+    responses: {
+      /** @description Relationship created, oriented to the subject */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RelationshipView"];
+        };
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller is not a GM of this campaign */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not on this shard, an endpoint page is missing, a referenced session is missing, or the superseded relationship does not exist */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description A live relationship with this predicate pair already exists, or the superseded row is already invalidated */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Self-edge, empty predicate, or an invalid supersede (different pair / prior origin / takes effect before the replaced fact began) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Creation failed */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting or platform unreachable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  known_predicates: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Known predicate pairs with usage counts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PredicatePairView"][];
+        };
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller is not a GM of this campaign */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not on this shard */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Read failed */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting or platform unreachable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_relationship: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+        /** @description Relationship ID */
+        relId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Hard-deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed relationship id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller is not a GM of this campaign */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not on this shard, or relationship not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Delete failed */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting or platform unreachable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  patch_relationship: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+        /** @description Relationship ID */
+        relId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PatchRelationshipRequest"];
+      };
+    };
+    responses: {
+      /** @description Applied */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed relationship id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller is not a GM of this campaign */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not on this shard, relationship not found, or a referenced session is missing */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The relationship is already invalidated */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Empty patch, ending without an as-of session, or an end before the fact's origin */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Patch failed */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Server restarting or platform unreachable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_sessions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Campaign ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Sessions ascending by ordinal, plus the current one */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionsResponse"];
+        };
+      };
+      /** @description Missing or invalid session */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller is not a GM of this campaign */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Campaign not on this shard */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Read failed */
+      500: {
         headers: {
           [name: string]: unknown;
         };
