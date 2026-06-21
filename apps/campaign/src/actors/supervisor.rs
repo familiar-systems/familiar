@@ -1,9 +1,11 @@
 //! `CampaignSupervisor`: per-campaign orchestrator.
 //!
-//! Owns the [`CampaignDatabase`] and an idle-eviction clock. Child room
-//! actors: [`TocActor`] (singleton, eager), [`PageActor`] (per-page,
-//! lazy-spawned on first `JoinRoom`). Future: AgentConversation,
-//! RelationshipGraph, CampaignVocabulary.
+//! Owns the [`CampaignDatabase`] and an idle-eviction clock.
+//!
+//! Child actors:
+//! - [`TocActor`] (CRDT singleton, eager)
+//! - [`RelationshipGraph`] (server-authoritative graph singleton, eager)
+//! - [`PageActor`] (per-page, lazy-spawned on first `JoinRoom`). Future: AgentConversation, CampaignVocabulary.
 //!
 //! Storage initialization (checkout, open connection, run migrations,
 //! spawn DatabaseWriteActor) runs in `on_start` via
@@ -36,6 +38,7 @@ use crate::actors::database_writer::{
     PatchCampaignMetadata as DbPatchCampaign, PatchCampaignResult,
 };
 use crate::actors::page::{PageActor, PageActorArgs, PageInit};
+use crate::actors::relationship_graph::{RelationshipGraph, RelationshipGraphArgs};
 use crate::actors::toc::{AddPageNode, ResolvePageNode, TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::domain::crdt::room_actor;
@@ -55,6 +58,7 @@ pub struct CampaignSupervisor {
     store: Arc<dyn CampaignStore>,
     db: Option<CampaignDatabase>,
     toc: ActorRef<TocActor>,
+    relationship_graph: ActorRef<RelationshipGraph>,
     pages: HashMap<PageId, ActorRef<PageActor>>,
     last_activity: Instant,
     idle_timeout: Duration,
@@ -138,6 +142,12 @@ impl Actor for CampaignSupervisor {
             debounce_duration: Duration::from_secs(2),
         });
 
+        let relationship_graph = RelationshipGraph::spawn(RelationshipGraphArgs {
+            campaign_id: args.campaign_id.clone(),
+            db_reader: db.reader().clone(),
+            db_writer: db.writer().clone(),
+        });
+
         tracing::info!("campaign ready");
 
         let timer_ref = actor_ref.clone();
@@ -197,6 +207,7 @@ impl Actor for CampaignSupervisor {
             store: args.store,
             db: Some(db),
             toc,
+            relationship_graph,
             pages: HashMap::new(),
             last_activity: Instant::now(),
             idle_timeout: args.idle_timeout,
@@ -236,6 +247,15 @@ impl Actor for CampaignSupervisor {
             tracing::warn!(error = ?e, "toc actor already stopped during drain");
         }
         self.toc.wait_for_shutdown_with_result(|_| ()).await;
+
+        // The relationship graph writes through synchronously (no dirty state to
+        // flush), but stop it before the DB connection closes for clean ordering.
+        if let Err(e) = self.relationship_graph.stop_gracefully().await {
+            tracing::warn!(error = ?e, "relationship graph already stopped during drain");
+        }
+        self.relationship_graph
+            .wait_for_shutdown_with_result(|_| ())
+            .await;
 
         if let Some(db) = self.db.take()
             && let Err(e) = db.release(self.store.as_ref(), &self.campaign_id).await

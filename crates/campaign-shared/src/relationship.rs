@@ -7,12 +7,13 @@
 //! here; the drift guard lives at the `*Col` boundary in
 //! `apps/campaign/src/entities/columns.rs` instead.
 //!
-//! Scope note (Slice 1): this module ships only the durable read surface -
-//! `Visibility`, `InvalidationReason`, and `RelationshipView`. The *undirected*
-//! in-memory model (`Relationship`, `Origin { Prior, Session(SessionId) }`,
-//! `Invalidation`) the petgraph actor traverses lands in Slice 2, where it is
-//! actually consumed; it stays pure Rust (the client only ever sees the oriented
-//! view, working in session ordinals, never raw `SessionId`s).
+//! Scope note: this module holds only the wire read surface - `Visibility`,
+//! `InvalidationReason`, and `RelationshipView`. The *undirected* in-memory model
+//! (`Relationship`, `Origin { Prior, Session(SessionId) }`, `Invalidation`) the
+//! petgraph actor traverses lives app-local in
+//! `apps/campaign/src/domain/relationship.rs` (pure server-internal algebra, no TS
+//! surface - the client only ever sees the oriented view, working in session
+//! ordinals, never raw `SessionId`s).
 //!
 //! See `docs/plans/2026-04-10-entity-relationship-temporal-model.md`.
 
@@ -54,44 +55,45 @@ pub struct RelatedPage {
     pub name: String,
 }
 
-/// When a relationship became true, in the viewer's terms. A sum type rather
-/// than a nullable ordinal so `Prior` (true before the campaign began) is a
-/// first-class value the client can't confuse with a missing field. Adjacent
-/// tagging (`{ "kind": "...", "content": { ... } }`) per the convention guard
-/// in `crates/app-shared/tests/conventions.rs`.
+/// A point in knowledge time, in the viewer's terms: before the campaign began, or
+/// at a session (by its curated ordinal). A sum rather than a nullable ordinal so
+/// `Prior` is a first-class value the client can't confuse with a missing field.
+/// Reused by both a relationship's `origin` and a superseded end, mirroring the
+/// server-internal `Origin` sum that backs both. Adjacent tagging
+/// (`{ "kind": "...", "content": { ... } }`) per the convention guard in
+/// `crates/app-shared/tests/conventions.rs`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[serde(tag = "kind", content = "content", rename_all = "camelCase")]
 #[ts(export, export_to = "types-campaign/src/generated/relationship/")]
-pub enum ViewOrigin {
-    /// True before the campaign's first session.
+pub enum ViewSessionPoint {
+    /// Before the campaign's first session.
     Prior,
-    /// Became true in the context of a session.
-    Session(ViewOriginSession),
+    /// At a session, by its curated ordinal.
+    Session(ViewSessionOrdinal),
 }
 
-/// The session a `ViewOrigin::Session` refers to, by its curated ordinal.
+/// The session a `ViewSessionPoint::Session` refers to, by its curated ordinal.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/relationship/")]
-pub struct ViewOriginSession {
+pub struct ViewSessionOrdinal {
     /// "Session N". Serialized as a JSON number (counts are small); `#[ts(type)]`
     /// keeps the TS type `number` rather than ts-rs's default `bigint` for `i64`.
     #[ts(type = "number")]
     pub ordinal: i64,
 }
 
-/// How a relationship was invalidated, in the viewer's terms. Present only on a
-/// row that is no longer live.
-///
-/// Slice 1 carries the invalidating session's `ordinal`; the rare "ended before
-/// the campaign began" case (representable at rest as reason-set + no session)
-/// is not surfaced here yet.
+/// How a no-longer-live relationship was invalidated, in the viewer's terms. The
+/// reason is the discriminant, each variant carrying only what it renders:
+/// `Superseded` (narrative end or replacement) carries when it ended - a session
+/// point, possibly `Prior` for the rare ended-before-the-campaign case; `Retconned`
+/// ("never true in the fiction") carries nothing and renders off the `origin`.
+/// Adjacent tagging per the convention guard.
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(tag = "kind", content = "content", rename_all = "camelCase")]
 #[ts(export, export_to = "types-campaign/src/generated/relationship/")]
-pub struct ViewInvalidation {
-    pub reason: InvalidationReason,
-    /// The ordinal of the session that invalidated the fact ("ended S12").
-    #[ts(type = "number")]
-    pub ordinal: i64,
+pub enum ViewInvalidation {
+    Superseded { ended: ViewSessionPoint },
+    Retconned,
 }
 
 /// One relationship as rendered on a given page: oriented so the client never
@@ -109,7 +111,7 @@ pub struct RelationshipView {
     /// The predicate read back, from `other` toward the viewed page.
     pub predicate_reverse: String,
     pub visibility: Visibility,
-    pub origin: ViewOrigin,
+    pub origin: ViewSessionPoint,
     /// `None` for a live relationship.
     pub invalidation: Option<ViewInvalidation>,
 }

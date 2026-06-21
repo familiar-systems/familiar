@@ -2,7 +2,7 @@
 import type { RelationshipId } from "../id/RelationshipId";
 import type { RelatedPage } from "./RelatedPage";
 import type { ViewInvalidation } from "./ViewInvalidation";
-import type { ViewOrigin } from "./ViewOrigin";
+import type { ViewSessionPoint } from "./ViewSessionPoint";
 import type { Visibility } from "./Visibility";
 
 /**
@@ -26,7 +26,7 @@ export type RelationshipView = {
    */
   predicate_reverse: string;
   visibility: Visibility;
-  origin: ViewOrigin;
+  origin: ViewSessionPoint;
   /**
    * `None` for a live relationship.
    */

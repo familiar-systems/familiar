@@ -4,6 +4,6 @@ export * from "./InvalidationReason";
 export * from "./RelatedPage";
 export * from "./RelationshipView";
 export * from "./ViewInvalidation";
-export * from "./ViewOrigin";
-export * from "./ViewOriginSession";
+export * from "./ViewSessionOrdinal";
+export * from "./ViewSessionPoint";
 export * from "./Visibility";
