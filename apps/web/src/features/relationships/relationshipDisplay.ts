@@ -76,11 +76,11 @@ export function gutterGlyph(
 export const LIFECYCLE_STYLE = {
   live: {
     predicate: "text-foreground",
-    chip: "bg-gold/10 text-foreground shadow-[inset_0_-1px_0] shadow-gold/35",
+    chip: "bg-bronze/10 text-foreground shadow-[inset_0_-1px_0] shadow-bronze/35",
   },
   superseded: {
     predicate: "text-foreground/50 italic",
-    chip: "bg-gold/[0.06] text-foreground/55 shadow-[inset_0_-1px_0] shadow-gold/20",
+    chip: "bg-bronze/[0.06] text-foreground/55 shadow-[inset_0_-1px_0] shadow-bronze/20",
   },
   retconned: {
     predicate: "text-stone-400 line-through decoration-stone-400/50",

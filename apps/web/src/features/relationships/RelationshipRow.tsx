@@ -85,15 +85,10 @@ export function RelationshipRow({
           params={{ campaignId, pageId: view.other.id }}
           onClick={(e) => e.stopPropagation()}
           className={[
-            "inline-flex items-baseline gap-1.5 rounded px-1.5 font-display font-semibold",
+            "inline-flex items-baseline rounded px-1.5 font-display font-semibold",
             style.chip,
           ].join(" ")}
         >
-          {/* Uniform entity dot; per-category color (template/tag) plugs in here later. */}
-          <span
-            className="size-1.25 shrink-0 self-center rounded-full bg-gold"
-            aria-hidden="true"
-          />
           {view.other.name}
         </Link>
       </div>

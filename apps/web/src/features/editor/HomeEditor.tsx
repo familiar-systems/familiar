@@ -250,7 +250,12 @@ function BoundEditor({
       {/* Relationships sit at the preamble/body seam, for the two kinds with this
           layout. Server-authoritative (REST), not collaborative CRDT content. */}
       {pageKind?.kind === "entity" || pageKind?.kind === "template" ? (
-        <RelationshipsSection campaignId={campaignId} pageId={pageId} pageKind={pageKind.kind} />
+        <RelationshipsSection
+          campaignId={campaignId}
+          pageId={pageId}
+          pageKind={pageKind.kind}
+          subjectName={committedTitle}
+        />
       ) : null}
       {/* Horizontal bar separating the preamble from the freeform body. */}
       <div className="my-6 border-b border-foreground/10" />
