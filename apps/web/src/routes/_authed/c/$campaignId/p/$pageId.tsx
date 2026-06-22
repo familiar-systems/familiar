@@ -8,8 +8,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { HomeEditor } from "../../../../../features/editor/HomeEditor";
 
 function PageView(): React.ReactElement {
-  const { pageId } = Route.useParams();
-  return <HomeEditor pageId={pageId} />;
+  const { campaignId, pageId } = Route.useParams();
+  return <HomeEditor campaignId={campaignId} pageId={pageId} />;
 }
 
 export const Route = createFileRoute("/_authed/c/$campaignId/p/$pageId")({

@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
-import type { PageId } from "@familiar-systems/types-campaign";
+import type { PageId, TocPageKind } from "@familiar-systems/types-campaign";
 
 import { useLoroManager } from "../editor/LoroManagerProvider";
 import type { RoomError } from "../editor/loro-manager";
@@ -65,5 +65,19 @@ export function usePagePrefix(pageId: PageId): string | null {
     if (snapshot.status !== "ready" && snapshot.status !== "reconnecting") return null;
     const entry = findTocPageEntry(snapshot.tree, pageId);
     return entry === null ? null : pagePrefix(entry.pageKind);
+  }, [snapshot, pageId]);
+}
+
+/**
+ * The page's kind (with a session's ordinal), or null before it appears in the
+ * synced ToC. Reads the immutable kind off the ToC entry, the same source as
+ * usePagePrefix - never off the live page doc. Drives kind-gated chrome like the
+ * relationships widget, which renders for entities and templates only.
+ */
+export function usePageKind(pageId: PageId): TocPageKind | null {
+  const snapshot = useToc();
+  return useMemo(() => {
+    if (snapshot.status !== "ready" && snapshot.status !== "reconnecting") return null;
+    return findTocPageEntry(snapshot.tree, pageId)?.pageKind ?? null;
   }, [snapshot, pageId]);
 }

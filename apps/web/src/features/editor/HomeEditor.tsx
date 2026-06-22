@@ -12,7 +12,8 @@ import {
   readPageTitle,
   writePageTitle,
 } from "@familiar-systems/editor";
-import type { PageId } from "@familiar-systems/types-campaign";
+import type { CampaignId } from "@familiar-systems/types-app";
+import type { PageId, TocPageKind } from "@familiar-systems/types-campaign";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { type LoroDoc, UndoManager } from "loro-crdt";
 import {
@@ -25,7 +26,8 @@ import {
   useSyncExternalStore,
 } from "react";
 
-import { usePagePrefix } from "../toc/useToc";
+import { RelationshipsSection } from "../relationships/RelationshipsSection";
+import { usePageKind, usePagePrefix } from "../toc/useToc";
 import { roomErrorMessage } from "./loro-manager";
 import { usePageDoc } from "./usePageDoc";
 
@@ -42,15 +44,19 @@ const SECTION_EDITOR_CLASS = [
 ].join(" ");
 
 interface HomeEditorProps {
+  campaignId: CampaignId;
   pageId: PageId;
 }
 
-export function HomeEditor({ pageId }: HomeEditorProps): React.ReactElement {
+export function HomeEditor({ campaignId, pageId }: HomeEditorProps): React.ReactElement {
   const state = usePageDoc(pageId);
   // The immutable kind/ordinal prefix ("Session 3:", "Template:") comes from the
   // ToC entry; the editable name comes from the live page doc (below). Null for
   // an entity or before the page appears in the synced ToC.
   const prefix = usePagePrefix(pageId);
+  // Same source as the prefix: the relationships widget renders only for entities
+  // and templates, the two kinds with the preamble/body layout.
+  const pageKind = usePageKind(pageId);
 
   if (state.status === "error") {
     return (
@@ -77,6 +83,9 @@ export function HomeEditor({ pageId }: HomeEditorProps): React.ReactElement {
     <BoundEditor
       key={pageId}
       doc={state.doc}
+      campaignId={campaignId}
+      pageId={pageId}
+      pageKind={pageKind}
       prefix={prefix}
       reconnecting={state.status === "reconnecting"}
     />
@@ -85,6 +94,10 @@ export function HomeEditor({ pageId }: HomeEditorProps): React.ReactElement {
 
 interface BoundEditorProps {
   doc: LoroDoc;
+  campaignId: CampaignId;
+  pageId: PageId;
+  /** The page's kind, or null before it appears in the synced ToC. */
+  pageKind: TocPageKind | null;
   /** Non-editable kind/ordinal prefix shown before the editable title, or null. */
   prefix: string | null;
   reconnecting: boolean;
@@ -104,7 +117,14 @@ function usePageTitle(doc: LoroDoc): string {
 // only after the doc has synced. The editors are created once per doc. The page
 // has two section containers (preamble + body); each binds its own editor to the
 // same doc, separated by a horizontal bar.
-function BoundEditor({ doc, prefix, reconnecting }: BoundEditorProps): React.ReactElement {
+function BoundEditor({
+  doc,
+  campaignId,
+  pageId,
+  pageKind,
+  prefix,
+  reconnecting,
+}: BoundEditorProps): React.ReactElement {
   const committedTitle = usePageTitle(doc);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   // The title field is a draft over the committed Loro title. It may be empty
@@ -227,6 +247,11 @@ function BoundEditor({ doc, prefix, reconnecting }: BoundEditorProps): React.Rea
           className={`${SECTION_EDITOR_CLASS} [&_.ProseMirror]:min-h-12`}
         />
       </div>
+      {/* Relationships sit at the preamble/body seam, for the two kinds with this
+          layout. Server-authoritative (REST), not collaborative CRDT content. */}
+      {pageKind?.kind === "entity" || pageKind?.kind === "template" ? (
+        <RelationshipsSection campaignId={campaignId} pageId={pageId} pageKind={pageKind.kind} />
+      ) : null}
       {/* Horizontal bar separating the preamble from the freeform body. */}
       <div className="my-6 border-b border-foreground/10" />
       {/* Body: the freeform section. */}
