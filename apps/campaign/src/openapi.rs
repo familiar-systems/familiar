@@ -29,10 +29,9 @@ use familiar_systems_campaign_shared::onboarding::initialize::{
 };
 use familiar_systems_campaign_shared::onboarding::metadata::CampaignMetadataResponse;
 use familiar_systems_campaign_shared::relationship::{
-    CreateRelationshipRequest, EntitySearchResult, InvalidationInput, InvalidationReason,
-    OriginInput, PatchRelationshipRequest, PredicatePairView, RelatedPage, RelationshipView,
-    SessionRef, SessionsResponse, ViewInvalidation, ViewSessionOrdinal, ViewSessionPoint,
-    Visibility,
+    CreateRelationshipRequest, EntitySearchResult, KnowledgeInput, KnowledgeView, OriginInput,
+    PatchRelationshipRequest, PredicatePairView, RelatedPage, RelationshipView, SessionRef,
+    SessionStampPatch, SessionsResponse, ViewSessionOrdinal, ViewSessionPoint,
 };
 use familiar_systems_campaign_shared::status::Status;
 use utoipa::OpenApi;
@@ -67,15 +66,14 @@ use utoipa_axum::{router::OpenApiRouter, routes};
         // Relationships
         RelationshipView,
         RelatedPage,
-        Visibility,
-        InvalidationReason,
         ViewSessionPoint,
         ViewSessionOrdinal,
-        ViewInvalidation,
+        KnowledgeView,
         CreateRelationshipRequest,
         OriginInput,
+        KnowledgeInput,
         PatchRelationshipRequest,
-        InvalidationInput,
+        SessionStampPatch,
         PredicatePairView,
         SessionRef,
         SessionsResponse,

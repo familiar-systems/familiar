@@ -1,5 +1,5 @@
-//! Relationship wire types: the enums both servers' at-rest boundary and the
-//! widget share, plus the oriented read DTO the widget renders.
+//! Relationship wire types: the oriented read DTO the widget renders, plus the
+//! create/patch request bodies.
 //!
 //! These are **wire types**, never persisted in a Loro doc - relationships are
 //! server-authoritative (the `RelationshipGraph` actor owns them), not CRDT
@@ -7,45 +7,22 @@
 //! here; the drift guard lives at the `*Col` boundary in
 //! `apps/campaign/src/entities/columns.rs` instead.
 //!
-//! Scope note: this module holds only the wire read surface - `Visibility`,
-//! `InvalidationReason`, and `RelationshipView`. The *undirected* in-memory model
-//! (`Relationship`, `Origin { Prior, Session(SessionId) }`, `Invalidation`) the
-//! petgraph actor traverses lives app-local in
-//! `apps/campaign/src/domain/relationship.rs` (pure server-internal algebra, no TS
-//! surface - the client only ever sees the oriented view, working in session
-//! ordinals, never raw `SessionId`s).
+//! Scope note: this module holds only the wire surface. The *undirected* in-memory
+//! model (`Relationship`, `Origin`, `Knowledge`) the petgraph actor traverses lives
+//! app-local in `apps/campaign/src/domain/relationship.rs` (pure server-internal
+//! algebra, no TS surface - the client only ever sees the oriented view, working in
+//! session ordinals, never raw `SessionId`s).
 //!
-//! See `docs/plans/2026-04-10-entity-relationship-temporal-model.md`.
+//! A relationship moves along two orthogonal, authored, session-stamped axes:
+//! **factuality** `[origin, superseded)` plus a terminal retcon, and **knowledge**
+//! (`Public | Hidden | Revealed(s)`). See
+//! `docs/plans/2026-06-23-entity-relationship-temporal-model.md`.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;
 
 use crate::id::{PageId, RelationshipId, SessionId};
-
-/// Who may see a relationship. Mutable and independent of `origin`: the GM can
-/// reveal or hide a fact at any time without invalidating it. Two values for
-/// now; per-player visibility is a future expansion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS, ToSchema)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "types-campaign/src/generated/relationship/")]
-pub enum Visibility {
-    Gm,
-    Players,
-}
-
-/// Why a relationship row stopped being live. The *presence* of a reason is the
-/// at-rest live/invalidated discriminant (a live row has none). `Superseded`
-/// covers both narrative end and replacement (it stays visible in historical
-/// snapshots); `Retconned` means "never true in the fiction" (excluded from
-/// snapshots, kept in the database as part of the tapestry).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS, ToSchema)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "types-campaign/src/generated/relationship/")]
-pub enum InvalidationReason {
-    Superseded,
-    Retconned,
-}
 
 /// The other endpoint of a relationship, as the viewer of one page sees it.
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
@@ -55,11 +32,11 @@ pub struct RelatedPage {
     pub name: String,
 }
 
-/// A point in knowledge time, in the viewer's terms: before the campaign began, or
-/// at a session (by its curated ordinal). A sum rather than a nullable ordinal so
-/// `Prior` is a first-class value the client can't confuse with a missing field.
-/// Reused by both a relationship's `origin` and a superseded end, mirroring the
-/// server-internal `Origin` sum that backs both. Adjacent tagging
+/// A point on the factuality origin axis, in the viewer's terms: before the campaign
+/// began, or at a session (by its curated ordinal). A sum rather than a nullable
+/// ordinal so `Prior` is a first-class value the client can't confuse with a missing
+/// field. (Only `origin` can be `Prior`; the session-only axes -
+/// superseded/retcon/reveal - use a bare [`ViewSessionOrdinal`].) Adjacent tagging
 /// (`{ "kind": "...", "content": { ... } }`) per the convention guard in
 /// `crates/app-shared/tests/conventions.rs`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
@@ -72,7 +49,9 @@ pub enum ViewSessionPoint {
     Session(ViewSessionOrdinal),
 }
 
-/// The session a `ViewSessionPoint::Session` refers to, by its curated ordinal.
+/// A session referred to by its curated ordinal, in the viewer's terms. Used bare
+/// for the session-only axes (superseded / retcon / reveal) and inside
+/// [`ViewSessionPoint::Session`].
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/relationship/")]
 pub struct ViewSessionOrdinal {
@@ -82,24 +61,26 @@ pub struct ViewSessionOrdinal {
     pub ordinal: i64,
 }
 
-/// How a no-longer-live relationship was invalidated, in the viewer's terms. The
-/// reason is the discriminant, each variant carrying only what it renders:
-/// `Superseded` (narrative end or replacement) carries when it ended - a session
-/// point, possibly `Prior` for the rare ended-before-the-campaign case; `Retconned`
-/// ("never true in the fiction") carries nothing and renders off the `origin`.
-/// Adjacent tagging per the convention guard.
+/// The knowledge axis in the viewer's terms: public (always known), secret and not yet
+/// revealed, or revealed to the players at a session. Mirrors the server-internal
+/// `Knowledge` sum; the secret bit is implicit in the variant (`Public` = not secret,
+/// the others secret). Adjacent tagging per the convention guard.
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[serde(tag = "kind", content = "content", rename_all = "camelCase")]
 #[ts(export, export_to = "types-campaign/src/generated/relationship/")]
-pub enum ViewInvalidation {
-    Superseded { ended: ViewSessionPoint },
-    Retconned,
+pub enum KnowledgeView {
+    /// Born public: known to the players from the moment it became true.
+    Public,
+    /// Born secret, not yet revealed (GM-only). Drives the row's GM-wash.
+    Hidden,
+    /// Born secret, learned by the players at this session.
+    Revealed(ViewSessionOrdinal),
 }
 
 /// One relationship as rendered on a given page: oriented so the client never
-/// computes direction. The server picks `predicate` (forward *from the viewed
-/// page*) and `predicate_reverse` (back toward it) from the stored undirected
-/// pair, and resolves session identities to ordinals.
+/// computes direction, and projected onto both axes. The server picks `predicate`
+/// (forward *from the viewed page*) and `predicate_reverse` (back toward it) from
+/// the stored undirected pair, and resolves session identities to ordinals.
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/relationship/")]
 pub struct RelationshipView {
@@ -110,10 +91,14 @@ pub struct RelationshipView {
     pub predicate: String,
     /// The predicate read back, from `other` toward the viewed page.
     pub predicate_reverse: String,
-    pub visibility: Visibility,
+    /// Factuality start.
     pub origin: ViewSessionPoint,
-    /// `None` for a live relationship.
-    pub invalidation: Option<ViewInvalidation>,
+    /// Factuality end: the session the fact stopped being true. `None` = still true.
+    pub superseded: Option<ViewSessionOrdinal>,
+    /// The session a retcon struck the fact. `None` = not retconned.
+    pub retcon: Option<ViewSessionOrdinal>,
+    /// Knowledge axis.
+    pub knowledge: KnowledgeView,
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +118,18 @@ pub enum OriginInput {
     Session(SessionId),
 }
 
+/// A knowledge state as the client supplies it - on create (the born state) and on
+/// patch (the new state, set wholesale). The input analog of [`KnowledgeView`]: public,
+/// secret (hidden), or secret and revealed at a session.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(tag = "kind", content = "content", rename_all = "camelCase")]
+#[ts(export, export_to = "types-campaign/src/generated/relationship/")]
+pub enum KnowledgeInput {
+    Public,
+    Hidden,
+    Revealed(SessionId),
+}
+
 /// `POST /campaign/{id}/relationships` body. Creating a relationship names both
 /// endpoints (it is undirected, owned by neither page); `subject_page_id` /
 /// `other_page_id` set the orientation and the server canonicalizes by id.
@@ -148,33 +145,43 @@ pub struct CreateRelationshipRequest {
     pub predicate_forward: String,
     /// Reads other -> subject.
     pub predicate_reverse: String,
-    pub visibility: Visibility,
     pub origin: OriginInput,
+    pub knowledge: KnowledgeInput,
     /// The live relationship this one replaces, ended atomically. `None` for a
     /// plain create.
     pub supersedes: Option<RelationshipId>,
 }
 
-/// `PATCH /campaign/{id}/relationships/{relId}` body: the relationship's mutable
-/// surface. Both fields optional; at least one must be present. Predicates and
-/// origin are immutable, so they are absent here.
+/// A patch to one nullable session-stamp axis: set it to a session, or clear it back
+/// to NULL (the reversible correction). A field left absent (`null`) on
+/// [`PatchRelationshipRequest`] leaves that axis unchanged; present-and-`Clear` is an
+/// explicit un-set. Adjacent tagging per the convention guard.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(tag = "kind", content = "content", rename_all = "camelCase")]
+#[ts(export, export_to = "types-campaign/src/generated/relationship/")]
+pub enum SessionStampPatch {
+    /// Stamp the axis with this session.
+    Set(SessionId),
+    /// Clear the axis back to NULL.
+    Clear,
+}
+
+/// `PATCH /campaign/{id}/relationships/{relId}` body: independent, reversible edits to
+/// the three mutable axes. Each field optional (absent = leave that axis unchanged); at
+/// least one must be present. Predicates and origin are immutable, so they are absent
+/// here. The present edits apply as one atomic batch.
+///
+/// `knowledge` is set wholesale to the new state (`Public | Hidden | Revealed(s)`),
+/// freely - reveal, conceal, or re-hide. `superseded` is the factuality end (set = end,
+/// clear = un-end); `retcon` is the terminal strike (set = retcon, clear = un-retcon).
+/// End-*with-successor* is not a patch - it goes through `POST /relationships` with
+/// `supersedes` (the successor is a new row).
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export, export_to = "types-campaign/src/generated/relationship/")]
 pub struct PatchRelationshipRequest {
-    pub visibility: Option<Visibility>,
-    pub invalidation: Option<InvalidationInput>,
-}
-
-/// The lifecycle transition a PATCH applies: end (`reason: superseded`, with the
-/// session it ended at) or retcon (`reason: retconned`, timeless). Setting it is a
-/// one-way door - the server rejects re-invalidating an already-invalidated row.
-#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
-#[ts(export, export_to = "types-campaign/src/generated/relationship/")]
-pub struct InvalidationInput {
-    pub reason: InvalidationReason,
-    /// Required when `reason` is `superseded` (the session it ended at); ignored
-    /// for `retconned`.
-    pub as_of: Option<SessionId>,
+    pub knowledge: Option<KnowledgeInput>,
+    pub superseded: Option<SessionStampPatch>,
+    pub retcon: Option<SessionStampPatch>,
 }
 
 // ---------------------------------------------------------------------------

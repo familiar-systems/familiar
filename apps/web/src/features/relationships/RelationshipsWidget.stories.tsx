@@ -21,74 +21,79 @@ const rid = (s: string): RelationshipId => s as RelationshipId;
 const CAMPAIGN = cid("01CAMPAIGN0000000000000000");
 const PAGE = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FAV");
 
-// The wireframe's seven rows: prior, session, superseded, another session, two
-// GM-only, and a retcon - one of each visual state the widget must render.
+// The wireframe's seven rows, one of each rail state the widget must render: prior,
+// session, superseded, another session, a live secret, a revealed secret, and a
+// retcon.
 const ROWS: RelationshipView[] = [
   {
     id: rid("01R0000000000000000000PRIO"),
     other: { id: PAGE, name: "Grimhollow" },
     predicate: "is a resident of",
     predicate_reverse: "is the home of",
-    visibility: "players",
     origin: { kind: "prior" },
-    invalidation: null,
+    superseded: null,
+    retcon: null,
+    knowledge: { kind: "public" },
   },
   {
     id: rid("01R0000000000000000000KEY0"),
     other: { id: PAGE, name: "North Watchtower" },
     predicate: "keeps the key to",
     predicate_reverse: "is kept by",
-    visibility: "players",
     origin: { kind: "session", content: { ordinal: 3 } },
-    invalidation: null,
+    superseded: null,
+    retcon: null,
+    knowledge: { kind: "public" },
   },
   {
     id: rid("01R0000000000000000000CAPT"),
     other: { id: PAGE, name: "Thren Ferrymen's Guild" },
     predicate: "is captain of",
     predicate_reverse: "is captained by",
-    visibility: "players",
     origin: { kind: "session", content: { ordinal: 6 } },
-    invalidation: {
-      kind: "superseded",
-      content: { ended: { kind: "session", content: { ordinal: 12 } } },
-    },
+    superseded: { ordinal: 12 },
+    retcon: null,
+    knowledge: { kind: "public" },
   },
   {
     id: rid("01R0000000000000000000SUSP"),
     other: { id: PAGE, name: "Marda" },
     predicate: "is suspicious of",
     predicate_reverse: "is distrusted by",
-    visibility: "players",
     origin: { kind: "session", content: { ordinal: 9 } },
-    invalidation: null,
+    superseded: null,
+    retcon: null,
+    knowledge: { kind: "public" },
   },
   {
     id: rid("01R0000000000000000000DEBT"),
     other: { id: PAGE, name: "Crown of Ash" },
     predicate: "owes a debt to",
     predicate_reverse: "holds marker on",
-    visibility: "gm",
     origin: { kind: "session", content: { ordinal: 11 } },
-    invalidation: null,
+    superseded: null,
+    retcon: null,
+    knowledge: { kind: "hidden" },
   },
   {
     id: rid("01R0000000000000000000FIRE"),
     other: { id: PAGE, name: "Burning of the North Watch" },
     predicate: "set the signal fire at",
     predicate_reverse: "was started by",
-    visibility: "gm",
     origin: { kind: "session", content: { ordinal: 14 } },
-    invalidation: null,
+    superseded: null,
+    retcon: null,
+    knowledge: { kind: "revealed", content: { ordinal: 15 } },
   },
   {
     id: rid("01R0000000000000000000BROS"),
     other: { id: PAGE, name: "Tormund" },
     predicate: "is brother to",
     predicate_reverse: "is brother to",
-    visibility: "players",
-    origin: { kind: "session", content: { ordinal: 2 } },
-    invalidation: { kind: "retconned" },
+    origin: { kind: "session", content: { ordinal: 1 } },
+    superseded: null,
+    retcon: { ordinal: 2 },
+    knowledge: { kind: "public" },
   },
 ];
 
@@ -113,13 +118,14 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// The full list: the count badge, and a sampling of the five row states.
+// The full list: the count badge, and a sampling of the rail states.
 export const Ready: Story = {
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     await expect(canvas.getByText("7")).toBeInTheDocument();
     await expect(canvas.getByText("is a resident of")).toBeInTheDocument();
-    await expect(canvas.getByText("S6 → S12")).toBeInTheDocument();
-    await expect(canvas.getByText("S2 ↯")).toBeInTheDocument();
+    // The superseded row's ended pill and the retcon row's terminal glyph.
+    await expect(canvasElement.textContent).toContain("S12");
+    await expect(canvasElement.textContent).toContain("↯");
   },
 };
 

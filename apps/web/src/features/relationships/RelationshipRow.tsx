@@ -1,21 +1,21 @@
 // One relationship as a row: the forward predicate, the linked "other" entity
-// chip, an origin chip, and a right-gutter status glyph. All five visual states
-// (live, prior, superseded, GM-washed, retconned) come from the pure tables in
-// relationshipDisplay. Presentational: `onSelect` opens the edit flow; read-only
-// callers omit it and the row is static. The chip always links to the other page
-// and stops propagation, so chip-nav never doubles as row-select.
+// chip, and the temporal rail (the pills True-of -> Revealed-on -> Ended-on ->
+// Retconned). The rail, the lifecycle treatment, and the GM wash come from the pure
+// tables in relationshipDisplay. Presentational: `onSelect` opens the edit flow;
+// read-only callers omit it and the row is static. The chip always links to the
+// other page and stops propagation, so chip-nav never doubles as row-select.
 
 import type { CampaignId } from "@familiar-systems/types-app";
 import type { RelationshipView } from "@familiar-systems/types-campaign";
 import { Link } from "@tanstack/react-router";
+import { Fragment } from "react";
 
 import {
+  buildRail,
   deriveLifecycle,
-  gutterGlyph,
+  isCurrentlySecret,
   LIFECYCLE_STYLE,
-  originLabel,
-  ORIGIN_TONE_CLASS,
-  originTone,
+  RAIL_TONE_CLASS,
 } from "./relationshipDisplay";
 
 interface RelationshipRowProps {
@@ -32,25 +32,24 @@ export function RelationshipRow({
 }: RelationshipRowProps): React.ReactElement {
   const lifecycle = deriveLifecycle(view);
   const style = LIFECYCLE_STYLE[lifecycle];
-  const isGm = view.visibility === "gm";
-  const glyph = gutterGlyph(view);
+  const currentlySecret = isCurrentlySecret(view);
+  const rail = buildRail(view);
 
-  // The predicate verb is muted by default; a live GM fact tints it plum to match
-  // the wash. Superseded/retconned rows let the verb inherit the row's faded or
-  // struck-through color rather than fighting it.
+  // The predicate verb is muted by default; a live, currently-secret fact tints it
+  // plum to match the wash. Superseded/retconned rows let the verb inherit the row's
+  // faded or struck-through color rather than fighting it.
   const verbClass =
-    lifecycle === "live" ? (isGm ? "text-primary/85" : "text-muted-foreground") : "";
+    lifecycle === "live" ? (currentlySecret ? "text-primary/85" : "text-muted-foreground") : "";
 
   return (
     <div
       data-predicate-forward={view.predicate}
       data-predicate-reverse={view.predicate_reverse}
       className={[
-        "relative isolate grid grid-cols-[1fr_auto] items-baseline gap-4 rounded py-2 pr-11 pl-2.5",
+        "relative isolate grid grid-cols-[1fr_auto] items-baseline gap-4 rounded px-2.5 py-2",
         // The GM wash is a backmost layer (not the row's own background), so the
-        // edit button's hover tint composes over it instead of replacing it. With
-        // role=button gone (see below), the two no longer fight for one background.
-        isGm
+        // edit button's hover tint composes over it instead of replacing it.
+        currentlySecret
           ? "before:absolute before:inset-0 before:-z-10 before:rounded before:bg-gradient-to-r before:from-primary/[0.12] before:via-primary/[0.06] before:to-transparent before:content-['']"
           : "",
       ].join(" ")}
@@ -89,25 +88,28 @@ export function RelationshipRow({
         </Link>
       </div>
 
-      <span
-        className={[
-          "pointer-events-none justify-self-end rounded-full border px-1.5 py-0.5 font-sans text-[10.5px] tracking-wide uppercase",
-          ORIGIN_TONE_CLASS[originTone(view)],
-        ].join(" ")}
-      >
-        {originLabel(view)}
-      </span>
-
-      {glyph !== null ? (
-        <span
-          className={[
-            "pointer-events-none absolute top-1/2 right-2 -translate-y-1/2",
-            glyph.className,
-          ].join(" ")}
-        >
-          <glyph.Icon className="size-4" aria-label={glyph.label} />
-        </span>
-      ) : null}
+      {/* The temporal rail: pills in session order joined by arrows, retcon last. */}
+      <div className="pointer-events-none flex flex-wrap items-center justify-end gap-1 font-sans text-[10.5px] tracking-wide uppercase">
+        {rail.map((pill, i) => (
+          <Fragment key={pill.key}>
+            {i > 0 ? (
+              <span className="text-foreground/30" aria-hidden>
+                →
+              </span>
+            ) : null}
+            <span
+              className={[
+                "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5",
+                RAIL_TONE_CLASS[pill.tone],
+              ].join(" ")}
+            >
+              {pill.icon !== null ? <pill.icon className="size-3" aria-hidden /> : null}
+              {pill.glyph !== null ? <span aria-hidden>{pill.glyph}</span> : null}
+              {pill.label}
+            </span>
+          </Fragment>
+        ))}
+      </div>
     </div>
   );
 }

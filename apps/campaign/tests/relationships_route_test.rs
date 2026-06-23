@@ -1,7 +1,8 @@
 //! Relationship REST surface: create / patch / delete / read over real HTTP, against
 //! the full `TestApp` stack (router + supervisor + RelationshipGraph + SQLite, with
 //! wiremock standins for platform membership and Hanko). Asserts the verb-oriented
-//! surface the widget calls, the atomic supersede-via-`supersedes`, and the GM gate.
+//! surface the widget calls, the two reversible axes (knowledge + factuality), the
+//! atomic supersede-via-`supersedes`, and the GM gate.
 
 mod common;
 
@@ -108,7 +109,7 @@ async fn get_relationships(app: &common::TestApp, cid: &CampaignId, page_id: &st
     resp.json::<Vec<Value>>().await.unwrap()
 }
 
-/// Create a Players-visible, Prior-origin relationship and return its id.
+/// Create a born-public, Prior-origin relationship and return its id.
 async fn seed_relationship(
     app: &common::TestApp,
     cid: &CampaignId,
@@ -125,8 +126,8 @@ async fn seed_relationship(
             "other_page_id": other,
             "predicate_forward": fwd,
             "predicate_reverse": rev,
-            "visibility": "players",
             "origin": { "kind": "prior" },
+            "knowledge": { "kind": "public" },
         }),
     )
     .await;
@@ -137,175 +138,35 @@ async fn seed_relationship(
         .to_string()
 }
 
-// ---------------------------------------------------------------------------
-// Create + read
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn create_orients_and_lists_from_both_pages() {
-    let app = common::spawn_app().await;
-    let cid = gm_campaign(&app).await;
-    let wren = create_entity(&app, &cid, "Wren Aldwater").await;
-    let town = create_entity(&app, &cid, "Grimhollow").await;
-
+/// Create a born-public relationship at a session origin, returning its id.
+async fn seed_rel_at_session(
+    app: &common::TestApp,
+    cid: &CampaignId,
+    subject: &str,
+    other: &str,
+    session_id: &str,
+) -> String {
     let resp = post_relationship(
-        &app,
-        &cid,
+        app,
+        cid,
         json!({
-            "subject_page_id": wren,
-            "other_page_id": town,
-            "predicate_forward": "is a resident of",
-            "predicate_reverse": "is the home of",
-            "visibility": "players",
-            "origin": { "kind": "prior" },
-        }),
-    )
-    .await;
-    assert_eq!(resp.status().as_u16(), 201);
-    let view: Value = resp.json().await.unwrap();
-    assert_eq!(view["predicate"], "is a resident of");
-    assert_eq!(view["other"]["name"], "Grimhollow");
-    assert_eq!(view["origin"]["kind"], "prior");
-    assert!(view["invalidation"].is_null());
-
-    let from_wren = get_relationships(&app, &cid, &wren).await;
-    assert_eq!(from_wren.len(), 1);
-    assert_eq!(from_wren[0]["predicate"], "is a resident of");
-
-    // The far page reads the same edge reversed.
-    let from_town = get_relationships(&app, &cid, &town).await;
-    assert_eq!(from_town[0]["predicate"], "is the home of");
-    assert_eq!(from_town[0]["other"]["name"], "Wren Aldwater");
-}
-
-#[tokio::test]
-async fn duplicate_live_fact_is_409() {
-    let app = common::spawn_app().await;
-    let cid = gm_campaign(&app).await;
-    let a = create_entity(&app, &cid, "A").await;
-    let b = create_entity(&app, &cid, "B").await;
-
-    seed_relationship(&app, &cid, &a, &b, "rules", "is ruled by").await;
-    let dup = post_relationship(
-        &app,
-        &cid,
-        json!({
-            "subject_page_id": a, "other_page_id": b,
-            "predicate_forward": "rules", "predicate_reverse": "is ruled by",
-            "visibility": "players", "origin": { "kind": "prior" },
-        }),
-    )
-    .await;
-    assert_eq!(dup.status().as_u16(), 409);
-}
-
-#[tokio::test]
-async fn self_edge_is_422() {
-    let app = common::spawn_app().await;
-    let cid = gm_campaign(&app).await;
-    let a = create_entity(&app, &cid, "A").await;
-
-    let resp = post_relationship(
-        &app,
-        &cid,
-        json!({
-            "subject_page_id": a, "other_page_id": a,
-            "predicate_forward": "knows", "predicate_reverse": "knows",
-            "visibility": "players", "origin": { "kind": "prior" },
-        }),
-    )
-    .await;
-    assert_eq!(resp.status().as_u16(), 422);
-}
-
-// ---------------------------------------------------------------------------
-// Supersede (atomic, via the `supersedes` pointer on create)
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn supersede_ends_old_and_creates_new_atomically() {
-    let app = common::spawn_app().await;
-    let cid = gm_campaign(&app).await;
-    let a = create_entity(&app, &cid, "A").await;
-    let b = create_entity(&app, &cid, "B").await;
-    let (s1, ord1) = create_session(&app, &cid, "Session One").await;
-    let (s2, ord2) = create_session(&app, &cid, "Session Two").await;
-
-    let original = post_relationship(
-        &app,
-        &cid,
-        json!({
-            "subject_page_id": a, "other_page_id": b,
+            "subject_page_id": subject, "other_page_id": other,
             "predicate_forward": "is captain of", "predicate_reverse": "is captained by",
-            "visibility": "players", "origin": { "kind": "session", "content": s1 },
+            "origin": { "kind": "session", "content": session_id },
+            "knowledge": { "kind": "public" },
         }),
     )
     .await;
-    let original_id = original.json::<Value>().await.unwrap()["id"]
+    assert_eq!(
+        resp.status().as_u16(),
+        201,
+        "seed session-origin relationship"
+    );
+    resp.json::<Value>().await.unwrap()["id"]
         .as_str()
         .unwrap()
-        .to_string();
-
-    let replacement = post_relationship(
-        &app,
-        &cid,
-        json!({
-            "subject_page_id": a, "other_page_id": b,
-            "predicate_forward": "is quartermaster of", "predicate_reverse": "is quartermastered by",
-            "visibility": "players", "origin": { "kind": "session", "content": s2 },
-            "supersedes": original_id,
-        }),
-    )
-    .await;
-    assert_eq!(replacement.status().as_u16(), 201);
-    let new_view: Value = replacement.json().await.unwrap();
-    assert_eq!(new_view["predicate"], "is quartermaster of");
-    assert!(
-        new_view["invalidation"].is_null(),
-        "the reply is the live new row"
-    );
-    assert_eq!(new_view["origin"]["content"]["ordinal"], ord2);
-
-    let rows = get_relationships(&app, &cid, &a).await;
-    assert_eq!(rows.len(), 2, "old (superseded) + new (live)");
-    let old = rows.iter().find(|r| r["id"] == original_id).unwrap();
-    assert_eq!(
-        old["predicate"], "is captain of",
-        "old predicate is immutable"
-    );
-    assert_eq!(old["invalidation"]["kind"], "superseded");
-    assert_eq!(
-        old["invalidation"]["content"]["ended"]["content"]["ordinal"],
-        ord2
-    );
-    let _ = ord1;
+        .to_string()
 }
-
-#[tokio::test]
-async fn supersede_with_prior_origin_is_422() {
-    let app = common::spawn_app().await;
-    let cid = gm_campaign(&app).await;
-    let a = create_entity(&app, &cid, "A").await;
-    let b = create_entity(&app, &cid, "B").await;
-    let original = seed_relationship(&app, &cid, &a, &b, "is captain of", "is captained by").await;
-
-    let resp = post_relationship(
-        &app,
-        &cid,
-        json!({
-            "subject_page_id": a, "other_page_id": b,
-            "predicate_forward": "is admiral of", "predicate_reverse": "is commanded by",
-            "visibility": "players", "origin": { "kind": "prior" },
-            "supersedes": original,
-        }),
-    )
-    .await;
-    assert_eq!(resp.status().as_u16(), 422, "cannot supersede as of prior");
-}
-
-// ---------------------------------------------------------------------------
-// Patch (visibility + invalidation) and delete
-// ---------------------------------------------------------------------------
 
 async fn patch_relationship(
     app: &common::TestApp,
@@ -327,28 +188,346 @@ async fn patch_relationship(
         .as_u16()
 }
 
+/// `{ "kind": "set", "content": <session> }` - a stamp patch.
+fn set(session_id: &str) -> Value {
+    json!({ "kind": "set", "content": session_id })
+}
+
+/// `{ "kind": "clear" }` - the reversible un-set.
+fn clear() -> Value {
+    json!({ "kind": "clear" })
+}
+
+// ---------------------------------------------------------------------------
+// Create + read
+// ---------------------------------------------------------------------------
+
 #[tokio::test]
-async fn patch_visibility() {
+async fn create_orients_and_lists_from_both_pages() {
+    let app = common::spawn_app().await;
+    let cid = gm_campaign(&app).await;
+    let wren = create_entity(&app, &cid, "Wren Aldwater").await;
+    let town = create_entity(&app, &cid, "Grimhollow").await;
+
+    let resp = post_relationship(
+        &app,
+        &cid,
+        json!({
+            "subject_page_id": wren,
+            "other_page_id": town,
+            "predicate_forward": "is a resident of",
+            "predicate_reverse": "is the home of",
+            "origin": { "kind": "prior" },
+            "knowledge": { "kind": "public" },
+        }),
+    )
+    .await;
+    assert_eq!(resp.status().as_u16(), 201);
+    let view: Value = resp.json().await.unwrap();
+    assert_eq!(view["predicate"], "is a resident of");
+    assert_eq!(view["other"]["name"], "Grimhollow");
+    assert_eq!(view["origin"]["kind"], "prior");
+    assert!(view["superseded"].is_null());
+    assert!(view["retcon"].is_null());
+    assert_eq!(view["knowledge"]["kind"], "public");
+
+    let from_wren = get_relationships(&app, &cid, &wren).await;
+    assert_eq!(from_wren.len(), 1);
+    assert_eq!(from_wren[0]["predicate"], "is a resident of");
+
+    // The far page reads the same edge reversed.
+    let from_town = get_relationships(&app, &cid, &town).await;
+    assert_eq!(from_town[0]["predicate"], "is the home of");
+    assert_eq!(from_town[0]["other"]["name"], "Wren Aldwater");
+}
+
+#[tokio::test]
+async fn create_born_secret_carries_hidden_knowledge() {
     let app = common::spawn_app().await;
     let cid = gm_campaign(&app).await;
     let a = create_entity(&app, &cid, "A").await;
     let b = create_entity(&app, &cid, "B").await;
-    let rel = seed_relationship(&app, &cid, &a, &b, "is suspicious of", "is distrusted by").await;
 
+    let resp = post_relationship(
+        &app,
+        &cid,
+        json!({
+            "subject_page_id": a, "other_page_id": b,
+            "predicate_forward": "owes a debt to", "predicate_reverse": "holds marker on",
+            "origin": { "kind": "prior" },
+            "knowledge": { "kind": "hidden" },
+        }),
+    )
+    .await;
+    assert_eq!(resp.status().as_u16(), 201);
     assert_eq!(
-        patch_relationship(&app, &cid, &rel, json!({ "visibility": "gm" })).await,
-        204
-    );
-    let rows = get_relationships(&app, &cid, &a).await;
-    assert_eq!(rows[0]["visibility"], "gm");
-    assert!(
-        rows[0]["invalidation"].is_null(),
-        "visibility change does not invalidate"
+        resp.json::<Value>().await.unwrap()["knowledge"]["kind"],
+        "hidden"
     );
 }
 
 #[tokio::test]
-async fn patch_end_marks_superseded() {
+async fn duplicate_live_fact_is_409() {
+    let app = common::spawn_app().await;
+    let cid = gm_campaign(&app).await;
+    let a = create_entity(&app, &cid, "A").await;
+    let b = create_entity(&app, &cid, "B").await;
+
+    seed_relationship(&app, &cid, &a, &b, "rules", "is ruled by").await;
+    let dup = post_relationship(
+        &app,
+        &cid,
+        json!({
+            "subject_page_id": a, "other_page_id": b,
+            "predicate_forward": "rules", "predicate_reverse": "is ruled by",
+            "origin": { "kind": "prior" }, "knowledge": { "kind": "public" },
+        }),
+    )
+    .await;
+    assert_eq!(dup.status().as_u16(), 409);
+}
+
+#[tokio::test]
+async fn self_edge_is_422() {
+    let app = common::spawn_app().await;
+    let cid = gm_campaign(&app).await;
+    let a = create_entity(&app, &cid, "A").await;
+
+    let resp = post_relationship(
+        &app,
+        &cid,
+        json!({
+            "subject_page_id": a, "other_page_id": a,
+            "predicate_forward": "knows", "predicate_reverse": "knows",
+            "origin": { "kind": "prior" }, "knowledge": { "kind": "public" },
+        }),
+    )
+    .await;
+    assert_eq!(resp.status().as_u16(), 422);
+}
+
+// ---------------------------------------------------------------------------
+// Supersede (atomic, via the `supersedes` pointer on create)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn supersede_ends_old_and_creates_new_atomically() {
+    let app = common::spawn_app().await;
+    let cid = gm_campaign(&app).await;
+    let a = create_entity(&app, &cid, "A").await;
+    let b = create_entity(&app, &cid, "B").await;
+    let (s1, _ord1) = create_session(&app, &cid, "Session One").await;
+    let (s2, ord2) = create_session(&app, &cid, "Session Two").await;
+
+    let original = post_relationship(
+        &app,
+        &cid,
+        json!({
+            "subject_page_id": a, "other_page_id": b,
+            "predicate_forward": "is captain of", "predicate_reverse": "is captained by",
+            "origin": { "kind": "session", "content": s1 }, "knowledge": { "kind": "public" },
+        }),
+    )
+    .await;
+    let original_id = original.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let replacement = post_relationship(
+        &app,
+        &cid,
+        json!({
+            "subject_page_id": a, "other_page_id": b,
+            "predicate_forward": "is quartermaster of", "predicate_reverse": "is quartermastered by",
+            "origin": { "kind": "session", "content": s2 }, "knowledge": { "kind": "public" },
+            "supersedes": original_id,
+        }),
+    )
+    .await;
+    assert_eq!(replacement.status().as_u16(), 201);
+    let new_view: Value = replacement.json().await.unwrap();
+    assert_eq!(new_view["predicate"], "is quartermaster of");
+    assert!(
+        new_view["superseded"].is_null(),
+        "the reply is the live new row"
+    );
+    assert_eq!(new_view["origin"]["content"]["ordinal"], ord2);
+
+    let rows = get_relationships(&app, &cid, &a).await;
+    assert_eq!(rows.len(), 2, "old (superseded) + new (live)");
+    let old = rows.iter().find(|r| r["id"] == original_id).unwrap();
+    assert_eq!(
+        old["predicate"], "is captain of",
+        "old predicate is immutable"
+    );
+    assert_eq!(old["superseded"]["ordinal"], ord2);
+}
+
+#[tokio::test]
+async fn supersede_with_prior_origin_is_422() {
+    let app = common::spawn_app().await;
+    let cid = gm_campaign(&app).await;
+    let a = create_entity(&app, &cid, "A").await;
+    let b = create_entity(&app, &cid, "B").await;
+    let original = seed_relationship(&app, &cid, &a, &b, "is captain of", "is captained by").await;
+
+    let resp = post_relationship(
+        &app,
+        &cid,
+        json!({
+            "subject_page_id": a, "other_page_id": b,
+            "predicate_forward": "is admiral of", "predicate_reverse": "is commanded by",
+            "origin": { "kind": "prior" }, "knowledge": { "kind": "public" },
+            "supersedes": original,
+        }),
+    )
+    .await;
+    assert_eq!(resp.status().as_u16(), 422, "cannot supersede as of prior");
+}
+
+// ---------------------------------------------------------------------------
+// Patch: the three reversible axes (reveal / superseded / retcon) + delete
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn patch_reveal_marks_knowledge() {
+    let app = common::spawn_app().await;
+    let cid = gm_campaign(&app).await;
+    let a = create_entity(&app, &cid, "A").await;
+    let b = create_entity(&app, &cid, "B").await;
+    let (s1, ord1) = create_session(&app, &cid, "Session One").await;
+
+    // A born-secret relationship, then revealed at S1.
+    let resp = post_relationship(
+        &app,
+        &cid,
+        json!({
+            "subject_page_id": a, "other_page_id": b,
+            "predicate_forward": "owes a debt to", "predicate_reverse": "holds marker on",
+            "origin": { "kind": "prior" }, "knowledge": { "kind": "hidden" },
+        }),
+    )
+    .await;
+    let rel = resp.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    assert_eq!(
+        patch_relationship(
+            &app,
+            &cid,
+            &rel,
+            json!({ "knowledge": { "kind": "revealed", "content": s1 } }),
+        )
+        .await,
+        204
+    );
+    let rows = get_relationships(&app, &cid, &a).await;
+    assert_eq!(rows[0]["knowledge"]["kind"], "revealed");
+    assert_eq!(rows[0]["knowledge"]["content"]["ordinal"], ord1);
+
+    // Conceal back to hidden: set the knowledge wholesale.
+    assert_eq!(
+        patch_relationship(
+            &app,
+            &cid,
+            &rel,
+            json!({ "knowledge": { "kind": "hidden" } })
+        )
+        .await,
+        204
+    );
+    assert_eq!(
+        get_relationships(&app, &cid, &a).await[0]["knowledge"]["kind"],
+        "hidden"
+    );
+}
+
+#[tokio::test]
+async fn patch_can_conceal_a_public_fact() {
+    // The reversal: the secret bit is mutable. A born-public fact PATCHed to hidden is
+    // concealed (no session needed - conceal is a pure knowledge flip).
+    let app = common::spawn_app().await;
+    let cid = gm_campaign(&app).await;
+    let a = create_entity(&app, &cid, "A").await;
+    let b = create_entity(&app, &cid, "B").await;
+    let rel = seed_relationship(&app, &cid, &a, &b, "is allied with", "is allied with").await;
+
+    assert_eq!(
+        get_relationships(&app, &cid, &a).await[0]["knowledge"]["kind"],
+        "public"
+    );
+    assert_eq!(
+        patch_relationship(
+            &app,
+            &cid,
+            &rel,
+            json!({ "knowledge": { "kind": "hidden" } })
+        )
+        .await,
+        204
+    );
+    assert_eq!(
+        get_relationships(&app, &cid, &a).await[0]["knowledge"]["kind"],
+        "hidden"
+    );
+}
+
+#[tokio::test]
+async fn patch_end_then_un_end() {
+    let app = common::spawn_app().await;
+    let cid = gm_campaign(&app).await;
+    let a = create_entity(&app, &cid, "A").await;
+    let b = create_entity(&app, &cid, "B").await;
+    let (s1, ord1) = create_session(&app, &cid, "Session One").await;
+    let rel = seed_relationship(&app, &cid, &a, &b, "is captain of", "is captained by").await;
+
+    assert_eq!(
+        patch_relationship(&app, &cid, &rel, json!({ "superseded": set(&s1) })).await,
+        204
+    );
+    let rows = get_relationships(&app, &cid, &a).await;
+    assert_eq!(rows[0]["superseded"]["ordinal"], ord1);
+
+    // Un-end (reversible): back to live.
+    assert_eq!(
+        patch_relationship(&app, &cid, &rel, json!({ "superseded": clear() })).await,
+        204
+    );
+    assert!(get_relationships(&app, &cid, &a).await[0]["superseded"].is_null());
+}
+
+#[tokio::test]
+async fn patch_retcon_then_un_retcon() {
+    let app = common::spawn_app().await;
+    let cid = gm_campaign(&app).await;
+    let a = create_entity(&app, &cid, "A").await;
+    let b = create_entity(&app, &cid, "B").await;
+    let (s1, ord1) = create_session(&app, &cid, "Session One").await;
+    let rel = seed_relationship(&app, &cid, &a, &b, "is brother to", "is brother to").await;
+
+    assert_eq!(
+        patch_relationship(&app, &cid, &rel, json!({ "retcon": set(&s1) })).await,
+        204
+    );
+    assert_eq!(
+        get_relationships(&app, &cid, &a).await[0]["retcon"]["ordinal"],
+        ord1
+    );
+
+    assert_eq!(
+        patch_relationship(&app, &cid, &rel, json!({ "retcon": clear() })).await,
+        204
+    );
+    assert!(get_relationships(&app, &cid, &a).await[0]["retcon"].is_null());
+}
+
+#[tokio::test]
+async fn patch_superseded_and_retcon_coexist_atomically() {
+    // A single PATCH sets both factuality axes: the fact ended S1 and was later
+    // retconned S1. Both stamps land together.
     let app = common::spawn_app().await;
     let cid = gm_campaign(&app).await;
     let a = create_entity(&app, &cid, "A").await;
@@ -361,60 +540,14 @@ async fn patch_end_marks_superseded() {
             &app,
             &cid,
             &rel,
-            json!({ "invalidation": { "reason": "superseded", "as_of": s1 } })
+            json!({ "superseded": set(&s1), "retcon": set(&s1) })
         )
         .await,
         204
     );
     let rows = get_relationships(&app, &cid, &a).await;
-    assert_eq!(rows[0]["invalidation"]["kind"], "superseded");
-    assert_eq!(
-        rows[0]["invalidation"]["content"]["ended"]["content"]["ordinal"],
-        ord1
-    );
-}
-
-#[tokio::test]
-async fn patch_end_without_as_of_is_422() {
-    let app = common::spawn_app().await;
-    let cid = gm_campaign(&app).await;
-    let a = create_entity(&app, &cid, "A").await;
-    let b = create_entity(&app, &cid, "B").await;
-    let rel = seed_relationship(&app, &cid, &a, &b, "is captain of", "is captained by").await;
-
-    assert_eq!(
-        patch_relationship(
-            &app,
-            &cid,
-            &rel,
-            json!({ "invalidation": { "reason": "superseded" } })
-        )
-        .await,
-        422,
-        "ending requires an as-of session"
-    );
-}
-
-#[tokio::test]
-async fn patch_retcon_marks_retconned() {
-    let app = common::spawn_app().await;
-    let cid = gm_campaign(&app).await;
-    let a = create_entity(&app, &cid, "A").await;
-    let b = create_entity(&app, &cid, "B").await;
-    let rel = seed_relationship(&app, &cid, &a, &b, "is brother to", "is brother to").await;
-
-    assert_eq!(
-        patch_relationship(
-            &app,
-            &cid,
-            &rel,
-            json!({ "invalidation": { "reason": "retconned" } })
-        )
-        .await,
-        204
-    );
-    let rows = get_relationships(&app, &cid, &a).await;
-    assert_eq!(rows[0]["invalidation"]["kind"], "retconned");
+    assert_eq!(rows[0]["superseded"]["ordinal"], ord1);
+    assert_eq!(rows[0]["retcon"]["ordinal"], ord1);
 }
 
 #[tokio::test]
@@ -438,7 +571,7 @@ async fn patch_unknown_relationship_is_404() {
             &app,
             &cid,
             &RelationshipId::generate().to_string(),
-            json!({ "visibility": "gm" })
+            json!({ "superseded": clear() })
         )
         .await,
         404
@@ -469,85 +602,8 @@ async fn delete_removes_relationship() {
 }
 
 // ---------------------------------------------------------------------------
-// Invalidation guards (findings 1-3)
+// Ordering + reference guards
 // ---------------------------------------------------------------------------
-
-/// Create a relationship with a session origin, returning its id.
-async fn seed_rel_at_session(
-    app: &common::TestApp,
-    cid: &CampaignId,
-    subject: &str,
-    other: &str,
-    session_id: &str,
-) -> String {
-    let resp = post_relationship(
-        app,
-        cid,
-        json!({
-            "subject_page_id": subject, "other_page_id": other,
-            "predicate_forward": "is captain of", "predicate_reverse": "is captained by",
-            "visibility": "players", "origin": { "kind": "session", "content": session_id },
-        }),
-    )
-    .await;
-    assert_eq!(
-        resp.status().as_u16(),
-        201,
-        "seed session-origin relationship"
-    );
-    resp.json::<Value>().await.unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_string()
-}
-
-#[tokio::test]
-async fn patch_end_on_ended_is_409() {
-    let app = common::spawn_app().await;
-    let cid = gm_campaign(&app).await;
-    let a = create_entity(&app, &cid, "A").await;
-    let b = create_entity(&app, &cid, "B").await;
-    let (s1, _) = create_session(&app, &cid, "Session One").await;
-    let rel = seed_relationship(&app, &cid, &a, &b, "is captain of", "is captained by").await;
-
-    let end = json!({ "invalidation": { "reason": "superseded", "as_of": s1 } });
-    assert_eq!(patch_relationship(&app, &cid, &rel, end.clone()).await, 204);
-    // The one-way door: a second End cannot rewrite an already-ended row.
-    assert_eq!(patch_relationship(&app, &cid, &rel, end).await, 409);
-}
-
-#[tokio::test]
-async fn patch_retcon_on_superseded_is_409() {
-    let app = common::spawn_app().await;
-    let cid = gm_campaign(&app).await;
-    let a = create_entity(&app, &cid, "A").await;
-    let b = create_entity(&app, &cid, "B").await;
-    let (s1, _) = create_session(&app, &cid, "Session One").await;
-    let rel = seed_relationship(&app, &cid, &a, &b, "is captain of", "is captained by").await;
-
-    assert_eq!(
-        patch_relationship(
-            &app,
-            &cid,
-            &rel,
-            json!({ "invalidation": { "reason": "superseded", "as_of": s1 } })
-        )
-        .await,
-        204
-    );
-    // A superseded row cannot be flipped to retconned (that would change its snapshot
-    // visibility); reject it rather than silently reclassify.
-    assert_eq!(
-        patch_relationship(
-            &app,
-            &cid,
-            &rel,
-            json!({ "invalidation": { "reason": "retconned" } })
-        )
-        .await,
-        409
-    );
-}
 
 #[tokio::test]
 async fn create_with_unknown_origin_session_is_404() {
@@ -562,8 +618,8 @@ async fn create_with_unknown_origin_session_is_404() {
         json!({
             "subject_page_id": a, "other_page_id": b,
             "predicate_forward": "is captain of", "predicate_reverse": "is captained by",
-            "visibility": "players",
             "origin": { "kind": "session", "content": SessionId::generate().to_string() },
+            "knowledge": { "kind": "public" },
         }),
     )
     .await;
@@ -583,7 +639,7 @@ async fn patch_end_with_unknown_as_of_is_404() {
             &app,
             &cid,
             &rel,
-            json!({ "invalidation": { "reason": "superseded", "as_of": SessionId::generate().to_string() } })
+            json!({ "superseded": set(&SessionId::generate().to_string()) })
         )
         .await,
         404,
@@ -599,17 +655,12 @@ async fn end_before_origin_is_422() {
     let b = create_entity(&app, &cid, "B").await;
     let (s1, _) = create_session(&app, &cid, "Session One").await;
     let (s2, _) = create_session(&app, &cid, "Session Two").await;
-    // Born at S2, then asked to end as of the earlier S1: a fact cannot end before it began.
+    // Born at S2, then asked to end as of the earlier S1: a fact cannot end before it
+    // began.
     let rel = seed_rel_at_session(&app, &cid, &a, &b, &s2).await;
 
     assert_eq!(
-        patch_relationship(
-            &app,
-            &cid,
-            &rel,
-            json!({ "invalidation": { "reason": "superseded", "as_of": s1 } })
-        )
-        .await,
+        patch_relationship(&app, &cid, &rel, json!({ "superseded": set(&s1) })).await,
         422
     );
 }
@@ -631,7 +682,7 @@ async fn supersede_before_origin_is_422() {
         json!({
             "subject_page_id": a, "other_page_id": b,
             "predicate_forward": "is admiral of", "predicate_reverse": "is commanded by",
-            "visibility": "players", "origin": { "kind": "session", "content": s1 },
+            "origin": { "kind": "session", "content": s1 }, "knowledge": { "kind": "public" },
             "supersedes": original,
         }),
     )

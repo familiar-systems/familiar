@@ -1,8 +1,9 @@
-//! `RelationshipGraph` actor integration: the five ops + reads, driven by `ask`
-//! against a real in-memory SQLite + `DatabaseWriteActor`. Asserts the actor
-//! validates + canonicalizes, composes ops from single-statement writer primitives
-//! (supersede = create-then-invalidate), orients edges per page, and rebuilds its
-//! petgraph from the table on restart.
+//! `RelationshipGraph` actor integration: create / patch (the reversible two-axis
+//! ops) / delete + reads, driven by `ask` against a real in-memory SQLite +
+//! `DatabaseWriteActor`. Asserts the actor validates + canonicalizes, composes ops
+//! from single-statement writer primitives (supersede = create-then-end), orients
+//! both axes per page, enforces the ordering + born-secret invariants, and rebuilds
+//! its petgraph from the table on restart.
 
 use chrono::Utc;
 use familiar_systems_app_shared::id::CampaignId;
@@ -10,20 +11,19 @@ use familiar_systems_campaign::actors::database_writer::{
     DatabaseWriteActor, DatabaseWriteActorArgs,
 };
 use familiar_systems_campaign::actors::relationship_graph::{
-    ApplyOp, ApplyOpError, CreateRelationship, CreateRelationshipError, KnownPredicatePairs,
-    RelationshipGraph, RelationshipGraphArgs, RelationshipOp, RelationshipsForPage,
+    CreateRelationship, CreateRelationshipError, DeleteRelationship, KnownPredicatePairs,
+    PatchRelationship, PatchRelationshipError, RelationshipGraph, RelationshipGraphArgs,
+    RelationshipsForPage, StampChange,
 };
 use familiar_systems_campaign::db;
-use familiar_systems_campaign::domain::relationship::{Ending, Origin};
+use familiar_systems_campaign::domain::relationship::{Knowledge, Origin};
 use familiar_systems_campaign::entities::columns::{
     PageIdCol, PageKindCol, RelationshipIdCol, SessionIdCol, StatusCol,
 };
 use familiar_systems_campaign::entities::{pages, relationships, sessions};
 use familiar_systems_campaign::migrations::Migrator;
-use familiar_systems_campaign_shared::id::{PageId, SessionId};
-use familiar_systems_campaign_shared::relationship::{
-    InvalidationReason, ViewInvalidation, ViewSessionPoint, Visibility,
-};
+use familiar_systems_campaign_shared::id::{PageId, RelationshipId, SessionId};
+use familiar_systems_campaign_shared::relationship::{KnowledgeView, ViewSessionPoint};
 use kameo::actor::{ActorRef, Spawn};
 use kameo::error::SendError;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
@@ -85,17 +85,42 @@ async fn seed_session(conn: &DatabaseConnection, ordinal: i64) -> SessionId {
     id
 }
 
-/// A live create with sensible defaults (Players-visible, Prior origin, no ending).
+/// A live, born-public, `Prior`-origin create.
 fn create(subject: &PageId, other: &PageId, fwd: &str, rev: &str) -> CreateRelationship {
     CreateRelationship {
         subject: subject.clone(),
         other: other.clone(),
         predicate_forward: fwd.into(),
         predicate_reverse: rev.into(),
-        visibility: Visibility::Players,
         origin: Origin::Prior,
-        ending: None,
+        knowledge: Knowledge::Public,
         supersedes: None,
+    }
+}
+
+/// A patch that touches only one axis (the other two unchanged).
+fn patch_superseded(rel_id: &RelationshipId, change: StampChange) -> PatchRelationship {
+    PatchRelationship {
+        rel_id: rel_id.clone(),
+        knowledge: None,
+        superseded: Some(change),
+        retcon: None,
+    }
+}
+fn patch_knowledge(rel_id: &RelationshipId, knowledge: Knowledge) -> PatchRelationship {
+    PatchRelationship {
+        rel_id: rel_id.clone(),
+        knowledge: Some(knowledge),
+        superseded: None,
+        retcon: None,
+    }
+}
+fn patch_retcon(rel_id: &RelationshipId, change: StampChange) -> PatchRelationship {
+    PatchRelationship {
+        rel_id: rel_id.clone(),
+        knowledge: None,
+        superseded: None,
+        retcon: Some(change),
     }
 }
 
@@ -104,17 +129,6 @@ fn session_origin_ordinal(origin: &ViewSessionPoint) -> i64 {
     match origin {
         ViewSessionPoint::Session(o) => o.ordinal,
         ViewSessionPoint::Prior => panic!("expected Session origin, got Prior"),
-    }
-}
-
-/// The ordinal a `Superseded` invalidation ended at (panics on `Retconned` or a
-/// `Prior` end - callers expect a session-dated supersession).
-fn ended_session_ordinal(inv: &ViewInvalidation) -> i64 {
-    match inv {
-        ViewInvalidation::Superseded {
-            ended: ViewSessionPoint::Session(o),
-        } => o.ordinal,
-        other => panic!("expected Superseded-at-session, got {other:?}"),
     }
 }
 
@@ -134,7 +148,9 @@ async fn create_persists_and_orients_from_both_endpoints() {
     assert_eq!(view.predicate, "is a resident of");
     assert_eq!(view.predicate_reverse, "is the home of");
     assert!(matches!(view.origin, ViewSessionPoint::Prior));
-    assert!(view.invalidation.is_none());
+    assert!(view.superseded.is_none());
+    assert!(view.retcon.is_none());
+    assert!(matches!(view.knowledge, KnowledgeView::Public));
 
     let from_john = graph
         .ask(RelationshipsForPage {
@@ -266,7 +282,111 @@ async fn duplicate_live_fact_is_rejected() {
 }
 
 #[tokio::test]
-async fn end_invalidates_but_keeps_it_in_the_curation_view() {
+async fn hidden_then_reveal_then_conceal() {
+    // The knowledge axis lifecycle on a secret fact: Hidden -> Revealed(s) -> Hidden,
+    // all reversible. Each PATCH sets the knowledge wholesale.
+    let conn = setup().await;
+    let a = seed_page(&conn, "A").await;
+    let b = seed_page(&conn, "B").await;
+    let s11 = seed_session(&conn, 11).await;
+    let (_writer, graph) = spawn_graph(&conn).await;
+
+    let view = graph
+        .ask(CreateRelationship {
+            subject: a.clone(),
+            other: b.clone(),
+            predicate_forward: "owes a debt to".into(),
+            predicate_reverse: "holds marker on".into(),
+            origin: Origin::Prior,
+            knowledge: Knowledge::Hidden,
+            supersedes: None,
+        })
+        .await
+        .expect("create secret");
+    assert!(matches!(view.knowledge, KnowledgeView::Hidden));
+
+    // Reveal at S11.
+    graph
+        .ask(patch_knowledge(&view.id, Knowledge::Revealed(s11)))
+        .await
+        .expect("reveal");
+    let revealed = graph
+        .ask(RelationshipsForPage { page_id: a.clone() })
+        .await
+        .unwrap();
+    match &revealed[0].knowledge {
+        KnowledgeView::Revealed(o) => assert_eq!(o.ordinal, 11),
+        other => panic!("expected Revealed, got {other:?}"),
+    }
+
+    // Conceal (un-reveal): back to Hidden.
+    graph
+        .ask(patch_knowledge(&view.id, Knowledge::Hidden))
+        .await
+        .expect("conceal");
+    let concealed = graph
+        .ask(RelationshipsForPage { page_id: a.clone() })
+        .await
+        .unwrap();
+    assert!(matches!(concealed[0].knowledge, KnowledgeView::Hidden));
+}
+
+#[tokio::test]
+async fn public_fact_is_freely_mutable_through_every_knowledge_state() {
+    // The reversal proof: a born-public fact can be concealed and reclassified. The
+    // secret bit is no longer immutable - PATCH knowledge moves it Public -> Hidden ->
+    // Revealed(s) -> Public, and the view reflects each at-rest state.
+    let conn = setup().await;
+    let a = seed_page(&conn, "A").await;
+    let b = seed_page(&conn, "B").await;
+    let s5 = seed_session(&conn, 5).await;
+    let (_writer, graph) = spawn_graph(&conn).await;
+
+    let view = graph
+        .ask(create(&a, &b, "is allied with", "is allied with"))
+        .await
+        .expect("create public");
+    assert!(matches!(view.knowledge, KnowledgeView::Public));
+
+    // Conceal: Public -> Hidden (the transition the old immutable model forbade).
+    graph
+        .ask(patch_knowledge(&view.id, Knowledge::Hidden))
+        .await
+        .expect("conceal a public fact");
+    let after_conceal = graph
+        .ask(RelationshipsForPage { page_id: a.clone() })
+        .await
+        .unwrap();
+    assert!(matches!(after_conceal[0].knowledge, KnowledgeView::Hidden));
+
+    // Reclassify as revealed at S5 (Prior origin imposes no lower bound).
+    graph
+        .ask(patch_knowledge(&view.id, Knowledge::Revealed(s5)))
+        .await
+        .expect("reveal");
+    let after_reveal = graph
+        .ask(RelationshipsForPage { page_id: a.clone() })
+        .await
+        .unwrap();
+    match &after_reveal[0].knowledge {
+        KnowledgeView::Revealed(o) => assert_eq!(o.ordinal, 5),
+        other => panic!("expected Revealed, got {other:?}"),
+    }
+
+    // Back to Public: drops the reveal and the secret bit together.
+    graph
+        .ask(patch_knowledge(&view.id, Knowledge::Public))
+        .await
+        .expect("re-publicize");
+    let after_public = graph
+        .ask(RelationshipsForPage { page_id: a.clone() })
+        .await
+        .unwrap();
+    assert!(matches!(after_public[0].knowledge, KnowledgeView::Public));
+}
+
+#[tokio::test]
+async fn end_then_un_end_restores_live() {
     let conn = setup().await;
     let a = seed_page(&conn, "A").await;
     let b = seed_page(&conn, "B").await;
@@ -277,32 +397,86 @@ async fn end_invalidates_but_keeps_it_in_the_curation_view() {
         .ask(create(&a, &b, "is captain of", "is captained by"))
         .await
         .expect("create");
+
+    // End at S12: still shown in the GM curation view, now superseded.
     graph
-        .ask(ApplyOp {
-            rel_id: view.id.clone(),
-            op: RelationshipOp::End { as_of: s12 },
-        })
+        .ask(patch_superseded(&view.id, StampChange::Set(s12)))
         .await
         .expect("end");
-
-    let from_a = graph
+    let ended = graph
         .ask(RelationshipsForPage { page_id: a.clone() })
         .await
         .unwrap();
-    assert_eq!(from_a.len(), 1, "still shown in the GM curation view");
-    let inv = from_a[0].invalidation.as_ref().expect("invalidated");
-    assert_eq!(
-        ended_session_ordinal(inv),
-        12,
-        "ended at S12 (reason superseded)"
-    );
+    assert_eq!(ended.len(), 1, "still in the curation view");
+    assert_eq!(ended[0].superseded.expect("superseded").ordinal, 12);
 
-    let row = relationships::Entity::find_by_id(RelationshipIdCol::from(view.id))
+    let row = relationships::Entity::find_by_id(RelationshipIdCol::from(view.id.clone()))
         .one(&conn)
         .await
         .unwrap()
         .unwrap();
-    assert!(row.invalidation_reason.is_some(), "DB row is invalidated");
+    assert!(row.superseded_session_id.is_some(), "DB row is superseded");
+
+    // Un-end (clear superseded): the reversible correction, back to live.
+    graph
+        .ask(patch_superseded(&view.id, StampChange::Clear))
+        .await
+        .expect("un-end");
+    let live = graph
+        .ask(RelationshipsForPage { page_id: a.clone() })
+        .await
+        .unwrap();
+    assert!(live[0].superseded.is_none(), "un-ended: live again");
+}
+
+/// The three-legged reversibility proof: un-ending a row whose canonical fact is
+/// already live again re-adds it to the live set and trips the partial unique index
+/// as `DuplicateLiveFact` (the guard relaxation + the clearing-write error mapping +
+/// the index, working together). Set up by hand (a same-pair supersede can't be
+/// minted through the create path - create-first would collide on the insert).
+#[tokio::test]
+async fn un_end_with_a_live_successor_is_rejected() {
+    let conn = setup().await;
+    let a = seed_page(&conn, "A").await;
+    let b = seed_page(&conn, "B").await;
+    let s12 = seed_session(&conn, 12).await;
+    let (_writer, graph) = spawn_graph(&conn).await;
+
+    let r1 = graph
+        .ask(create(&a, &b, "rules", "is ruled by"))
+        .await
+        .expect("R1");
+    // End R1, freeing the canonical key.
+    graph
+        .ask(patch_superseded(&r1.id, StampChange::Set(s12)))
+        .await
+        .expect("end R1");
+    // A fresh live row reclaims the same canonical key.
+    graph
+        .ask(create(&a, &b, "rules", "is ruled by"))
+        .await
+        .expect("R2 (same pair) coexists with ended R1");
+
+    // Un-ending R1 would put two live rows on one canonical fact: rejected.
+    let res = graph
+        .ask(patch_superseded(&r1.id, StampChange::Clear))
+        .await;
+    assert!(matches!(
+        res,
+        Err(SendError::HandlerError(
+            PatchRelationshipError::DuplicateLiveFact
+        ))
+    ));
+    // The rejected patch rolled back: R1 stays ended.
+    let r1_row = relationships::Entity::find_by_id(RelationshipIdCol::from(r1.id))
+        .one(&conn)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        r1_row.superseded_session_id.is_some(),
+        "R1 remains superseded after the rejected un-end"
+    );
 }
 
 #[tokio::test]
@@ -320,9 +494,8 @@ async fn supersede_ends_old_and_creates_new() {
             other: b.clone(),
             predicate_forward: "is captain of".into(),
             predicate_reverse: "is captained by".into(),
-            visibility: Visibility::Players,
             origin: Origin::Session(s6),
-            ending: None,
+            knowledge: Knowledge::Public,
             supersedes: None,
         })
         .await
@@ -336,16 +509,15 @@ async fn supersede_ends_old_and_creates_new() {
             other: b.clone(),
             predicate_forward: "is quartermaster of".into(),
             predicate_reverse: "is quartermastered by".into(),
-            visibility: Visibility::Players,
             origin: Origin::Session(s12),
-            ending: None,
+            knowledge: Knowledge::Public,
             supersedes: Some(original.id.clone()),
         })
         .await
         .expect("supersede");
     assert_eq!(replacement.predicate, "is quartermaster of");
     assert!(
-        replacement.invalidation.is_none(),
+        replacement.superseded.is_none(),
         "the reply is the live new row"
     );
     assert_eq!(session_origin_ordinal(&replacement.origin), 12);
@@ -354,24 +526,21 @@ async fn supersede_ends_old_and_creates_new() {
         .ask(RelationshipsForPage { page_id: a.clone() })
         .await
         .unwrap();
-    assert_eq!(from_a.len(), 2, "old (invalidated) + new (live)");
+    assert_eq!(from_a.len(), 2, "old (superseded) + new (live)");
 
     let old = from_a
         .iter()
         .find(|v| v.id == original.id)
         .expect("old present");
     assert_eq!(old.predicate, "is captain of", "old predicate is immutable");
-    assert_eq!(
-        ended_session_ordinal(old.invalidation.as_ref().expect("old invalidated")),
-        12
-    );
+    assert_eq!(old.superseded.expect("old ended").ordinal, 12);
 
     let new = from_a
         .iter()
         .find(|v| v.id != original.id)
         .expect("new present");
     assert_eq!(new.predicate, "is quartermaster of");
-    assert!(new.invalidation.is_none(), "new row is live");
+    assert!(new.superseded.is_none(), "new row is live");
     assert_eq!(
         session_origin_ordinal(&new.origin),
         12,
@@ -379,7 +548,7 @@ async fn supersede_ends_old_and_creates_new() {
     );
 }
 
-/// Supersede is an atomic Create+Invalidate batch: the "wait, they're already
+/// Supersede is an atomic Create+SetSuperseded batch: the "wait, they're already
 /// divorced" case. When the new fact already exists live, create-first trips the
 /// partial unique index on the insert and rolls the whole batch back - so the old
 /// stays live, no orphan row, and the GM can fall back to a plain End.
@@ -408,9 +577,8 @@ async fn supersede_rejecting_a_duplicate_new_fact_leaves_the_old_live() {
             other: b.clone(),
             predicate_forward: "rules".into(),
             predicate_reverse: "is ruled by".into(),
-            visibility: Visibility::Players,
             origin: Origin::Session(s12),
-            ending: None,
+            knowledge: Knowledge::Public,
             supersedes: Some(r2.id.clone()),
         })
         .await;
@@ -431,98 +599,45 @@ async fn supersede_rejecting_a_duplicate_new_fact_leaves_the_old_live() {
         .unwrap()
         .unwrap();
     assert!(
-        r2_row.invalidation_reason.is_none(),
-        "R2 was never invalidated; it stays live"
-    );
-}
-
-/// A relationship can be born already finalized - a retrofit/correction ("they were
-/// married S3, divorced S6", entered now). It persists with both an origin and an
-/// invalidation, and sits outside the live set (so a fresh live row with the same
-/// pair coexists).
-#[tokio::test]
-async fn create_can_birth_a_finalized_relationship() {
-    let conn = setup().await;
-    let a = seed_page(&conn, "A").await;
-    let b = seed_page(&conn, "B").await;
-    let s3 = seed_session(&conn, 3).await;
-    let s6 = seed_session(&conn, 6).await;
-    let (_writer, graph) = spawn_graph(&conn).await;
-
-    let view = graph
-        .ask(CreateRelationship {
-            subject: a.clone(),
-            other: b.clone(),
-            predicate_forward: "is married to".into(),
-            predicate_reverse: "is married to".into(),
-            visibility: Visibility::Players,
-            origin: Origin::Session(s3),
-            ending: Some(Ending {
-                reason: InvalidationReason::Superseded,
-                by: Origin::Session(s6),
-            }),
-            supersedes: None,
-        })
-        .await
-        .expect("create finalized");
-
-    // Born with both an origin (S3) and an invalidation (ended S6).
-    assert_eq!(session_origin_ordinal(&view.origin), 3);
-    let inv = view.invalidation.as_ref().expect("born finalized");
-    assert_eq!(
-        ended_session_ordinal(inv),
-        6,
-        "born ended at S6 (superseded)"
-    );
-
-    // It's outside the live set, so a fresh live row with the same pair coexists.
-    graph
-        .ask(create(&a, &b, "is married to", "is married to"))
-        .await
-        .expect("a live row coexists with the finalized one");
-    assert_eq!(
-        relationships::Entity::find()
-            .all(&conn)
-            .await
-            .unwrap()
-            .len(),
-        2
+        r2_row.superseded_session_id.is_none(),
+        "R2 was never ended; it stays live"
     );
 }
 
 #[tokio::test]
-async fn retcon_marks_reason_retconned() {
+async fn retcon_then_un_retcon() {
     let conn = setup().await;
     let a = seed_page(&conn, "A").await;
     let b = seed_page(&conn, "B").await;
+    let s2 = seed_session(&conn, 2).await;
     let (_writer, graph) = spawn_graph(&conn).await;
 
     let v = graph
         .ask(create(&a, &b, "is brother to", "is brother to"))
         .await
         .expect("create");
+
+    // Retcon as of S2: struck from snapshots, still in the curation view.
     graph
-        .ask(ApplyOp {
-            rel_id: v.id.clone(),
-            op: RelationshipOp::Retcon,
-        })
+        .ask(patch_retcon(&v.id, StampChange::Set(s2)))
         .await
         .expect("retcon");
-
-    let from_a = graph
+    let retconned = graph
         .ask(RelationshipsForPage { page_id: a.clone() })
         .await
         .unwrap();
-    assert!(
-        matches!(
-            from_a[0]
-                .invalidation
-                .as_ref()
-                .expect("retconned is invalidated"),
-            ViewInvalidation::Retconned
-        ),
-        "retcon surfaces as the Retconned variant (no ordinal)",
-    );
+    assert_eq!(retconned[0].retcon.expect("retconned").ordinal, 2);
+
+    // Un-retcon (clear): restored.
+    graph
+        .ask(patch_retcon(&v.id, StampChange::Clear))
+        .await
+        .expect("un-retcon");
+    let restored = graph
+        .ask(RelationshipsForPage { page_id: a.clone() })
+        .await
+        .unwrap();
+    assert!(restored[0].retcon.is_none(), "un-retconned");
 }
 
 #[tokio::test]
@@ -537,10 +652,7 @@ async fn delete_removes_from_store_and_db() {
         .await
         .expect("create");
     graph
-        .ask(ApplyOp {
-            rel_id: v.id,
-            op: RelationshipOp::Delete,
-        })
+        .ask(DeleteRelationship { rel_id: v.id })
         .await
         .expect("delete");
 
@@ -564,35 +676,38 @@ async fn delete_removes_from_store_and_db() {
 }
 
 #[tokio::test]
-async fn set_visibility_updates_without_invalidating() {
+async fn end_before_origin_is_rejected() {
     let conn = setup().await;
     let a = seed_page(&conn, "A").await;
     let b = seed_page(&conn, "B").await;
+    let s6 = seed_session(&conn, 6).await;
+    let s3 = seed_session(&conn, 3).await;
     let (_writer, graph) = spawn_graph(&conn).await;
 
-    let v = graph
-        .ask(create(&a, &b, "is suspicious of", "is distrusted by"))
-        .await
-        .expect("create");
-    graph
-        .ask(ApplyOp {
-            rel_id: v.id,
-            op: RelationshipOp::SetVisibility {
-                visibility: Visibility::Gm,
-            },
+    // Born at S6, then asked to end as of the earlier S3: a fact cannot end before it
+    // began.
+    let view = graph
+        .ask(CreateRelationship {
+            subject: a.clone(),
+            other: b.clone(),
+            predicate_forward: "is captain of".into(),
+            predicate_reverse: "is captained by".into(),
+            origin: Origin::Session(s6),
+            knowledge: Knowledge::Public,
+            supersedes: None,
         })
         .await
-        .expect("set visibility");
+        .expect("create");
 
-    let from_a = graph
-        .ask(RelationshipsForPage { page_id: a.clone() })
-        .await
-        .unwrap();
-    assert_eq!(from_a[0].visibility, Visibility::Gm);
-    assert!(
-        from_a[0].invalidation.is_none(),
-        "a visibility change does not invalidate"
-    );
+    let res = graph
+        .ask(patch_superseded(&view.id, StampChange::Set(s3)))
+        .await;
+    assert!(matches!(
+        res,
+        Err(SendError::HandlerError(
+            PatchRelationshipError::EventBeforeOrigin { .. }
+        ))
+    ));
 }
 
 #[tokio::test]
@@ -651,73 +766,4 @@ async fn restart_reloads_graph_from_table() {
         .unwrap();
     assert_eq!(from_a.len(), 1, "reloaded from the table");
     assert_eq!(from_a[0].predicate, "keeps the key to");
-}
-
-#[tokio::test]
-async fn end_on_an_ended_row_is_rejected() {
-    let conn = setup().await;
-    let a = seed_page(&conn, "A").await;
-    let b = seed_page(&conn, "B").await;
-    let s12 = seed_session(&conn, 12).await;
-    let (_writer, graph) = spawn_graph(&conn).await;
-
-    let view = graph
-        .ask(create(&a, &b, "is captain of", "is captained by"))
-        .await
-        .expect("create");
-    graph
-        .ask(ApplyOp {
-            rel_id: view.id.clone(),
-            op: RelationshipOp::End { as_of: s12.clone() },
-        })
-        .await
-        .expect("end");
-
-    // The one-way door: a second End on the same row is rejected, not silently reapplied.
-    let res = graph
-        .ask(ApplyOp {
-            rel_id: view.id,
-            op: RelationshipOp::End { as_of: s12 },
-        })
-        .await;
-    assert!(matches!(
-        res,
-        Err(SendError::HandlerError(ApplyOpError::AlreadyInvalidated))
-    ));
-}
-
-#[tokio::test]
-async fn end_before_origin_is_rejected() {
-    let conn = setup().await;
-    let a = seed_page(&conn, "A").await;
-    let b = seed_page(&conn, "B").await;
-    let s6 = seed_session(&conn, 6).await;
-    let s3 = seed_session(&conn, 3).await;
-    let (_writer, graph) = spawn_graph(&conn).await;
-
-    // Born at S6, then asked to end as of the earlier S3: a fact cannot end before it began.
-    let view = graph
-        .ask(CreateRelationship {
-            subject: a.clone(),
-            other: b.clone(),
-            predicate_forward: "is captain of".into(),
-            predicate_reverse: "is captained by".into(),
-            visibility: Visibility::Players,
-            origin: Origin::Session(s6),
-            ending: None,
-            supersedes: None,
-        })
-        .await
-        .expect("create");
-
-    let res = graph
-        .ask(ApplyOp {
-            rel_id: view.id,
-            op: RelationshipOp::End { as_of: s3 },
-        })
-        .await;
-    assert!(matches!(
-        res,
-        Err(SendError::HandlerError(ApplyOpError::EndBeforeOrigin))
-    ));
 }

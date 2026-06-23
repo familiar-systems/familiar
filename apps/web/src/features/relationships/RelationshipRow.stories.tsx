@@ -1,9 +1,9 @@
-// Component tests for one relationship row across its five visual states, plus the
-// onSelect wiring (a real click that no pure test reaches). The row takes a plain
-// RelationshipView + callbacks (spied with fn()), so it renders from in-memory
-// data with no socket. Branded-id fixtures are cast like the TreeID fixtures in
-// TocTree.stories.tsx (no runtime guard exists for these brands); PageIds go
-// through pageIdSchema, which does.
+// Component tests for one relationship row across its rail states, plus the onSelect
+// wiring (a real click that no pure test reaches). The row takes a plain
+// RelationshipView + callbacks (spied with fn()), so it renders from in-memory data
+// with no socket. Branded-id fixtures are cast like the TreeID fixtures in
+// TocTree.stories.tsx (no runtime guard exists for these brands); PageIds go through
+// pageIdSchema, which does.
 
 import type { CampaignId } from "@familiar-systems/types-app";
 import {
@@ -24,7 +24,8 @@ const GRIMHOLLOW = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FAV");
 const WATCHTOWER = pageIdSchema.parse("01BX5ZZKBKACTAV9WEVGEMMVRY");
 const GUILD = pageIdSchema.parse("01CSGZ8M4Q9N7P2K3J5H6T8WXR");
 const CROWN = pageIdSchema.parse("01D78XYFJ1E2K3M4N5P6Q7R8S9");
-const TORMUND = pageIdSchema.parse("01EM8K2P9XQ4R7T3V6W1Y5Z0AB");
+const BURNING = pageIdSchema.parse("01EM8K2P9XQ4R7T3V6W1Y5Z0AB");
+const TORMUND = pageIdSchema.parse("01F8MK6X2N4P7R9T3V6W1Y5Z0B");
 
 function view(over: Partial<RelationshipView>): RelationshipView {
   return {
@@ -32,9 +33,10 @@ function view(over: Partial<RelationshipView>): RelationshipView {
     other: { id: WATCHTOWER, name: "North Watchtower" },
     predicate: "keeps the key to",
     predicate_reverse: "is kept by",
-    visibility: "players",
     origin: { kind: "session", content: { ordinal: 3 } },
-    invalidation: null,
+    superseded: null,
+    retcon: null,
+    knowledge: { kind: "public" },
     ...over,
   };
 }
@@ -59,16 +61,16 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// A live, player-visible fact: the predicate, the linked entity, a plain origin.
+// A live, public fact: the predicate, the linked entity, a lone session pill.
 export const Live: Story = {
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     await expect(canvas.getByText("keeps the key to")).toBeInTheDocument();
     await expect(canvas.getByText("North Watchtower")).toBeInTheDocument();
-    await expect(canvas.getByText("Session 3")).toBeInTheDocument();
+    await expect(canvasElement.textContent).toContain("S3");
   },
 };
 
-// A fact true before the campaign began: the origin reads "Prior".
+// A fact true before the campaign began: the origin pill reads "Prior".
 export const Prior: Story = {
   args: {
     view: view({
@@ -77,38 +79,36 @@ export const Prior: Story = {
       origin: { kind: "prior" },
     }),
   },
-  play: async ({ canvas }) => {
-    await expect(canvas.getByText("Prior")).toBeInTheDocument();
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.textContent).toContain("Prior");
   },
 };
 
-// Superseded: faded, a "S6 → S12" span, and the history glyph in the gutter.
+// Superseded: faded, an origin -> ended rail (S6, S12) with the RotateCcw icon.
 export const Superseded: Story = {
   args: {
     view: view({
       predicate: "is captain of",
       other: { id: GUILD, name: "Thren Ferrymen's Guild" },
       origin: { kind: "session", content: { ordinal: 6 } },
-      invalidation: {
-        kind: "superseded",
-        content: { ended: { kind: "session", content: { ordinal: 12 } } },
-      },
+      superseded: { ordinal: 12 },
     }),
   },
-  play: async ({ canvas, canvasElement }) => {
-    await expect(canvas.getByText("S6 → S12")).toBeInTheDocument();
-    await expect(canvasElement.querySelector(".lucide-history")).toBeInTheDocument();
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.textContent).toContain("S6");
+    await expect(canvasElement.textContent).toContain("S12");
+    await expect(canvasElement.querySelector(".lucide-rotate-ccw")).toBeInTheDocument();
   },
 };
 
-// GM-only: the plum wash and the eye glyph mark a fact the players can't see.
-export const GmOnly: Story = {
+// Born secret, unrevealed: the plum wash and a secret origin pill (EyeOff).
+export const Secret: Story = {
   args: {
     view: view({
       predicate: "owes a debt to",
       other: { id: CROWN, name: "Crown of Ash" },
-      visibility: "gm",
       origin: { kind: "session", content: { ordinal: 11 } },
+      knowledge: { kind: "hidden" },
     }),
   },
   play: async ({ canvasElement }) => {
@@ -116,19 +116,37 @@ export const GmOnly: Story = {
   },
 };
 
-// Retconned: struck through, a "S2 ↯" origin, and the X glyph.
+// Born secret then revealed: a secret origin (EyeOff) and a revealed pill (Eye).
+export const RevealedSecret: Story = {
+  args: {
+    view: view({
+      predicate: "set the signal fire at",
+      other: { id: BURNING, name: "Burning of the North Watch" },
+      origin: { kind: "session", content: { ordinal: 14 } },
+      knowledge: { kind: "revealed", content: { ordinal: 15 } },
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector(".lucide-eye-off")).toBeInTheDocument();
+    await expect(canvasElement.querySelector(".lucide-eye")).toBeInTheDocument();
+    await expect(canvasElement.textContent).toContain("S15");
+  },
+};
+
+// Retconned: struck through, with a terminal "↯ S2" pill.
 export const Retconned: Story = {
   args: {
     view: view({
       predicate: "is brother to",
       other: { id: TORMUND, name: "Tormund" },
-      origin: { kind: "session", content: { ordinal: 2 } },
-      invalidation: { kind: "retconned" },
+      origin: { kind: "session", content: { ordinal: 1 } },
+      retcon: { ordinal: 2 },
     }),
   },
-  play: async ({ canvas, canvasElement }) => {
-    await expect(canvas.getByText("S2 ↯")).toBeInTheDocument();
-    await expect(canvasElement.querySelector(".lucide-x")).toBeInTheDocument();
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.textContent).toContain("↯");
+    await expect(canvasElement.textContent).toContain("S2");
+    await expect(canvasElement.querySelector(".line-through")).toBeInTheDocument();
   },
 };
 

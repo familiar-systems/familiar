@@ -5,20 +5,22 @@
 //! `known_predicate_pairs` (the vocabulary). No framework deps (no petgraph, no
 //! sea-orm); the actor supplies the I/O. Mirrors `domain/session.rs`.
 //!
+//! A relationship carries two orthogonal, authored, session-stamped axes:
+//! **factuality** `[origin, superseded)` plus a terminal retcon, and **knowledge**
+//! (`Public | Hidden | Revealed(s)`). Neither is inferred. See
+//! `docs/plans/2026-06-23-entity-relationship-temporal-model.md`.
+//!
 //! These types are pure Rust with no TS surface: the client only ever sees the
 //! oriented `RelationshipView`, working in session ordinals, never raw
 //! `SessionId`s. The at-rest <-> domain conversion lives with the actor (it
 //! touches the `*Col` boundary); this module stays connection-free.
-//!
-//! See `docs/plans/2026-04-10-entity-relationship-temporal-model.md`.
 
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use familiar_systems_campaign_shared::id::{PageId, RelationshipId, SessionId};
 use familiar_systems_campaign_shared::relationship::{
-    InvalidationReason, RelatedPage, RelationshipView, ViewInvalidation, ViewSessionOrdinal,
-    ViewSessionPoint, Visibility,
+    KnowledgeView, RelatedPage, RelationshipView, ViewSessionOrdinal, ViewSessionPoint,
 };
 
 // ---------------------------------------------------------------------------
@@ -26,7 +28,7 @@ use familiar_systems_campaign_shared::relationship::{
 // ---------------------------------------------------------------------------
 
 /// One relationship edge, in memory: undirected, page-to-page, a predicate at
-/// each end plus temporal provenance. The petgraph holds these as edge weights.
+/// each end plus its two temporal axes. The petgraph holds these as edge weights.
 ///
 /// Stored canonically (`page_a` is the lexicographically smaller `PageId`, the
 /// predicate pair assigned to match). [`canonicalize`] is the only constructor of
@@ -40,18 +42,26 @@ pub struct Relationship {
     pub page_b: PageId,
     pub predicate_a_to_b: String,
     pub predicate_b_to_a: String,
-    pub visibility: Visibility,
+    /// Factuality start: when the fact became true. `Prior` = before the campaign.
     pub origin: Origin,
+    /// Factuality end: the session the fact stopped being true. `None` = still
+    /// true. Always a session (ending is never "in prior"); this is also the
+    /// live/ended discriminant the live-fact uniqueness index keys on.
+    pub superseded: Option<SessionId>,
+    /// The session a retcon struck the fact from the fiction. `None` = not
+    /// retconned. Timeless erasure: a retconned row is excluded from every snapshot.
+    pub retcon: Option<SessionId>,
+    /// Whether/when the players know the fact. Independent of factuality.
+    pub knowledge: Knowledge,
     pub created_at: DateTime<Utc>,
-    /// `None` while live; `Some` once ended / superseded / retconned.
-    pub invalidation: Option<Invalidation>,
 }
 
-/// A point in knowledge time: a fact becomes (or ceases to be) true either before
-/// the campaign began or in the context of a session. The nullable session FK at
-/// rest reconstitutes to this sum at the `*Col`/domain boundary - `None` ->
-/// `Prior`. A sum, not `Option<SessionId>`, so `Prior` is a first-class value, not
-/// a missing field.
+/// A point on the factuality origin axis: a fact became true either before the
+/// campaign began or in the context of a session. The nullable `origin_session_id`
+/// FK reconstitutes to this sum at the `*Col`/domain boundary - `None` -> `Prior`.
+/// A sum, not `Option<SessionId>`, so `Prior` is a first-class value, not a missing
+/// field. (`superseded`/`retcon`/`reveal` are plain `Option<SessionId>`: their NULL
+/// is the negative state, not "prior", so they need no such sum.)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Origin {
     Prior,
@@ -59,7 +69,7 @@ pub enum Origin {
 }
 
 impl Origin {
-    /// The session FK this point persists as: `Prior` -> `None`.
+    /// The session FK this origin persists as: `Prior` -> `None`.
     pub fn session_id(&self) -> Option<SessionId> {
         match self {
             Origin::Prior => None,
@@ -68,43 +78,84 @@ impl Origin {
     }
 }
 
-/// How and when a relationship stopped being live. `by` reuses [`Origin`] because
-/// the at-rest "ended before the campaign began" case (`invalidated_by` NULL) is
-/// symmetric with a `Prior` origin. No v1 op produces it (the end/supersede
-/// session pickers run origin->current, never "Prior"), but the model must be able
-/// to *represent* it to load such a row faithfully.
+/// The knowledge axis: whether the players know a fact, and since when. Reconstituted
+/// from `(is_secret, reveal_session_id)` at the `*Col` boundary. Fully mutable: the GM
+/// moves a fact freely between these states (the edit modal's wholesale `SetKnowledge`
+/// op), including concealing a once-public fact (`Public -> Hidden`). The only
+/// constraint is the at-rest combo `(is_secret = false, reveal = Some)`, which is
+/// illegal and unreachable through this sum (`Public` carries no reveal).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Invalidation {
-    pub reason: InvalidationReason,
-    pub by: Origin,
-    pub at: DateTime<Utc>,
+pub enum Knowledge {
+    /// Known to the players from the moment it became true (no hidden interval).
+    Public,
+    /// Secret, not yet revealed (GM-only).
+    Hidden,
+    /// Secret, learned by the players at this session.
+    Revealed(SessionId),
 }
 
-/// An invalidation supplied at *creation*, so a relationship can be born already
-/// finalized - a retrofit or correction ("X was captain of Y, S3 to S6", entered
-/// now; or an AI-proposed historical fact). `at` is not here: like `created_at`, it
-/// is stamped at the write edge. A finalized row sits outside the live set, so it
-/// never trips the partial unique index.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum KnowledgeError {
+    #[error("a public fact cannot carry a reveal event")]
+    PublicWithReveal,
+}
+
+impl Knowledge {
+    /// Reconstitute from the at-rest pair. The `(false, Some)` combo is illegal (a
+    /// CHECK + the wholesale `SetKnowledge` write keep it unreachable); reaching it
+    /// means a broken invariant.
+    pub fn from_columns(
+        is_secret: bool,
+        reveal: Option<SessionId>,
+    ) -> Result<Self, KnowledgeError> {
+        match (is_secret, reveal) {
+            (false, None) => Ok(Knowledge::Public),
+            (true, None) => Ok(Knowledge::Hidden),
+            (true, Some(s)) => Ok(Knowledge::Revealed(s)),
+            (false, Some(_)) => Err(KnowledgeError::PublicWithReveal),
+        }
+    }
+
+    /// The `is_secret` column at rest: `true` for `Hidden` and `Revealed` (the secret
+    /// track - a revealed fact was secret), `false` for `Public`.
+    pub fn is_secret(&self) -> bool {
+        matches!(self, Knowledge::Hidden | Knowledge::Revealed(_))
+    }
+
+    /// The reveal session FK at rest: set only for `Revealed`.
+    pub fn reveal_session_id(&self) -> Option<SessionId> {
+        match self {
+            Knowledge::Revealed(s) => Some(s.clone()),
+            Knowledge::Public | Knowledge::Hidden => None,
+        }
+    }
+}
+
+/// The two-axis lifecycle a created relationship is born with. A plain live create
+/// passes `superseded: None, retcon: None`; a born-finalized retrofit (or an
+/// AI-proposed historical fact) sets them. Connection-free; the persistence layer
+/// resolves these to columns.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ending {
-    pub reason: InvalidationReason,
-    pub by: Origin,
+pub struct NewLifecycle {
+    pub origin: Origin,
+    pub superseded: Option<SessionId>,
+    pub retcon: Option<SessionId>,
+    pub knowledge: Knowledge,
 }
 
 /// A relationship to persist: canonical endpoints + predicates (built via
-/// [`canonicalize`]), its `visibility`, its `origin`, and an optional `ending`
-/// (`None` = born live). The owning actor builds this; the writer stamps the id and
-/// timestamps. Connection-free, like `NewPage` - the persistence layer maps it to
-/// columns (resolving the `Origin` sums to nullable session FKs).
+/// [`canonicalize`]) plus its lifecycle. The owning actor builds this; the writer
+/// stamps the id and `created_at`. Connection-free, like `NewPage`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewRelationship {
     pub page_a: PageId,
     pub page_b: PageId,
     pub predicate_a_to_b: String,
     pub predicate_b_to_a: String,
-    pub visibility: Visibility,
     pub origin: Origin,
-    pub ending: Option<Ending>,
+    pub superseded: Option<SessionId>,
+    pub retcon: Option<SessionId>,
+    pub knowledge: Knowledge,
 }
 
 // ---------------------------------------------------------------------------
@@ -123,21 +174,17 @@ pub struct CanonicalEdge {
 
 impl CanonicalEdge {
     /// Promote a canonicalized edge into a full creation spec by attaching its
-    /// lifecycle (visibility, origin, optional born-finalized ending).
-    pub fn into_new(
-        self,
-        visibility: Visibility,
-        origin: Origin,
-        ending: Option<Ending>,
-    ) -> NewRelationship {
+    /// two-axis lifecycle.
+    pub fn into_new(self, lifecycle: NewLifecycle) -> NewRelationship {
         NewRelationship {
             page_a: self.page_a,
             page_b: self.page_b,
             predicate_a_to_b: self.predicate_a_to_b,
             predicate_b_to_a: self.predicate_b_to_a,
-            visibility,
-            origin,
-            ending,
+            origin: lifecycle.origin,
+            superseded: lifecycle.superseded,
+            retcon: lifecycle.retcon,
+            knowledge: lifecycle.knowledge,
         }
     }
 }
@@ -204,7 +251,8 @@ pub fn canonicalize(
 /// and `ordinal_of` (session id -> curated ordinal), each total over the ids this
 /// edge references (the actor builds them from batch reads). `viewed` is assumed to
 /// be one endpoint (the actor only orients edges touching it); the `else` arm reads
-/// it as `page_b`.
+/// it as `page_b`. Both axes are projected: factuality (`origin`/`superseded`/
+/// `retcon`) and knowledge.
 pub fn orient(
     rel: &Relationship,
     viewed: &PageId,
@@ -225,27 +273,32 @@ pub fn orient(
         },
         predicate: predicate.clone(),
         predicate_reverse: predicate_reverse.clone(),
-        visibility: rel.visibility,
         origin: view_point(&rel.origin, &ordinal_of),
-        invalidation: rel.invalidation.as_ref().map(|inv| match inv.reason {
-            // The reason is the view's discriminant: a superseded end carries when
-            // it ended (a session point, possibly `Prior`); a retcon is timeless and
-            // carries nothing.
-            InvalidationReason::Superseded => ViewInvalidation::Superseded {
-                ended: view_point(&inv.by, &ordinal_of),
-            },
-            InvalidationReason::Retconned => ViewInvalidation::Retconned,
-        }),
+        superseded: rel
+            .superseded
+            .as_ref()
+            .map(|s| view_ordinal(s, &ordinal_of)),
+        retcon: rel.retcon.as_ref().map(|s| view_ordinal(s, &ordinal_of)),
+        knowledge: match &rel.knowledge {
+            Knowledge::Public => KnowledgeView::Public,
+            Knowledge::Hidden => KnowledgeView::Hidden,
+            Knowledge::Revealed(s) => KnowledgeView::Revealed(view_ordinal(s, &ordinal_of)),
+        },
     }
 }
 
-/// A knowledge-time point (an origin, or a superseded end) in the viewer's terms.
-fn view_point(point: &Origin, ordinal_of: impl Fn(&SessionId) -> i64) -> ViewSessionPoint {
-    match point {
+/// The factuality origin point in the viewer's terms (`Prior` or a session ordinal).
+fn view_point(origin: &Origin, ordinal_of: impl Fn(&SessionId) -> i64) -> ViewSessionPoint {
+    match origin {
         Origin::Prior => ViewSessionPoint::Prior,
-        Origin::Session(s) => ViewSessionPoint::Session(ViewSessionOrdinal {
-            ordinal: ordinal_of(s),
-        }),
+        Origin::Session(s) => ViewSessionPoint::Session(view_ordinal(s, ordinal_of)),
+    }
+}
+
+/// A session-only axis point (superseded / retcon / reveal) by its curated ordinal.
+fn view_ordinal(s: &SessionId, ordinal_of: impl Fn(&SessionId) -> i64) -> ViewSessionOrdinal {
+    ViewSessionOrdinal {
+        ordinal: ordinal_of(s),
     }
 }
 
@@ -314,24 +367,47 @@ mod tests {
     }
 
     fn rel(
-        page_a: PageId,
-        page_b: PageId,
-        pred_ab: &str,
-        pred_ba: &str,
+        pages: (PageId, PageId),
+        preds: (&str, &str),
         origin: Origin,
-        invalidation: Option<Invalidation>,
+        superseded: Option<SessionId>,
+        retcon: Option<SessionId>,
+        knowledge: Knowledge,
     ) -> Relationship {
         Relationship {
             id: RelationshipId::generate(),
-            page_a,
-            page_b,
-            predicate_a_to_b: pred_ab.into(),
-            predicate_b_to_a: pred_ba.into(),
-            visibility: Visibility::Players,
+            page_a: pages.0,
+            page_b: pages.1,
+            predicate_a_to_b: preds.0.into(),
+            predicate_b_to_a: preds.1.into(),
             origin,
+            superseded,
+            retcon,
+            knowledge,
             created_at: Utc::now(),
-            invalidation,
         }
+    }
+
+    #[test]
+    fn knowledge_round_trips_through_columns() {
+        let s = SessionId::generate();
+        for k in [
+            Knowledge::Public,
+            Knowledge::Hidden,
+            Knowledge::Revealed(s.clone()),
+        ] {
+            let reconstituted =
+                Knowledge::from_columns(k.is_secret(), k.reveal_session_id()).unwrap();
+            assert_eq!(reconstituted, k);
+        }
+    }
+
+    #[test]
+    fn knowledge_rejects_public_with_reveal() {
+        assert_eq!(
+            Knowledge::from_columns(false, Some(SessionId::generate())),
+            Err(KnowledgeError::PublicWithReveal)
+        );
     }
 
     #[test]
@@ -400,12 +476,12 @@ mod tests {
     fn orient_reads_forward_from_each_endpoint() {
         let (a, b) = two_pages();
         let r = rel(
-            a.clone(),
-            b.clone(),
-            "is a resident of",
-            "is the home of",
+            (a.clone(), b.clone()),
+            ("is a resident of", "is the home of"),
             Origin::Prior,
             None,
+            None,
+            Knowledge::Public,
         );
         let names = |id: &PageId| {
             if id == &a {
@@ -428,51 +504,59 @@ mod tests {
     }
 
     #[test]
-    fn orient_maps_origin_and_invalidation_to_ordinals() {
+    fn orient_projects_both_axes_to_ordinals() {
         let (a, b) = two_pages();
         let origin = SessionId::generate();
-        let ender = SessionId::generate();
+        let ended = SessionId::generate();
+        let revealed = SessionId::generate();
         let r = rel(
-            a.clone(),
-            b.clone(),
-            "is captain of",
-            "is captained by",
+            (a.clone(), b.clone()),
+            ("is captain of", "is captained by"),
             Origin::Session(origin.clone()),
-            Some(Invalidation {
-                reason: InvalidationReason::Superseded,
-                by: Origin::Session(ender.clone()),
-                at: Utc::now(),
-            }),
+            Some(ended.clone()),
+            None,
+            Knowledge::Revealed(revealed.clone()),
         );
         let names = |_: &PageId| "Guild".to_string();
-        let ords = |s: &SessionId| if s == &origin { 6 } else { 12 };
+        let ords = |s: &SessionId| {
+            if s == &origin {
+                6
+            } else if s == &ended {
+                12
+            } else {
+                15
+            }
+        };
 
         let view = orient(&r, &a, names, ords);
         match view.origin {
             ViewSessionPoint::Session(s) => assert_eq!(s.ordinal, 6),
             other => panic!("expected Session origin, got {other:?}"),
         }
-        let inv = view
-            .invalidation
-            .expect("invalidated row carries a view invalidation");
-        match inv {
-            ViewInvalidation::Superseded {
-                ended: ViewSessionPoint::Session(s),
-            } => assert_eq!(s.ordinal, 12, "ended at the invalidating session's ordinal"),
-            other => panic!("expected Superseded-at-session, got {other:?}"),
+        assert_eq!(view.superseded.expect("ended").ordinal, 12);
+        assert!(view.retcon.is_none());
+        match view.knowledge {
+            KnowledgeView::Revealed(s) => assert_eq!(s.ordinal, 15),
+            other => panic!("expected Revealed knowledge, got {other:?}"),
         }
     }
 
     #[test]
-    fn orient_prior_origin_and_live_row() {
+    fn orient_prior_origin_live_and_public_row() {
         let (a, b) = two_pages();
-        let r = rel(a.clone(), b, "knows", "knows", Origin::Prior, None);
+        let r = rel(
+            (a.clone(), b),
+            ("knows", "knows"),
+            Origin::Prior,
+            None,
+            None,
+            Knowledge::Public,
+        );
         let view = orient(&r, &a, |_| "X".to_string(), |_| 0);
         assert!(matches!(view.origin, ViewSessionPoint::Prior));
-        assert!(
-            view.invalidation.is_none(),
-            "a live row has no invalidation"
-        );
+        assert!(view.superseded.is_none(), "a live row is not superseded");
+        assert!(view.retcon.is_none(), "a live row is not retconned");
+        assert!(matches!(view.knowledge, KnowledgeView::Public));
     }
 
     #[test]
@@ -482,28 +566,28 @@ mod tests {
         // on page identity, so this is normal), plus a symmetric pair.
         let edges = [
             rel(
-                a.clone(),
-                b.clone(),
-                "is a resident of",
-                "is the home of",
+                (a.clone(), b.clone()),
+                ("is a resident of", "is the home of"),
                 Origin::Prior,
                 None,
+                None,
+                Knowledge::Public,
             ),
             rel(
-                a.clone(),
-                b.clone(),
-                "is the home of",
-                "is a resident of",
+                (a.clone(), b.clone()),
+                ("is the home of", "is a resident of"),
                 Origin::Prior,
                 None,
+                None,
+                Knowledge::Public,
             ),
             rel(
-                a.clone(),
-                b.clone(),
-                "is allied with",
-                "is allied with",
+                (a.clone(), b.clone()),
+                ("is allied with", "is allied with"),
                 Origin::Prior,
                 None,
+                None,
+                Knowledge::Public,
             ),
         ];
 

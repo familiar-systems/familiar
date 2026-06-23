@@ -343,7 +343,7 @@
             "description": "A live relationship with this predicate pair already exists, or the superseded row is already invalidated"
           },
           "422": {
-            "description": "Self-edge, empty predicate, or an invalid supersede (different pair / prior origin / takes effect before the replaced fact began)"
+            "description": "Self-edge, empty predicate, a reveal before origin, or an invalid supersede (different pair / prior origin / takes effect before the replaced fact began)"
           },
           "500": {
             "description": "Creation failed"
@@ -499,10 +499,10 @@
             "description": "Campaign not on this shard, relationship not found, or a referenced session is missing"
           },
           "409": {
-            "description": "The relationship is already invalidated"
+            "description": "Clearing superseded/retcon re-creates a duplicate live fact"
           },
           "422": {
-            "description": "Empty patch, ending without an as-of session, or an end before the fact's origin"
+            "description": "Empty patch, revealing a public fact, or an axis event before the fact's origin"
           },
           "500": {
             "description": "Patch failed"
@@ -785,10 +785,13 @@
           "other_page_id",
           "predicate_forward",
           "predicate_reverse",
-          "visibility",
-          "origin"
+          "origin",
+          "knowledge"
         ],
         "properties": {
+          "knowledge": {
+            "$ref": "#/components/schemas/KnowledgeInput"
+          },
           "origin": {
             "$ref": "#/components/schemas/OriginInput"
           },
@@ -816,9 +819,6 @@
                 "description": "The live relationship this one replaces, ended atomically. `None` for a\nplain create."
               }
             ]
-          },
-          "visibility": {
-            "$ref": "#/components/schemas/Visibility"
           }
         }
       },
@@ -932,31 +932,85 @@
           }
         }
       },
-      "InvalidationInput": {
-        "type": "object",
-        "description": "The lifecycle transition a PATCH applies: end (`reason: superseded`, with the\nsession it ended at) or retcon (`reason: retconned`, timeless). Setting it is a\none-way door - the server rejects re-invalidating an already-invalidated row.",
-        "required": ["reason"],
-        "properties": {
-          "as_of": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SessionId",
-                "description": "Required when `reason` is `superseded` (the session it ended at); ignored\nfor `retconned`."
+      "KnowledgeInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["public"]
               }
-            ]
+            }
           },
-          "reason": {
-            "$ref": "#/components/schemas/InvalidationReason"
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["hidden"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/SessionId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["revealed"]
+              }
+            }
           }
-        }
+        ],
+        "description": "A knowledge state as the client supplies it - on create (the born state) and on\npatch (the new state, set wholesale). The input analog of [`KnowledgeView`]: public,\nsecret (hidden), or secret and revealed at a session."
       },
-      "InvalidationReason": {
-        "type": "string",
-        "description": "Why a relationship row stopped being live. The *presence* of a reason is the\nat-rest live/invalidated discriminant (a live row has none). `Superseded`\ncovers both narrative end and replacement (it stays visible in historical\nsnapshots); `Retconned` means \"never true in the fiction\" (excluded from\nsnapshots, kept in the database as part of the tapestry).",
-        "enum": ["superseded", "retconned"]
+      "KnowledgeView": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Born public: known to the players from the moment it became true.",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["public"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Born secret, not yet revealed (GM-only). Drives the row's GM-wash.",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["hidden"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Born secret, learned by the players at this session.",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/ViewSessionOrdinal",
+                "description": "Born secret, learned by the players at this session."
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["revealed"]
+              }
+            }
+          }
+        ],
+        "description": "The knowledge axis in the viewer's terms: public (always known), secret and not yet\nrevealed, or revealed to the players at a session. Mirrors the server-internal\n`Knowledge` sum; the secret bit is implicit in the variant (`Public` = not secret,\nthe others secret). Adjacent tagging per the convention guard."
       },
       "OriginInput": {
         "oneOf": [
@@ -1080,25 +1134,35 @@
       },
       "PatchRelationshipRequest": {
         "type": "object",
-        "description": "`PATCH /campaign/{id}/relationships/{relId}` body: the relationship's mutable\nsurface. Both fields optional; at least one must be present. Predicates and\norigin are immutable, so they are absent here.",
+        "description": "`PATCH /campaign/{id}/relationships/{relId}` body: independent, reversible edits to\nthe three mutable axes. Each field optional (absent = leave that axis unchanged); at\nleast one must be present. Predicates and origin are immutable, so they are absent\nhere. The present edits apply as one atomic batch.\n\n`knowledge` is set wholesale to the new state (`Public | Hidden | Revealed(s)`),\nfreely - reveal, conceal, or re-hide. `superseded` is the factuality end (set = end,\nclear = un-end); `retcon` is the terminal strike (set = retcon, clear = un-retcon).\nEnd-*with-successor* is not a patch - it goes through `POST /relationships` with\n`supersedes` (the successor is a new row).",
         "properties": {
-          "invalidation": {
+          "knowledge": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/InvalidationInput"
+                "$ref": "#/components/schemas/KnowledgeInput"
               }
             ]
           },
-          "visibility": {
+          "retcon": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/Visibility"
+                "$ref": "#/components/schemas/SessionStampPatch"
+              }
+            ]
+          },
+          "superseded": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionStampPatch"
               }
             ]
           }
@@ -1142,25 +1206,19 @@
       },
       "RelationshipView": {
         "type": "object",
-        "description": "One relationship as rendered on a given page: oriented so the client never\ncomputes direction. The server picks `predicate` (forward *from the viewed\npage*) and `predicate_reverse` (back toward it) from the stored undirected\npair, and resolves session identities to ordinals.",
-        "required": ["id", "other", "predicate", "predicate_reverse", "visibility", "origin"],
+        "description": "One relationship as rendered on a given page: oriented so the client never\ncomputes direction, and projected onto both axes. The server picks `predicate`\n(forward *from the viewed page*) and `predicate_reverse` (back toward it) from\nthe stored undirected pair, and resolves session identities to ordinals.",
+        "required": ["id", "other", "predicate", "predicate_reverse", "origin", "knowledge"],
         "properties": {
           "id": {
             "$ref": "#/components/schemas/RelationshipId"
           },
-          "invalidation": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ViewInvalidation",
-                "description": "`None` for a live relationship."
-              }
-            ]
+          "knowledge": {
+            "$ref": "#/components/schemas/KnowledgeView",
+            "description": "Knowledge axis."
           },
           "origin": {
-            "$ref": "#/components/schemas/ViewSessionPoint"
+            "$ref": "#/components/schemas/ViewSessionPoint",
+            "description": "Factuality start."
           },
           "other": {
             "$ref": "#/components/schemas/RelatedPage",
@@ -1174,8 +1232,27 @@
             "type": "string",
             "description": "The predicate read back, from `other` toward the viewed page."
           },
-          "visibility": {
-            "$ref": "#/components/schemas/Visibility"
+          "retcon": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ViewSessionOrdinal",
+                "description": "The session a retcon struck the fact. `None` = not retconned."
+              }
+            ]
+          },
+          "superseded": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ViewSessionOrdinal",
+                "description": "Factuality end: the session the fact stopped being true. `None` = still true."
+              }
+            ]
           }
         }
       },
@@ -1225,6 +1302,37 @@
             "description": "The temporal record - the durable identity relationships reference."
           }
         }
+      },
+      "SessionStampPatch": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Stamp the axis with this session.",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/SessionId",
+                "description": "Stamp the axis with this session."
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["set"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Clear the axis back to NULL.",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["clear"]
+              }
+            }
+          }
+        ],
+        "description": "A patch to one nullable session-stamp axis: set it to a session, or clear it back\nto NULL (the reversible correction). A field left absent (`null`) on\n[`PatchRelationshipRequest`] leaves that axis unchanged; present-and-`Clear` is an\nexplicit un-set. Adjacent tagging per the convention guard."
       },
       "SessionsResponse": {
         "type": "object",
@@ -1327,43 +1435,9 @@
           }
         }
       },
-      "ViewInvalidation": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": ["content", "kind"],
-            "properties": {
-              "content": {
-                "type": "object",
-                "required": ["ended"],
-                "properties": {
-                  "ended": {
-                    "$ref": "#/components/schemas/ViewSessionPoint"
-                  }
-                }
-              },
-              "kind": {
-                "type": "string",
-                "enum": ["superseded"]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": ["kind"],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": ["retconned"]
-              }
-            }
-          }
-        ],
-        "description": "How a no-longer-live relationship was invalidated, in the viewer's terms. The\nreason is the discriminant, each variant carrying only what it renders:\n`Superseded` (narrative end or replacement) carries when it ended - a session\npoint, possibly `Prior` for the rare ended-before-the-campaign case; `Retconned`\n(\"never true in the fiction\") carries nothing and renders off the `origin`.\nAdjacent tagging per the convention guard."
-      },
       "ViewSessionOrdinal": {
         "type": "object",
-        "description": "The session a `ViewSessionPoint::Session` refers to, by its curated ordinal.",
+        "description": "A session referred to by its curated ordinal, in the viewer's terms. Used bare\nfor the session-only axes (superseded / retcon / reveal) and inside\n[`ViewSessionPoint::Session`].",
         "required": ["ordinal"],
         "properties": {
           "ordinal": {
@@ -1402,12 +1476,7 @@
             }
           }
         ],
-        "description": "A point in knowledge time, in the viewer's terms: before the campaign began, or\nat a session (by its curated ordinal). A sum rather than a nullable ordinal so\n`Prior` is a first-class value the client can't confuse with a missing field.\nReused by both a relationship's `origin` and a superseded end, mirroring the\nserver-internal `Origin` sum that backs both. Adjacent tagging\n(`{ \"kind\": \"...\", \"content\": { ... } }`) per the convention guard in\n`crates/app-shared/tests/conventions.rs`."
-      },
-      "Visibility": {
-        "type": "string",
-        "description": "Who may see a relationship. Mutable and independent of `origin`: the GM can\nreveal or hide a fact at any time without invalidating it. Two values for\nnow; per-player visibility is a future expansion.",
-        "enum": ["gm", "players"]
+        "description": "A point on the factuality origin axis, in the viewer's terms: before the campaign\nbegan, or at a session (by its curated ordinal). A sum rather than a nullable\nordinal so `Prior` is a first-class value the client can't confuse with a missing\nfield. (Only `origin` can be `Prior`; the session-only axes -\nsuperseded/retcon/reveal - use a bare [`ViewSessionOrdinal`].) Adjacent tagging\n(`{ \"kind\": \"...\", \"content\": { ... } }`) per the convention guard in\n`crates/app-shared/tests/conventions.rs`."
       }
     }
   }

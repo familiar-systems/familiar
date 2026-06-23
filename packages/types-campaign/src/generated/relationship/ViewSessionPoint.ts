@@ -2,11 +2,11 @@
 import type { ViewSessionOrdinal } from "./ViewSessionOrdinal";
 
 /**
- * A point in knowledge time, in the viewer's terms: before the campaign began, or
- * at a session (by its curated ordinal). A sum rather than a nullable ordinal so
- * `Prior` is a first-class value the client can't confuse with a missing field.
- * Reused by both a relationship's `origin` and a superseded end, mirroring the
- * server-internal `Origin` sum that backs both. Adjacent tagging
+ * A point on the factuality origin axis, in the viewer's terms: before the campaign
+ * began, or at a session (by its curated ordinal). A sum rather than a nullable
+ * ordinal so `Prior` is a first-class value the client can't confuse with a missing
+ * field. (Only `origin` can be `Prior`; the session-only axes -
+ * superseded/retcon/reveal - use a bare [`ViewSessionOrdinal`].) Adjacent tagging
  * (`{ "kind": "...", "content": { ... } }`) per the convention guard in
  * `crates/app-shared/tests/conventions.rs`.
  */

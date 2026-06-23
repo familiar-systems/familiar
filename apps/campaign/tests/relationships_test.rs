@@ -1,20 +1,18 @@
 //! Relationships schema, at the DB layer: the edge round-trips through branded
-//! types and the enum boundary, `Prior` origin and live state both persist as
-//! NULL, and the PARTIAL unique "live fact" index is live - one live row per
-//! canonical fact, while invalidated history (including the ended-before-the-
-//! campaign case) coexists. The five GM ops and the in-memory petgraph land with
-//! their actor in Slice 2; this file pins only the durable schema.
+//! types, `Prior` origin and live state persist as NULL, the knowledge CHECK forbids
+//! a reveal on a born-public row, and the PARTIAL unique "live fact" index is live -
+//! one live row per canonical fact, while superseded/retconned history coexists. The
+//! actor + petgraph and the GM ops are exercised in `relationship_graph_test.rs`;
+//! this file pins only the durable schema.
 
 use chrono::{DateTime, Utc};
 use familiar_systems_campaign::db;
 use familiar_systems_campaign::entities::columns::{
-    InvalidationReasonCol, PageIdCol, PageKindCol, RelationshipIdCol, SessionIdCol, StatusCol,
-    VisibilityCol,
+    PageIdCol, PageKindCol, RelationshipIdCol, SessionIdCol, StatusCol,
 };
 use familiar_systems_campaign::entities::{pages, relationships, sessions};
 use familiar_systems_campaign::migrations::Migrator;
 use familiar_systems_campaign_shared::id::{PageId, RelationshipId, SessionId};
-use familiar_systems_campaign_shared::relationship::Visibility;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, IntoActiveModel, Set};
 use sea_orm_migration::MigratorTrait;
 
@@ -43,7 +41,7 @@ async fn seed_page(db: &DatabaseConnection, now: DateTime<Utc>) -> PageId {
     id
 }
 
-/// Seed a temporal session row (an FK target for origin / invalidated_by).
+/// Seed a temporal session row (an FK target for the four session-stamp axes).
 async fn seed_session(db: &DatabaseConnection, now: DateTime<Utc>, ordinal: i64) -> SessionId {
     let id = SessionId::generate();
     sessions::ActiveModel {
@@ -59,7 +57,7 @@ async fn seed_session(db: &DatabaseConnection, now: DateTime<Utc>, ordinal: i64)
     id
 }
 
-/// A live (un-invalidated), `Prior`-origin relationship between two pages.
+/// A live (still-true, not-retconned), `Prior`-origin, born-public relationship.
 fn live_rel(
     rel_id: RelationshipId,
     page_a: &PageId,
@@ -74,23 +72,24 @@ fn live_rel(
         page_b: Set(PageIdCol::from(page_b.clone())),
         predicate_a_to_b: Set(pred_ab.to_owned()),
         predicate_b_to_a: Set(pred_ba.to_owned()),
-        visibility: Set(VisibilityCol::Players),
         origin_session_id: Set(None),
+        superseded_session_id: Set(None),
+        retcon_session_id: Set(None),
+        is_secret: Set(false),
+        reveal_session_id: Set(None),
         created_at: Set(now),
-        invalidation_reason: Set(None),
-        invalidated_by_session_id: Set(None),
-        invalidated_at: Set(None),
     }
 }
 
 #[tokio::test]
-async fn relationship_round_trips_branded_ids_and_enums() {
+async fn relationship_round_trips_branded_ids_and_both_axes() {
     let db = setup().await;
     let now = Utc::now();
 
     let page_a = seed_page(&db, now).await;
     let page_b = seed_page(&db, now).await;
     let origin = seed_session(&db, now, 3).await;
+    let revealed = seed_session(&db, now, 5).await;
 
     let rel_id = RelationshipId::generate();
     relationships::ActiveModel {
@@ -99,12 +98,12 @@ async fn relationship_round_trips_branded_ids_and_enums() {
         page_b: Set(PageIdCol::from(page_b.clone())),
         predicate_a_to_b: Set("is a resident of".into()),
         predicate_b_to_a: Set("is the home of".into()),
-        visibility: Set(VisibilityCol::Players),
         origin_session_id: Set(Some(SessionIdCol::from(origin.clone()))),
+        superseded_session_id: Set(None),
+        retcon_session_id: Set(None),
+        is_secret: Set(true),
+        reveal_session_id: Set(Some(SessionIdCol::from(revealed.clone()))),
         created_at: Set(now),
-        invalidation_reason: Set(None),
-        invalidated_by_session_id: Set(None),
-        invalidated_at: Set(None),
     }
     .insert(&db)
     .await
@@ -121,16 +120,18 @@ async fn relationship_round_trips_branded_ids_and_enums() {
     assert_eq!(id_back, rel_id);
     let page_a_back: PageId = row.page_a.into();
     assert_eq!(page_a_back, page_a);
-    let visibility_back: Visibility = row.visibility.into();
-    assert_eq!(visibility_back, Visibility::Players);
     let origin_back: Option<SessionId> = row.origin_session_id.map(Into::into);
     assert_eq!(origin_back, Some(origin));
+    let reveal_back: Option<SessionId> = row.reveal_session_id.map(Into::into);
+    assert_eq!(reveal_back, Some(revealed));
+    assert!(row.is_secret, "is_secret persists");
     assert_eq!(row.predicate_a_to_b, "is a resident of");
 }
 
 #[tokio::test]
-async fn prior_origin_still_live_persists_as_nulls() {
-    // The critical case: true before session 1, still true now. Both axes NULL.
+async fn prior_origin_live_public_persists_as_nulls() {
+    // The critical case: true before session 1, still true, always known. Every
+    // session-stamp axis is NULL and is_secret is false.
     let db = setup().await;
     let now = Utc::now();
 
@@ -156,16 +157,48 @@ async fn prior_origin_still_live_persists_as_nulls() {
         .expect("query")
         .expect("exists");
 
+    assert!(row.origin_session_id.is_none(), "Prior origin is NULL");
     assert!(
-        row.origin_session_id.is_none(),
-        "Prior origin persists as NULL"
+        row.superseded_session_id.is_none(),
+        "a live relationship is not superseded"
     );
     assert!(
-        row.invalidation_reason.is_none(),
-        "a live relationship has no invalidation reason"
+        row.retcon_session_id.is_none(),
+        "a live relationship is not retconned"
     );
-    assert!(row.invalidated_by_session_id.is_none());
-    assert!(row.invalidated_at.is_none());
+    assert!(!row.is_secret, "born public");
+    assert!(
+        row.reveal_session_id.is_none(),
+        "no reveal on a public fact"
+    );
+}
+
+#[tokio::test]
+async fn knowledge_check_rejects_public_with_reveal() {
+    // The CHECK `is_secret OR reveal_session_id IS NULL`: a born-public row may not
+    // carry a reveal event.
+    let db = setup().await;
+    let now = Utc::now();
+
+    let page_a = seed_page(&db, now).await;
+    let page_b = seed_page(&db, now).await;
+    let revealed = seed_session(&db, now, 4).await;
+
+    let mut illegal = live_rel(
+        RelationshipId::generate(),
+        &page_a,
+        &page_b,
+        "knows",
+        "knows",
+        now,
+    );
+    illegal.is_secret = Set(false);
+    illegal.reveal_session_id = Set(Some(SessionIdCol::from(revealed)));
+
+    assert!(
+        illegal.insert(&db).await.is_err(),
+        "a public fact carrying a reveal must violate the knowledge CHECK"
+    );
 }
 
 #[tokio::test]
@@ -208,10 +241,10 @@ async fn live_duplicate_canonical_fact_is_rejected() {
 }
 
 #[tokio::test]
-async fn invalidated_row_coexists_with_new_live_row() {
-    // Supersede in miniature: end the live row, then a new live row with the same
-    // predicate pair inserts cleanly because the partial index only constrains
-    // the live set.
+async fn superseded_row_coexists_with_new_live_row() {
+    // Supersede in miniature: end the live row (set superseded), then a new live row
+    // with the same predicate pair inserts cleanly because the partial index only
+    // constrains the live set.
     let db = setup().await;
     let now = Utc::now();
 
@@ -231,12 +264,9 @@ async fn invalidated_row_coexists_with_new_live_row() {
     .await
     .expect("first live row");
 
-    // Mark it invalidated (reason is the live/invalidated discriminant).
     let mut ended = first.into_active_model();
-    ended.invalidation_reason = Set(Some(InvalidationReasonCol::Superseded));
-    ended.invalidated_by_session_id = Set(Some(SessionIdCol::from(ender)));
-    ended.invalidated_at = Set(Some(now));
-    ended.update(&db).await.expect("invalidate the first row");
+    ended.superseded_session_id = Set(Some(SessionIdCol::from(ender)));
+    ended.update(&db).await.expect("end the first row");
 
     // A fresh LIVE row with the identical predicate pair now inserts.
     live_rel(
@@ -249,57 +279,46 @@ async fn invalidated_row_coexists_with_new_live_row() {
     )
     .insert(&db)
     .await
-    .expect("a new live row coexists with the invalidated one");
+    .expect("a new live row coexists with the superseded one");
 }
 
 #[tokio::test]
-async fn ended_in_prior_time_persists_and_is_excluded_from_live() {
-    // Case 2 (UI-deferred but encodable): a relationship that ended before the
-    // campaign began - reason set, but no invalidating session.
+async fn retconned_row_coexists_with_new_live_row() {
+    // A retconned row also drops out of the live index (liveness is factuality only:
+    // neither superseded nor retconned), so a fresh live row with the same pair
+    // inserts alongside it.
     let db = setup().await;
     let now = Utc::now();
 
     let page_a = seed_page(&db, now).await;
     let page_b = seed_page(&db, now).await;
+    let caught = seed_session(&db, now, 2).await;
 
-    let rel_id = RelationshipId::generate();
-    let mut ended_in_prior = live_rel(
-        rel_id.clone(),
-        &page_a,
-        &page_b,
-        "was betrothed to",
-        "was betrothed to",
-        now,
-    );
-    ended_in_prior.invalidation_reason = Set(Some(InvalidationReasonCol::Superseded));
-    ended_in_prior.invalidated_by_session_id = Set(None); // ended in prior time
-    ended_in_prior.invalidated_at = Set(Some(now));
-    ended_in_prior
-        .insert(&db)
-        .await
-        .expect("ended-in-prior row persists");
-
-    let row = relationships::Entity::find_by_id(RelationshipIdCol::from(rel_id))
-        .one(&db)
-        .await
-        .expect("query")
-        .expect("exists");
-    assert!(row.invalidation_reason.is_some(), "it is invalidated");
-    assert!(
-        row.invalidated_by_session_id.is_none(),
-        "no session ended it (prior time)"
-    );
-
-    // It's outside the live set, so a fresh live row with the same pair inserts.
-    live_rel(
+    let first = live_rel(
         RelationshipId::generate(),
         &page_a,
         &page_b,
-        "was betrothed to",
-        "was betrothed to",
+        "is sworn to",
+        "is liege of",
         now,
     )
     .insert(&db)
     .await
-    .expect("a live row coexists with an ended-in-prior row");
+    .expect("first live row");
+
+    let mut retconned = first.into_active_model();
+    retconned.retcon_session_id = Set(Some(SessionIdCol::from(caught)));
+    retconned.update(&db).await.expect("retcon the first row");
+
+    live_rel(
+        RelationshipId::generate(),
+        &page_a,
+        &page_b,
+        "is sworn to",
+        "is liege of",
+        now,
+    )
+    .insert(&db)
+    .await
+    .expect("a live row coexists with a retconned one");
 }

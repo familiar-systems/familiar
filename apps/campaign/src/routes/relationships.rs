@@ -2,8 +2,9 @@
 //!
 //! Resource-oriented over `/campaign/{id}/relationships`: `POST` creates (an
 //! optional `supersedes` pointer makes it an atomic replace), `PATCH` mutates the
-//! visibility/invalidation a relationship is allowed to change, `DELETE` hard-deletes,
-//! and `GET /pages/{pageId}/relationships` reads the per-page oriented view. The
+//! reversible session-stamp axes a relationship is allowed to change (reveal /
+//! superseded / retcon), `DELETE` hard-deletes, and `GET
+//! /pages/{pageId}/relationships` reads the per-page oriented view. The
 //! predicate vocabulary, the session pickers, and the entity typeahead are the three
 //! supporting reads. All GM-only; every handler resolves the supervisor via
 //! `authorize_gm` and forwards to the `RelationshipGraph` (mutations + the page view +
@@ -20,16 +21,18 @@ use serde::Deserialize;
 
 use familiar_systems_campaign_shared::id::{PageId, RelationshipId};
 use familiar_systems_campaign_shared::relationship::{
-    CreateRelationshipRequest, EntitySearchResult, InvalidationReason, OriginInput,
-    PatchRelationshipRequest, PredicatePairView, RelationshipView, SessionRef, SessionsResponse,
+    CreateRelationshipRequest, EntitySearchResult, KnowledgeInput, OriginInput,
+    PatchRelationshipRequest, PredicatePairView, RelationshipView, SessionRef, SessionStampPatch,
+    SessionsResponse,
 };
 
 use crate::actors::relationship_graph::{
-    ApplyOp, ApplyOpError, CreateRelationship, CreateRelationshipError, KnownPredicatePairs,
-    RelationshipOp, RelationshipsForPage,
+    CreateRelationship, CreateRelationshipError, DeleteRelationship, DeleteRelationshipError,
+    KnownPredicatePairs, PatchRelationship, PatchRelationshipError, RelationshipsForPage,
+    StampChange,
 };
 use crate::actors::supervisor::{ListSessions, SearchEntities};
-use crate::domain::relationship::Origin;
+use crate::domain::relationship::{Knowledge, Origin};
 use crate::middleware::auth::{AuthenticatedUser, authorize_gm};
 use crate::state::AppState;
 
@@ -93,7 +96,7 @@ pub async fn get_relationships(
         (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
         (status = NOT_FOUND, description = "Campaign not on this shard, an endpoint page is missing, a referenced session is missing, or the superseded relationship does not exist"),
         (status = CONFLICT, description = "A live relationship with this predicate pair already exists, or the superseded row is already invalidated"),
-        (status = UNPROCESSABLE_ENTITY, description = "Self-edge, empty predicate, or an invalid supersede (different pair / prior origin / takes effect before the replaced fact began)"),
+        (status = UNPROCESSABLE_ENTITY, description = "Self-edge, empty predicate, a reveal before origin, or an invalid supersede (different pair / prior origin / takes effect before the replaced fact began)"),
         (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
         (status = INTERNAL_SERVER_ERROR, description = "Creation failed"),
     ),
@@ -113,10 +116,8 @@ pub async fn create_relationship(
         other: req.other_page_id,
         predicate_forward: req.predicate_forward,
         predicate_reverse: req.predicate_reverse,
-        visibility: req.visibility,
         origin: to_origin(req.origin),
-        // The v1 create UI births live; a born-finalized retrofit is not exposed here.
-        ending: None,
+        knowledge: to_knowledge(req.knowledge),
         supersedes: req.supersedes,
     };
     match supervisor.ask(msg).await {
@@ -144,8 +145,8 @@ pub async fn create_relationship(
         (status = UNAUTHORIZED, description = "Missing or invalid session"),
         (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
         (status = NOT_FOUND, description = "Campaign not on this shard, relationship not found, or a referenced session is missing"),
-        (status = CONFLICT, description = "The relationship is already invalidated"),
-        (status = UNPROCESSABLE_ENTITY, description = "Empty patch, ending without an as-of session, or an end before the fact's origin"),
+        (status = CONFLICT, description = "Clearing superseded/retcon re-creates a duplicate live fact"),
+        (status = UNPROCESSABLE_ENTITY, description = "Empty patch, revealing a public fact, or an axis event before the fact's origin"),
         (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
         (status = INTERNAL_SERVER_ERROR, description = "Patch failed"),
     ),
@@ -164,19 +165,16 @@ pub async fn patch_relationship(
         Ok(resolved) => resolved,
         Err(resp) => return resp,
     };
-    let ops = match patch_to_ops(rel_id, &req) {
-        Ok(ops) => ops,
+    let patch = match patch_to_message(rel_id, &req) {
+        Ok(patch) => patch,
         Err(msg) => return (StatusCode::UNPROCESSABLE_ENTITY, msg).into_response(),
     };
-    // A single-field patch is one op. A both-fields patch (end/retcon *and* re-hide)
-    // applies as two ops, which is not atomic; acceptable for single-GM v1 (the
-    // combination is rare and recoverable on refetch).
-    for op in ops {
-        if let Err(e) = supervisor.ask(op).await {
-            return apply_op_error(e);
-        }
+    // The actor applies every present axis change as one atomic batch (a single
+    // `ApplyRelationshipWrites`), so a multi-axis patch is all-or-nothing.
+    match supervisor.ask(patch).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => patch_relationship_error(e),
     }
-    StatusCode::NO_CONTENT.into_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -214,15 +212,9 @@ pub async fn delete_relationship(
         Ok(resolved) => resolved,
         Err(resp) => return resp,
     };
-    match supervisor
-        .ask(ApplyOp {
-            rel_id,
-            op: RelationshipOp::Delete,
-        })
-        .await
-    {
+    match supervisor.ask(DeleteRelationship { rel_id }).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => apply_op_error(e),
+        Err(e) => delete_relationship_error(e),
     }
 }
 
@@ -375,40 +367,38 @@ fn to_origin(o: OriginInput) -> Origin {
     }
 }
 
-/// Decompose a patch into the ops it implies, rejecting an empty patch and an
-/// end-without-as-of. Predicates/origin are immutable, so only visibility and the
-/// invalidation transition can appear.
-/// On `Err`, the 422 body message (both failure modes are unprocessable). Returned
-/// as a `&str` rather than a `Response` to keep the `Err` variant small (clippy's
-/// `result_large_err`); the caller stamps the status.
-fn patch_to_ops(
+fn to_knowledge(k: KnowledgeInput) -> Knowledge {
+    match k {
+        KnowledgeInput::Public => Knowledge::Public,
+        KnowledgeInput::Hidden => Knowledge::Hidden,
+        KnowledgeInput::Revealed(s) => Knowledge::Revealed(s),
+    }
+}
+
+fn to_stamp_change(p: SessionStampPatch) -> StampChange {
+    match p {
+        SessionStampPatch::Set(s) => StampChange::Set(s),
+        SessionStampPatch::Clear => StampChange::Clear,
+    }
+}
+
+/// Build the actor patch from the request, rejecting an empty patch (no axis
+/// present). Predicates and origin are immutable, so only the three mutable axes can
+/// appear. On `Err`, the 422 body message; returned as a `&str` rather than a
+/// `Response` to keep the `Err` variant small (clippy's `result_large_err`).
+fn patch_to_message(
     rel_id: RelationshipId,
     req: &PatchRelationshipRequest,
-) -> Result<Vec<ApplyOp>, &'static str> {
-    let mut ops = Vec::new();
-    if let Some(visibility) = req.visibility {
-        ops.push(ApplyOp {
-            rel_id: rel_id.clone(),
-            op: RelationshipOp::SetVisibility { visibility },
-        });
+) -> Result<PatchRelationship, &'static str> {
+    if req.knowledge.is_none() && req.superseded.is_none() && req.retcon.is_none() {
+        return Err("Patch must change at least one of knowledge, superseded, or retcon.");
     }
-    if let Some(inv) = &req.invalidation {
-        let op = match inv.reason {
-            InvalidationReason::Superseded => {
-                let as_of = inv
-                    .as_of
-                    .clone()
-                    .ok_or("Ending a relationship requires an as-of session.")?;
-                RelationshipOp::End { as_of }
-            }
-            InvalidationReason::Retconned => RelationshipOp::Retcon,
-        };
-        ops.push(ApplyOp { rel_id, op });
-    }
-    if ops.is_empty() {
-        return Err("Patch must change visibility or invalidation.");
-    }
-    Ok(ops)
+    Ok(PatchRelationship {
+        rel_id,
+        knowledge: req.knowledge.clone().map(to_knowledge),
+        superseded: req.superseded.clone().map(to_stamp_change),
+        retcon: req.retcon.clone().map(to_stamp_change),
+    })
 }
 
 fn parse_page_id(s: &str) -> Option<PageId> {
@@ -439,7 +429,7 @@ fn create_relationship_error(
         }
         CreateRelationshipError::SupersedesDifferentPair
         | CreateRelationshipError::PriorOriginCannotSupersede
-        | CreateRelationshipError::EndBeforeOrigin => {
+        | CreateRelationshipError::EventBeforeOrigin { .. } => {
             Some((StatusCode::UNPROCESSABLE_ENTITY, err.to_string()))
         }
         CreateRelationshipError::ActorUnavailable => {
@@ -449,17 +439,31 @@ fn create_relationship_error(
     })
 }
 
-fn apply_op_error(e: SendError<ApplyOp, ApplyOpError>) -> Response {
-    rel_error_response(e, "apply_op", |err| match err {
-        ApplyOpError::NotFound | ApplyOpError::SessionNotFound(_) => {
+fn patch_relationship_error(e: SendError<PatchRelationship, PatchRelationshipError>) -> Response {
+    rel_error_response(e, "patch_relationship", |err| match err {
+        PatchRelationshipError::NotFound | PatchRelationshipError::SessionNotFound(_) => {
             Some((StatusCode::NOT_FOUND, err.to_string()))
         }
-        ApplyOpError::DuplicateLiveFact | ApplyOpError::AlreadyInvalidated => {
-            Some((StatusCode::CONFLICT, err.to_string()))
+        PatchRelationshipError::DuplicateLiveFact => Some((StatusCode::CONFLICT, err.to_string())),
+        PatchRelationshipError::EventBeforeOrigin { .. } => {
+            Some((StatusCode::UNPROCESSABLE_ENTITY, err.to_string()))
         }
-        ApplyOpError::EndBeforeOrigin => Some((StatusCode::UNPROCESSABLE_ENTITY, err.to_string())),
-        ApplyOpError::ActorUnavailable => Some((StatusCode::SERVICE_UNAVAILABLE, err.to_string())),
-        ApplyOpError::Db(_) => None,
+        PatchRelationshipError::ActorUnavailable => {
+            Some((StatusCode::SERVICE_UNAVAILABLE, err.to_string()))
+        }
+        PatchRelationshipError::Db(_) => None,
+    })
+}
+
+fn delete_relationship_error(
+    e: SendError<DeleteRelationship, DeleteRelationshipError>,
+) -> Response {
+    rel_error_response(e, "delete_relationship", |err| match err {
+        DeleteRelationshipError::NotFound => Some((StatusCode::NOT_FOUND, err.to_string())),
+        DeleteRelationshipError::ActorUnavailable => {
+            Some((StatusCode::SERVICE_UNAVAILABLE, err.to_string()))
+        }
+        DeleteRelationshipError::Db(_) => None,
     })
 }
 

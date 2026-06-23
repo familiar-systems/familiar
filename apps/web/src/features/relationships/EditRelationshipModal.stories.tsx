@@ -1,9 +1,9 @@
 // Component tests for the edit-relationship modal. The modal is presentational: it
 // takes the row + session list as data and one onSubmit callback (spied with fn()),
-// so every op runs from in-memory data with no socket - useEditRelationship owns the
-// real network. The modal portals to document.body, so queries go through `screen`.
-// Branded ids are cast like the RelationshipRow fixtures; PageIds go through
-// pageIdSchema.
+// so every edit runs from in-memory data with no socket - useEditRelationship owns
+// the real network. The modal portals to document.body, so queries go through
+// `screen`. Branded ids are cast like the RelationshipRow fixtures; PageIds go
+// through pageIdSchema.
 
 import {
   pageIdSchema,
@@ -41,15 +41,16 @@ function view(over: Partial<RelationshipView>): RelationshipView {
     other: { id: OTHER, name: "Thren Ferrymen's Guild" },
     predicate: "is captain of",
     predicate_reverse: "is captained by",
-    visibility: "gm",
     origin: { kind: "session", content: { ordinal: 3 } },
-    invalidation: null,
+    superseded: null,
+    retcon: null,
+    knowledge: { kind: "public" },
     ...over,
   };
 }
 
-// fn() spies aren't typed as mocks at the prop boundary; this narrows just enough
-// to set per-story behavior without importing vitest's Mock type.
+// fn() spies aren't typed as mocks at the prop boundary; this narrows just enough to
+// set per-story behavior without importing vitest's Mock type.
 interface MockCtl {
   mockResolvedValue: (v: unknown) => void;
   mockImplementation: (impl: (...a: never[]) => unknown) => void;
@@ -72,36 +73,91 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Opens on Supersede (the default), the visibility toggle pre-set to the row's GM,
-// and submit disabled until something changes.
+// Opens born public and ongoing; submit disabled until something changes.
 export const Default: Story = {
   play: async () => {
     await expect(screen.getByRole("heading", { name: "Edit relationship" })).toBeInTheDocument();
-    await expect(screen.getByRole("radio", { name: /Supersede/ })).toBeChecked();
-    await expect(screen.getByRole("radio", { name: /GM only/ })).toBeChecked();
-    await expect(screen.getByRole("button", { name: /Supersede/ })).toBeDisabled();
+    await expect(screen.getByRole("radio", { name: /Public/ })).toBeChecked();
+    await expect(screen.getByRole("radio", { name: /Ongoing/ })).toBeChecked();
+    await expect(screen.getByRole("button", { name: "No changes" })).toBeDisabled();
   },
 };
 
-// Editing a predicate is a supersession: it posts a new row pointing back at the old
-// one, born at the chosen session, carrying the (unchanged here) visibility.
-export const Supersede: Story = {
+// A born-public row can now be concealed: clicking Hidden flips the knowledge to hidden
+// (the secret bit is mutable) and submit is a wholesale knowledge PATCH.
+export const ConcealPublicFact: Story = {
   play: async ({ args, userEvent }) => {
     ctl(args.onSubmit).mockResolvedValue(undefined);
-    const forward = screen.getByLabelText("Forward predicate");
-    await userEvent.clear(forward);
-    await userEvent.type(forward, "is admiral of");
-    await userEvent.click(screen.getByRole("button", { name: /Supersede/ }));
+    await expect(screen.getByRole("radio", { name: /Public/ })).toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: /Hidden/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Conceal" }));
+    await waitFor(() =>
+      expect(args.onSubmit).toHaveBeenCalledWith({
+        kind: "patch",
+        body: { knowledge: { kind: "hidden" }, superseded: null, retcon: null },
+      }),
+    );
+  },
+};
+
+// Revealing a secret fact: clicking Revealed defaults to the current session, and the
+// knowledge PATCH carries Revealed(S14).
+export const RevealSecret: Story = {
+  args: { view: view({ knowledge: { kind: "hidden" } }) },
+  play: async ({ args, userEvent }) => {
+    ctl(args.onSubmit).mockResolvedValue(undefined);
+    await expect(screen.getByRole("radio", { name: /Hidden/ })).toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: /Revealed/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Reveal S14" }));
+    await waitFor(() =>
+      expect(args.onSubmit).toHaveBeenCalledWith({
+        kind: "patch",
+        body: { knowledge: { kind: "revealed", content: S14 }, superseded: null, retcon: null },
+      }),
+    );
+  },
+};
+
+// Ending without a successor is a superseded PATCH; the reveal/retcon axes are null.
+export const End: Story = {
+  play: async ({ args, userEvent }) => {
+    ctl(args.onSubmit).mockResolvedValue(undefined);
+    await userEvent.click(screen.getByRole("radio", { name: /Ended/ }));
+    await userEvent.click(screen.getByRole("button", { name: "End S14" }));
+    await waitFor(() =>
+      expect(args.onSubmit).toHaveBeenCalledWith({
+        kind: "patch",
+        body: { knowledge: null, superseded: { kind: "set", content: S14 }, retcon: null },
+      }),
+    );
+  },
+};
+
+// Ending with both successor predicates filled is a supersede POST: the new row is
+// born at the end session, carrying the row's (public) knowledge.
+export const SupersedeViaSuccessor: Story = {
+  play: async ({ args, userEvent }) => {
+    ctl(args.onSubmit).mockResolvedValue(undefined);
+    await userEvent.click(screen.getByRole("radio", { name: /Ended/ }));
+    await userEvent.type(
+      screen.getByLabelText("Successor forward predicate"),
+      "is quartermaster of",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Successor reverse predicate"),
+      "is quartermastered by",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /End S14.*successor/ }));
     await waitFor(() =>
       expect(args.onSubmit).toHaveBeenCalledWith({
         kind: "supersede",
         body: {
           subject_page_id: SUBJECT,
           other_page_id: OTHER,
-          predicate_forward: "is admiral of",
-          predicate_reverse: "is captained by",
-          visibility: "gm",
+          predicate_forward: "is quartermaster of",
+          predicate_reverse: "is quartermastered by",
           origin: { kind: "session", content: S14 },
+          knowledge: { kind: "public" },
           supersedes: REL_ID,
         },
       }),
@@ -109,112 +165,78 @@ export const Supersede: Story = {
   },
 };
 
-// Ending invalidates the row at a session, with no replacement. Visibility was not
-// touched, so the patch carries it as null.
-export const End: Story = {
+// An already-ended row can be un-ended (reversible): toggle Ongoing, clearing the
+// superseded stamp.
+export const UnEnd: Story = {
+  args: { view: view({ superseded: { ordinal: 14 } }) },
   play: async ({ args, userEvent }) => {
     ctl(args.onSubmit).mockResolvedValue(undefined);
-    await userEvent.click(screen.getByRole("radio", { name: /End/ }));
-    await userEvent.click(screen.getByRole("button", { name: /End to S14/ }));
+    await expect(screen.getByRole("radio", { name: /Ended/ })).toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: /Ongoing/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Un-end" }));
     await waitFor(() =>
       expect(args.onSubmit).toHaveBeenCalledWith({
         kind: "patch",
-        body: { invalidation: { reason: "superseded", as_of: S14 }, visibility: null },
+        body: { knowledge: null, superseded: { kind: "clear" }, retcon: null },
       }),
     );
   },
 };
 
-// Retcon invalidates as "never true", timeless (no as-of).
+// Retcon lives in the corrections drawer; arming it is a retcon PATCH at a session.
 export const Retcon: Story = {
   play: async ({ args, userEvent }) => {
     ctl(args.onSubmit).mockResolvedValue(undefined);
-    await userEvent.click(screen.getByRole("radio", { name: /Retcon/ }));
-    await userEvent.click(screen.getByRole("button", { name: "Retcon" }));
+    await userEvent.click(screen.getByRole("button", { name: /Corrections/ }));
+    await userEvent.click(screen.getByLabelText("Retcon"));
+    await userEvent.click(screen.getByRole("button", { name: "Retcon S14" }));
     await waitFor(() =>
       expect(args.onSubmit).toHaveBeenCalledWith({
         kind: "patch",
-        body: { invalidation: { reason: "retconned", as_of: null }, visibility: null },
+        body: { knowledge: null, superseded: null, retcon: { kind: "set", content: S14 } },
       }),
     );
   },
 };
 
-// Delete is the only destructive op: a bare DELETE, no body.
+// An already-retconned row opens with corrections expanded; disarming retcon is a
+// clear (un-retcon).
+export const UnRetcon: Story = {
+  args: { view: view({ retcon: { ordinal: 14 } }) },
+  play: async ({ args, userEvent }) => {
+    ctl(args.onSubmit).mockResolvedValue(undefined);
+    await userEvent.click(screen.getByLabelText("Retcon")); // uncheck (it starts armed)
+    await userEvent.click(screen.getByRole("button", { name: "Un-retcon" }));
+    await waitFor(() =>
+      expect(args.onSubmit).toHaveBeenCalledWith({
+        kind: "patch",
+        body: { knowledge: null, superseded: null, retcon: { kind: "clear" } },
+      }),
+    );
+  },
+};
+
+// Delete is the destructive escape hatch in the corrections drawer: a bare DELETE.
 export const Delete: Story = {
   play: async ({ args, userEvent }) => {
     ctl(args.onSubmit).mockResolvedValue(undefined);
-    await userEvent.click(screen.getByRole("radio", { name: /Delete/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Corrections/ }));
+    await userEvent.click(screen.getByLabelText("Delete"));
     await userEvent.click(screen.getByRole("button", { name: "Delete permanently" }));
     await waitFor(() => expect(args.onSubmit).toHaveBeenCalledWith({ kind: "delete" }));
   },
 };
 
-// Flipping only the visibility (no predicate edit, Supersede still selected) is a
-// plain visibility PATCH, labelled "Update visibility".
-export const VisibilityOnly: Story = {
-  play: async ({ args, userEvent }) => {
-    ctl(args.onSubmit).mockResolvedValue(undefined);
-    await userEvent.click(screen.getByRole("radio", { name: /Players/ }));
-    await userEvent.click(screen.getByRole("button", { name: "Update visibility" }));
-    await waitFor(() =>
-      expect(args.onSubmit).toHaveBeenCalledWith({
-        kind: "patch",
-        body: { visibility: "players", invalidation: null },
-      }),
-    );
-  },
-};
-
-// A lifecycle op and a visibility change fold into one PATCH carrying both.
-export const EndAndVisibility: Story = {
-  play: async ({ args, userEvent }) => {
-    ctl(args.onSubmit).mockResolvedValue(undefined);
-    await userEvent.click(screen.getByRole("radio", { name: /End/ }));
-    await userEvent.click(screen.getByRole("radio", { name: /Players/ }));
-    await userEvent.click(screen.getByRole("button", { name: /End to S14/ }));
-    await waitFor(() =>
-      expect(args.onSubmit).toHaveBeenCalledWith({
-        kind: "patch",
-        body: { invalidation: { reason: "superseded", as_of: S14 }, visibility: "players" },
-      }),
-    );
-  },
-};
-
-// No sessions: end and supersede need one, so their cards are disabled; retcon and
-// delete don't. Submit stays disabled until visibility changes, then becomes a
-// visibility-only update.
+// With no sessions, a fact can't be ended or retconned (both need a session); delete
+// stays available.
 export const NoSessionsGating: Story = {
   args: { sessions: SESSIONS_EMPTY },
   play: async ({ userEvent }) => {
-    await expect(screen.getByRole("radio", { name: /Supersede/ })).toBeDisabled();
-    await expect(screen.getByRole("radio", { name: /End/ })).toBeDisabled();
-    await expect(screen.getByRole("radio", { name: /Retcon/ })).toBeEnabled();
-    await expect(screen.getByRole("radio", { name: /Delete/ })).toBeEnabled();
+    await expect(screen.getByRole("radio", { name: /Ended/ })).toBeDisabled();
     await expect(screen.getByText(/no sessions yet/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("radio", { name: /Players/ }));
-    await expect(screen.getByRole("button", { name: "Update visibility" })).toBeEnabled();
-  },
-};
-
-// An already-invalidated row can't be re-invalidated: end / supersede / retcon are
-// disabled, only delete (and a visibility change) remain.
-export const AlreadyInvalidatedGating: Story = {
-  args: {
-    view: view({
-      invalidation: {
-        kind: "superseded",
-        content: { ended: { kind: "session", content: { ordinal: 12 } } },
-      },
-    }),
-  },
-  play: async () => {
-    await expect(screen.getByRole("radio", { name: /Supersede/ })).toBeDisabled();
-    await expect(screen.getByRole("radio", { name: /End/ })).toBeDisabled();
-    await expect(screen.getByRole("radio", { name: /Retcon/ })).toBeDisabled();
-    await expect(screen.getByRole("radio", { name: /Delete/ })).toBeEnabled();
-    await expect(screen.getByText(/already invalidated/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Corrections/ }));
+    await expect(screen.getByLabelText("Retcon")).toBeDisabled();
+    await expect(screen.getByLabelText("Delete")).toBeEnabled();
   },
 };
 
@@ -230,7 +252,8 @@ export const EscapeCloses: Story = {
 export const DoubleSubmitGuarded: Story = {
   play: async ({ args, userEvent }) => {
     ctl(args.onSubmit).mockImplementation(() => new Promise(() => {})); // never settles
-    await userEvent.click(screen.getByRole("radio", { name: /Delete/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Corrections/ }));
+    await userEvent.click(screen.getByLabelText("Delete"));
     const del = screen.getByRole("button", { name: "Delete permanently" });
     await userEvent.click(del);
     await userEvent.click(del);

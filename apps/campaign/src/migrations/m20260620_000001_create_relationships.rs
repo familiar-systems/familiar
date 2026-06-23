@@ -11,12 +11,14 @@ enum Relationships {
     PageB,
     PredicateAToB,
     PredicateBToA,
-    Visibility,
+    // Factuality axis: when the fact was true in the fiction, [origin, superseded).
     OriginSessionId,
+    SupersededSessionId,
+    RetconSessionId,
+    // Knowledge axis: whether/when the players learned it.
+    IsSecret,
+    RevealSessionId,
     CreatedAt,
-    InvalidationReason,
-    InvalidatedBySessionId,
-    InvalidatedAt,
 }
 
 #[derive(DeriveIden)]
@@ -77,11 +79,14 @@ impl MigrationTrait for Migration {
                             .text()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(Relationships::Visibility).text().not_null())
-                    // Origin = { Prior, Session(FK) } encoded as a nullable session
-                    // FK: NULL means `Prior` (true before the campaign began). No
-                    // `on_delete` (NO ACTION): `SetNull` would silently rewrite a
-                    // Session-origin fact into a Prior one, corrupting provenance.
+                    // Factuality. Three nullable session FKs; their NULLs are
+                    // load-bearing, so all three are NO ACTION (a `SetNull` cascade
+                    // would silently rewrite provenance):
+                    //   origin     NULL = Prior (true before the campaign began).
+                    //   superseded NULL = still true. A non-NULL value is also the
+                    //              live/ended discriminant (see the partial index):
+                    //              ending is always *at a session*, never in prior.
+                    //   retcon     NULL = not retconned.
                     .col(ColumnDef::new(Relationships::OriginSessionId).text().null())
                     .foreign_key(
                         ForeignKey::create()
@@ -89,61 +94,60 @@ impl MigrationTrait for Migration {
                             .to(Sessions::Table, Sessions::Id),
                     )
                     .col(
-                        ColumnDef::new(Relationships::CreatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null(),
-                    )
-                    // Invalidation, encoded as a sum type over three columns. The
-                    // *presence* of `invalidation_reason` is the live/invalidated
-                    // discriminant: NULL = live; set = invalidated. Within an
-                    // invalidated row, `invalidated_by_session_id` carries the
-                    // prior-vs-session axis (NULL = ended before the campaign began,
-                    // Some = ended at that session) - symmetric with `origin`.
-                    .col(
-                        ColumnDef::new(Relationships::InvalidationReason)
-                            .text()
-                            .null(),
-                    )
-                    // No `on_delete` (NO ACTION): NULL here legitimately means
-                    // "ended in prior time", so `SetNull` would corrupt
-                    // "ended at session N" into that.
-                    .col(
-                        ColumnDef::new(Relationships::InvalidatedBySessionId)
+                        ColumnDef::new(Relationships::SupersededSessionId)
                             .text()
                             .null(),
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .from(Relationships::Table, Relationships::InvalidatedBySessionId)
+                            .from(Relationships::Table, Relationships::SupersededSessionId)
+                            .to(Sessions::Table, Sessions::Id),
+                    )
+                    .col(ColumnDef::new(Relationships::RetconSessionId).text().null())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(Relationships::Table, Relationships::RetconSessionId)
+                            .to(Sessions::Table, Sessions::Id),
+                    )
+                    // Knowledge. `is_secret = false` is public (always known);
+                    // `reveal_session_id` is the session the players learned a secret
+                    // fact (NULL = not yet revealed). Both are freely mutable (the GM
+                    // can reveal, conceal, or re-hide). NO ACTION for the same reason as
+                    // the factuality FKs.
+                    .col(ColumnDef::new(Relationships::IsSecret).boolean().not_null())
+                    .col(ColumnDef::new(Relationships::RevealSessionId).text().null())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(Relationships::Table, Relationships::RevealSessionId)
                             .to(Sessions::Table, Sessions::Id),
                     )
                     .col(
-                        ColumnDef::new(Relationships::InvalidatedAt)
+                        ColumnDef::new(Relationships::CreatedAt)
                             .timestamp_with_time_zone()
-                            .null(),
+                            .not_null(),
                     )
-                    // Defense in depth: reason and audit-timestamp co-occur, so the
-                    // invalidation state can't go half-set at rest.
-                    // `invalidated_by_session_id` stays independently nullable to
-                    // carry the prior-vs-session axis. schema.rs ignores CHECKs
-                    // (migration-owned); the live/invalidated semantics are covered
-                    // behaviorally in `tests/relationships_test.rs`.
+                    // A public fact has no reveal event: only a secret fact can carry a
+                    // reveal. (is_secret) OR (reveal IS NULL). The `SetKnowledge` write
+                    // always sets the pair from a `Knowledge` value, so the illegal
+                    // combo is unreachable; the CHECK is defense in depth. schema.rs
+                    // ignores CHECKs (migration-owned); covered behaviorally in
+                    // `tests/relationships_test.rs`.
                     .check(
-                        Expr::col(Relationships::InvalidationReason)
-                            .is_null()
-                            .eq(Expr::col(Relationships::InvalidatedAt).is_null()),
+                        Expr::col(Relationships::IsSecret)
+                            .eq(true)
+                            .or(Expr::col(Relationships::RevealSessionId).is_null()),
                     )
                     .to_owned(),
             )
             .await?;
 
         // One *live* row per canonical fact, while superseded/retconned history
-        // coexists. A composite PARTIAL unique index keyed on the live
-        // discriminant (`invalidation_reason IS NULL`) - the only correct
-        // encoding: End/Create-again must let an invalidated row and a fresh live
-        // row share the same predicate pair. sea-orm entities can't express a
-        // partial or composite unique index, so this is invisible to schema.rs by
-        // design (filtered there alongside CHECKs) and covered behaviorally in
+        // coexists. Liveness is factuality only: a row is live iff it is neither
+        // superseded nor retconned, so the partial index keys on both. (Knowledge
+        // is excluded: two currently-true rows of the same fact are a duplicate
+        // regardless of who knows them.) sea-orm entities can't express a partial
+        // or composite unique index, so this is invisible to schema.rs by design
+        // (filtered there alongside CHECKs) and covered behaviorally in
         // `tests/relationships_test.rs`.
         manager
             .create_index(
@@ -154,7 +158,8 @@ impl MigrationTrait for Migration {
                     .col(Relationships::PageB)
                     .col(Relationships::PredicateAToB)
                     .col(Relationships::PredicateBToA)
-                    .and_where(Expr::col(Relationships::InvalidationReason).is_null())
+                    .and_where(Expr::col(Relationships::SupersededSessionId).is_null())
+                    .and_where(Expr::col(Relationships::RetconSessionId).is_null())
                     .unique()
                     .to_owned(),
             )

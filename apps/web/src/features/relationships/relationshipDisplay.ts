@@ -1,74 +1,136 @@
 // Pure presentation logic for a relationship row, kept out of the component so it
 // is unit-testable and so the Tailwind class tables live in one place (the same
-// token->class discipline as pageKindIcon.ts / NewPageModal.tsx). Two orthogonal
-// axes drive a row's look, mirroring the wireframe's composable `is-gm` /
-// `is-superseded` / `is-retconned` classes:
-//   - lifecycle (live | superseded | retconned), read off `invalidation`, owns the
-//     predicate/chip text treatment;
-//   - visibility (gm), read off `visibility`, owns the plum wash, applied as a
-//     background layer so it composes over any lifecycle.
+// token->class discipline as pageKindIcon.ts / NewPageModal.tsx). A relationship
+// has two orthogonal axes; the row renders a temporal **rail** of pills plus a
+// lifecycle treatment of the predicate/chip and a GM wash:
+//   - the rail (`buildRail`) is the pills True-of -> Revealed-on -> Ended-on, in
+//     session order, with a terminal Retcon pill always last;
+//   - lifecycle (live | superseded | retconned), read off the factuality axis, owns
+//     the predicate/chip text treatment;
+//   - "currently secret" (born secret, not yet revealed), read off the knowledge
+//     axis, owns the plum wash, applied as a background layer.
 
-import type { RelationshipView, ViewSessionPoint } from "@familiar-systems/types-campaign";
-import { EyeOff, History, X, type LucideIcon } from "lucide-react";
+import type {
+  KnowledgeView,
+  RelationshipView,
+  ViewSessionOrdinal,
+  ViewSessionPoint,
+} from "@familiar-systems/types-campaign";
+import { Eye, EyeOff, RotateCcw, type LucideIcon } from "lucide-react";
 
 export type Lifecycle = "live" | "superseded" | "retconned";
 
-/** Which lifecycle a row is in. `invalidation === null` is the live set. */
+/** Which lifecycle a row is in. Factuality only: retcon wins over a plain end. */
 export function deriveLifecycle(view: RelationshipView): Lifecycle {
-  if (view.invalidation === null) return "live";
-  return view.invalidation.kind === "retconned" ? "retconned" : "superseded";
+  if (view.retcon !== null) return "retconned";
+  if (view.superseded !== null) return "superseded";
+  return "live";
 }
 
-// "Session 3" / "Prior" for a live row's lone origin; "S3" / "Prior" for the
-// compact ends of a range. The wireframe spells the live origin out and uses the
-// terse S-number inside the superseded/retconned forms.
-function longPoint(p: ViewSessionPoint): string {
-  return p.kind === "prior" ? "Prior" : `Session ${p.content.ordinal}`;
+/** A currently-secret, not-yet-revealed relationship: the GM-wash signal. */
+export function isCurrentlySecret(view: RelationshipView): boolean {
+  return view.knowledge.kind === "hidden";
 }
-function shortPoint(p: ViewSessionPoint): string {
+
+export type PillTone = "origin" | "prior" | "secret" | "revealed" | "ended" | "retcon";
+
+export type RailPill = {
+  key: string;
+  /** The session label, "Prior" or "S{n}". */
+  label: string;
+  /** A leading lucide icon (EyeOff = secret, Eye = revealed, RotateCcw = ended). */
+  icon: LucideIcon | null;
+  /** A leading text glyph - the retcon `↯`, which has no lucide equivalent. */
+  glyph: string | null;
+  tone: PillTone;
+};
+
+function sessionLabel(p: ViewSessionPoint): string {
   return p.kind === "prior" ? "Prior" : `S${p.content.ordinal}`;
 }
-
-/**
- * The origin chip text. Live: the origin alone ("Prior" / "Session 6").
- * Superseded: the span it held ("S6 → S12"). Retconned: its origin with the
- * retcon glyph ("S2 ↯").
- */
-export function originLabel(view: RelationshipView): string {
-  const inv = view.invalidation;
-  if (inv === null) return longPoint(view.origin);
-  if (inv.kind === "retconned") return `${shortPoint(view.origin)} ↯`;
-  return `${shortPoint(view.origin)} → ${shortPoint(inv.content.ended)}`;
+function ordinalLabel(o: ViewSessionOrdinal): string {
+  return `S${o.ordinal}`;
+}
+/** A point's sort value; `Prior` sorts before every session. */
+function originSval(p: ViewSessionPoint): number {
+  return p.kind === "prior" ? -1 : p.content.ordinal;
 }
 
-export type OriginTone = "normal" | "prior" | "ended" | "retcon";
-
-/** The origin chip's color tone, following the same lifecycle/origin split. */
-export function originTone(view: RelationshipView): OriginTone {
-  const inv = view.invalidation;
-  if (inv !== null) return inv.kind === "retconned" ? "retcon" : "ended";
-  return view.origin.kind === "prior" ? "prior" : "normal";
+function reveal(k: KnowledgeView): ViewSessionOrdinal | null {
+  return k.kind === "revealed" ? k.content : null;
 }
 
 /**
- * The right-gutter status glyph, by priority: a retcon/supersede mark wins over
- * the GM-only eye (a GM row that is also ended reads as ended; the wash still
- * signals GM-only). `null` for a plain live, player-visible row.
+ * The row's temporal rail: pills in session order, retcon always last. Replaces the
+ * single origin chip. Mirrors the wireframe's `renderRail`:
+ *  - origin pill: a born-secret fact not revealed-coincident shows `secret` (EyeOff);
+ *    else a plain `true` (no icon). At the origin point.
+ *  - if ended and not retconned: an `ended` pill (RotateCcw) at the supersede session
+ *    (a retcon absorbs the ended pill).
+ *  - if born secret and revealed at a *different* session than origin: a `revealed`
+ *    pill (Eye) at the reveal session.
+ *  - if retconned: a terminal `↯ S{n}` pill, appended after the session sort.
+ *
+ * A reveal in the same session the fact became true reads as plain public (no hidden
+ * interval): the origin pill is `true`, and there is no separate revealed pill.
  */
-export function gutterGlyph(
-  view: RelationshipView,
-): { Icon: LucideIcon; label: string; className: string } | null {
-  const lifecycle = deriveLifecycle(view);
-  if (lifecycle === "retconned") {
-    return { Icon: X, label: "Retconned", className: "text-stone-400" };
+export function buildRail(view: RelationshipView): RailPill[] {
+  const secret = view.knowledge.kind !== "public";
+  const revealedAt = reveal(view.knowledge);
+  const retconned = view.retcon !== null;
+  const revealCoincides =
+    revealedAt !== null &&
+    view.origin.kind === "session" &&
+    revealedAt.ordinal === view.origin.content.ordinal;
+  const originSecret = secret && !revealCoincides;
+
+  const pills: (RailPill & { sval: number })[] = [];
+
+  pills.push({
+    key: "origin",
+    label: sessionLabel(view.origin),
+    icon: originSecret ? EyeOff : null,
+    glyph: null,
+    tone: originSecret ? "secret" : view.origin.kind === "prior" ? "prior" : "origin",
+    sval: originSval(view.origin),
+  });
+
+  if (view.superseded !== null && !retconned) {
+    pills.push({
+      key: "ended",
+      label: ordinalLabel(view.superseded),
+      icon: RotateCcw,
+      glyph: null,
+      tone: "ended",
+      sval: view.superseded.ordinal,
+    });
   }
-  if (lifecycle === "superseded") {
-    return { Icon: History, label: "Superseded", className: "text-muted-foreground" };
+
+  if (secret && revealedAt !== null && !revealCoincides) {
+    pills.push({
+      key: "revealed",
+      label: ordinalLabel(revealedAt),
+      icon: Eye,
+      glyph: null,
+      tone: "revealed",
+      sval: revealedAt.ordinal,
+    });
   }
-  if (view.visibility === "gm") {
-    return { Icon: EyeOff, label: "GM only", className: "text-primary" };
+
+  pills.sort((a, b) => a.sval - b.sval);
+  const rail: RailPill[] = pills.map(({ sval: _sval, ...pill }) => pill);
+
+  if (view.retcon !== null) {
+    rail.push({
+      key: "retcon",
+      label: ordinalLabel(view.retcon),
+      icon: null,
+      glyph: "↯",
+      tone: "retcon",
+    });
   }
-  return null;
+
+  return rail;
 }
 
 // Predicate + chip treatment per lifecycle. Literal class strings so Tailwind's
@@ -88,9 +150,11 @@ export const LIFECYCLE_STYLE = {
   },
 } satisfies Record<Lifecycle, { predicate: string; chip: string }>;
 
-export const ORIGIN_TONE_CLASS = {
-  normal: "border-foreground/15 text-muted-foreground",
+export const RAIL_TONE_CLASS = {
+  origin: "border-foreground/15 text-muted-foreground",
   prior: "border-bronze/40 bg-bronze/5 text-bronze",
+  secret: "border-primary/40 bg-primary/5 text-primary",
+  revealed: "border-foreground/20 bg-foreground/[0.03] text-foreground/70",
   ended: "border-foreground/20 bg-foreground/[0.03] text-muted-foreground",
   retcon: "border-stone-400/45 text-stone-400",
-} satisfies Record<OriginTone, string>;
+} satisfies Record<PillTone, string>;

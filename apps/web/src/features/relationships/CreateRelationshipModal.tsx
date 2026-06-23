@@ -16,18 +16,18 @@
 import type {
   CreateRelationshipRequest,
   EntitySearchResult,
+  KnowledgeInput,
   OriginInput,
   PageId,
   PredicatePairView,
   SessionsResponse,
-  Visibility,
 } from "@familiar-systems/types-campaign";
 import { Plus, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { filterPredicates, reverseFor } from "./predicateMatch";
-import { EntityChip, VisibilityToggle } from "./relationshipChrome";
+import { EntityChip, KnowledgeControl } from "./relationshipChrome";
 import { useTypeahead } from "./useTypeahead";
 
 // The object can be an existing page or a not-yet-minted new entity (minted on
@@ -72,7 +72,9 @@ export function CreateRelationshipModal({
       ? { kind: "session", content: sessions.current.id }
       : { kind: "prior" },
   );
-  const [visibility, setVisibility] = useState<Visibility>("gm");
+  // Default born public; the GM marks it secret (and optionally revealed). Matches
+  // the wireframe's create default.
+  const [knowledge, setKnowledge] = useState<KnowledgeInput>({ kind: "public" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -206,8 +208,8 @@ export function CreateRelationshipModal({
         other_page_id: otherId,
         predicate_forward: predicateForward.trim(),
         predicate_reverse: predicateReverse.trim(),
-        visibility,
         origin,
+        knowledge,
         supersedes: null,
       });
       // Success unmounts this modal (the connector closes + refetches); no reset.
@@ -506,12 +508,20 @@ export function CreateRelationshipModal({
           </select>
         </div>
 
-        {/* Visibility: who can see the fact, independent of when it became true. */}
-        <div className="mt-3 flex items-center gap-3">
+        {/* To the players: public (known) or hidden (GM-only). A new fact starts on
+            the public track; revealing a secret fact at a session is an edit, not a
+            create, so `bornSecret={false}` keeps this a plain Public/Hidden choice. */}
+        <div className="mt-3 flex flex-col gap-2">
           <span className="font-sans text-[10px] tracking-wide text-muted-foreground uppercase">
-            Visibility
+            To the players
           </span>
-          <VisibilityToggle value={visibility} disabled={busy} onChange={setVisibility} />
+          <KnowledgeControl
+            value={knowledge}
+            disabled={busy}
+            bornSecret={false}
+            sessions={sessions.sessions}
+            onChange={setKnowledge}
+          />
         </div>
 
         {error !== null ? (

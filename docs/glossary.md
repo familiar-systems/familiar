@@ -76,7 +76,7 @@ The sub-entities below are data _on_ the session page, not pages themselves:
 
 The journal records _events_. The graph records _state_. "The party killed the baron" is a journal fact. "The baroness is a widow" is a graph mutation - a relationship change proposed by the AI as a _consequence_ of that journal fact, accepted by the GM. The journal is the ledger; the graph is the derived world state.
 
-> See [entity-relationship-temporal-model](plans/2026-04-10-entity-relationship-temporal-model.md) for how sessions serve as the temporal coordinate for the relationship graph.
+> See [entity-relationship-temporal-model](plans/2026-06-23-entity-relationship-temporal-model.md) for how sessions serve as the temporal coordinate for the relationship graph.
 
 ### Edges
 
@@ -84,30 +84,36 @@ The journal records _events_. The graph records _state_. "The party killed the b
 
 Mentions are derived, not authored - created automatically when the AI detects entity references in text or when the GM writes an `@`-reference. They carry no label (the connection is always "mentions") and inherit status from their parent block. Mentions power backlinks ("where is this page mentioned?"), context retrieval for the AI, and clickable references throughout the wiki. Embeds are a special case of block-to-block mention that renders its target inline.
 
-**Relationship** - A node-to-node semantic connection. Bidirectional: carries a forward predicate and a reverse predicate (e.g., "is a resident of" / "is the home of") in a single row. Two pages can have multiple concurrent relationships - the Duke and the Duchess are both "married to" and "rivals with" each other, each a separate row. Predicates are immutable - when a relationship evolves, the old row is invalidated and a new one replaces it, or a new row coexists alongside it. The GM decides which.
+**Relationship** - A node-to-node semantic connection. Bidirectional: carries a forward predicate and a reverse predicate (e.g., "is a resident of" / "is the home of") in a single row. Two pages can have multiple concurrent relationships - the Duke and the Duchess are both "married to" and "rivals with" each other, each a separate row. Predicates are immutable - when a relationship evolves, the old row is ended (superseded) and a new one replaces it, or a new row coexists alongside it. The GM decides which.
 
 The primary way relationships enter the graph is through the AI: the GM uploads session sources, the AI proposes relationship changes based on what happened, and the GM reviews and accepts. Manual tools exist for direct manipulation, but the point is to let the AI handle the bookkeeping. Relationships have an immutable, non-nullable origin: either `prior` (true before the campaign started) or `session(FK)` (became true in the context of that session).
 
 **Tag** - A page representing a classification (e.g., `#NPC`, `#Human`). Tags are never created explicitly - tagging a page with `#Villain` auto-creates the Villain tag page if it doesn't exist. Tagging is a relationship with the label `tagged`. A tag's page auto-generates a listing of everything tagged with it, exactly like a [Wikipedia category page](https://en.wikipedia.org/wiki/Category:2001_establishments_in_the_United_States). The GM can add content to a tag's page - notes like "NPCs in this campaign tend to be untrustworthy" become context the AI uses when working with tagged entities.
 
-> See [entity-relationship-temporal-model](plans/2026-04-10-entity-relationship-temporal-model.md) for the relationship schema and temporal model.
+> See [entity-relationship-temporal-model](plans/2026-06-23-entity-relationship-temporal-model.md) for the relationship schema and temporal model.
 > See [ai-serialization-format-v2](plans/2026-03-25-ai-serialization-format-v2.md) for how mentions and relationships appear in the agent's markdown format.
 
 ### Relationship Lifecycle
 
-**Origin** - Where a relationship fact came from. Always present, never nullable, immutable. Either `prior` (primordial world state) or `session(n)` (became true in the context of session n).
+A relationship moves along **two orthogonal, authored, session-stamped axes**. **Factuality** is when it was true in the fiction (`[origin, superseded)`, plus a terminal retcon); **Knowledge** is when the players learned it. Neither is inferred - the GM (or an AI suggestion the GM accepts) stamps the session each event happened in. Both axes' corrections are reversible while the row lives.
 
-**Superseded** - A relationship that was true and is no longer because the fiction moved forward. Invalidated with `reason: superseded`. Remains visible in historical snapshots because it was true at the time.
+**Origin** - The factuality start: where a relationship fact came from. Always present, never nullable, immutable. Either `prior` (primordial world state) or `session(n)` (became true in the context of session n).
 
-**Retconned** - A relationship the GM declares was never true in the fiction, even if it was established in a prior session. Excluded from historical snapshots. The row is kept because retcons are part of the tapestry of the game. GM-only operation.
+**Superseded** - The factuality end: a relationship that was true and is no longer because the fiction moved forward. `superseded_session_id` records the session it ended (NULL = still true). Remains visible in snapshots before that session because it was true at the time. Reversible (un-end clears the stamp).
 
-**Deleted** - Hard delete, no audit trail. For relationships that should never have existed: GM changed their mind about a GM-only relationship never established during play, or the AI proposed something incorrect and the GM accidentally accepted it. Not an invalidation. GM-only operation.
+**Retconned** - A relationship the GM declares was never true in the fiction, even if it was established in play. `retcon_session_id` records the session the correction was made (for the timeline and diff), but the row is excluded from *every* snapshot regardless of T. The row is kept because retcons are part of the tapestry of the game; it strikes factuality but preserves knowledge. Reversible (un-retcon). GM-only operation.
 
-> See [entity-relationship-temporal-model](plans/2026-04-10-entity-relationship-temporal-model.md) for the full lifecycle and GM manual tools.
+**Deleted** - Hard delete, no audit trail. For relationships that should never have existed: GM changed their mind about a never-established relationship, or the AI proposed something incorrect and the GM accidentally accepted it. Not an axis stamp. GM-only operation.
+
+**Knowledge** - The knowledge axis, replacing the old timeless `visibility` flag: a relationship is **Public** (known to the players, `is_secret = false`), **Hidden** (secret, GM-only, not yet revealed), or **Revealed** at a session (secret, learned by the players then). The axis is **freely mutable** - the GM reveals, conceals (`Public → Hidden`), or re-publicizes a fact, set wholesale to any state. Unlike the old flag it is session-stamped, so "what did the players know at session T" is answerable; concealing a public fact is lossy (it keeps no record the fact was public), acceptable for a correction tool. Per-player visibility is a future expansion.
+
+**Reveal** - The session the players learned a secret fact (`reveal_session_id`, NULL = not yet revealed). Revealing in the same session a fact became true reads as plain public (no hidden interval). Reversible (re-hiding or re-publicizing clears it). A retcon does not touch this axis: if the players were told a thing and it was later retconned, the record that they believed it survives.
+
+> See [entity-relationship-temporal-model](plans/2026-06-23-entity-relationship-temporal-model.md) for the full two-axis lifecycle and GM manual tools.
 
 ### Status
 
-A single field on every primitive - nodes, relationships, and blocks - capturing both visibility and canonicity. Status applies at two levels: a whole page can be GM-only (the secret villain the players don't know exists yet), or individual blocks within a Known page can be GM-only (the NPC the players have met, but they don't know he's secretly a vampire).
+A single field on pages and blocks, capturing both visibility and canonicity. (Relationships do not carry this `Status`; they move along the two temporal axes above - Knowledge and Factuality - instead.) Status applies at two levels: a whole page can be GM-only (the secret villain the players don't know exists yet), or individual blocks within a Known page can be GM-only (the NPC the players have met, but they don't know he's secretly a vampire).
 
 **GM-only** - True and secret. Only the GM can see it. The AI uses it for context retrieval and consistency checking. Default for all new content.
 
@@ -115,9 +121,9 @@ A single field on every primitive - nodes, relationships, and blocks - capturing
 
 **Retconned** - No longer true, but visible to everyone. The table established this in play and has since decided it didn't happen. The AI ignores it for active world-state queries but can reference it on explicit request.
 
-**Visibility** - On relationships, a mutable two-value field (`gm` / `players`) independent of origin. The GM can reveal or hide relationships at any time without triggering invalidation. Per-player visibility is a future expansion.
-
 **Status tightening** - Internal implementation constraint: in page content, status can only tighten as you descend the heading hierarchy, never loosen. A `[known]` block inside a `[gm_only]` section is a parse error. Not user-facing - enforced by the serialization compiler.
+
+> A relationship's player-visibility is **not** a `Status` value; it is the freely-mutable, session-stamped **Knowledge** axis (Public / Hidden / Revealed) - see Relationship Lifecycle above.
 
 > See [vision.md](vision.md) for the status design philosophy.
 
@@ -287,11 +293,11 @@ Three layers, most specific wins:
 
 ### Temporal Queries
 
-**Snapshot query** - "Show me the world as of session N." Returns all relationships where origin ≤ N, not retconned, and not yet invalidated (or invalidated after N). The mechanism that makes the relationship graph rewindable through time.
+**Snapshot query** - "Show me the world as of session N." Returns all relationships true at N: `origin` is `prior` or ≤ N, `superseded` is NULL or > N, and not retconned. A player-facing snapshot additionally keeps only `Public` or `Revealed(s ≤ N)` rows (the knowledge post-filter). The mechanism that makes the relationship graph rewindable through time.
 
-**Diff query** - "What changed in session N." Returns all relationships created or invalidated by session N. The basis for session-level change summaries.
+**Diff query** - "What changed in session N." Returns all relationships with any axis event in N: origin, superseded, reveal, or retcon. A reveal is a first-class diff event (the party learned something), distinct from a factuality change. The basis for session-level change summaries.
 
-> See [entity-relationship-temporal-model](plans/2026-04-10-entity-relationship-temporal-model.md) for the query semantics and in-memory representation.
+> See [entity-relationship-temporal-model](plans/2026-06-23-entity-relationship-temporal-model.md) for the query semantics and in-memory representation.
 
 ---
 

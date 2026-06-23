@@ -94,12 +94,12 @@ async function fillValidForm(
 }
 
 // The subject is fixed to the current entity (a divergence from the wireframe,
-// where it is editable); the form opens unsubmittable with the GM default.
+// where it is editable); the form opens unsubmittable, born public by default.
 export const Default: Story = {
   play: async () => {
     await expect(screen.getByText("Wren Aldwater")).toBeInTheDocument();
     await expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
-    await expect(screen.getByRole("radio", { name: /GM only/ })).toBeChecked();
+    await expect(screen.getByRole("radio", { name: /Public/ })).toBeChecked();
     await expect((screen.getByLabelText("As of") as HTMLSelectElement).value).toBe(CURRENT_SID);
   },
 };
@@ -208,16 +208,19 @@ export const CustomPredicateRequiresReverse: Story = {
   },
 };
 
-// Visibility is a radiogroup defaulting to GM only; it can be flipped to Players.
-export const VisibilityToggle: Story = {
+// Knowledge defaults to Public; clicking Hidden marks the new fact secret (GM-only).
+// Create has no reveal control - the Public segment carries no session, and revealing a
+// secret fact is an edit, not a create.
+export const BornSecret: Story = {
   play: async ({ userEvent }) => {
-    await expect(screen.getByRole("radio", { name: /GM only/ })).toBeChecked();
-    await userEvent.click(screen.getByRole("radio", { name: /Players/ }));
-    await expect(screen.getByRole("radio", { name: /Players/ })).toBeChecked();
+    await expect(screen.getByRole("radio", { name: /Public/ })).toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: /Hidden/ }));
+    await expect(screen.getByRole("radio", { name: /Hidden/ })).toBeChecked();
+    await expect(screen.queryByLabelText("Reveal session")).toBeNull();
   },
 };
 
-// A complete form submits the full request, GM-visible by default, originating in
+// A complete form submits the full request, born public by default, originating in
 // the current session, never a supersession.
 export const SubmitSuccess: Story = {
   play: async ({ args, userEvent }) => {
@@ -231,7 +234,7 @@ export const SubmitSuccess: Story = {
           other_page_id: GRIMHOLLOW,
           predicate_forward: "is a resident of",
           predicate_reverse: "is the home of",
-          visibility: "gm",
+          knowledge: { kind: "public" },
           origin: { kind: "session", content: CURRENT_SID },
           supersedes: null,
         }),

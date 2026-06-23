@@ -15,8 +15,8 @@ import type {
   CreateTemplateBody,
   EntityResponse,
   EntitySearchResult,
-  InvalidationInput,
-  InvalidationReason,
+  KnowledgeInput,
+  KnowledgeView,
   OriginInput,
   PageId,
   PageResponse,
@@ -29,15 +29,14 @@ import type {
   SessionId,
   SessionRef,
   SessionResponse,
+  SessionStampPatch,
   SessionsResponse,
   Status,
   SystemEntry,
   TemplateRef,
   TemplateResponse,
-  ViewInvalidation,
   ViewSessionOrdinal,
   ViewSessionPoint,
-  Visibility,
 } from "@familiar-systems/types-campaign";
 export interface paths {
   "/campaign/{id}": {
@@ -273,20 +272,18 @@ export interface components {
      */
     EntitySearchResult: EntitySearchResult;
     /**
-     * @description The lifecycle transition a PATCH applies: end (`reason: superseded`, with the
-     *     session it ended at) or retcon (`reason: retconned`, timeless). Setting it is a
-     *     one-way door - the server rejects re-invalidating an already-invalidated row.
+     * @description A knowledge state as the client supplies it - on create (the born state) and on
+     *     patch (the new state, set wholesale). The input analog of [`KnowledgeView`]: public,
+     *     secret (hidden), or secret and revealed at a session.
      */
-    InvalidationInput: InvalidationInput;
+    KnowledgeInput: KnowledgeInput;
     /**
-     * @description Why a relationship row stopped being live. The *presence* of a reason is the
-     *     at-rest live/invalidated discriminant (a live row has none). `Superseded`
-     *     covers both narrative end and replacement (it stays visible in historical
-     *     snapshots); `Retconned` means "never true in the fiction" (excluded from
-     *     snapshots, kept in the database as part of the tapestry).
-     * @enum {string}
+     * @description The knowledge axis in the viewer's terms: public (always known), secret and not yet
+     *     revealed, or revealed to the players at a session. Mirrors the server-internal
+     *     `Knowledge` sum; the secret bit is implicit in the variant (`Public` = not secret,
+     *     the others secret). Adjacent tagging per the convention guard.
      */
-    InvalidationReason: InvalidationReason;
+    KnowledgeView: KnowledgeView;
     /**
      * @description Where a relationship became true, as a create supplies it: the input analog of
      *     the output [`ViewSessionPoint`]. A sum, not a nullable `SessionId`, so `Prior`
@@ -308,9 +305,16 @@ export interface components {
     PageResponse: PageResponse;
     PatchCampaignRequest: PatchCampaignRequest;
     /**
-     * @description `PATCH /campaign/{id}/relationships/{relId}` body: the relationship's mutable
-     *     surface. Both fields optional; at least one must be present. Predicates and
-     *     origin are immutable, so they are absent here.
+     * @description `PATCH /campaign/{id}/relationships/{relId}` body: independent, reversible edits to
+     *     the three mutable axes. Each field optional (absent = leave that axis unchanged); at
+     *     least one must be present. Predicates and origin are immutable, so they are absent
+     *     here. The present edits apply as one atomic batch.
+     *
+     *     `knowledge` is set wholesale to the new state (`Public | Hidden | Revealed(s)`),
+     *     freely - reveal, conceal, or re-hide. `superseded` is the factuality end (set = end,
+     *     clear = un-end); `retcon` is the terminal strike (set = retcon, clear = un-retcon).
+     *     End-*with-successor* is not a patch - it goes through `POST /relationships` with
+     *     `supersedes` (the successor is a new row).
      */
     PatchRelationshipRequest: PatchRelationshipRequest;
     /**
@@ -328,9 +332,9 @@ export interface components {
     RelationshipId: RelationshipId;
     /**
      * @description One relationship as rendered on a given page: oriented so the client never
-     *     computes direction. The server picks `predicate` (forward *from the viewed
-     *     page*) and `predicate_reverse` (back toward it) from the stored undirected
-     *     pair, and resolves session identities to ordinals.
+     *     computes direction, and projected onto both axes. The server picks `predicate`
+     *     (forward *from the viewed page*) and `predicate_reverse` (back toward it) from
+     *     the stored undirected pair, and resolves session identities to ordinals.
      */
     RelationshipView: RelationshipView;
     /**
@@ -350,6 +354,13 @@ export interface components {
      *     it); the client composes it from `ordinal` and the page title (`name`).
      */
     SessionResponse: SessionResponse;
+    /**
+     * @description A patch to one nullable session-stamp axis: set it to a session, or clear it back
+     *     to NULL (the reversible correction). A field left absent (`null`) on
+     *     [`PatchRelationshipRequest`] leaves that axis unchanged; present-and-`Clear` is an
+     *     explicit un-set. Adjacent tagging per the convention guard.
+     */
+    SessionStampPatch: SessionStampPatch;
     /**
      * @description `GET /campaign/{id}/sessions`: every session ascending by ordinal, plus the
      *     current (max-ordinal) one for the picker's default. `current` is `None` when the
@@ -372,33 +383,21 @@ export interface components {
      */
     TemplateResponse: TemplateResponse;
     /**
-     * @description How a no-longer-live relationship was invalidated, in the viewer's terms. The
-     *     reason is the discriminant, each variant carrying only what it renders:
-     *     `Superseded` (narrative end or replacement) carries when it ended - a session
-     *     point, possibly `Prior` for the rare ended-before-the-campaign case; `Retconned`
-     *     ("never true in the fiction") carries nothing and renders off the `origin`.
-     *     Adjacent tagging per the convention guard.
+     * @description A session referred to by its curated ordinal, in the viewer's terms. Used bare
+     *     for the session-only axes (superseded / retcon / reveal) and inside
+     *     [`ViewSessionPoint::Session`].
      */
-    ViewInvalidation: ViewInvalidation;
-    /** @description The session a `ViewSessionPoint::Session` refers to, by its curated ordinal. */
     ViewSessionOrdinal: ViewSessionOrdinal;
     /**
-     * @description A point in knowledge time, in the viewer's terms: before the campaign began, or
-     *     at a session (by its curated ordinal). A sum rather than a nullable ordinal so
-     *     `Prior` is a first-class value the client can't confuse with a missing field.
-     *     Reused by both a relationship's `origin` and a superseded end, mirroring the
-     *     server-internal `Origin` sum that backs both. Adjacent tagging
+     * @description A point on the factuality origin axis, in the viewer's terms: before the campaign
+     *     began, or at a session (by its curated ordinal). A sum rather than a nullable
+     *     ordinal so `Prior` is a first-class value the client can't confuse with a missing
+     *     field. (Only `origin` can be `Prior`; the session-only axes -
+     *     superseded/retcon/reveal - use a bare [`ViewSessionOrdinal`].) Adjacent tagging
      *     (`{ "kind": "...", "content": { ... } }`) per the convention guard in
      *     `crates/app-shared/tests/conventions.rs`.
      */
     ViewSessionPoint: ViewSessionPoint;
-    /**
-     * @description Who may see a relationship. Mutable and independent of `origin`: the GM can
-     *     reveal or hide a fact at any time without invalidating it. Two values for
-     *     now; per-player visibility is a future expansion.
-     * @enum {string}
-     */
-    Visibility: Visibility;
   };
   responses: never;
   parameters: never;
@@ -801,7 +800,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Self-edge, empty predicate, or an invalid supersede (different pair / prior origin / takes effect before the replaced fact began) */
+      /** @description Self-edge, empty predicate, a reveal before origin, or an invalid supersede (different pair / prior origin / takes effect before the replaced fact began) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -1000,14 +999,14 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description The relationship is already invalidated */
+      /** @description Clearing superseded/retcon re-creates a duplicate live fact */
       409: {
         headers: {
           [name: string]: unknown;
         };
         content?: never;
       };
-      /** @description Empty patch, ending without an as-of session, or an end before the fact's origin */
+      /** @description Empty patch, revealing a public fact, or an axis event before the fact's origin */
       422: {
         headers: {
           [name: string]: unknown;

@@ -1,17 +1,21 @@
 import type {
+  KnowledgeView,
   RelationshipId,
   RelationshipView,
+  ViewSessionOrdinal,
   ViewSessionPoint,
 } from "@familiar-systems/types-campaign";
 import { describe, expect, it } from "vitest";
 
-import { deriveLifecycle, gutterGlyph, originLabel, originTone } from "./relationshipDisplay";
+import { buildRail, deriveLifecycle, isCurrentlySecret } from "./relationshipDisplay";
 
-// The display logic only reads predicate/visibility/origin/invalidation, so the
-// builder fills the rest with throwaway branded ids (cast like the TreeID
-// fixtures in TocTree.stories.tsx - no runtime guard exists for these brands).
+// The display logic reads only predicate/origin/superseded/retcon/knowledge, so the
+// builder fills the rest with throwaway branded ids (cast like the TreeID fixtures
+// in TocTree.stories.tsx - no runtime guard exists for these brands).
+const ord = (ordinal: number): ViewSessionOrdinal => ({ ordinal });
 const session = (ordinal: number): ViewSessionPoint => ({ kind: "session", content: { ordinal } });
 const prior: ViewSessionPoint = { kind: "prior" };
+const revealed = (ordinal: number): KnowledgeView => ({ kind: "revealed", content: { ordinal } });
 
 function view(overrides: Partial<RelationshipView>): RelationshipView {
   return {
@@ -22,106 +26,100 @@ function view(overrides: Partial<RelationshipView>): RelationshipView {
     },
     predicate: "is a resident of",
     predicate_reverse: "is the home of",
-    visibility: "players",
     origin: session(3),
-    invalidation: null,
+    superseded: null,
+    retcon: null,
+    knowledge: { kind: "public" },
     ...overrides,
   };
 }
 
+/** A compact rail shape for assertions: label, tone, and any leading glyph. */
+function rail(v: RelationshipView) {
+  return buildRail(v).map((p) => ({ label: p.label, tone: p.tone, glyph: p.glyph }));
+}
+
 describe("deriveLifecycle", () => {
-  it("is live when not invalidated", () => {
+  it("is live when neither superseded nor retconned", () => {
     expect(deriveLifecycle(view({}))).toBe("live");
   });
   it("is superseded when ended", () => {
-    expect(
-      deriveLifecycle(
-        view({ invalidation: { kind: "superseded", content: { ended: session(12) } } }),
-      ),
-    ).toBe("superseded");
+    expect(deriveLifecycle(view({ superseded: ord(12) }))).toBe("superseded");
   });
   it("is retconned when retconned", () => {
-    expect(deriveLifecycle(view({ invalidation: { kind: "retconned" } }))).toBe("retconned");
+    expect(deriveLifecycle(view({ retcon: ord(2) }))).toBe("retconned");
+  });
+  it("lets retcon win over a coexisting supersede", () => {
+    expect(deriveLifecycle(view({ superseded: ord(12), retcon: ord(14) }))).toBe("retconned");
   });
 });
 
-describe("originLabel", () => {
-  it("spells out a live session origin", () => {
-    expect(originLabel(view({ origin: session(3) }))).toBe("Session 3");
-  });
-  it("spells out a live prior origin", () => {
-    expect(originLabel(view({ origin: prior }))).toBe("Prior");
-  });
-  it("renders a superseded span with compact session numbers", () => {
-    expect(
-      originLabel(
-        view({
-          origin: session(6),
-          invalidation: { kind: "superseded", content: { ended: session(12) } },
-        }),
-      ),
-    ).toBe("S6 → S12");
-  });
-  it("renders a prior-origin superseded span", () => {
-    expect(
-      originLabel(
-        view({
-          origin: prior,
-          invalidation: { kind: "superseded", content: { ended: session(12) } },
-        }),
-      ),
-    ).toBe("Prior → S12");
-  });
-  it("renders a retconned origin with the retcon glyph", () => {
-    expect(originLabel(view({ origin: session(2), invalidation: { kind: "retconned" } }))).toBe(
-      "S2 ↯",
-    );
+describe("isCurrentlySecret", () => {
+  it("is true only for a hidden (born-secret, unrevealed) row", () => {
+    expect(isCurrentlySecret(view({ knowledge: { kind: "hidden" } }))).toBe(true);
+    expect(isCurrentlySecret(view({ knowledge: { kind: "public" } }))).toBe(false);
+    expect(isCurrentlySecret(view({ knowledge: revealed(5) }))).toBe(false);
   });
 });
 
-describe("originTone", () => {
-  it("is normal for a live session origin", () => {
-    expect(originTone(view({ origin: session(3) }))).toBe("normal");
+describe("buildRail", () => {
+  it("a live prior public row: a lone Prior pill", () => {
+    expect(rail(view({ origin: prior }))).toEqual([{ label: "Prior", tone: "prior", glyph: null }]);
   });
-  it("is prior for a live prior origin", () => {
-    expect(originTone(view({ origin: prior }))).toBe("prior");
-  });
-  it("is ended for a superseded row", () => {
-    expect(
-      originTone(view({ invalidation: { kind: "superseded", content: { ended: session(12) } } })),
-    ).toBe("ended");
-  });
-  it("is retcon for a retconned row", () => {
-    expect(originTone(view({ invalidation: { kind: "retconned" } }))).toBe("retcon");
-  });
-});
 
-describe("gutterGlyph priority", () => {
-  it("is none for a live, player-visible row", () => {
-    expect(gutterGlyph(view({}))).toBeNull();
+  it("a live session public row: a lone session pill", () => {
+    expect(rail(view({ origin: session(3) }))).toEqual([
+      { label: "S3", tone: "origin", glyph: null },
+    ]);
   });
-  it("is the eye for a live GM-only row", () => {
-    expect(gutterGlyph(view({ visibility: "gm" }))?.label).toBe("GM only");
+
+  it("a superseded row: origin then ended, in session order", () => {
+    expect(rail(view({ origin: session(6), superseded: ord(12) }))).toEqual([
+      { label: "S6", tone: "origin", glyph: null },
+      { label: "S12", tone: "ended", glyph: null },
+    ]);
   });
-  it("is the history mark for a superseded row", () => {
+
+  it("a live born-secret row: a secret origin pill (GM-washed)", () => {
+    const v = view({ origin: session(11), knowledge: { kind: "hidden" } });
+    expect(rail(v)).toEqual([{ label: "S11", tone: "secret", glyph: null }]);
+    expect(isCurrentlySecret(v)).toBe(true);
+  });
+
+  it("a born-secret then revealed row: secret origin then revealed", () => {
+    expect(rail(view({ origin: session(14), knowledge: revealed(15) }))).toEqual([
+      { label: "S14", tone: "secret", glyph: null },
+      { label: "S15", tone: "revealed", glyph: null },
+    ]);
+  });
+
+  it("a born-secret superseded row: both axes show (secret origin + ended)", () => {
     expect(
-      gutterGlyph(view({ invalidation: { kind: "superseded", content: { ended: session(12) } } }))
-        ?.label,
-    ).toBe("Superseded");
+      rail(view({ origin: session(8), superseded: ord(11), knowledge: { kind: "hidden" } })),
+    ).toEqual([
+      { label: "S8", tone: "secret", glyph: null },
+      { label: "S11", tone: "ended", glyph: null },
+    ]);
   });
-  it("lets ended win over GM-only", () => {
-    expect(
-      gutterGlyph(
-        view({
-          visibility: "gm",
-          invalidation: { kind: "superseded", content: { ended: session(12) } },
-        }),
-      )?.label,
-    ).toBe("Superseded");
+
+  it("a retconned row: origin then a terminal retcon glyph", () => {
+    expect(rail(view({ origin: session(1), retcon: ord(2) }))).toEqual([
+      { label: "S1", tone: "origin", glyph: null },
+      { label: "S2", tone: "retcon", glyph: "↯" },
+    ]);
   });
-  it("lets retcon win over GM-only", () => {
-    expect(
-      gutterGlyph(view({ visibility: "gm", invalidation: { kind: "retconned" } }))?.label,
-    ).toBe("Retconned");
+
+  it("retcon absorbs the ended pill and is always last", () => {
+    // Ended S12 then retconned S14: no ended pill, retcon terminal.
+    expect(rail(view({ origin: session(6), superseded: ord(12), retcon: ord(14) }))).toEqual([
+      { label: "S6", tone: "origin", glyph: null },
+      { label: "S14", tone: "retcon", glyph: "↯" },
+    ]);
+  });
+
+  it("a reveal coincident with origin reads as plain public (no secret, no reveal pill)", () => {
+    const v = view({ origin: session(5), knowledge: revealed(5) });
+    expect(rail(v)).toEqual([{ label: "S5", tone: "origin", glyph: null }]);
+    expect(isCurrentlySecret(v)).toBe(false);
   });
 });

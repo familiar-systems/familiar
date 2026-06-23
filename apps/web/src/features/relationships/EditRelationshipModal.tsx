@@ -1,78 +1,74 @@
 // The edit-relationship flow, ported from the design-system wireframe (copy +
 // mechanics kept, em-dashes scrubbed, chrome restyled to Tailwind). Clicking a
-// relationship row opens this; it applies one of the four lifecycle operations
-// (supersede / end / retcon / delete) plus an always-present visibility change.
+// relationship row opens this. It edits the two orthogonal axes, knowledge first
+// and factuality below, with corrections (retcon / delete) tucked in a drawer.
 //
-// Presentational on purpose: the row, the session list, and one `onSubmit`
-// callback arrive as props, so every op is play-testable with a spied callback and
-// no socket (the same split as the create modal). useEditRelationship binds the
-// network.
+// Presentational on purpose: the row, the session list, and one `onSubmit` callback
+// arrive as props, so every edit is play-testable with a spied callback and no
+// socket (the same split as the create modal). useEditRelationship binds the network.
 //
-// The five ops map onto three HTTP shapes, not one /op RPC (the REST surface is
-// resource-oriented): supersede mints a new row via POST with `supersedes`; end /
-// retcon / a visibility change are a PATCH; delete is a DELETE. The modal assembles
-// the right `EditSubmit` and the connector routes it.
-//
-// Smart submit: the visibility toggle is independent of the radio op. A predicate
-// edit under Supersede carries the new visibility into the new row; End/Retcon fold
-// it into the same PATCH; and changing only visibility (Supersede selected, nothing
-// edited) becomes a plain visibility PATCH labelled "Update visibility". Submit is
-// disabled only when nothing changed.
+// The composed diff maps onto three HTTP shapes (the REST surface is
+// resource-oriented): independent axis changes (knowledge set wholesale / superseded /
+// retcon set or cleared) apply as one atomic PATCH; End-with-successor mints a new row
+// via POST with `supersedes` (the successor carries the row's knowledge); delete is a
+// DELETE. Knowledge is freely mutable - the control reveals, conceals, or re-hides.
 
 import type {
   CreateRelationshipRequest,
+  KnowledgeInput,
+  KnowledgeView,
   PageId,
   PatchRelationshipRequest,
   RelationshipView,
   SessionId,
+  SessionStampPatch,
   SessionsResponse,
-  Visibility,
+  ViewSessionOrdinal,
 } from "@familiar-systems/types-campaign";
-import { X } from "lucide-react";
+import { RotateCcw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { EntityChip, VisibilityToggle } from "./relationshipChrome";
+import { EntityChip, KnowledgeControl } from "./relationshipChrome";
 
 // What the modal hands back on submit: one of the three relationship-edit HTTP
-// shapes, fully assembled (the modal holds every field). The connector dispatches
-// on `kind` to POST / PATCH / DELETE.
+// shapes, fully assembled (the modal holds every field). The connector dispatches on
+// `kind` to POST / PATCH / DELETE.
 export type EditSubmit =
   | { kind: "supersede"; body: CreateRelationshipRequest }
   | { kind: "patch"; body: PatchRelationshipRequest }
   | { kind: "delete" };
 
-type EditOp = "supersede" | "end" | "retcon" | "delete";
+type SessionRef = SessionsResponse["sessions"][number];
 
-const OP_ORDER: readonly EditOp[] = ["supersede", "end", "retcon", "delete"];
+const set = (content: SessionId): SessionStampPatch => ({ kind: "set", content });
+const clear: SessionStampPatch = { kind: "clear" };
 
-// Op card copy, ported verbatim from the wireframe (em-dashes scrubbed to commas /
-// periods). The tag names the kind of change: evolution (the fiction moved),
-// correction (the fiction never held), destructive (the row was a mistake).
-const OP_META: Record<EditOp, { label: string; tag: string; desc: string; destructive?: boolean }> =
-  {
-    supersede: {
-      label: "Supersede",
-      tag: "evolution",
-      desc: "Time moved forward. Both facts are real, this one stops being true, a new one takes its place. Both rows stay in the database; prior snapshots still see the old one.",
-    },
-    end: {
-      label: "End",
-      tag: "evolution",
-      desc: "This is no longer true. No replacement is created. Invalidated as superseded; prior snapshots still see it.",
-    },
-    retcon: {
-      label: "Retcon",
-      tag: "correction",
-      desc: "This was never true in the fiction, even though it was established in play. Excluded from historical snapshots, kept in the database as part of the tapestry.",
-    },
-    delete: {
-      label: "Delete",
-      tag: "destructive",
-      desc: "Hard delete, no audit trail. Use only when this relationship should never have existed in the database: mistaken AI acceptance, test data.",
-      destructive: true,
-    },
-  };
+/** The view's knowledge (ordinals) as an editable input (session ids). */
+function knowledgeInputFromView(k: KnowledgeView, sessions: SessionRef[]): KnowledgeInput {
+  if (k.kind === "public") return { kind: "public" };
+  if (k.kind === "hidden") return { kind: "hidden" };
+  const match = sessions.find((s) => s.ordinal === k.content.ordinal);
+  // A broken reveal ordinal (no matching session) degrades to hidden rather than
+  // crashing the modal; the backend FK makes this unreachable in practice.
+  return match !== undefined ? { kind: "revealed", content: match.id } : { kind: "hidden" };
+}
+
+/** Whether two knowledge inputs are the same state (revealed compares its session). */
+function sameKnowledge(a: KnowledgeInput, b: KnowledgeInput): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "revealed" && b.kind === "revealed") return a.content === b.content;
+  return true;
+}
+
+/** The session id whose ordinal matches a view point, or null. */
+function sessionIdForOrdinal(
+  o: ViewSessionOrdinal | null,
+  sessions: SessionRef[],
+): SessionId | null {
+  if (o === null) return null;
+  return sessions.find((s) => s.ordinal === o.ordinal)?.id ?? null;
+}
 
 interface EditRelationshipModalProps {
   subjectName: string;
@@ -91,28 +87,51 @@ export function EditRelationshipModal({
   onSubmit,
   onClose,
 }: EditRelationshipModalProps): React.ReactElement {
-  const [op, setOp] = useState<EditOp>("supersede");
-  // Predicates are immutable per row, so editing them = superseding: the inputs
-  // start at the current pair and a change is what makes Supersede actionable.
-  const [forward, setForward] = useState(view.predicate);
-  const [reverse, setReverse] = useState(view.predicate_reverse);
-  const [asOf, setAsOf] = useState<SessionId | null>(sessions.current?.id ?? null);
-  const [visibility, setVisibility] = useState<Visibility>(view.visibility);
+  const allSessions = sessions.sessions;
+  // No axis event may precede the fact's origin (the backend enforces this; the
+  // pickers just don't offer earlier sessions).
+  const originOrdinal = view.origin.kind === "session" ? view.origin.content.ordinal : null;
+  const availableSessions = allSessions.filter(
+    (s) => originOrdinal === null || s.ordinal >= originOrdinal,
+  );
+  const defaultAsOf = sessions.current?.id ?? availableSessions.at(-1)?.id ?? null;
+  const ordinalOf = (id: SessionId): number | null =>
+    allSessions.find((s) => s.id === id)?.ordinal ?? null;
+
+  // Knowledge, freely mutable. `bornSecret` is the secret bit frozen at open: it tells
+  // the control whether its "known" segment means plain "Public" or "Revealed at a
+  // session" (a born-public fact reveals as Public; a secret one stamps a session).
+  const bornSecret = view.knowledge.kind !== "public";
+  const [knowledge, setKnowledge] = useState<KnowledgeInput>(() =>
+    knowledgeInputFromView(view.knowledge, allSessions),
+  );
+  // Factuality.
+  const [ended, setEnded] = useState(view.superseded !== null);
+  const [endAsOf, setEndAsOf] = useState<SessionId | null>(
+    () => sessionIdForOrdinal(view.superseded, allSessions) ?? defaultAsOf,
+  );
+  const [succForward, setSuccForward] = useState("");
+  const [succReverse, setSuccReverse] = useState("");
+  // Corrections.
+  const [correctionsOpen, setCorrectionsOpen] = useState(view.retcon !== null);
+  const [retconArmed, setRetconArmed] = useState(view.retcon !== null);
+  const [retconAsOf, setRetconAsOf] = useState<SessionId | null>(
+    () => sessionIdForOrdinal(view.retcon, allSessions) ?? defaultAsOf,
+  );
+  const [deleteArmed, setDeleteArmed] = useState(false);
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dialogRef = useRef<HTMLDivElement>(null);
-  // Submit is one request, but Enter+click can still double-fire within a tick.
   const submittingRef = useRef(false);
 
-  // Move focus into the dialog on open (the selected op card is the natural first
-  // stop, but it can be disabled, so focus the dialog itself).
   useEffect(() => {
     dialogRef.current?.focus();
   }, []);
 
-  // Escape dismisses the dialog (never mid-request). The edit modal has no
-  // typeahead dropdowns, so this is the single, simple Escape authority.
+  // The edit modal has no typeahead dropdowns, so Escape is the single, simple
+  // authority: it dismisses the dialog (never mid-request).
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Escape" && !busy) onClose();
@@ -121,92 +140,104 @@ export function EditRelationshipModal({
     return () => document.removeEventListener("keydown", onKey);
   }, [busy, onClose]);
 
-  const alreadyInvalidated = view.invalidation !== null;
-  const hasSessions = sessions.current !== null;
-  // Supersede / End originate or end at a session and act on a live row; Retcon
-  // acts on a live row but needs no session; Delete is always available.
-  const available: Record<EditOp, boolean> = {
-    supersede: hasSessions && !alreadyInvalidated,
-    end: hasSessions && !alreadyInvalidated,
-    retcon: !alreadyInvalidated,
-    delete: true,
-  };
+  const hasSessions = availableSessions.length > 0;
+  // Arming retcon dims the factuality axis (a retcon governs factuality wholesale).
+  const factualityDisabled = busy || retconArmed;
 
-  // The new origin / end session can't precede the fact's own origin (the backend
-  // enforces this; the picker just doesn't offer earlier sessions).
-  const originOrdinal = view.origin.kind === "session" ? view.origin.content.ordinal : null;
-  const availableSessions = sessions.sessions.filter(
-    (s) => originOrdinal === null || s.ordinal >= originOrdinal,
-  );
-  const ordinalOf = (id: SessionId): number | null =>
-    sessions.sessions.find((s) => s.id === id)?.ordinal ?? null;
+  // --- Diff each axis into a stamp patch (null = unchanged) -----------------
 
-  const predicateChanged =
-    forward.trim() !== view.predicate || reverse.trim() !== view.predicate_reverse;
-  const visibilityChanged = visibility !== view.visibility;
-  const vis = visibilityChanged ? visibility : null;
+  function knowledgeDiff(): KnowledgeInput | null {
+    // The knowledge axis is set wholesale: emit the new state if it differs from the
+    // opening one (a conceal Public -> Hidden, a reveal, a re-hide all count).
+    const original = knowledgeInputFromView(view.knowledge, allSessions);
+    return sameKnowledge(knowledge, original) ? null : knowledge;
+  }
 
-  // Resolve the selected op + the current field state into the action to submit
-  // and the button label. `null` submit means nothing to do (disabled). A change
-  // to visibility alone, when the lifecycle op isn't actionable, falls back to a
-  // plain visibility PATCH.
-  function visibilityFallback(opLabel: string): { submit: EditSubmit | null; label: string } {
-    if (visibilityChanged) {
-      return {
-        submit: { kind: "patch", body: { visibility, invalidation: null } },
-        label: "Update visibility",
-      };
+  function retconDiff(): SessionStampPatch | null {
+    const wasOrdinal = view.retcon?.ordinal ?? null;
+    if (retconArmed && retconAsOf !== null) {
+      return ordinalOf(retconAsOf) !== wasOrdinal ? set(retconAsOf) : null;
     }
-    return { submit: null, label: opLabel };
+    return wasOrdinal !== null ? clear : null; // un-retcon
+  }
+
+  function supersededDiff(): SessionStampPatch | null {
+    // Retcon dims factuality, so it is not edited while armed.
+    if (retconArmed) return null;
+    const wasOrdinal = view.superseded?.ordinal ?? null;
+    if (ended && endAsOf !== null) {
+      return ordinalOf(endAsOf) !== wasOrdinal ? set(endAsOf) : null;
+    }
+    return wasOrdinal !== null ? clear : null; // un-end
+  }
+
+  const fwdFilled = succForward.trim() !== "";
+  const revFilled = succReverse.trim() !== "";
+  const successorIntent = !retconArmed && ended && (fwdFilled || revFilled);
+
+  function knowledgeLabel(k: KnowledgeInput): string {
+    if (k.kind === "revealed") return `Reveal S${ordinalOf(k.content)}`;
+    if (k.kind === "public") return "Show players";
+    return "Conceal";
+  }
+  function supersededLabel(patch: SessionStampPatch): string {
+    return patch.kind === "set" ? `End S${ordinalOf(patch.content)}` : "Un-end";
+  }
+  function retconLabel(patch: SessionStampPatch): string {
+    return patch.kind === "set" ? `Retcon S${ordinalOf(patch.content)}` : "Un-retcon";
   }
 
   function computeAction(): { submit: EditSubmit | null; label: string } {
-    switch (op) {
-      case "delete":
-        return { submit: { kind: "delete" }, label: "Delete permanently" };
-      case "retcon":
-        if (!available.retcon) return visibilityFallback("Retcon");
-        return {
-          submit: {
-            kind: "patch",
-            body: { invalidation: { reason: "retconned", as_of: null }, visibility: vis },
+    if (deleteArmed) return { submit: { kind: "delete" }, label: "Delete permanently" };
+
+    const knowledgePatch = knowledgeDiff();
+
+    // End-with-successor mints a new row (the successor carries the knowledge); it is
+    // mutually exclusive with retcon, which dims factuality.
+    if (successorIntent) {
+      if (!(fwdFilled && revFilled) || endAsOf === null) {
+        return { submit: null, label: "Fill both successor predicates" };
+      }
+      const parts: string[] = [];
+      if (knowledgePatch !== null) parts.push(knowledgeLabel(knowledgePatch));
+      parts.push(`End S${ordinalOf(endAsOf)} · +successor`);
+      return {
+        submit: {
+          kind: "supersede",
+          body: {
+            subject_page_id: subjectPageId,
+            other_page_id: view.other.id,
+            predicate_forward: succForward.trim(),
+            predicate_reverse: succReverse.trim(),
+            origin: { kind: "session", content: endAsOf },
+            knowledge,
+            supersedes: view.id,
           },
-          label: "Retcon",
-        };
-      case "end":
-        if (!available.end || asOf === null) return visibilityFallback("End");
-        return {
-          submit: {
-            kind: "patch",
-            body: { invalidation: { reason: "superseded", as_of: asOf }, visibility: vis },
-          },
-          label: `End to S${ordinalOf(asOf)}`,
-        };
-      case "supersede":
-        if (available.supersede && predicateChanged && asOf !== null) {
-          return {
-            submit: {
-              kind: "supersede",
-              body: {
-                subject_page_id: subjectPageId,
-                other_page_id: view.other.id,
-                predicate_forward: forward.trim(),
-                predicate_reverse: reverse.trim(),
-                visibility,
-                origin: { kind: "session", content: asOf },
-                supersedes: view.id,
-              },
-            },
-            label: `Supersede to S${ordinalOf(asOf)}`,
-          };
-        }
-        return visibilityFallback("Supersede");
+        },
+        label: parts.join(" · "),
+      };
     }
+
+    const supersededPatch = supersededDiff();
+    const retconPatch = retconDiff();
+    if (knowledgePatch === null && supersededPatch === null && retconPatch === null) {
+      return { submit: null, label: "No changes" };
+    }
+    const parts: string[] = [];
+    if (knowledgePatch !== null) parts.push(knowledgeLabel(knowledgePatch));
+    if (supersededPatch !== null) parts.push(supersededLabel(supersededPatch));
+    if (retconPatch !== null) parts.push(retconLabel(retconPatch));
+    return {
+      submit: {
+        kind: "patch",
+        body: { knowledge: knowledgePatch, superseded: supersededPatch, retcon: retconPatch },
+      },
+      label: parts.join(" · "),
+    };
   }
 
   const action = computeAction();
   const canSubmit = action.submit !== null && !busy;
-  const destructive = op === "delete";
 
   async function submit(): Promise<void> {
     if (action.submit === null || busy || submittingRef.current) return;
@@ -223,8 +254,26 @@ export function EditRelationshipModal({
     }
   }
 
+  // --- Current-line + now-summaries (the persisted state) -------------------
+
   const originText =
     view.origin.kind === "prior" ? "Prior" : `Session ${view.origin.content.ordinal}`;
+  const lifeWord =
+    view.retcon !== null
+      ? `retconned S${view.retcon.ordinal}`
+      : view.superseded !== null
+        ? `ended S${view.superseded.ordinal}`
+        : "still true";
+  const visWord =
+    view.knowledge.kind === "revealed"
+      ? `revealed S${view.knowledge.content.ordinal}`
+      : view.knowledge.kind === "public"
+        ? "public"
+        : "GM-only";
+  const factNow =
+    view.superseded !== null
+      ? `ended S${view.superseded.ordinal}`
+      : `true from ${originText}, ongoing`;
 
   return createPortal(
     <div
@@ -233,9 +282,8 @@ export function EditRelationshipModal({
         if (e.target === e.currentTarget && !busy) onClose();
       }}
     >
-      {/* Four op cards plus a panel make this taller than the create modal, so the
-          dialog scrolls internally rather than pushing the submit button off-screen.
-          No typeahead dropdowns here, so it needs no overflow-visible. */}
+      {/* Two axes plus a corrections drawer make this taller than the create modal,
+          so the dialog scrolls internally rather than pushing submit off-screen. */}
       <div
         ref={dialogRef}
         role="dialog"
@@ -262,55 +310,71 @@ export function EditRelationshipModal({
           </button>
         </div>
 
-        {/* What is being edited. */}
+        {/* Current line: what is being edited, and its persisted state. */}
         <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 border-b border-foreground/10 pb-3 font-sans text-[13px] text-muted-foreground italic">
           <EntityChip name={subjectName} />
           <span className="text-foreground/70">{view.predicate}</span>
           <EntityChip name={view.other.name} />
           <span className="ml-1 font-sans text-[11px] tracking-wide text-muted-foreground/80 not-italic">
-            · origin {originText} · {view.visibility === "gm" ? "GM only" : "visible to players"}
+            · true of {originText} · {lifeWord} · {visWord}
           </span>
         </p>
 
-        {/* Op selector. */}
-        <div className="mt-4 grid gap-2" role="radiogroup" aria-label="Operation">
-          {OP_ORDER.map((o) => (
-            <OpCard
-              key={o}
-              meta={OP_META[o]}
-              selected={op === o}
-              disabled={!available[o]}
-              onSelect={() => setOp(o)}
+        {/* Knowledge axis, first. */}
+        <section className="mt-4">
+          <div className="flex items-baseline gap-2">
+            <h3 className="font-sans text-[10px] tracking-wide text-muted-foreground uppercase">
+              To the players
+            </h3>
+            <span className="font-sans text-[11px] text-muted-foreground/70 italic">{visWord}</span>
+          </div>
+          <div className="mt-2">
+            <KnowledgeControl
+              value={knowledge}
+              disabled={busy}
+              bornSecret={bornSecret}
+              sessions={availableSessions}
+              onChange={setKnowledge}
             />
-          ))}
-        </div>
+          </div>
+        </section>
 
-        {/* Per-op panel. */}
-        <div className="mt-4 border-t border-foreground/10 pt-4">
-          {op === "supersede" ? (
-            available.supersede ? (
-              <SupersedePanel
-                subjectName={subjectName}
-                otherName={view.other.name}
-                forward={forward}
-                reverse={reverse}
-                busy={busy}
-                onForward={setForward}
-                onReverse={setReverse}
-                asOf={asOf}
-                sessions={availableSessions}
-                current={sessions.current}
-                onAsOf={setAsOf}
-                predicate={view.predicate}
-                asOfOrdinal={asOf !== null ? ordinalOf(asOf) : null}
-              />
-            ) : (
-              <UnavailableNote hasSessions={hasSessions} alreadyInvalidated={alreadyInvalidated} />
-            )
+        {/* Factuality axis, below. */}
+        <section className="mt-5 border-t border-foreground/10 pt-4">
+          <div className="flex items-baseline gap-2">
+            <h3 className="font-sans text-[10px] tracking-wide text-muted-foreground uppercase">
+              In the fiction
+            </h3>
+            <span className="font-sans text-[11px] text-muted-foreground/70 italic">{factNow}</span>
+          </div>
+
+          <div
+            role="radiogroup"
+            aria-label="In the fiction"
+            className="mt-2 inline-flex w-fit overflow-hidden rounded-lg border border-foreground/15"
+          >
+            <FactButton
+              active={!ended}
+              disabled={factualityDisabled}
+              label="Ongoing"
+              onClick={() => setEnded(false)}
+            />
+            <FactButton
+              active={ended}
+              disabled={factualityDisabled || !hasSessions}
+              label="Ended"
+              Icon={RotateCcw}
+              onClick={() => setEnded(true)}
+            />
+          </div>
+          {!hasSessions ? (
+            <p className="mt-2 font-sans text-[12px] text-muted-foreground italic">
+              This campaign has no sessions yet, so a fact can't be ended.
+            </p>
           ) : null}
 
-          {op === "end" ? (
-            <div className="flex flex-col gap-3">
+          {ended && !retconArmed ? (
+            <div className="mt-3 flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <label
                   htmlFor="edit-relationship-end-asof"
@@ -320,51 +384,123 @@ export function EditRelationshipModal({
                 </label>
                 <AsOfSelect
                   id="edit-relationship-end-asof"
-                  asOf={asOf}
+                  asOf={endAsOf}
                   sessions={availableSessions}
                   current={sessions.current}
                   busy={busy}
-                  onAsOf={setAsOf}
+                  onAsOf={setEndAsOf}
                 />
               </div>
-              <p className="font-sans text-[13px] text-muted-foreground italic">
-                <em className="text-foreground/80">{view.predicate}</em> will be marked{" "}
-                <strong className="font-semibold text-foreground not-italic">
-                  Ended S{asOf !== null ? ordinalOf(asOf) : "?"}
-                </strong>
-                . It stays visible in snapshots of earlier sessions. No new relationship is created.
-              </p>
+
+              {/* The successor editor: fill both predicates to supersede (mint a new
+                  edge to the same object); leave empty for a plain End. */}
+              <div className="rounded-xl border border-foreground/10 bg-background/40 p-3">
+                <p className="mb-2 font-sans text-[11px] tracking-wide text-muted-foreground uppercase">
+                  and replaced by{" "}
+                  <span className="text-muted-foreground/60 normal-case italic">
+                    the new edge (optional → supersede)
+                  </span>
+                </p>
+                <Edge name={subjectName}>
+                  <input
+                    type="text"
+                    aria-label="Successor forward predicate"
+                    autoComplete="off"
+                    placeholder="new predicate..."
+                    value={succForward}
+                    disabled={busy}
+                    onChange={(e) => setSuccForward(e.target.value)}
+                    className="w-full rounded border border-foreground/18 bg-background/60 px-2 py-1 font-sans text-[15px] text-foreground italic focus:border-gold/60 focus:ring-2 focus:ring-gold/20 focus:outline-none disabled:opacity-50"
+                  />
+                </Edge>
+                <div className="mt-2">
+                  <Edge name={view.other.name}>
+                    <input
+                      type="text"
+                      aria-label="Successor reverse predicate"
+                      autoComplete="off"
+                      placeholder="is ..."
+                      value={succReverse}
+                      disabled={busy}
+                      onChange={(e) => setSuccReverse(e.target.value)}
+                      className="w-full rounded border border-foreground/18 bg-background/60 px-2 py-1 font-sans text-[15px] text-foreground italic focus:border-gold/60 focus:ring-2 focus:ring-gold/20 focus:outline-none disabled:opacity-50"
+                    />
+                  </Edge>
+                </div>
+              </div>
             </div>
           ) : null}
+        </section>
 
-          {op === "retcon" ? (
-            <p className="font-sans text-[13px] text-muted-foreground italic">
-              This relationship will be marked{" "}
-              <strong className="font-semibold text-foreground not-italic">
-                never true in the fiction
-              </strong>
-              . It vanishes from historical snapshots but remains in the database as part of the
-              campaign's record of decisions.
-            </p>
+        {/* Corrections drawer, tucked. */}
+        <section className="mt-5 border-t border-foreground/10 pt-4">
+          <button
+            type="button"
+            onClick={() => setCorrectionsOpen((o) => !o)}
+            aria-expanded={correctionsOpen}
+            className="font-sans text-[11px] tracking-wide text-muted-foreground uppercase transition-colors hover:text-foreground"
+          >
+            Corrections {correctionsOpen ? "−" : "+"}{" "}
+            <span className="text-muted-foreground/60 normal-case italic">
+              it was never true, or shouldn't exist
+            </span>
+          </button>
+
+          {correctionsOpen ? (
+            <div className="mt-3 flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <label className="inline-flex items-center gap-2 font-sans text-[13px] text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={retconArmed}
+                    disabled={busy || !hasSessions}
+                    onChange={(e) => setRetconArmed(e.target.checked)}
+                    className="accent-gold"
+                  />
+                  Retcon
+                </label>
+                <p className="font-sans text-[12px] text-muted-foreground italic">
+                  Never happened in the fiction, struck as a believed falsehood in snapshots before
+                  it was caught.
+                </p>
+                {retconArmed ? (
+                  <div className="flex items-center gap-2">
+                    <label
+                      htmlFor="edit-relationship-retcon-asof"
+                      className="font-sans text-[10px] tracking-wide text-muted-foreground uppercase"
+                    >
+                      Caught in
+                    </label>
+                    <AsOfSelect
+                      id="edit-relationship-retcon-asof"
+                      asOf={retconAsOf}
+                      sessions={availableSessions}
+                      current={sessions.current}
+                      busy={busy}
+                      onAsOf={setRetconAsOf}
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex flex-col gap-2 border-t border-foreground/10 pt-3">
+                <label className="inline-flex items-center gap-2 font-sans text-[13px] text-red-700 dark:text-red-400">
+                  <input
+                    type="checkbox"
+                    checked={deleteArmed}
+                    disabled={busy}
+                    onChange={(e) => setDeleteArmed(e.target.checked)}
+                    className="accent-red-700"
+                  />
+                  Delete
+                </label>
+                <p className="font-sans text-[12px] text-muted-foreground italic">
+                  Expunge the record, no audit trail. Only for spurious AI extractions or test data.
+                </p>
+              </div>
+            </div>
           ) : null}
-
-          {op === "delete" ? (
-            <p className="font-sans text-[13px] text-red-700 italic dark:text-red-400">
-              <strong className="font-semibold not-italic">This cannot be undone.</strong> The row
-              will be removed from the database with no trace. Use only for mistakes: if this
-              relationship was once true and is no longer, use{" "}
-              <strong className="not-italic">End</strong> instead.
-            </p>
-          ) : null}
-        </div>
-
-        {/* Visibility: always present, independent of the op. */}
-        <div className="mt-4 flex items-center gap-3 border-t border-foreground/10 pt-4">
-          <span className="font-sans text-[10px] tracking-wide text-muted-foreground uppercase">
-            Visibility
-          </span>
-          <VisibilityToggle value={visibility} disabled={busy} onChange={setVisibility} />
-        </div>
+        </section>
 
         {error !== null ? (
           <p className="mt-3 font-sans text-xs text-red-700 dark:text-red-400">{error}</p>
@@ -386,7 +522,7 @@ export function EditRelationshipModal({
             disabled={!canSubmit}
             className={[
               "inline-flex items-center gap-2 rounded-full px-5 py-2 font-sans text-sm font-medium text-white shadow-md transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-              destructive
+              deleteArmed
                 ? "bg-red-700 shadow-red-700/25 hover:bg-red-700/90"
                 : "bg-gold shadow-gold/25 hover:bg-gold/90",
             ].join(" ")}
@@ -400,156 +536,41 @@ export function EditRelationshipModal({
   );
 }
 
-function OpCard({
-  meta,
-  selected,
+function FactButton({
+  active,
   disabled,
-  onSelect,
+  label,
+  Icon,
+  onClick,
 }: {
-  meta: { label: string; tag: string; desc: string; destructive?: boolean };
-  selected: boolean;
+  active: boolean;
   disabled: boolean;
-  onSelect: () => void;
+  label: string;
+  Icon?: typeof RotateCcw;
+  onClick: () => void;
 }): React.ReactElement {
   return (
     <button
       type="button"
       role="radio"
-      aria-checked={selected}
+      aria-checked={active}
       disabled={disabled}
-      onClick={onSelect}
+      onClick={onClick}
       className={[
-        "group flex items-start gap-3 rounded-2xl border p-3 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40",
-        selected
-          ? meta.destructive
-            ? "border-red-600/50 bg-red-600/10"
-            : "border-gold/60 bg-bronze-muted/30 shadow-md shadow-gold/10"
-          : "border-foreground/10 bg-background/40 enabled:hover:border-primary/30 enabled:hover:bg-foreground/[0.02]",
+        "inline-flex items-center gap-1.5 border-foreground/12 px-3 py-1.5 font-sans text-[13px] transition-colors [&+&]:border-l disabled:opacity-40",
+        active
+          ? "bg-gold/15 font-semibold text-foreground"
+          : "text-muted-foreground hover:bg-gold/6 hover:text-foreground",
       ].join(" ")}
     >
-      <RadioPip selected={selected} destructive={meta.destructive ?? false} />
-      <span className="flex-1 space-y-1">
-        <span className="flex flex-wrap items-baseline justify-between gap-2">
-          <span className="font-display text-base font-semibold text-foreground">{meta.label}</span>
-          <span className="font-sans text-[9.5px] tracking-wide text-muted-foreground uppercase">
-            {meta.tag}
-          </span>
-        </span>
-        <span className="block font-sans text-[13px] leading-snug text-muted-foreground italic">
-          {meta.desc}
-        </span>
-      </span>
+      {Icon !== undefined ? <Icon className="size-3.5" aria-hidden="true" /> : null}
+      {label}
     </button>
   );
 }
 
-function RadioPip({
-  selected,
-  destructive,
-}: {
-  selected: boolean;
-  destructive: boolean;
-}): React.ReactElement {
-  const fill = destructive ? "border-red-700 bg-red-700" : "border-gold bg-gold";
-  return (
-    <span
-      aria-hidden="true"
-      className={[
-        "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors",
-        selected ? fill : "border-foreground/20 bg-background",
-      ].join(" ")}
-    >
-      {selected ? <span className="size-2 rounded-full bg-white" /> : null}
-    </span>
-  );
-}
-
-function SupersedePanel({
-  subjectName,
-  otherName,
-  forward,
-  reverse,
-  busy,
-  onForward,
-  onReverse,
-  asOf,
-  sessions,
-  current,
-  onAsOf,
-  predicate,
-  asOfOrdinal,
-}: {
-  subjectName: string;
-  otherName: string;
-  forward: string;
-  reverse: string;
-  busy: boolean;
-  onForward: (v: string) => void;
-  onReverse: (v: string) => void;
-  asOf: SessionId | null;
-  sessions: SessionsResponse["sessions"];
-  current: SessionsResponse["current"];
-  onAsOf: (id: SessionId) => void;
-  predicate: string;
-  asOfOrdinal: number | null;
-}): React.ReactElement {
-  return (
-    <div className="flex flex-col gap-3">
-      <Edge name={subjectName}>
-        <input
-          type="text"
-          aria-label="Forward predicate"
-          autoComplete="off"
-          value={forward}
-          disabled={busy}
-          onChange={(e) => onForward(e.target.value)}
-          className="w-full rounded border border-foreground/18 bg-background/60 px-2 py-1 font-sans text-[15px] text-foreground italic focus:border-gold/60 focus:ring-2 focus:ring-gold/20 focus:outline-none disabled:opacity-50"
-        />
-      </Edge>
-      <Edge name={otherName}>
-        <input
-          type="text"
-          aria-label="Reverse predicate"
-          autoComplete="off"
-          value={reverse}
-          disabled={busy}
-          onChange={(e) => onReverse(e.target.value)}
-          className="w-full rounded border border-foreground/18 bg-background/60 px-2 py-1 font-sans text-[15px] text-foreground italic focus:border-gold/60 focus:ring-2 focus:ring-gold/20 focus:outline-none disabled:opacity-50"
-        />
-      </Edge>
-      <div className="flex items-center gap-2">
-        <label
-          htmlFor="edit-relationship-sup-asof"
-          className="font-sans text-[10px] tracking-wide text-muted-foreground uppercase"
-        >
-          As of
-        </label>
-        <AsOfSelect
-          id="edit-relationship-sup-asof"
-          asOf={asOf}
-          sessions={sessions}
-          current={current}
-          busy={busy}
-          onAsOf={onAsOf}
-        />
-      </div>
-      <p className="font-sans text-[13px] text-muted-foreground italic">
-        The current row, <em className="text-foreground/80">{predicate}</em>, will be marked{" "}
-        <strong className="font-semibold text-foreground not-italic">
-          Ended S{asOfOrdinal ?? "?"}
-        </strong>{" "}
-        and remain visible in prior snapshots. The new row takes effect from{" "}
-        <strong className="font-semibold text-foreground not-italic">
-          Session {asOfOrdinal ?? "?"}
-        </strong>{" "}
-        forward.
-      </p>
-    </div>
-  );
-}
-
-// One direction of the relationship as an editable edge: the page, an arrow, and
-// the predicate input that reads from it.
+// One direction of the relationship as an editable edge: the page, an arrow, and the
+// predicate input that reads from it.
 function Edge({ name, children }: { name: string; children: React.ReactNode }): React.ReactElement {
   return (
     <div className="grid grid-cols-[max-content_auto_1fr] items-center gap-2">
@@ -570,7 +591,7 @@ function AsOfSelect({
 }: {
   id: string;
   asOf: SessionId | null;
-  sessions: SessionsResponse["sessions"];
+  sessions: SessionRef[];
   current: SessionsResponse["current"];
   busy: boolean;
   onAsOf: (id: SessionId) => void;
@@ -594,19 +615,4 @@ function AsOfSelect({
       ))}
     </select>
   );
-}
-
-function UnavailableNote({
-  hasSessions,
-  alreadyInvalidated,
-}: {
-  hasSessions: boolean;
-  alreadyInvalidated: boolean;
-}): React.ReactElement {
-  const text = alreadyInvalidated
-    ? "This relationship is already invalidated. You can delete it or change its visibility."
-    : !hasSessions
-      ? "Superseding needs a session to originate the new fact in. This campaign has no sessions yet, so end and supersede are unavailable."
-      : "This operation is unavailable for this relationship.";
-  return <p className="font-sans text-[13px] text-muted-foreground italic">{text}</p>;
 }

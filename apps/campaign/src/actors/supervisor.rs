@@ -43,8 +43,9 @@ use crate::actors::database_writer::{
 };
 use crate::actors::page::{PageActor, PageActorArgs, PageInit};
 use crate::actors::relationship_graph::{
-    ApplyOp, ApplyOpError, CreateRelationship, CreateRelationshipError, KnownPredicatePairs,
-    RelationshipGraph, RelationshipGraphArgs, RelationshipsForPage,
+    CreateRelationship, CreateRelationshipError, DeleteRelationship, DeleteRelationshipError,
+    KnownPredicatePairs, PatchRelationship, PatchRelationshipError, RelationshipGraph,
+    RelationshipGraphArgs, RelationshipsForPage,
 };
 use crate::actors::toc::{AddPageNode, ResolvePageNode, TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
@@ -1066,18 +1067,43 @@ impl Message<CreateRelationship> for CampaignSupervisor {
     }
 }
 
-impl Message<ApplyOp> for CampaignSupervisor {
-    type Reply = Result<(), ApplyOpError>;
+impl Message<PatchRelationship> for CampaignSupervisor {
+    type Reply = Result<(), PatchRelationshipError>;
 
     #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
-    async fn handle(&mut self, msg: ApplyOp, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
+    async fn handle(
+        &mut self,
+        msg: PatchRelationship,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
         self.last_activity = Instant::now();
         match self.relationship_graph.ask(msg).await {
             Ok(()) => Ok(()),
             Err(SendError::HandlerError(e)) => Err(e),
             Err(e) => {
-                tracing::error!(error = %e, "relationship graph unavailable applying op");
-                Err(ApplyOpError::ActorUnavailable)
+                tracing::error!(error = %e, "relationship graph unavailable patching relationship");
+                Err(PatchRelationshipError::ActorUnavailable)
+            }
+        }
+    }
+}
+
+impl Message<DeleteRelationship> for CampaignSupervisor {
+    type Reply = Result<(), DeleteRelationshipError>;
+
+    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
+    async fn handle(
+        &mut self,
+        msg: DeleteRelationship,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        match self.relationship_graph.ask(msg).await {
+            Ok(()) => Ok(()),
+            Err(SendError::HandlerError(e)) => Err(e),
+            Err(e) => {
+                tracing::error!(error = %e, "relationship graph unavailable deleting relationship");
+                Err(DeleteRelationshipError::ActorUnavailable)
             }
         }
     }

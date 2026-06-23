@@ -11,14 +11,11 @@ use sea_orm::{
     EntityTrait, QueryFilter, QueryOrder, SqlErr, TransactionTrait,
 };
 
-use familiar_systems_campaign_shared::relationship::{InvalidationReason, Visibility};
-
 use crate::domain::page::NewPage;
-use crate::domain::relationship::NewRelationship;
+use crate::domain::relationship::{Knowledge, NewRelationship};
 use crate::domain::session::next_session_ordinal;
 use crate::entities::columns::{
-    BlockIdCol, InvalidationReasonCol, PageKindCol, RelationshipIdCol, SectionCol, SessionIdCol,
-    StatusCol, VisibilityCol,
+    BlockIdCol, PageKindCol, RelationshipIdCol, SectionCol, SessionIdCol, StatusCol,
 };
 use crate::entities::{blocks, campaign_metadata, pages, relationships, sessions, toc_entries};
 
@@ -599,16 +596,18 @@ pub enum RelationshipWriteError {
     DuplicateLiveFact,
     #[error("relationship not found")]
     NotFound,
-    #[error("relationship is already invalidated")]
-    AlreadyInvalidated,
     #[error("database error: {0}")]
     Db(#[from] sea_orm::DbErr),
 }
 
 /// Narrow a write failure to `DuplicateLiveFact` when the partial unique index
 /// (`idx_relationships_live_fact_unique`) trips. The live-fact index is the only
-/// unique constraint an insert can violate (the PK is a freshly generated ULID), so
-/// a unique violation here is unambiguously a duplicate live fact.
+/// unique constraint a relationship write can violate (the PK is a freshly generated
+/// ULID), so a unique violation here is unambiguously a duplicate live fact. Applied
+/// to every write: a `Create` collides when it births a fact that already lives, and
+/// a clearing `SetSuperseded { at: None }` / `SetRetcon { at: None }` collides when
+/// it *re-adds* a row to the live set whose canonical fact is already live (un-ending
+/// a row whose supersede minted a same-pair successor).
 fn map_relationship_write_error(e: sea_orm::DbErr) -> RelationshipWriteError {
     match e.sql_err() {
         Some(SqlErr::UniqueConstraintViolation(_)) => RelationshipWriteError::DuplicateLiveFact,
@@ -616,90 +615,91 @@ fn map_relationship_write_error(e: sea_orm::DbErr) -> RelationshipWriteError {
     }
 }
 
-// The four relationship primitives below operate on a `&DatabaseTransaction`, not
+// The relationship primitives below operate on a `&DatabaseTransaction`, not
 // `&self.conn`: they are the per-statement building blocks the `ApplyRelationshipWrites`
-// batch interprets inside one transaction. The actor never calls them directly.
+// batch interprets inside one transaction. The actor never calls them directly. They
+// are *dumb* writes - all invariant enforcement (ordering, supersede pre-checks) lives
+// in the actor; the only thing the writer rejects is a duplicate live fact (the index)
+// and a missing row.
 
-/// Insert a brand-new relationship row inside `txn`. The id, `created_at` (and
-/// `invalidated_at`, if the row is born finalized via [`NewRelationship::ending`])
-/// are stamped from `now`. The caller maps a partial-unique-index violation to
-/// [`RelationshipWriteError::DuplicateLiveFact`]; a born-finalized row sits outside
-/// the live set, so it never collides.
+/// Insert a brand-new relationship row inside `txn`, stamping the id and `created_at`
+/// from `now`. The two axes come straight off `NewRelationship` (a born-finalized
+/// retrofit can already carry `superseded`/`retcon`). A row that births already
+/// superseded or retconned sits outside the live set, so it never collides; a live
+/// birth that duplicates an existing live fact trips the index.
 async fn insert_relationship(
     txn: &DatabaseTransaction,
     new: NewRelationship,
     now: DateTime<Utc>,
-) -> Result<relationships::Model, sea_orm::DbErr> {
-    // Resolve the optional born-finalized ending into the three at-rest columns;
-    // `invalidated_at` is stamped from `now`, like `created_at`.
-    let (reason, by, at) = match new.ending {
-        None => (None, None, None),
-        Some(e) => (
-            Some(InvalidationReasonCol::from(e.reason)),
-            e.by.session_id().map(SessionIdCol::from),
-            Some(now),
-        ),
-    };
+) -> Result<relationships::Model, RelationshipWriteError> {
     relationships::ActiveModel {
         id: Set(RelationshipIdCol::from(RelationshipId::generate())),
         page_a: Set(PageIdCol::from(new.page_a)),
         page_b: Set(PageIdCol::from(new.page_b)),
         predicate_a_to_b: Set(new.predicate_a_to_b),
         predicate_b_to_a: Set(new.predicate_b_to_a),
-        visibility: Set(VisibilityCol::from(new.visibility)),
         origin_session_id: Set(new.origin.session_id().map(SessionIdCol::from)),
+        superseded_session_id: Set(new.superseded.map(SessionIdCol::from)),
+        retcon_session_id: Set(new.retcon.map(SessionIdCol::from)),
+        is_secret: Set(new.knowledge.is_secret()),
+        reveal_session_id: Set(new.knowledge.reveal_session_id().map(SessionIdCol::from)),
         created_at: Set(now),
-        invalidation_reason: Set(reason),
-        invalidated_by_session_id: Set(by),
-        invalidated_at: Set(at),
     }
     .insert(txn)
     .await
+    .map_err(map_relationship_write_error)
 }
 
-/// Invalidate one relationship row inside `txn`: `End` -> `Superseded`,
-/// `Retcon` -> `Retconned`. `by` is the ending session (`None` = a retcon, or ended
-/// before the campaign began); `invalidated_at` is stamped from `now`.
-async fn invalidate_relationship(
+/// Set (or clear) one nullable session-stamp column on a relationship row inside
+/// `txn`: a blind UPDATE, no one-way-door guard (invalidation is reversible). A
+/// clearing write (`value = None`) can re-add the row to the live set and so trip the
+/// live-fact index, surfaced as `DuplicateLiveFact`. `column` selects which axis.
+async fn set_session_stamp(
     txn: &DatabaseTransaction,
     rel_id: RelationshipId,
-    reason: InvalidationReason,
-    by: Option<SessionId>,
-    now: DateTime<Utc>,
+    column: StampColumn,
+    value: Option<SessionId>,
 ) -> Result<relationships::Model, RelationshipWriteError> {
     let existing = relationships::Entity::find_by_id(RelationshipIdCol::from(rel_id))
         .one(txn)
         .await?
         .ok_or(RelationshipWriteError::NotFound)?;
-    // Invalidation is a one-way door: a row carries at most one reason for stopping
-    // being live. Re-ending or re-classifying an already-invalidated row would rewrite
-    // history (e.g. flip superseded -> retconned, changing snapshot visibility), so
-    // reject it. The create-supersede path guards this earlier as `SupersedesNotLive`;
-    // this is the backstop for the plain End/Retcon ops.
-    if existing.invalidation_reason.is_some() {
-        return Err(RelationshipWriteError::AlreadyInvalidated);
+    let mut am: relationships::ActiveModel = existing.into();
+    let stamp = value.map(SessionIdCol::from);
+    match column {
+        StampColumn::Superseded => am.superseded_session_id = Set(stamp),
+        StampColumn::Retcon => am.retcon_session_id = Set(stamp),
     }
-    let mut am: relationships::ActiveModel = existing.into();
-    am.invalidation_reason = Set(Some(InvalidationReasonCol::from(reason)));
-    am.invalidated_by_session_id = Set(by.map(SessionIdCol::from));
-    am.invalidated_at = Set(Some(now));
-    Ok(am.update(txn).await?)
+    am.update(txn).await.map_err(map_relationship_write_error)
 }
 
-/// Set a relationship's visibility inside `txn`. Mutable and independent of origin;
-/// no invalidation.
-async fn set_relationship_visibility(
+/// Which nullable factuality session-stamp axis a [`RelationshipWrite::SetStamp`]
+/// targets. (Knowledge is *not* a stamp: it sets two columns wholesale, via
+/// `RelationshipWrite::SetKnowledge`.)
+#[derive(Debug, Clone, Copy)]
+pub enum StampColumn {
+    Superseded,
+    Retcon,
+}
+
+/// Set a relationship's knowledge wholesale inside `txn`: a blind UPDATE of both
+/// `is_secret` and `reveal_session_id` from a [`Knowledge`] value. The pair is always
+/// legal by construction (`Public` -> `(false, NULL)`, never `(false, Some)`), so this
+/// can never trip the CHECK. Knowledge is not in the live-fact index, so it never trips
+/// the uniqueness index either - the only failure is a missing row.
+async fn set_knowledge(
     txn: &DatabaseTransaction,
     rel_id: RelationshipId,
-    visibility: Visibility,
+    knowledge: Knowledge,
 ) -> Result<relationships::Model, RelationshipWriteError> {
     let existing = relationships::Entity::find_by_id(RelationshipIdCol::from(rel_id))
         .one(txn)
         .await?
         .ok_or(RelationshipWriteError::NotFound)?;
     let mut am: relationships::ActiveModel = existing.into();
-    am.visibility = Set(VisibilityCol::from(visibility));
-    Ok(am.update(txn).await?)
+    am.is_secret = Set(knowledge.is_secret());
+    am.reveal_session_id = Set(knowledge.reveal_session_id().map(SessionIdCol::from));
+    am.update(txn).await.map_err(map_relationship_write_error)
 }
 
 /// Hard-delete a relationship row inside `txn`, no audit trail.
@@ -720,17 +720,19 @@ async fn delete_relationship(
 /// [`RelationshipGraph`](crate::actors::relationship_graph::RelationshipGraph)
 /// composes into an atomic [`ApplyRelationshipWrites`] batch. Each variant is one
 /// SQL statement; the writer is a dumb interpreter that runs a list of them in a
-/// single transaction.
+/// single transaction. `SetStamp` covers the two reversible factuality axes
+/// (superseded / retcon): `at = Some` stamps it, `None` clears it. `SetKnowledge` sets
+/// the knowledge pair wholesale.
 pub enum RelationshipWrite {
     Create(NewRelationship),
-    Invalidate {
+    SetStamp {
         rel_id: RelationshipId,
-        reason: InvalidationReason,
-        by: Option<SessionId>,
+        column: StampColumn,
+        at: Option<SessionId>,
     },
-    SetVisibility {
+    SetKnowledge {
         rel_id: RelationshipId,
-        visibility: Visibility,
+        knowledge: Knowledge,
     },
     Delete {
         rel_id: RelationshipId,
@@ -738,22 +740,24 @@ pub enum RelationshipWrite {
 }
 
 /// What one [`RelationshipWrite`] committed, threaded back so the actor reflects it
-/// into the in-memory graph. `Create`/`Invalidate`/`SetVisibility` yield the
-/// committed row (the actor upserts it by id); `Delete` yields the removed id.
+/// into the in-memory graph. `Create`/`SetStamp` yield the committed row (the actor
+/// upserts it by id); `Delete` yields the removed id. The row is boxed so the two
+/// variants are similar-sized (a `Model` is ~240 bytes; an id is 16).
 #[derive(Debug)]
 pub enum RelationshipWriteOutcome {
-    Upserted(relationships::Model),
+    Upserted(Box<relationships::Model>),
     Removed(RelationshipId),
 }
 
 /// Apply an ordered list of relationship writes in one transaction, all-or-nothing.
-/// The actor decomposes each GM op into this list (supersede = `[Create, Invalidate]`,
-/// the single ops a one-element list); the writer commits them together or rolls the
-/// whole batch back. Outcomes are returned in write order.
+/// The actor decomposes each GM op into this list (supersede = `[Create, SetStamp]`,
+/// a multi-axis patch a list of `SetStamp`s, the single ops a one-element list); the
+/// writer commits them together or rolls the whole batch back. Outcomes are returned
+/// in write order.
 ///
 /// This is the relationship analogue of [`DbCreateSession`]: a `begin`/`commit`
 /// multi-statement write that returns the committed rows. A duplicate *live* fact
-/// trips the partial unique index on a `Create` and rolls the batch back, mapped to
+/// trips the partial unique index and rolls the batch back, mapped to
 /// [`RelationshipWriteError::DuplicateLiveFact`].
 pub struct ApplyRelationshipWrites {
     pub writes: Vec<RelationshipWrite>,
@@ -778,22 +782,18 @@ impl Message<ApplyRelationshipWrites> for DatabaseWriteActor {
         let mut outcomes = Vec::with_capacity(msg.writes.len());
         for write in msg.writes {
             let outcome = match write {
-                // `Create` is the only write that can trip the partial unique index
-                // (the others remove a row from the live set or leave it), so the
-                // `DuplicateLiveFact` mapping is applied here alone.
-                RelationshipWrite::Create(new) => {
-                    let model = insert_relationship(&txn, new, now)
-                        .await
-                        .map_err(map_relationship_write_error)?;
-                    RelationshipWriteOutcome::Upserted(model)
+                RelationshipWrite::Create(new) => RelationshipWriteOutcome::Upserted(Box::new(
+                    insert_relationship(&txn, new, now).await?,
+                )),
+                RelationshipWrite::SetStamp { rel_id, column, at } => {
+                    RelationshipWriteOutcome::Upserted(Box::new(
+                        set_session_stamp(&txn, rel_id, column, at).await?,
+                    ))
                 }
-                RelationshipWrite::Invalidate { rel_id, reason, by } => {
-                    let model = invalidate_relationship(&txn, rel_id, reason, by, now).await?;
-                    RelationshipWriteOutcome::Upserted(model)
-                }
-                RelationshipWrite::SetVisibility { rel_id, visibility } => {
-                    let model = set_relationship_visibility(&txn, rel_id, visibility).await?;
-                    RelationshipWriteOutcome::Upserted(model)
+                RelationshipWrite::SetKnowledge { rel_id, knowledge } => {
+                    RelationshipWriteOutcome::Upserted(Box::new(
+                        set_knowledge(&txn, rel_id, knowledge).await?,
+                    ))
                 }
                 RelationshipWrite::Delete { rel_id } => {
                     delete_relationship(&txn, rel_id.clone()).await?;
@@ -1486,15 +1486,16 @@ mod tests {
     }
 
     fn new_rel(page_a: PageId, page_b: PageId, fwd: &str, rev: &str) -> NewRelationship {
-        use crate::domain::relationship::Origin;
+        use crate::domain::relationship::{Knowledge, Origin};
         NewRelationship {
             page_a,
             page_b,
             predicate_a_to_b: fwd.into(),
             predicate_b_to_a: rev.into(),
-            visibility: Visibility::Players,
             origin: Origin::Prior,
-            ending: None,
+            superseded: None,
+            retcon: None,
+            knowledge: Knowledge::Public,
         }
     }
 
@@ -1542,7 +1543,7 @@ mod tests {
     }
 
     /// A batch is atomic: a later write's failure rolls back the earlier ones. Here a
-    /// valid `Create` is followed by an `Invalidate` of a nonexistent relationship
+    /// valid `Create` is followed by a `SetStamp` on a nonexistent relationship
     /// (`NotFound`); the create must not survive. This is the atomicity the
     /// `RelationshipGraph` relies on for supersede but cannot exercise itself (it
     /// pre-validates rel-ids before issuing the batch). Mirrors
@@ -1565,10 +1566,10 @@ mod tests {
             .ask(ApplyRelationshipWrites {
                 writes: vec![
                     RelationshipWrite::Create(new_rel(a, b, "rules", "is ruled by")),
-                    RelationshipWrite::Invalidate {
+                    RelationshipWrite::SetStamp {
                         rel_id: ghost,
-                        reason: InvalidationReason::Superseded,
-                        by: None,
+                        column: StampColumn::Superseded,
+                        at: None,
                     },
                 ],
             })

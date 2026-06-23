@@ -17,7 +17,7 @@ use crate::entities::columns::{PageIdCol, SessionIdCol};
 /// key). The page title is now required and unique among sessions too - like
 /// every page kind - but that name-uniqueness is enforced in the supervisor's
 /// create path, not by a constraint here. See
-/// `docs/plans/2026-04-10-entity-relationship-temporal-model.md`.
+/// `docs/plans/2026-06-23-entity-relationship-temporal-model.md`.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "sessions")]
 pub struct Model {
