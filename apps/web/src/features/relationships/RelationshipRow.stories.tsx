@@ -132,11 +132,12 @@ export const Retconned: Story = {
   },
 };
 
-// Clicking the row (not the chip) fires onSelect with the row's view - the seam
-// the edit modal hangs off in a later slice.
+// The whole row is one edit button (a sibling of the chip link, so the two aren't
+// nested); clicking it fires onSelect with the row's view - the seam the edit modal
+// hangs off.
 export const Selects: Story = {
   play: async ({ args, canvas, userEvent }) => {
-    await userEvent.click(canvas.getByText("keeps the key to"));
+    await userEvent.click(canvas.getByRole("button", { name: /Edit relationship/ }));
     await expect(args.onSelect).toHaveBeenCalledWith(args.view);
   },
 };

@@ -16,9 +16,9 @@ interface RelationshipsWidgetProps {
   state: RelationshipsState;
   pageKind: "entity" | "template";
   campaignId: CampaignId;
-  /** Opens the create flow (wired in a later slice). Omitted = no "+ add". */
+  /** Opens the create flow. Omitted = no "+ add". */
   onAdd?: () => void;
-  /** Opens the edit flow for a row (wired in a later slice). */
+  /** Opens the edit flow for a row. Omitted = rows are static. */
   onSelect?: (view: RelationshipView) => void;
 }
 

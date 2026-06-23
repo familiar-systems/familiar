@@ -14,7 +14,8 @@
 // rename the page and assert the ToC updates live (which, because room actors
 // flush on last-subscriber-leave / on stop, also proves it reached the campaign
 // DB), then create a third entity and relate the two through the create-
-// relationship modal (server-authoritative REST; the harness asserts the row
+// relationship modal, and edit that relationship to flip its visibility (server-
+// authoritative REST; the harness asserts the row, and its flipped visibility,
 // persisted in SQLite).
 
 import { expect, test } from "@playwright/test";
@@ -131,6 +132,16 @@ test("create a campaign, edit pages, navigate the ToC, and relate two entities",
   // On success the modal closes and the widget refetches; the row appears. The
   // predicate text is stable regardless of which page is canonical page_a.
   await expect(page.getByText("is a resident of")).toBeVisible();
+
+  // --- Edit the relationship: flip its visibility to Players. It was created
+  // GM-only with a Prior origin (no sessions yet), so supersede/end are
+  // unavailable; a visibility change is, and it keeps the row live. Clicking the
+  // row opens the edit modal; "Update visibility" is the visibility-only PATCH.
+  // The harness's DB assertion checks the persisted row now reads `players`. ---
+  await page.getByRole("button", { name: /Edit relationship/ }).click();
+  await page.getByRole("radio", { name: "Players" }).click();
+  await page.getByRole("button", { name: "Update visibility" }).click();
+  await expect(page.getByRole("heading", { name: "Edit relationship" })).toHaveCount(0);
 
   // --- Navigate back to home via the ToC; its content survived. ---
   await sidebar.getByRole("button", { name: "Campaign Base Camp" }).click();

@@ -22,11 +22,12 @@ import type {
   SessionsResponse,
   Visibility,
 } from "@familiar-systems/types-campaign";
-import { Eye, EyeOff, type LucideIcon, Plus, Search, X } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { filterPredicates, reverseFor } from "./predicateMatch";
+import { EntityChip, VisibilityToggle } from "./relationshipChrome";
 import { useTypeahead } from "./useTypeahead";
 
 // The object can be an existing page or a not-yet-minted new entity (minted on
@@ -36,11 +37,6 @@ type ObjectChoice = { kind: "existing"; id: PageId; name: string } | { kind: "ne
 // The "as of" select uses session ids as option values; this sentinel is the
 // Prior option (session ids are ULIDs, so it can't collide).
 const PRIOR_VALUE = "prior";
-
-const VIS_ACTIVE: Record<Visibility, string> = {
-  players: "bg-gold/15 text-foreground",
-  gm: "bg-primary/15 text-primary",
-};
 
 interface CreateRelationshipModalProps {
   subjectName: string;
@@ -515,28 +511,7 @@ export function CreateRelationshipModal({
           <span className="font-sans text-[10px] tracking-wide text-muted-foreground uppercase">
             Visibility
           </span>
-          <div
-            role="radiogroup"
-            aria-label="Visibility"
-            className="inline-flex overflow-hidden rounded-lg border border-foreground/15"
-          >
-            <VisButton
-              current={visibility}
-              value="players"
-              label="Players"
-              Icon={Eye}
-              disabled={busy}
-              onChange={setVisibility}
-            />
-            <VisButton
-              current={visibility}
-              value="gm"
-              label="GM only"
-              Icon={EyeOff}
-              disabled={busy}
-              onChange={setVisibility}
-            />
-          </div>
+          <VisibilityToggle value={visibility} disabled={busy} onChange={setVisibility} />
         </div>
 
         {error !== null ? (
@@ -565,60 +540,5 @@ export function CreateRelationshipModal({
       </div>
     </div>,
     document.body,
-  );
-}
-
-function EntityChip({
-  name,
-  isNew = false,
-}: {
-  name: string;
-  isNew?: boolean;
-}): React.ReactElement {
-  return (
-    <span className="inline-flex items-baseline rounded bg-bronze/10 px-1.5 py-0.5 font-display font-semibold text-foreground shadow-[inset_0_-1px_0] shadow-bronze/35">
-      {name}
-      {isNew ? (
-        <span className="ml-0.5 font-sans text-[9px] tracking-wide text-muted-foreground uppercase">
-          new
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-function VisButton({
-  current,
-  value,
-  label,
-  Icon,
-  disabled,
-  onChange,
-}: {
-  current: Visibility;
-  value: Visibility;
-  label: string;
-  Icon: LucideIcon;
-  disabled: boolean;
-  onChange: (v: Visibility) => void;
-}): React.ReactElement {
-  const active = current === value;
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      disabled={disabled}
-      onClick={() => onChange(value)}
-      className={[
-        "inline-flex items-center gap-1.5 border-foreground/12 px-3 py-1.5 font-sans text-[13px] transition-colors [&+&]:border-l disabled:opacity-50",
-        active
-          ? `${VIS_ACTIVE[value]} font-semibold`
-          : "text-muted-foreground hover:bg-gold/6 hover:text-foreground",
-      ].join(" ")}
-    >
-      <Icon className="size-3.5" aria-hidden="true" />
-      {label}
-    </button>
   );
 }

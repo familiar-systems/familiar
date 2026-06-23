@@ -13,7 +13,9 @@
 //!     `pages.name` (the server-authoritative `meta.title` -> `name_sync` flush), and
 //!   - exactly one live relationship row exists carrying the predicate pair the
 //!     spec created through the modal, proving the create flow reached SQLite
-//!     (the RelationshipGraph writes synchronously, so this needs no flush).
+//!     (the RelationshipGraph writes synchronously, so this needs no flush), and
+//!   - that live row reads visibility = players: the spec creates it GM-only then
+//!     flips it via the edit modal, proving the PATCH visibility path persisted.
 //!
 //! It deliberately reuses the campaign crate's own `db` helpers and sea-orm
 //! entities rather than a separate SQLite reader: same driver/WAL semantics the
@@ -27,6 +29,7 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use familiar_systems_campaign::db::{connect_readonly, register_sqlite_vec};
+use familiar_systems_campaign::entities::columns::VisibilityCol;
 use familiar_systems_campaign::entities::{blocks, pages, relationships};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
@@ -131,10 +134,20 @@ async fn main() {
             "expected a live relationship with predicates {REL_PREDICATES:?} (either slot order), found {pairs:?}"
         ));
     }
+    // The spec creates the relationship GM-only, then flips it to Players via the
+    // edit modal's visibility-only PATCH. The row stays live, so the live row must
+    // now read `players`, proving the PATCH path reached SQLite.
+    let visibility_flipped = live.iter().any(|r| r.visibility == VisibilityCol::Players);
+    if !visibility_flipped {
+        let vis: Vec<VisibilityCol> = live.iter().map(|r| r.visibility).collect();
+        failures.push(format!(
+            "expected the live relationship flipped to players via the edit modal, found {vis:?}"
+        ));
+    }
 
     if failures.is_empty() {
         println!(
-            "OK: {page_count} pages, each with >= {MIN_BODY_BLOCKS_PER_PAGE} body blocks, one renamed to {RENAMED_PAGE:?}, one live relationship with {REL_PREDICATES:?}"
+            "OK: {page_count} pages, each with >= {MIN_BODY_BLOCKS_PER_PAGE} body blocks, one renamed to {RENAMED_PAGE:?}, one live relationship with {REL_PREDICATES:?}, visibility flipped to players"
         );
         exit(0);
     }

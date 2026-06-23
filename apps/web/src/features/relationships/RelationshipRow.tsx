@@ -1,10 +1,9 @@
 // One relationship as a row: the forward predicate, the linked "other" entity
 // chip, an origin chip, and a right-gutter status glyph. All five visual states
 // (live, prior, superseded, GM-washed, retconned) come from the pure tables in
-// relationshipDisplay. Presentational: `onSelect` opens the edit flow (wired in a
-// later slice); read-only callers omit it and the row is static. The chip always
-// links to the other page and stops propagation, so chip-nav never doubles as
-// row-select.
+// relationshipDisplay. Presentational: `onSelect` opens the edit flow; read-only
+// callers omit it and the row is static. The chip always links to the other page
+// and stops propagation, so chip-nav never doubles as row-select.
 
 import type { CampaignId } from "@familiar-systems/types-app";
 import type { RelationshipView } from "@familiar-systems/types-campaign";
@@ -36,24 +35,6 @@ export function RelationshipRow({
   const isGm = view.visibility === "gm";
   const glyph = gutterGlyph(view);
 
-  // TODO(Slice 6): when onSelect is wired, two things activate that are inert now.
-  // (1) The GM gradient branch below short-circuits the `interactive ? hover`
-  // branch, so an interactive GM row gets no hover feedback; the wireframe layers
-  // hover *over* the wash (a separate ::before), so both should coexist. (2) An
-  // interactive row becomes role="button" wrapping the chip <Link> (<a>), nesting
-  // interactive controls - resolve both when the row becomes clickable.
-  const select = onSelect === undefined ? undefined : () => onSelect(view);
-  const onKeyDown =
-    onSelect === undefined
-      ? undefined
-      : (e: React.KeyboardEvent) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onSelect(view);
-          }
-        };
-  const interactive = select !== undefined;
-
   // The predicate verb is muted by default; a live GM fact tints it plum to match
   // the wash. Superseded/retconned rows let the verb inherit the row's faded or
   // struck-through color rather than fighting it.
@@ -64,28 +45,43 @@ export function RelationshipRow({
     <div
       data-predicate-forward={view.predicate}
       data-predicate-reverse={view.predicate_reverse}
-      role={interactive ? "button" : undefined}
-      tabIndex={interactive ? 0 : undefined}
-      onClick={select}
-      onKeyDown={onKeyDown}
       className={[
-        "relative grid grid-cols-[1fr_auto] items-baseline gap-4 rounded py-2 pr-11 pl-2.5 transition-colors",
+        "relative isolate grid grid-cols-[1fr_auto] items-baseline gap-4 rounded py-2 pr-11 pl-2.5",
+        // The GM wash is a backmost layer (not the row's own background), so the
+        // edit button's hover tint composes over it instead of replacing it. With
+        // role=button gone (see below), the two no longer fight for one background.
         isGm
-          ? "bg-gradient-to-r from-primary/[0.12] via-primary/[0.06] to-transparent"
-          : interactive
-            ? "hover:bg-gold/[0.07]"
-            : "",
-        interactive ? "cursor-pointer" : "",
+          ? "before:absolute before:inset-0 before:-z-10 before:rounded before:bg-gradient-to-r before:from-primary/[0.12] before:via-primary/[0.06] before:to-transparent before:content-['']"
+          : "",
       ].join(" ")}
     >
-      <div className={["font-sans text-[15px] leading-snug", style.predicate].join(" ")}>
+      {/* The whole row is the edit target, but as a real <button> that is a sibling
+          of the chip <Link>, not a role=button wrapping it (which nests interactive
+          controls). It sits just behind the in-flow content so its hover tint reads
+          under the text; the content is click-transparent except the chip, which
+          navigates to the other page. Native button = keyboard focus + Enter/Space
+          for free. */}
+      {onSelect !== undefined ? (
+        <button
+          type="button"
+          aria-label={`Edit relationship: ${view.predicate} ${view.other.name}`}
+          onClick={() => onSelect(view)}
+          className="absolute inset-0 -z-[1] cursor-pointer rounded transition-colors hover:bg-gold/[0.07] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold/60"
+        />
+      ) : null}
+
+      <div
+        className={["pointer-events-none font-sans text-[15px] leading-snug", style.predicate].join(
+          " ",
+        )}
+      >
         <em className={["mr-1.5 italic", verbClass].join(" ")}>{view.predicate}</em>
         <Link
           to="/c/$campaignId/p/$pageId"
           params={{ campaignId, pageId: view.other.id }}
           onClick={(e) => e.stopPropagation()}
           className={[
-            "inline-flex items-baseline rounded px-1.5 font-display font-semibold",
+            "pointer-events-auto relative z-10 inline-flex items-baseline rounded px-1.5 font-display font-semibold",
             style.chip,
           ].join(" ")}
         >
@@ -95,7 +91,7 @@ export function RelationshipRow({
 
       <span
         className={[
-          "justify-self-end rounded-full border px-1.5 py-0.5 font-sans text-[10.5px] tracking-wide uppercase",
+          "pointer-events-none justify-self-end rounded-full border px-1.5 py-0.5 font-sans text-[10.5px] tracking-wide uppercase",
           ORIGIN_TONE_CLASS[originTone(view)],
         ].join(" ")}
       >
