@@ -252,6 +252,39 @@ async fn create_rejects_missing_page() {
     ));
 }
 
+/// A born-revealed, session-origin create returns a view whose origin and reveal
+/// ordinals come from the reads done during validation: the response is built from
+/// data already in hand, never re-read after the commit. Regression for the
+/// "committed create returns a transient 500, the retry then 409s" path.
+#[tokio::test]
+async fn create_born_revealed_orients_from_validation_reads() {
+    let conn = setup().await;
+    let a = seed_page(&conn, "A").await;
+    let b = seed_page(&conn, "B").await;
+    let s3 = seed_session(&conn, 3).await;
+    let s7 = seed_session(&conn, 7).await;
+    let (_writer, graph) = spawn_graph(&conn).await;
+
+    let view = graph
+        .ask(CreateRelationship {
+            subject: a.clone(),
+            other: b.clone(),
+            predicate_forward: "betrayed".into(),
+            predicate_reverse: "was betrayed by".into(),
+            origin: Origin::Session(s3),
+            knowledge: Knowledge::Revealed(s7),
+            supersedes: None,
+        })
+        .await
+        .expect("create");
+
+    assert_eq!(session_origin_ordinal(&view.origin), 3);
+    let KnowledgeView::Revealed(reveal) = view.knowledge else {
+        panic!("expected Revealed knowledge");
+    };
+    assert_eq!(reveal.ordinal, 7, "reveal ordinal kept from validation");
+}
+
 #[tokio::test]
 async fn duplicate_live_fact_is_rejected() {
     let conn = setup().await;

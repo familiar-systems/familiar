@@ -622,8 +622,9 @@ fn map_relationship_write_error(e: sea_orm::DbErr) -> RelationshipWriteError {
 // in the actor; the only thing the writer rejects is a duplicate live fact (the index)
 // and a missing row.
 
-/// Insert a brand-new relationship row inside `txn`, stamping the id and `created_at`
-/// from `now`. The two axes come straight off `NewRelationship` (a born-finalized
+/// Insert a brand-new relationship row inside `txn`, stamping `created_at` from `now`
+/// (the id is minted by the owning actor and arrives on `NewRelationship`). The two
+/// axes come straight off `NewRelationship` (a born-finalized
 /// retrofit can already carry `superseded`/`retcon`). A row that births already
 /// superseded or retconned sits outside the live set, so it never collides; a live
 /// birth that duplicates an existing live fact trips the index.
@@ -633,7 +634,7 @@ async fn insert_relationship(
     now: DateTime<Utc>,
 ) -> Result<relationships::Model, RelationshipWriteError> {
     relationships::ActiveModel {
-        id: Set(RelationshipIdCol::from(RelationshipId::generate())),
+        id: Set(RelationshipIdCol::from(new.id)),
         page_a: Set(PageIdCol::from(new.page_a)),
         page_b: Set(PageIdCol::from(new.page_b)),
         predicate_a_to_b: Set(new.predicate_a_to_b),
@@ -1488,6 +1489,7 @@ mod tests {
     fn new_rel(page_a: PageId, page_b: PageId, fwd: &str, rev: &str) -> NewRelationship {
         use crate::domain::relationship::{Knowledge, Origin};
         NewRelationship {
+            id: RelationshipId::generate(),
             page_a,
             page_b,
             predicate_a_to_b: fwd.into(),

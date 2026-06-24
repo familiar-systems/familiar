@@ -1197,6 +1197,10 @@ impl Message<SearchEntities> for CampaignSupervisor {
         let rows = pages::Entity::find()
             .filter(pages::Column::Kind.eq(PageKindCol::Entity))
             .filter(pages::Column::Name.contains(msg.query.as_str()))
+            // FIXME we should not do this because because `%` and `_` are interpreted
+            // as wildcards in `LIKE` causing us to fail on like this.
+            // When moving ot tantivy for the name server, ensure we have test for this
+            // and/or use parameter fuzzing.
             .order_by_asc(pages::Column::Name)
             .limit(msg.limit)
             .all(db.reader())

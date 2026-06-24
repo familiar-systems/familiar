@@ -50,7 +50,7 @@ export function RelationshipRow({
         // The GM wash is a backmost layer (not the row's own background), so the
         // edit button's hover tint composes over it instead of replacing it.
         currentlySecret
-          ? "before:absolute before:inset-0 before:-z-10 before:rounded before:bg-gradient-to-r before:from-primary/[0.12] before:via-primary/[0.06] before:to-transparent before:content-['']"
+          ? "before:absolute before:inset-0 before:-z-10 before:rounded before:bg-linear-to-r before:from-primary/[0.12] before:via-primary/[0.06] before:to-transparent before:content-['']"
           : "",
       ].join(" ")}
     >
@@ -65,7 +65,7 @@ export function RelationshipRow({
           type="button"
           aria-label={`Edit relationship: ${view.predicate} ${view.other.name}`}
           onClick={() => onSelect(view)}
-          className="absolute inset-0 -z-[1] cursor-pointer rounded transition-colors hover:bg-gold/[0.07] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold/60"
+          className="absolute inset-0 z-[-1] cursor-pointer rounded transition-colors hover:bg-gold/[0.07] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold/60"
         />
       ) : null}
 

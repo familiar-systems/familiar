@@ -190,9 +190,10 @@ fn resolve_ordinal(ordinals: &HashMap<SessionId, i64>, sid: &SessionId) -> i64 {
 
 pub struct RelationshipGraph {
     campaign_id: CampaignId,
-    /// Retained (unlike `TocActor`) to resolve page names + session ordinals at
-    /// view-build and to pre-check page existence on create. These are auxiliary
-    /// projection reads, not graph state.
+    /// Used to
+    /// * pull in page names and session ordinals at view-build time
+    /// * validate endpoint pages and origin/reveal sessions on create (the same reads
+    ///   that feed the response view, so nothing is re-read after the commit)
     db_reader: DatabaseConnection,
     db_writer: ActorRef<DatabaseWriteActor>,
     store: RelationshipStore,
@@ -309,39 +310,6 @@ impl RelationshipGraph {
         if let Knowledge::Revealed(s) = &rel.knowledge {
             out.push(s.clone());
         }
-    }
-
-    /// Build the oriented view of one relationship, resolving its auxiliary reads.
-    async fn view_for(
-        &self,
-        rel: &Relationship,
-        viewed: &PageId,
-    ) -> Result<RelationshipView, sea_orm::DbErr> {
-        let other = if &rel.page_a == viewed {
-            &rel.page_b
-        } else {
-            &rel.page_a
-        };
-        let names = self.read_page_names(std::slice::from_ref(other)).await?;
-        let mut session_ids = Vec::new();
-        Self::referenced_sessions(rel, &mut session_ids);
-        let ordinals = self.read_session_ordinals(&session_ids).await?;
-        Ok(orient(
-            rel,
-            viewed,
-            |id| resolve_name(&names, id),
-            |sid| resolve_ordinal(&ordinals, sid),
-        ))
-    }
-
-    async fn ensure_page_exists(&self, page: &PageId) -> Result<(), CreateRelationshipError> {
-        let found = pages::Entity::find_by_id(PageIdCol::from(page.clone()))
-            .one(&self.db_reader)
-            .await?;
-        if found.is_none() {
-            return Err(CreateRelationshipError::PageNotFound(page.clone()));
-        }
-        Ok(())
     }
 
     /// Reflect a committed batch's outcomes into the in-memory graph: upsert each
@@ -502,23 +470,36 @@ impl Message<CreateRelationship> for RelationshipGraph {
             msg.predicate_reverse,
         )?;
 
-        // Both endpoints must exist. The FK would also reject a dangling page, but a
-        // pre-check yields a clean typed error; race-free under the single-writer +
-        // serialized-actor invariant (same reasoning as the supervisor's name check).
-        self.ensure_page_exists(&edge.page_a).await?;
-        self.ensure_page_exists(&edge.page_b).await?;
+        // Load both endpoint names once, up front. This one read both validates
+        // existence (a missing id is a clean typed error rather than the FK-violation
+        // 500 it becomes at write time; race-free under the single-writer + serialized-
+        // actor invariant) and supplies the far-endpoint name for the response view, so
+        // nothing is re-read after the commit. (The old code read the two endpoints
+        // separately here and then read the name again post-commit.)
+        let names = self
+            .read_page_names(&[edge.page_a.clone(), edge.page_b.clone()])
+            .await?;
+        for page in [&edge.page_a, &edge.page_b] {
+            if !names.contains_key(page) {
+                return Err(CreateRelationshipError::PageNotFound(page.clone()));
+            }
+        }
 
-        // A session origin must reference a real session: a stale id is a clean 404,
-        // not the FK-violation 500 it would otherwise become at write time (symmetric
-        // with the page pre-check above). The resolved ordinal also dates a supersede
-        // against the row it replaces (below) and bounds a born-revealed knowledge.
+        // Resolve the new row's referenced session ordinals as they're validated and
+        // keep each for the response view (the new row references at most its origin and
+        // a born-revealed reveal). A stale id is client input -> a clean 404. The origin
+        // ordinal also bounds the reveal and dates a supersede end (below).
+        let mut ordinals: HashMap<SessionId, i64> = HashMap::new();
         let origin_ordinal = match &msg.origin {
             Origin::Prior => None,
-            Origin::Session(s) => Some(
-                self.session_ordinal(s)
+            Origin::Session(s) => {
+                let ord = self
+                    .session_ordinal(s)
                     .await?
-                    .ok_or_else(|| CreateRelationshipError::SessionNotFound(s.clone()))?,
-            ),
+                    .ok_or_else(|| CreateRelationshipError::SessionNotFound(s.clone()))?;
+                ordinals.insert(s.clone(), ord);
+                Some(ord)
+            }
         };
 
         // A born-revealed create: the reveal session must exist and cannot precede the
@@ -528,6 +509,7 @@ impl Message<CreateRelationship> for RelationshipGraph {
                 .session_ordinal(r)
                 .await?
                 .ok_or_else(|| CreateRelationshipError::SessionNotFound(r.clone()))?;
+            ordinals.insert(r.clone(), reveal_ordinal);
             if let Some(origin_ord) = origin_ordinal
                 && reveal_ordinal < origin_ord
             {
@@ -535,18 +517,25 @@ impl Message<CreateRelationship> for RelationshipGraph {
             }
         }
 
+        // The actor mints the new row's id (the writer stamps only `created_at`), so the
+        // committed row can be reflected and oriented from data already in hand below.
+        let new_id = RelationshipId::generate();
+
         // A plain create is one `Create` write. A supersede also ends the named live
         // row in the same batch, create-first: a new fact that already exists live
         // trips the partial unique index on the insert and rolls the whole batch back,
         // so the old is never ended without its replacement (and the GM can fall back
         // to a plain End).
         let writes = match msg.supersedes {
-            None => vec![RelationshipWrite::Create(edge.into_new(NewLifecycle {
-                origin: msg.origin,
-                superseded: None,
-                retcon: None,
-                knowledge: msg.knowledge,
-            }))],
+            None => vec![RelationshipWrite::Create(edge.into_new(
+                new_id.clone(),
+                NewLifecycle {
+                    origin: msg.origin,
+                    superseded: None,
+                    retcon: None,
+                    knowledge: msg.knowledge,
+                },
+            ))],
             Some(old_id) => {
                 let existing = self
                     .store
@@ -573,7 +562,9 @@ impl Message<CreateRelationship> for RelationshipGraph {
                 };
 
                 // That origin session is when the old fact ends, so it cannot precede
-                // the old fact's own origin (a fact cannot end before it began).
+                // the old fact's own origin (a fact cannot end before it began). The old
+                // row's origin is not part of the new row's view, so it stays a single
+                // lookup here rather than joining the reads that feed the view above.
                 if let Origin::Session(old_origin_s) = &old_origin {
                     let old_ordinal =
                         self.session_ordinal(old_origin_s).await?.ok_or_else(|| {
@@ -584,6 +575,11 @@ impl Message<CreateRelationship> for RelationshipGraph {
                         })?;
                     let new_ordinal = origin_ordinal
                         .expect("a supersede origin is a session (Prior rejected above)");
+                    // One question one might have is "why not <=" here?
+                    // Imagine, for a moment, you went nuts in Vegas and married someone you just met.
+                    // Then, minutes later, you were like, "that was a terrible idea. Let's get divorced."
+                    // You were married. That is a real, historical relationship.
+                    // In gameplay terms, it also lasted less than a session. Start can equal end.
                     if new_ordinal < old_ordinal {
                         return Err(CreateRelationshipError::EventBeforeOrigin {
                             axis: "supersede end",
@@ -593,12 +589,15 @@ impl Message<CreateRelationship> for RelationshipGraph {
 
                 // The replacement births live; the old row is ended at the new fact's
                 // origin session.
-                let new = edge.into_new(NewLifecycle {
-                    origin: msg.origin,
-                    superseded: None,
-                    retcon: None,
-                    knowledge: msg.knowledge,
-                });
+                let new = edge.into_new(
+                    new_id.clone(),
+                    NewLifecycle {
+                        origin: msg.origin,
+                        superseded: None,
+                        retcon: None,
+                        knowledge: msg.knowledge,
+                    },
+                );
                 vec![
                     RelationshipWrite::Create(new),
                     RelationshipWrite::SetStamp {
@@ -619,21 +618,23 @@ impl Message<CreateRelationship> for RelationshipGraph {
             }
         };
 
-        // The `Create` is always the first write, so the first outcome is the new row;
-        // reflect any remaining outcome (the invalidated old row, on supersede).
-        let mut outcomes = outcomes.into_iter();
-        let model = match outcomes.next() {
-            Some(RelationshipWriteOutcome::Upserted(model)) => model,
-            _ => {
-                return Err(CreateRelationshipError::Db(sea_orm::DbErr::Custom(
-                    "create batch returned no committed row".into(),
-                )));
-            }
-        };
-        let rel = relationship_from_model(*model);
-        self.store.upsert(rel.clone());
-        self.reflect(outcomes.collect());
-        Ok(self.view_for(&rel, &subject).await?)
+        // Reflect every committed outcome uniformly (the new row, plus the ended old
+        // row on a supersede); `reflect` never correlates an outcome's position to the
+        // write that produced it. The new row is then read straight back from the
+        // in-memory store by its minted id and oriented from the names/ordinals gathered
+        // during validation - no post-commit reader read, so a successful create can no
+        // longer surface to the GM as a (transient) error.
+        self.reflect(outcomes);
+        let rel = self
+            .store
+            .get(&new_id)
+            .expect("the created row was just reflected into the store");
+        Ok(orient(
+            rel,
+            &subject,
+            |id| resolve_name(&names, id),
+            |sid| resolve_ordinal(&ordinals, sid),
+        ))
     }
 }
 

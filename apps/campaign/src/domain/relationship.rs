@@ -143,11 +143,13 @@ pub struct NewLifecycle {
     pub knowledge: Knowledge,
 }
 
-/// A relationship to persist: canonical endpoints + predicates (built via
-/// [`canonicalize`]) plus its lifecycle. The owning actor builds this; the writer
-/// stamps the id and `created_at`. Connection-free, like `NewPage`.
+/// A relationship to persist: its id + canonical endpoints + predicates (built via
+/// [`canonicalize`]) plus its lifecycle. The owning actor builds this and mints the
+/// id (so it can reflect and orient the new row from data in hand, with no post-commit
+/// read-back); the writer stamps only `created_at`. Connection-free, like `NewPage`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewRelationship {
+    pub id: RelationshipId,
     pub page_a: PageId,
     pub page_b: PageId,
     pub predicate_a_to_b: String,
@@ -174,9 +176,10 @@ pub struct CanonicalEdge {
 
 impl CanonicalEdge {
     /// Promote a canonicalized edge into a full creation spec by attaching its
-    /// two-axis lifecycle.
-    pub fn into_new(self, lifecycle: NewLifecycle) -> NewRelationship {
+    /// actor-minted id and two-axis lifecycle.
+    pub fn into_new(self, id: RelationshipId, lifecycle: NewLifecycle) -> NewRelationship {
         NewRelationship {
+            id,
             page_a: self.page_a,
             page_b: self.page_b,
             predicate_a_to_b: self.predicate_a_to_b,
