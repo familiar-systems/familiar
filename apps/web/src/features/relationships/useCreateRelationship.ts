@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { campaignClient } from "../../lib/campaigns-api";
 import { createByKind } from "../toc/useCreatePage";
+import { relationshipErrorMessage } from "./relationshipErrors";
 
 // The object search runs on every keystroke; debounce it so typing doesn't fan out
 // a request per character. The modal already guards against out-of-order results,
@@ -95,6 +96,15 @@ export function useCreateRelationship(
     [campaignId],
   );
 
+  // Closing the modal mid-type unmounts this hook; clear any armed debounce so a
+  // pending search can't fire (and resolve into an unmounted component) afterwards.
+  useEffect(
+    () => () => {
+      if (pendingRef.current !== null) clearTimeout(pendingRef.current.timer);
+    },
+    [],
+  );
+
   const createEntity = useCallback(
     async (name: string): Promise<{ id: PageId; name: string }> => {
       const id = await createByKind(campaignId, "entity", name, null);
@@ -118,14 +128,11 @@ export function useCreateRelationship(
 }
 
 function messageForStatus(status: number): string {
-  switch (status) {
-    case 409:
-      return "A live relationship with this predicate pair already exists between these two.";
-    case 422:
-      return "That relationship can't be created. It needs two different things and a predicate on each side.";
-    case 404:
-      return "One of those pages no longer exists. Refresh and try again.";
-    default:
-      return `Failed to create relationship (${status}).`;
-  }
+  return relationshipErrorMessage(status, {
+    conflict: "A live relationship with this predicate pair already exists between these two.",
+    unprocessable:
+      "That relationship can't be created. It needs two different things and a predicate on each side.",
+    notFound: "One of those pages no longer exists. Refresh and try again.",
+    verb: "create",
+  });
 }

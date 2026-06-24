@@ -22,6 +22,8 @@ const SUBJECT = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FAV");
 const GRIMHOLLOW = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FB0");
 const MARDA = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FB1");
 const NEW_ID = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FB2");
+const VENTAUR = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FB3");
+const KESSA = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FB4");
 const CURRENT_SID = sid("01ARZ3NDEKTSV4RRFFQ69G5S14");
 
 const PREDICATES: PredicatePairView[] = [
@@ -278,6 +280,39 @@ export const PredicateKeyboardNav: Story = {
     await userEvent.keyboard("{ArrowDown}{Enter}");
     await expect((predicate as HTMLInputElement).value).toBe("is suspicious of");
     await expect(screen.queryByRole("option", { name: /is a resident of/ })).toBeNull();
+  },
+};
+
+// Re-querying to a *different* list of the same length must reset the highlight, or
+// Enter commits a row the GM never highlighted. Arrow down into list A (Marda), then
+// append a char to get an equal-length list B; the highlight must snap back to the top
+// so Enter picks B's first row (Ventaur), not its stale second (Kessa). Guards the
+// reset keying on the query, not the unchanged row count.
+export const RequeryResetsHighlight: Story = {
+  play: async ({ args, userEvent }) => {
+    ctl(args.onSearchEntities).mockImplementation((q: string) =>
+      Promise.resolve(
+        q.length >= 3
+          ? [
+              { id: VENTAUR, name: "Ventaur" },
+              { id: KESSA, name: "Kessa" },
+            ]
+          : [
+              { id: GRIMHOLLOW, name: "Grimhollow" },
+              { id: MARDA, name: "Marda" },
+            ],
+      ),
+    );
+    const search = screen.getByLabelText("Search entities");
+    await userEvent.type(search, "ab");
+    await screen.findByRole("option", { name: /Grimhollow/ });
+    await userEvent.keyboard("{ArrowDown}"); // highlight row 1 (Marda) of list A
+    await userEvent.type(search, "c"); // -> "abc", an equal-length list B
+    await screen.findByRole("option", { name: /Ventaur/ });
+    await userEvent.keyboard("{Enter}");
+    // Reset put the highlight back at row 0, so Enter commits Ventaur, not Kessa.
+    await expect(screen.getByText("Ventaur")).toBeInTheDocument();
+    await expect(screen.queryByText("Kessa")).toBeNull();
   },
 };
 

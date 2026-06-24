@@ -216,6 +216,38 @@ export const UnRetcon: Story = {
   },
 };
 
+// A row that is BOTH ended and retconned (the model allows it): un-retconning clears
+// only the retcon stamp, never the end. Factuality and correction are independent sums,
+// so editing one can't silently clobber the other - a single `mode` discriminant would
+// have, emitting a stray `superseded: clear` here.
+export const UnRetconKeepsEnd: Story = {
+  args: { view: view({ superseded: { ordinal: 14 }, retcon: { ordinal: 14 } }) },
+  play: async ({ args, userEvent }) => {
+    ctl(args.onSubmit).mockResolvedValue(undefined);
+    await userEvent.click(screen.getByLabelText("Retcon")); // starts armed; uncheck it
+    await userEvent.click(screen.getByRole("button", { name: "Un-retcon" }));
+    await waitFor(() =>
+      expect(args.onSubmit).toHaveBeenCalledWith({
+        kind: "patch",
+        body: { knowledge: null, superseded: null, retcon: { kind: "clear" } },
+      }),
+    );
+  },
+};
+
+// Retcon and delete are mutually exclusive (one `correction` sum, not two booleans):
+// arming delete clears a previously-armed retcon, so the checkboxes can't both be on.
+export const RetconAndDeleteAreExclusive: Story = {
+  play: async ({ userEvent }) => {
+    await userEvent.click(screen.getByRole("button", { name: /Corrections/ }));
+    await userEvent.click(screen.getByLabelText("Retcon"));
+    await expect(screen.getByLabelText("Retcon")).toBeChecked();
+    await userEvent.click(screen.getByLabelText("Delete"));
+    await expect(screen.getByLabelText("Delete")).toBeChecked();
+    await expect(screen.getByLabelText("Retcon")).not.toBeChecked();
+  },
+};
+
 // Delete is the destructive escape hatch in the corrections drawer: a bare DELETE.
 export const Delete: Story = {
   play: async ({ args, userEvent }) => {

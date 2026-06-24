@@ -6,9 +6,11 @@
 //! superseded / retcon), `DELETE` hard-deletes, and `GET
 //! /pages/{pageId}/relationships` reads the per-page oriented view. The
 //! predicate vocabulary, the session pickers, and the entity typeahead are the three
-//! supporting reads. All GM-only; every handler resolves the supervisor via
-//! `authorize_gm` and forwards to the `RelationshipGraph` (mutations + the page view +
-//! predicates) or reads the table directly (sessions + entity search).
+//! supporting reads. All GM-only; the graph endpoints (mutations + the page view +
+//! predicates) `ask` the `RelationshipGraph` ref carried on the `CampaignHandle`
+//! `authorize_gm` returns (resolved once by the registry at checkout) - never touching
+//! the supervisor mailbox per request - while the picker reads (sessions + entity
+//! search) go to the supervisor's shared reader pool.
 
 use axum::{
     Json,
@@ -16,7 +18,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use kameo::error::SendError;
 use serde::Deserialize;
 
 use familiar_systems_campaign_shared::id::{PageId, RelationshipId};
@@ -25,6 +26,8 @@ use familiar_systems_campaign_shared::relationship::{
     PatchRelationshipRequest, PredicatePairView, RelationshipView, SessionRef, SessionStampPatch,
     SessionsResponse,
 };
+
+use kameo::error::SendError;
 
 use crate::actors::relationship_graph::{
     CreateRelationship, CreateRelationshipError, DeleteRelationship, DeleteRelationshipError,
@@ -70,11 +73,11 @@ pub async fn get_relationships(
         Some(id) => id,
         None => return (StatusCode::BAD_REQUEST, "Malformed page id.").into_response(),
     };
-    let (_campaign_id, supervisor) = match authorize_gm(&state, campaign_id, &user).await {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
         Ok(resolved) => resolved,
         Err(resp) => return resp,
     };
-    match supervisor.ask(RelationshipsForPage { page_id }).await {
+    match handle.graph.ask(RelationshipsForPage { page_id }).await {
         Ok(views) => (StatusCode::OK, Json(views)).into_response(),
         Err(e) => read_error(e, "get_relationships"),
     }
@@ -107,7 +110,7 @@ pub async fn create_relationship(
     Path(campaign_id): Path<String>,
     Json(req): Json<CreateRelationshipRequest>,
 ) -> Response {
-    let (_campaign_id, supervisor) = match authorize_gm(&state, campaign_id, &user).await {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
         Ok(resolved) => resolved,
         Err(resp) => return resp,
     };
@@ -120,7 +123,7 @@ pub async fn create_relationship(
         knowledge: to_knowledge(req.knowledge),
         supersedes: req.supersedes,
     };
-    match supervisor.ask(msg).await {
+    match handle.graph.ask(msg).await {
         Ok(view) => (StatusCode::CREATED, Json(view)).into_response(),
         Err(e) => create_relationship_error(e),
     }
@@ -161,7 +164,7 @@ pub async fn patch_relationship(
         Some(id) => id,
         None => return (StatusCode::BAD_REQUEST, "Malformed relationship id.").into_response(),
     };
-    let (_campaign_id, supervisor) = match authorize_gm(&state, campaign_id, &user).await {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
         Ok(resolved) => resolved,
         Err(resp) => return resp,
     };
@@ -171,7 +174,7 @@ pub async fn patch_relationship(
     };
     // The actor applies every present axis change as one atomic batch (a single
     // `ApplyRelationshipWrites`), so a multi-axis patch is all-or-nothing.
-    match supervisor.ask(patch).await {
+    match handle.graph.ask(patch).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => patch_relationship_error(e),
     }
@@ -208,11 +211,11 @@ pub async fn delete_relationship(
         Some(id) => id,
         None => return (StatusCode::BAD_REQUEST, "Malformed relationship id.").into_response(),
     };
-    let (_campaign_id, supervisor) = match authorize_gm(&state, campaign_id, &user).await {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
         Ok(resolved) => resolved,
         Err(resp) => return resp,
     };
-    match supervisor.ask(DeleteRelationship { rel_id }).await {
+    match handle.graph.ask(DeleteRelationship { rel_id }).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => delete_relationship_error(e),
     }
@@ -241,11 +244,11 @@ pub async fn known_predicates(
     State(state): State<AppState>,
     Path(campaign_id): Path<String>,
 ) -> Response {
-    let (_campaign_id, supervisor) = match authorize_gm(&state, campaign_id, &user).await {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
         Ok(resolved) => resolved,
         Err(resp) => return resp,
     };
-    match supervisor.ask(KnownPredicatePairs).await {
+    match handle.graph.ask(KnownPredicatePairs).await {
         Ok(pairs) => {
             let views: Vec<PredicatePairView> = pairs
                 .into_iter()
@@ -284,11 +287,11 @@ pub async fn list_sessions(
     State(state): State<AppState>,
     Path(campaign_id): Path<String>,
 ) -> Response {
-    let (_campaign_id, supervisor) = match authorize_gm(&state, campaign_id, &user).await {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
         Ok(resolved) => resolved,
         Err(resp) => return resp,
     };
-    match supervisor.ask(ListSessions).await {
+    match handle.supervisor.ask(ListSessions).await {
         Ok(rows) => {
             let sessions: Vec<SessionRef> = rows
                 .into_iter()
@@ -334,11 +337,12 @@ pub async fn search_entities(
     Path(campaign_id): Path<String>,
     Query(params): Query<EntitySearchParams>,
 ) -> Response {
-    let (_campaign_id, supervisor) = match authorize_gm(&state, campaign_id, &user).await {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
         Ok(resolved) => resolved,
         Err(resp) => return resp,
     };
-    match supervisor
+    match handle
+        .supervisor
         .ask(SearchEntities {
             query: params.q,
             limit: ENTITY_SEARCH_LIMIT,
@@ -411,11 +415,13 @@ fn parse_rel_id(s: &str) -> Option<RelationshipId> {
 
 /// Map a create failure to a response. Each variant maps to a status by name; the
 /// 500-collapsing variant is named (no `_` catch-all), so a new error is a compile
-/// error rather than a silent 500. Mirrors `routes/pages.rs`.
+/// error rather than a silent 500. A route->graph transport failure is folded to 503 by
+/// `rel_error_response`; the closure sees only the actor's own domain error (including
+/// its own `ActorUnavailable` - the DB-writer-unreachable case). Mirrors `routes/pages.rs`.
 fn create_relationship_error(
-    e: SendError<CreateRelationship, CreateRelationshipError>,
+    err: SendError<CreateRelationship, CreateRelationshipError>,
 ) -> Response {
-    rel_error_response(e, "create_relationship", |err| match err {
+    rel_error_response(err, "create_relationship", |err| match err {
         CreateRelationshipError::SelfEdge | CreateRelationshipError::EmptyPredicate => {
             Some((StatusCode::UNPROCESSABLE_ENTITY, err.to_string()))
         }
@@ -439,8 +445,8 @@ fn create_relationship_error(
     })
 }
 
-fn patch_relationship_error(e: SendError<PatchRelationship, PatchRelationshipError>) -> Response {
-    rel_error_response(e, "patch_relationship", |err| match err {
+fn patch_relationship_error(err: SendError<PatchRelationship, PatchRelationshipError>) -> Response {
+    rel_error_response(err, "patch_relationship", |err| match err {
         PatchRelationshipError::NotFound | PatchRelationshipError::SessionNotFound(_) => {
             Some((StatusCode::NOT_FOUND, err.to_string()))
         }
@@ -456,9 +462,9 @@ fn patch_relationship_error(e: SendError<PatchRelationship, PatchRelationshipErr
 }
 
 fn delete_relationship_error(
-    e: SendError<DeleteRelationship, DeleteRelationshipError>,
+    err: SendError<DeleteRelationship, DeleteRelationshipError>,
 ) -> Response {
-    rel_error_response(e, "delete_relationship", |err| match err {
+    rel_error_response(err, "delete_relationship", |err| match err {
         DeleteRelationshipError::NotFound => Some((StatusCode::NOT_FOUND, err.to_string())),
         DeleteRelationshipError::ActorUnavailable => {
             Some((StatusCode::SERVICE_UNAVAILABLE, err.to_string()))
@@ -467,31 +473,36 @@ fn delete_relationship_error(
     })
 }
 
-/// Shared shape for the typed mutation errors: the classifier handles the arms a
-/// path cares about, everything else (and a transport failure) is a logged 500.
+/// Shared shape for the typed mutation errors. Unwraps kameo's `SendError` envelope:
+/// `HandlerError` carries the actor's own domain error, which the classifier maps (the
+/// named `Db` arm and anything unclassified is a logged 500); any other `SendError`
+/// means the graph (or, transitively, its DB writer) is unreachable -> logged 503. This
+/// is the single place route->graph transport is decided, so the per-message closures
+/// stay pure domain mappings.
 fn rel_error_response<M, E: std::fmt::Display>(
-    e: SendError<M, E>,
+    err: SendError<M, E>,
     context: &'static str,
     classify: impl Fn(&E) -> Option<(StatusCode, String)>,
 ) -> Response {
-    match e {
-        SendError::HandlerError(err) => match classify(&err) {
+    match err {
+        SendError::HandlerError(e) => match classify(&e) {
             Some((status, body)) => (status, body).into_response(),
             None => {
-                tracing::error!(error = %err, context, "relationship mutation failed");
+                tracing::error!(error = %e, context, "relationship mutation failed");
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
         },
-        other => {
-            tracing::error!(error = %other, context, "supervisor unreachable during relationship mutation");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        transport => {
+            tracing::error!(error = %transport, context, "relationship graph unreachable");
+            StatusCode::SERVICE_UNAVAILABLE.into_response()
         }
     }
 }
 
-/// Reads surface only `sea_orm::DbErr` (or a transport failure) - both opaque to the
-/// client, so both log and 500.
-fn read_error<M>(e: SendError<M, sea_orm::DbErr>, context: &'static str) -> Response {
+/// Reads surface only an opaque error (the actor's own `sea_orm::DbErr`, or any kameo
+/// transport failure - graph or supervisor unreachable) wrapped in a `SendError`. All
+/// opaque to the client, so all log and 500.
+fn read_error<E: std::fmt::Display>(e: E, context: &'static str) -> Response {
     tracing::error!(error = %e, context, "relationship read failed");
     StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }

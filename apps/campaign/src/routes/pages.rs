@@ -69,10 +69,11 @@ pub async fn create_page(
             .into_response();
     }
 
-    let (_campaign_id, supervisor) = match authorize_gm(&state, campaign_id, &user).await {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
         Ok(resolved) => resolved,
         Err(resp) => return resp,
     };
+    let supervisor = handle.supervisor;
 
     // The new Page's sections (and the editable empty paragraph each is seeded
     // with) come from its kind inside the owning PageActor; this handler names

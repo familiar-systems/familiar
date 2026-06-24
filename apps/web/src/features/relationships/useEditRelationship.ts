@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { campaignClient } from "../../lib/campaigns-api";
 import type { EditSubmit } from "./EditRelationshipModal";
+import { relationshipErrorMessage } from "./relationshipErrors";
 
 export interface EditRelationshipApi {
   sessions: SessionsResponse | null;
@@ -77,16 +78,12 @@ export function useEditRelationship(campaignId: CampaignId, enabled: boolean): E
 }
 
 function messageForStatus(status: number): string {
-  switch (status) {
-    case 409:
-      // The row changed under the GM: already invalidated, or a supersede whose new
-      // pair duplicates a live fact.
-      return "This relationship was already changed. Refresh and try again.";
-    case 422:
-      return "That change isn't valid for this relationship.";
-    case 404:
-      return "This relationship no longer exists. Refresh and try again.";
-    default:
-      return `Failed to update relationship (${status}).`;
-  }
+  return relationshipErrorMessage(status, {
+    // 409 on edit: the row changed under the GM (already invalidated, or a supersede
+    // whose new pair duplicates a live fact) - distinct from create's "already exists".
+    conflict: "This relationship was already changed. Refresh and try again.",
+    unprocessable: "That change isn't valid for this relationship.",
+    notFound: "This relationship no longer exists. Refresh and try again.",
+    verb: "update",
+  });
 }

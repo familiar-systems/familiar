@@ -7,13 +7,17 @@ import type { PredicatePairView } from "@familiar-systems/types-campaign";
 
 interface Scored {
   pair: PredicatePairView;
-  score: number;
+  idx: number;
 }
 
 /**
  * Rank known predicate pairs by an `forward`-field substring match (earlier match
  * = higher), most-used as the tiebreak. The typeahead lists the `forward` string;
  * an empty query returns a copy of all pairs (so the dropdown can show the vocab).
+ *
+ * TODO: move predicate search + ranking to the backend. Once the vocabulary outgrows
+ * one fetch the server must paginate/truncate it, which makes it the owner of search
+ * quality - ranking client-side over a truncated slice would surface the wrong matches.
  */
 export function filterPredicates(
   pairs: readonly PredicatePairView[],
@@ -27,12 +31,13 @@ export function filterPredicates(
   for (const pair of pairs) {
     const idx = pair.forward.toLowerCase().indexOf(q);
     if (idx >= 0) {
-      // Earlier match dominates; `count` (how often the pair is used) breaks ties
-      // so the campaign's established wording floats up.
-      scored.push({ pair, score: 1000 - idx * 10 + Math.min(pair.count, 99) });
+      scored.push({ pair, idx });
     }
   }
-  scored.sort((a, b) => b.score - a.score);
+  // Match position decides outright (earlier wins); `count` (how often a pair is used)
+  // only breaks ties between equal positions, so the campaign's established wording
+  // floats up without ever overruling a closer match.
+  scored.sort((a, b) => a.idx - b.idx || b.pair.count - a.pair.count);
   return scored.map((s) => s.pair);
 }
 

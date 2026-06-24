@@ -5,8 +5,13 @@
 // is mechanism, not a call to action (style guide: gold = ceremony, bronze =
 // mechanism).
 
-import type { KnowledgeInput, SessionRef } from "@familiar-systems/types-campaign";
+import type { KnowledgeInput, SessionId, SessionRef } from "@familiar-systems/types-campaign";
 import { Eye, EyeOff, type LucideIcon } from "lucide-react";
+
+// The Prior sentinel for the "as of" select: session ids are ULIDs, so a plain word
+// can't collide. Only the create modal offers it (a fact can originate before play);
+// edits pick from live sessions only.
+const PRIOR_VALUE = "prior";
 
 export function EntityChip({
   name,
@@ -24,6 +29,58 @@ export function EntityChip({
         </span>
       ) : null}
     </span>
+  );
+}
+
+// The session "as of" picker shared by the create modal (origin), the edit modal
+// (end / retcon as-of), and the reveal session below. One DOM/aria/styling shape and
+// one "(current)" suffix rule, so the three can't drift (the reveal select had lost
+// the suffix before this was unified). `prior` adds the create-only "before the
+// campaign" option; `value` is null only for a not-yet-chosen pick.
+export function SessionSelect({
+  id,
+  ariaLabel,
+  sessions,
+  current,
+  value,
+  onSelect,
+  disabled = false,
+  prior,
+}: {
+  id?: string;
+  ariaLabel?: string;
+  sessions: SessionRef[];
+  current: SessionRef | null;
+  value: SessionId | null;
+  onSelect: (id: SessionId) => void;
+  disabled?: boolean;
+  prior?: { label: string; selected: boolean; onSelect: () => void };
+}): React.ReactElement {
+  return (
+    <select
+      id={id}
+      aria-label={ariaLabel}
+      value={prior?.selected === true ? PRIOR_VALUE : (value ?? "")}
+      disabled={disabled}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (prior !== undefined && v === PRIOR_VALUE) {
+          prior.onSelect();
+          return;
+        }
+        const match = sessions.find((s) => s.id === v);
+        if (match !== undefined) onSelect(match.id);
+      }}
+      className="rounded border border-gold/40 bg-background/60 px-2 py-1 font-sans text-xs text-foreground focus:border-gold/60 focus:outline-none disabled:opacity-50"
+    >
+      {prior !== undefined ? <option value={PRIOR_VALUE}>{prior.label}</option> : null}
+      {sessions.map((s) => (
+        <option key={s.id} value={s.id}>
+          Session {s.ordinal}
+          {current !== null && s.id === current.id ? " (current)" : ""}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -98,22 +155,14 @@ export function KnowledgeControl({
       {bornSecret && !hidden && revealSession !== null ? (
         <div className="flex flex-wrap items-center gap-2 pl-1 font-sans text-[12px] text-muted-foreground">
           <span>Revealed at</span>
-          <select
-            aria-label="Reveal session"
+          <SessionSelect
+            ariaLabel="Reveal session"
+            sessions={sessions}
+            current={current}
             value={revealSession}
             disabled={disabled}
-            onChange={(e) => {
-              const match = sessions.find((s) => s.id === e.target.value);
-              if (match !== undefined) onChange({ kind: "revealed", content: match.id });
-            }}
-            className="rounded border border-gold/40 bg-background/60 px-2 py-1 font-sans text-xs text-foreground focus:border-gold/60 focus:outline-none disabled:opacity-50"
-          >
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>
-                Session {s.ordinal}
-              </option>
-            ))}
-          </select>
+            onSelect={(id) => onChange({ kind: "revealed", content: id })}
+          />
         </div>
       ) : bornSecret && !hidden && !canReveal ? (
         <span className="pl-1 font-sans text-[12px] text-muted-foreground italic">

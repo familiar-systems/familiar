@@ -33,7 +33,6 @@ use sea_orm::{
 use familiar_systems_campaign_shared::id::{ClientId, PageId, SessionId};
 use familiar_systems_campaign_shared::loro::toc::TocPageKind;
 use familiar_systems_campaign_shared::page_kind::PageKind;
-use familiar_systems_campaign_shared::relationship::RelationshipView;
 use familiar_systems_campaign_shared::status::Status;
 use tokio::sync::{mpsc, oneshot};
 
@@ -42,16 +41,11 @@ use crate::actors::database_writer::{
     PatchCampaignMetadata as DbPatchCampaign, PatchCampaignResult,
 };
 use crate::actors::page::{PageActor, PageActorArgs, PageInit};
-use crate::actors::relationship_graph::{
-    CreateRelationship, CreateRelationshipError, DeleteRelationship, DeleteRelationshipError,
-    KnownPredicatePairs, PatchRelationship, PatchRelationshipError, RelationshipGraph,
-    RelationshipGraphArgs, RelationshipsForPage,
-};
+use crate::actors::relationship_graph::{RelationshipGraph, RelationshipGraphArgs};
 use crate::actors::toc::{AddPageNode, ResolvePageNode, TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::domain::crdt::room_actor;
 use crate::domain::page::DocumentPageKind;
-use crate::domain::relationship::PredicatePair;
 use crate::entities::columns::{PageIdCol, PageKindCol};
 use crate::entities::{campaign_metadata, pages, sessions};
 use crate::error::InitError;
@@ -151,6 +145,13 @@ impl Actor for CampaignSupervisor {
             debounce_duration: Duration::from_secs(2),
         });
 
+        // TODO: supervise this child (kameo 0.20 `supervise(...).restart_policy(...)`)
+        // instead of a bare `spawn`. Today a panic here is unobserved: the registry
+        // caches this `ActorRef`, so a dead graph 503s every relationship op until the
+        // campaign idle-evicts and re-checks-out. Supervised restart reuses the actor's
+        // mailbox, so the cached ref stays valid across the restart - recovery without
+        // taking the campaign down. Must reconcile with the manual `on_link_died` /
+        // page-pruning path below.
         let relationship_graph = RelationshipGraph::spawn(RelationshipGraphArgs {
             campaign_id: args.campaign_id.clone(),
             db_reader: db.reader().clone(),
@@ -1016,120 +1017,29 @@ impl Message<Ping> for CampaignSupervisor {
 }
 
 // ---------------------------------------------------------------------------
-// Relationships (forwarded to the RelationshipGraph singleton)
+// RelationshipGraphRef (child-ref accessor)
 // ---------------------------------------------------------------------------
 //
-// The supervisor is the only front door; the `RelationshipGraph` ref stays private.
-// Each handler forwards and folds a transport failure (the actor unreachable) into
-// the message's own error channel, matching the `GetMetadata`/`CreatePage` idiom.
+// The supervisor is the campaign's lifecycle mailbox - the hottest path in the
+// process - so relationship work must never serialize behind it. The registry asks
+// this once at checkout (right after `wait_for_startup`) and caches the returned ref
+// in its `CampaignHandle`; routes then talk to the `RelationshipGraph` directly and
+// never touch the supervisor per request. A pure topology accessor - clone the eager
+// singleton's ref, no `last_activity` bump - not a relationship operation. Future
+// children (conversation actor, search actor) get a sibling accessor.
 
-impl Message<RelationshipsForPage> for CampaignSupervisor {
-    type Reply = Result<Vec<RelationshipView>, sea_orm::DbErr>;
+pub struct RelationshipGraphRef;
 
-    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
-    async fn handle(
-        &mut self,
-        msg: RelationshipsForPage,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) -> Self::Reply {
-        self.last_activity = Instant::now();
-        match self.relationship_graph.ask(msg).await {
-            Ok(views) => Ok(views),
-            Err(SendError::HandlerError(e)) => Err(e),
-            Err(e) => {
-                tracing::error!(error = %e, "relationship graph unavailable reading relationships");
-                Err(sea_orm::DbErr::Custom(
-                    "relationship graph unavailable".into(),
-                ))
-            }
-        }
-    }
-}
-
-impl Message<CreateRelationship> for CampaignSupervisor {
-    type Reply = Result<RelationshipView, CreateRelationshipError>;
+impl Message<RelationshipGraphRef> for CampaignSupervisor {
+    type Reply = ActorRef<RelationshipGraph>;
 
     #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
     async fn handle(
         &mut self,
-        msg: CreateRelationship,
+        _: RelationshipGraphRef,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        self.last_activity = Instant::now();
-        match self.relationship_graph.ask(msg).await {
-            Ok(view) => Ok(view),
-            Err(SendError::HandlerError(e)) => Err(e),
-            Err(e) => {
-                tracing::error!(error = %e, "relationship graph unavailable creating relationship");
-                Err(CreateRelationshipError::ActorUnavailable)
-            }
-        }
-    }
-}
-
-impl Message<PatchRelationship> for CampaignSupervisor {
-    type Reply = Result<(), PatchRelationshipError>;
-
-    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
-    async fn handle(
-        &mut self,
-        msg: PatchRelationship,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) -> Self::Reply {
-        self.last_activity = Instant::now();
-        match self.relationship_graph.ask(msg).await {
-            Ok(()) => Ok(()),
-            Err(SendError::HandlerError(e)) => Err(e),
-            Err(e) => {
-                tracing::error!(error = %e, "relationship graph unavailable patching relationship");
-                Err(PatchRelationshipError::ActorUnavailable)
-            }
-        }
-    }
-}
-
-impl Message<DeleteRelationship> for CampaignSupervisor {
-    type Reply = Result<(), DeleteRelationshipError>;
-
-    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
-    async fn handle(
-        &mut self,
-        msg: DeleteRelationship,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) -> Self::Reply {
-        self.last_activity = Instant::now();
-        match self.relationship_graph.ask(msg).await {
-            Ok(()) => Ok(()),
-            Err(SendError::HandlerError(e)) => Err(e),
-            Err(e) => {
-                tracing::error!(error = %e, "relationship graph unavailable deleting relationship");
-                Err(DeleteRelationshipError::ActorUnavailable)
-            }
-        }
-    }
-}
-
-impl Message<KnownPredicatePairs> for CampaignSupervisor {
-    // The actor's reply is infallible; the supervisor wraps it so an unreachable
-    // actor (transport failure) is representable rather than panicking.
-    type Reply = Result<Vec<PredicatePair>, sea_orm::DbErr>;
-
-    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
-    async fn handle(
-        &mut self,
-        _: KnownPredicatePairs,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) -> Self::Reply {
-        self.last_activity = Instant::now();
-        match self.relationship_graph.ask(KnownPredicatePairs).await {
-            Ok(pairs) => Ok(pairs),
-            Err(e) => {
-                tracing::error!(error = %e, "relationship graph unavailable reading predicates");
-                Err(sea_orm::DbErr::Custom(
-                    "relationship graph unavailable".into(),
-                ))
-            }
-        }
+        self.relationship_graph.clone()
     }
 }
 

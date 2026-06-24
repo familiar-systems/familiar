@@ -29,7 +29,7 @@ import { RotateCcw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { EntityChip, KnowledgeControl } from "./relationshipChrome";
+import { EntityChip, KnowledgeControl, SessionSelect } from "./relationshipChrome";
 
 // What the modal hands back on submit: one of the three relationship-edit HTTP
 // shapes, fully assembled (the modal holds every field). The connector dispatches on
@@ -37,6 +37,27 @@ import { EntityChip, KnowledgeControl } from "./relationshipChrome";
 export type EditSubmit =
   | { kind: "supersede"; body: CreateRelationshipRequest }
   | { kind: "patch"; body: PatchRelationshipRequest }
+  | { kind: "delete" };
+
+// The factuality axis as the GM edits it: the fact is live, or it ended at a session -
+// optionally replaced by a successor edge (both predicates filled -> a supersede that
+// mints a new row; left blank -> a plain end).
+type Factuality =
+  | { kind: "live" }
+  | { kind: "ended"; asOf: SessionId | null; forward: string; reverse: string };
+
+// The correction axis (the drawer): none, a retcon at a session, or a hard delete.
+// Retcon and delete are mutually exclusive, so this single sum makes arming both at
+// once unrepresentable - the illegal state the old parallel `*Armed` booleans allowed.
+//
+// Factuality and correction are kept as *two* sums rather than one `mode`: the data
+// model lets a single row carry both `superseded` and `retcon` at once (see the
+// `patch_superseded_and_retcon_coexist` route test), so a single discriminant would
+// force un-retconning a both-set row to silently clear its end. Independent axes match
+// the data and the independent-axis PATCH shape.
+type Correction =
+  | { kind: "none" }
+  | { kind: "retcon"; asOf: SessionId | null }
   | { kind: "delete" };
 
 type SessionRef = SessionsResponse["sessions"][number];
@@ -105,23 +126,33 @@ export function EditRelationshipModal({
   const [knowledge, setKnowledge] = useState<KnowledgeInput>(() =>
     knowledgeInputFromView(view.knowledge, allSessions),
   );
-  // Factuality.
-  const [ended, setEnded] = useState(view.superseded !== null);
-  const [endAsOf, setEndAsOf] = useState<SessionId | null>(
-    () => sessionIdForOrdinal(view.superseded, allSessions) ?? defaultAsOf,
+  // `asOf` is null only for the degraded "ended/retconned at a session that was
+  // renumbered away" case the picker then can't resolve; the diff guards on it.
+  const [factuality, setFactuality] = useState<Factuality>(() =>
+    view.superseded !== null
+      ? {
+          kind: "ended",
+          asOf: sessionIdForOrdinal(view.superseded, allSessions) ?? defaultAsOf,
+          forward: "",
+          reverse: "",
+        }
+      : { kind: "live" },
   );
-  const [succForward, setSuccForward] = useState("");
-  const [succReverse, setSuccReverse] = useState("");
-  // Corrections.
+  const [correction, setCorrection] = useState<Correction>(() =>
+    view.retcon !== null
+      ? { kind: "retcon", asOf: sessionIdForOrdinal(view.retcon, allSessions) ?? defaultAsOf }
+      : { kind: "none" },
+  );
+  // The corrections drawer open/closed (disclosure UI, not a domain axis).
   const [correctionsOpen, setCorrectionsOpen] = useState(view.retcon !== null);
-  const [retconArmed, setRetconArmed] = useState(view.retcon !== null);
-  const [retconAsOf, setRetconAsOf] = useState<SessionId | null>(
-    () => sessionIdForOrdinal(view.retcon, allSessions) ?? defaultAsOf,
-  );
-  const [deleteArmed, setDeleteArmed] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Re-arming an axis defaults its session back to where it was persisted (if any), so
+  // toggling Ongoing -> Ended (or re-checking Retcon) doesn't silently move the stamp.
+  const endDefaultAsOf = sessionIdForOrdinal(view.superseded, allSessions) ?? defaultAsOf;
+  const retconDefaultAsOf = sessionIdForOrdinal(view.retcon, allSessions) ?? defaultAsOf;
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const submittingRef = useRef(false);
@@ -142,7 +173,7 @@ export function EditRelationshipModal({
 
   const hasSessions = availableSessions.length > 0;
   // Arming retcon dims the factuality axis (a retcon governs factuality wholesale).
-  const factualityDisabled = busy || retconArmed;
+  const factualityDisabled = busy || correction.kind === "retcon";
 
   // --- Diff each axis into a stamp patch (null = unchanged) -----------------
 
@@ -155,25 +186,28 @@ export function EditRelationshipModal({
 
   function retconDiff(): SessionStampPatch | null {
     const wasOrdinal = view.retcon?.ordinal ?? null;
-    if (retconArmed && retconAsOf !== null) {
-      return ordinalOf(retconAsOf) !== wasOrdinal ? set(retconAsOf) : null;
+    if (correction.kind === "retcon" && correction.asOf !== null) {
+      return ordinalOf(correction.asOf) !== wasOrdinal ? set(correction.asOf) : null;
     }
     return wasOrdinal !== null ? clear : null; // un-retcon
   }
 
   function supersededDiff(): SessionStampPatch | null {
     // Retcon dims factuality, so it is not edited while armed.
-    if (retconArmed) return null;
+    if (correction.kind === "retcon") return null;
     const wasOrdinal = view.superseded?.ordinal ?? null;
-    if (ended && endAsOf !== null) {
-      return ordinalOf(endAsOf) !== wasOrdinal ? set(endAsOf) : null;
+    if (factuality.kind === "ended" && factuality.asOf !== null) {
+      return ordinalOf(factuality.asOf) !== wasOrdinal ? set(factuality.asOf) : null;
     }
     return wasOrdinal !== null ? clear : null; // un-end
   }
 
+  const succForward = factuality.kind === "ended" ? factuality.forward : "";
+  const succReverse = factuality.kind === "ended" ? factuality.reverse : "";
   const fwdFilled = succForward.trim() !== "";
   const revFilled = succReverse.trim() !== "";
-  const successorIntent = !retconArmed && ended && (fwdFilled || revFilled);
+  const successorIntent =
+    correction.kind !== "retcon" && factuality.kind === "ended" && (fwdFilled || revFilled);
 
   function knowledgeLabel(k: KnowledgeInput): string {
     if (k.kind === "revealed") return `Reveal S${ordinalOf(k.content)}`;
@@ -188,28 +222,31 @@ export function EditRelationshipModal({
   }
 
   function computeAction(): { submit: EditSubmit | null; label: string } {
-    if (deleteArmed) return { submit: { kind: "delete" }, label: "Delete permanently" };
+    if (correction.kind === "delete") {
+      return { submit: { kind: "delete" }, label: "Delete permanently" };
+    }
 
     const knowledgePatch = knowledgeDiff();
 
     // End-with-successor mints a new row (the successor carries the knowledge); it is
-    // mutually exclusive with retcon, which dims factuality.
-    if (successorIntent) {
-      if (!(fwdFilled && revFilled) || endAsOf === null) {
+    // mutually exclusive with retcon, which dims factuality. The `factuality.kind`
+    // re-check narrows the union (successorIntent already implies it).
+    if (successorIntent && factuality.kind === "ended") {
+      if (!(fwdFilled && revFilled) || factuality.asOf === null) {
         return { submit: null, label: "Fill both successor predicates" };
       }
       const parts: string[] = [];
       if (knowledgePatch !== null) parts.push(knowledgeLabel(knowledgePatch));
-      parts.push(`End S${ordinalOf(endAsOf)} · +successor`);
+      parts.push(`End S${ordinalOf(factuality.asOf)} · +successor`);
       return {
         submit: {
           kind: "supersede",
           body: {
             subject_page_id: subjectPageId,
             other_page_id: view.other.id,
-            predicate_forward: succForward.trim(),
-            predicate_reverse: succReverse.trim(),
-            origin: { kind: "session", content: endAsOf },
+            predicate_forward: factuality.forward.trim(),
+            predicate_reverse: factuality.reverse.trim(),
+            origin: { kind: "session", content: factuality.asOf },
             knowledge,
             supersedes: view.id,
           },
@@ -354,17 +391,25 @@ export function EditRelationshipModal({
             className="mt-2 inline-flex w-fit overflow-hidden rounded-lg border border-foreground/15"
           >
             <FactButton
-              active={!ended}
+              active={factuality.kind === "live"}
               disabled={factualityDisabled}
               label="Ongoing"
-              onClick={() => setEnded(false)}
+              onClick={() => setFactuality({ kind: "live" })}
             />
             <FactButton
-              active={ended}
+              active={factuality.kind === "ended"}
               disabled={factualityDisabled || !hasSessions}
               label="Ended"
               Icon={RotateCcw}
-              onClick={() => setEnded(true)}
+              onClick={() =>
+                setFactuality((f) =>
+                  // Re-pressing Ended keeps the current end + successor draft; only a
+                  // fresh end (from live/retcon) starts blank at the persisted session.
+                  f.kind === "ended"
+                    ? f
+                    : { kind: "ended", asOf: endDefaultAsOf, forward: "", reverse: "" },
+                )
+              }
             />
           </div>
           {!hasSessions ? (
@@ -373,7 +418,7 @@ export function EditRelationshipModal({
             </p>
           ) : null}
 
-          {ended && !retconArmed ? (
+          {factuality.kind === "ended" && correction.kind !== "retcon" ? (
             <div className="mt-3 flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <label
@@ -382,13 +427,15 @@ export function EditRelationshipModal({
                 >
                   Ended in
                 </label>
-                <AsOfSelect
+                <SessionSelect
                   id="edit-relationship-end-asof"
-                  asOf={endAsOf}
                   sessions={availableSessions}
                   current={sessions.current}
-                  busy={busy}
-                  onAsOf={setEndAsOf}
+                  value={factuality.asOf}
+                  disabled={busy}
+                  onSelect={(id) =>
+                    setFactuality((f) => (f.kind === "ended" ? { ...f, asOf: id } : f))
+                  }
                 />
               </div>
 
@@ -409,7 +456,11 @@ export function EditRelationshipModal({
                     placeholder="new predicate..."
                     value={succForward}
                     disabled={busy}
-                    onChange={(e) => setSuccForward(e.target.value)}
+                    onChange={(e) =>
+                      setFactuality((f) =>
+                        f.kind === "ended" ? { ...f, forward: e.target.value } : f,
+                      )
+                    }
                     className="w-full rounded border border-foreground/18 bg-background/60 px-2 py-1 font-sans text-[15px] text-foreground italic focus:border-gold/60 focus:ring-2 focus:ring-gold/20 focus:outline-none disabled:opacity-50"
                   />
                 </Edge>
@@ -422,7 +473,11 @@ export function EditRelationshipModal({
                       placeholder="is ..."
                       value={succReverse}
                       disabled={busy}
-                      onChange={(e) => setSuccReverse(e.target.value)}
+                      onChange={(e) =>
+                        setFactuality((f) =>
+                          f.kind === "ended" ? { ...f, reverse: e.target.value } : f,
+                        )
+                      }
                       className="w-full rounded border border-foreground/18 bg-background/60 px-2 py-1 font-sans text-[15px] text-foreground italic focus:border-gold/60 focus:ring-2 focus:ring-gold/20 focus:outline-none disabled:opacity-50"
                     />
                   </Edge>
@@ -452,9 +507,15 @@ export function EditRelationshipModal({
                 <label className="inline-flex items-center gap-2 font-sans text-[13px] text-foreground">
                   <input
                     type="checkbox"
-                    checked={retconArmed}
+                    checked={correction.kind === "retcon"}
                     disabled={busy || !hasSessions}
-                    onChange={(e) => setRetconArmed(e.target.checked)}
+                    onChange={(e) =>
+                      setCorrection(
+                        e.target.checked
+                          ? { kind: "retcon", asOf: retconDefaultAsOf }
+                          : { kind: "none" },
+                      )
+                    }
                     className="accent-gold"
                   />
                   Retcon
@@ -463,7 +524,7 @@ export function EditRelationshipModal({
                   Never happened in the fiction, struck as a believed falsehood in snapshots before
                   it was caught.
                 </p>
-                {retconArmed ? (
+                {correction.kind === "retcon" ? (
                   <div className="flex items-center gap-2">
                     <label
                       htmlFor="edit-relationship-retcon-asof"
@@ -471,13 +532,15 @@ export function EditRelationshipModal({
                     >
                       Caught in
                     </label>
-                    <AsOfSelect
+                    <SessionSelect
                       id="edit-relationship-retcon-asof"
-                      asOf={retconAsOf}
                       sessions={availableSessions}
                       current={sessions.current}
-                      busy={busy}
-                      onAsOf={setRetconAsOf}
+                      value={correction.asOf}
+                      disabled={busy}
+                      onSelect={(id) =>
+                        setCorrection((c) => (c.kind === "retcon" ? { ...c, asOf: id } : c))
+                      }
                     />
                   </div>
                 ) : null}
@@ -487,9 +550,11 @@ export function EditRelationshipModal({
                 <label className="inline-flex items-center gap-2 font-sans text-[13px] text-red-700 dark:text-red-400">
                   <input
                     type="checkbox"
-                    checked={deleteArmed}
+                    checked={correction.kind === "delete"}
                     disabled={busy}
-                    onChange={(e) => setDeleteArmed(e.target.checked)}
+                    onChange={(e) =>
+                      setCorrection(e.target.checked ? { kind: "delete" } : { kind: "none" })
+                    }
                     className="accent-red-700"
                   />
                   Delete
@@ -522,7 +587,7 @@ export function EditRelationshipModal({
             disabled={!canSubmit}
             className={[
               "inline-flex items-center gap-2 rounded-full px-5 py-2 font-sans text-sm font-medium text-white shadow-md transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-              deleteArmed
+              correction.kind === "delete"
                 ? "bg-red-700 shadow-red-700/25 hover:bg-red-700/90"
                 : "bg-gold shadow-gold/25 hover:bg-gold/90",
             ].join(" ")}
@@ -578,41 +643,5 @@ function Edge({ name, children }: { name: string; children: React.ReactNode }): 
       <span className="font-sans text-[13px] text-gold/70">to</span>
       {children}
     </div>
-  );
-}
-
-function AsOfSelect({
-  id,
-  asOf,
-  sessions,
-  current,
-  busy,
-  onAsOf,
-}: {
-  id: string;
-  asOf: SessionId | null;
-  sessions: SessionRef[];
-  current: SessionsResponse["current"];
-  busy: boolean;
-  onAsOf: (id: SessionId) => void;
-}): React.ReactElement {
-  return (
-    <select
-      id={id}
-      value={asOf ?? ""}
-      disabled={busy}
-      onChange={(e) => {
-        const match = sessions.find((s) => s.id === e.target.value);
-        if (match !== undefined) onAsOf(match.id);
-      }}
-      className="rounded border border-gold/40 bg-background/60 px-2 py-1 font-sans text-xs text-foreground focus:border-gold/60 focus:outline-none disabled:opacity-50"
-    >
-      {sessions.map((s) => (
-        <option key={s.id} value={s.id}>
-          Session {s.ordinal}
-          {current !== null && s.id === current.id ? " (current)" : ""}
-        </option>
-      ))}
-    </select>
   );
 }

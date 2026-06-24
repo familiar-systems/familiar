@@ -251,58 +251,70 @@ pub fn canonicalize(
 /// Orient an undirected relationship into the per-page read view. `viewed` is the
 /// page whose widget is rendering; `predicate` reads forward from it, `other` is
 /// the far endpoint. Pure: the caller injects `name_of` (page id -> display name)
-/// and `ordinal_of` (session id -> curated ordinal), each total over the ids this
-/// edge references (the actor builds them from batch reads). `viewed` is assumed to
-/// be one endpoint (the actor only orients edges touching it); the `else` arm reads
-/// it as `page_b`. Both axes are projected: factuality (`origin`/`superseded`/
-/// `retcon`) and knowledge.
-pub fn orient(
+/// and `ordinal_of` (session id -> curated ordinal), built from the actor's batch
+/// reads. They are fallible: an id this edge references but the batch read didn't
+/// resolve is a broken FK invariant, surfaced as `Err(E)` for the actor to map to a
+/// 500 - never substituted, never a panic. `viewed` is assumed to be one endpoint
+/// (the actor only orients edges touching it); the `else` arm reads it as `page_b`.
+/// Both axes are projected: factuality (`origin`/`superseded`/`retcon`) and knowledge.
+pub fn orient<E>(
     rel: &Relationship,
     viewed: &PageId,
-    name_of: impl Fn(&PageId) -> String,
-    ordinal_of: impl Fn(&SessionId) -> i64,
-) -> RelationshipView {
+    name_of: impl Fn(&PageId) -> Result<String, E>,
+    ordinal_of: impl Fn(&SessionId) -> Result<i64, E>,
+) -> Result<RelationshipView, E> {
     let (other_id, predicate, predicate_reverse) = if viewed == &rel.page_a {
         (&rel.page_b, &rel.predicate_a_to_b, &rel.predicate_b_to_a)
     } else {
         (&rel.page_a, &rel.predicate_b_to_a, &rel.predicate_a_to_b)
     };
 
-    RelationshipView {
+    Ok(RelationshipView {
         id: rel.id.clone(),
         other: RelatedPage {
             id: other_id.clone(),
-            name: name_of(other_id),
+            name: name_of(other_id)?,
         },
         predicate: predicate.clone(),
         predicate_reverse: predicate_reverse.clone(),
-        origin: view_point(&rel.origin, &ordinal_of),
+        origin: view_point(&rel.origin, &ordinal_of)?,
         superseded: rel
             .superseded
             .as_ref()
-            .map(|s| view_ordinal(s, &ordinal_of)),
-        retcon: rel.retcon.as_ref().map(|s| view_ordinal(s, &ordinal_of)),
+            .map(|s| view_ordinal(s, &ordinal_of))
+            .transpose()?,
+        retcon: rel
+            .retcon
+            .as_ref()
+            .map(|s| view_ordinal(s, &ordinal_of))
+            .transpose()?,
         knowledge: match &rel.knowledge {
             Knowledge::Public => KnowledgeView::Public,
             Knowledge::Hidden => KnowledgeView::Hidden,
-            Knowledge::Revealed(s) => KnowledgeView::Revealed(view_ordinal(s, &ordinal_of)),
+            Knowledge::Revealed(s) => KnowledgeView::Revealed(view_ordinal(s, &ordinal_of)?),
         },
-    }
+    })
 }
 
 /// The factuality origin point in the viewer's terms (`Prior` or a session ordinal).
-fn view_point(origin: &Origin, ordinal_of: impl Fn(&SessionId) -> i64) -> ViewSessionPoint {
-    match origin {
+fn view_point<E>(
+    origin: &Origin,
+    ordinal_of: impl Fn(&SessionId) -> Result<i64, E>,
+) -> Result<ViewSessionPoint, E> {
+    Ok(match origin {
         Origin::Prior => ViewSessionPoint::Prior,
-        Origin::Session(s) => ViewSessionPoint::Session(view_ordinal(s, ordinal_of)),
-    }
+        Origin::Session(s) => ViewSessionPoint::Session(view_ordinal(s, ordinal_of)?),
+    })
 }
 
 /// A session-only axis point (superseded / retcon / reveal) by its curated ordinal.
-fn view_ordinal(s: &SessionId, ordinal_of: impl Fn(&SessionId) -> i64) -> ViewSessionOrdinal {
-    ViewSessionOrdinal {
-        ordinal: ordinal_of(s),
-    }
+fn view_ordinal<E>(
+    s: &SessionId,
+    ordinal_of: impl Fn(&SessionId) -> Result<i64, E>,
+) -> Result<ViewSessionOrdinal, E> {
+    Ok(ViewSessionOrdinal {
+        ordinal: ordinal_of(s)?,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +371,8 @@ pub fn known_predicate_pairs<'a>(
 
 #[cfg(test)]
 mod tests {
+    use std::convert::Infallible;
+
     use super::*;
 
     /// Two distinct pages, returned smaller-first by `PageId` order (the canonical
@@ -487,20 +501,20 @@ mod tests {
             Knowledge::Public,
         );
         let names = |id: &PageId| {
-            if id == &a {
-                "John".into()
+            Ok::<_, Infallible>(if id == &a {
+                "John".to_string()
             } else {
-                "Townsville".into()
-            }
+                "Townsville".to_string()
+            })
         };
-        let ords = |_: &SessionId| 0;
+        let ords = |_: &SessionId| Ok::<i64, Infallible>(0);
 
-        let from_a = orient(&r, &a, names, ords);
+        let from_a = orient(&r, &a, names, ords).unwrap();
         assert_eq!(from_a.other.name, "Townsville");
         assert_eq!(from_a.predicate, "is a resident of");
         assert_eq!(from_a.predicate_reverse, "is the home of");
 
-        let from_b = orient(&r, &b, names, ords);
+        let from_b = orient(&r, &b, names, ords).unwrap();
         assert_eq!(from_b.other.name, "John");
         assert_eq!(from_b.predicate, "is the home of");
         assert_eq!(from_b.predicate_reverse, "is a resident of");
@@ -520,18 +534,18 @@ mod tests {
             None,
             Knowledge::Revealed(revealed.clone()),
         );
-        let names = |_: &PageId| "Guild".to_string();
+        let names = |_: &PageId| Ok::<_, Infallible>("Guild".to_string());
         let ords = |s: &SessionId| {
-            if s == &origin {
+            Ok::<i64, Infallible>(if s == &origin {
                 6
             } else if s == &ended {
                 12
             } else {
                 15
-            }
+            })
         };
 
-        let view = orient(&r, &a, names, ords);
+        let view = orient(&r, &a, names, ords).unwrap();
         match view.origin {
             ViewSessionPoint::Session(s) => assert_eq!(s.ordinal, 6),
             other => panic!("expected Session origin, got {other:?}"),
@@ -555,7 +569,13 @@ mod tests {
             None,
             Knowledge::Public,
         );
-        let view = orient(&r, &a, |_| "X".to_string(), |_| 0);
+        let view = orient(
+            &r,
+            &a,
+            |_| Ok::<_, Infallible>("X".to_string()),
+            |_| Ok::<i64, Infallible>(0),
+        )
+        .unwrap();
         assert!(matches!(view.origin, ViewSessionPoint::Prior));
         assert!(view.superseded.is_none(), "a live row is not superseded");
         assert!(view.retcon.is_none(), "a live row is not retconned");

@@ -165,23 +165,32 @@ fn origin_from(session: Option<SessionIdCol>) -> Origin {
     }
 }
 
-/// The far endpoint's name, with the FK/cascade invariant ("a relationship's
-/// endpoints reference live pages") logged loudly if ever broken rather than
-/// panicking the read.
-fn resolve_name(names: &HashMap<PageId, String>, id: &PageId) -> String {
-    names.get(id).cloned().unwrap_or_else(|| {
-        tracing::error!(page_id = %id.0, "relationship endpoint missing from pages (FK/cascade invariant broken)");
-        String::new()
+/// The far endpoint's name. The FK/cascade invariant ("a relationship's endpoints
+/// reference live pages") makes a miss impossible; if it is ever broken we surface a
+/// loud `Err` (-> 500) rather than substitute an empty name or panic the actor.
+fn resolve_name(names: &HashMap<PageId, String>, id: &PageId) -> Result<String, sea_orm::DbErr> {
+    names.get(id).cloned().ok_or_else(|| {
+        sea_orm::DbErr::Custom(format!(
+            "relationship endpoint {} missing name (FK ON DELETE CASCADE invariant broken)",
+            id.0
+        ))
     })
 }
 
-/// A referenced session's curated ordinal. Total: `read_session_ordinals` has
-/// already verified its map covers every referenced session (erroring otherwise),
-/// so the lookup cannot miss.
-fn resolve_ordinal(ordinals: &HashMap<SessionId, i64>, sid: &SessionId) -> i64 {
-    *ordinals
-        .get(sid)
-        .expect("referenced session ordinal present (validated in read_session_ordinals)")
+/// A referenced session's curated ordinal. `read_session_ordinals` has already
+/// verified its map covers every referenced session (erroring otherwise), so a miss
+/// here is unreachable; we still surface it as a loud `Err` rather than panic, keeping
+/// it consistent with [`resolve_name`].
+fn resolve_ordinal(
+    ordinals: &HashMap<SessionId, i64>,
+    sid: &SessionId,
+) -> Result<i64, sea_orm::DbErr> {
+    ordinals.get(sid).copied().ok_or_else(|| {
+        sea_orm::DbErr::Custom(format!(
+            "referenced session {} missing ordinal (FK invariant broken)",
+            sid.0
+        ))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +397,7 @@ impl Message<RelationshipsForPage> for RelationshipGraph {
                     |sid| resolve_ordinal(&ordinals, sid),
                 )
             })
-            .collect();
+            .collect::<Result<Vec<_>, sea_orm::DbErr>>()?;
         Ok(views)
     }
 }
@@ -634,7 +643,7 @@ impl Message<CreateRelationship> for RelationshipGraph {
             &subject,
             |id| resolve_name(&names, id),
             |sid| resolve_ordinal(&ordinals, sid),
-        ))
+        )?)
     }
 }
 

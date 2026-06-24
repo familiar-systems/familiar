@@ -7,8 +7,11 @@
 //
 // `itemCount` is the *rendered* row count and must include the trailing
 // "create new" / "use custom" affordance row, so it is reachable by keyboard like
-// any match. The active row resets to the top whenever the list changes (a fresh
-// query renders a fresh list), matching the wireframe's per-render reset.
+// any match. `resetKey` identifies the *current list* (the query string): the active
+// row snaps back to the top whenever it changes, so a stale highlight can't commit a
+// row that shifted underneath it. Keying on the query, not the row count, catches the
+// case the count misses - retyping to a different list that happens to be the same
+// length (count unchanged, contents wholly different).
 
 import { useEffect, useState } from "react";
 
@@ -22,6 +25,7 @@ export interface Typeahead {
 
 export function useTypeahead(
   itemCount: number,
+  resetKey: string,
   opts: { onPick: (index: number) => void },
 ): Typeahead {
   const { onPick } = opts;
@@ -32,7 +36,7 @@ export function useTypeahead(
   // index can't select a row that has shifted underneath it.
   useEffect(() => {
     setActiveIndex(0);
-  }, [itemCount]);
+  }, [resetKey]);
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
     if (!open || itemCount === 0) return;
@@ -58,4 +62,43 @@ export function useTypeahead(
   };
 
   return { open, setOpen, activeIndex, setActiveIndex, onKeyDown };
+}
+
+export interface TypeaheadSlot {
+  ta: Typeahead;
+  /** Whether to render the trailing "create new" / "use custom" affordance row. */
+  showExtra: boolean;
+  /** Rendered row count (matches + the extra row), already fed to the keyboard nav. */
+  itemCount: number;
+  /** Commit the row at `index`: a match, or - past the matches - the extra action. */
+  onPick: (index: number) => void;
+}
+
+// The bookkeeping both create-modal slots share: from a list of `items` and the
+// current `query`, decide whether to show a trailing "extra" row (a non-empty query
+// with no exact match by `keyOf`), size the list for keyboard nav, and route a pick
+// to either the matched item or the extra action. The keyboard (`ta.onKeyDown`) and
+// the mouse handlers both call the same `onPick`, so the two paths can't diverge.
+export function useTypeaheadSlot<T>(opts: {
+  items: readonly T[];
+  query: string;
+  /** The field the query matches against, used for the exact-match test. */
+  keyOf: (item: T) => string;
+  onPickItem: (item: T) => void;
+  /** The trailing-row action, or null for a slot with no "create new" affordance. */
+  onPickExtra: (() => void) | null;
+}): TypeaheadSlot {
+  const { items, query, keyOf, onPickItem, onPickExtra } = opts;
+  const queryTrim = query.trim().toLowerCase();
+  const exact = items.some((item) => keyOf(item).toLowerCase() === queryTrim);
+  const showExtra = onPickExtra !== null && queryTrim !== "" && !exact;
+  const itemCount = items.length + (showExtra ? 1 : 0);
+  const onPick = (index: number): void => {
+    const item = items[index];
+    if (item !== undefined) onPickItem(item);
+    // The trailing row is past the matches: there is no `item`, so it is the extra.
+    else onPickExtra?.();
+  };
+  const ta = useTypeahead(itemCount, query, { onPick });
+  return { ta, showExtra, itemCount, onPick };
 }

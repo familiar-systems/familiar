@@ -30,6 +30,18 @@ describe("filterPredicates", () => {
     const out = filterPredicates(PAIRS, "is ");
     expect(out[0]?.forward).toBe("is a resident of");
   });
+  it("never lets usage count override match position", () => {
+    // A popular deep match must not outrank an unpopular start-of-string match: count
+    // is only a tiebreak between equal positions.
+    const pairs: PredicatePairView[] = [
+      { forward: "warden of", reverse: "warded by", count: 1 }, // "ward" at index 0
+      { forward: "is steward of the ward", reverse: "stewarded by", count: 99 }, // index 6
+    ];
+    expect(filterPredicates(pairs, "ward").map((p) => p.forward)).toEqual([
+      "warden of",
+      "is steward of the ward",
+    ]);
+  });
   it("excludes non-matches", () => {
     expect(filterPredicates(PAIRS, "betrayed")).toEqual([]);
   });

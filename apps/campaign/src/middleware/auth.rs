@@ -12,10 +12,8 @@ use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use familiar_systems_app_shared::middleware::internal_auth::InternalBearerConfig;
 use fs_id::Nanoid;
-use kameo::actor::ActorRef;
 
-use crate::actors::registry::GetCampaign;
-use crate::actors::supervisor::CampaignSupervisor;
+use crate::actors::registry::{CampaignHandle, GetCampaign};
 use crate::state::AppState;
 
 pub use familiar_systems_app_shared::auth::AuthenticatedUser;
@@ -35,12 +33,13 @@ impl FromRef<AppState> for InternalBearerConfig {
     }
 }
 
-/// Resolve a GM-only campaign route: look the campaign's supervisor up in the
-/// registry, then confirm the (already-authenticated) caller's `Gm` membership
-/// on the platform tier. Returns the branded `CampaignId` and the live
-/// supervisor on success; on failure returns a ready-to-send response with the
-/// exact status each route used before - `404` (campaign not on this shard),
-/// `403` (not a GM), `503` (registry or platform unreachable).
+/// Resolve a GM-only campaign route: look the campaign up in the registry, then
+/// confirm the (already-authenticated) caller's `Gm` membership on the platform tier.
+/// Returns the branded `CampaignId` and the campaign's [`CampaignHandle`] (the
+/// supervisor for picker reads, plus the `RelationshipGraph` ref the graph routes talk
+/// to directly) on success; on failure returns a ready-to-send response with the exact
+/// status each route used before - `404` (campaign not on this shard), `403` (not a
+/// GM), `503` (registry or platform unreachable).
 ///
 /// This is the duplicated half of every GM route's preamble, pulled out once.
 /// Authentication stays an [`AuthenticatedUser`] extractor on the handler (so
@@ -54,11 +53,11 @@ pub async fn authorize_gm(
     state: &AppState,
     campaign_id: String,
     user: &AuthenticatedUser,
-) -> Result<(CampaignId, ActorRef<CampaignSupervisor>), Response> {
+) -> Result<(CampaignId, CampaignHandle), Response> {
     let cid = CampaignId::from(Nanoid::from(campaign_id));
 
-    let supervisor = match state.registry.ask(GetCampaign(cid.clone())).await {
-        Ok(Some(sup)) => sup,
+    let handle = match state.registry.ask(GetCampaign(cid.clone())).await {
+        Ok(Some(handle)) => handle,
         Ok(None) => return Err(StatusCode::NOT_FOUND.into_response()),
         Err(_) => return Err(StatusCode::SERVICE_UNAVAILABLE.into_response()),
     };
@@ -77,5 +76,5 @@ pub async fn authorize_gm(
         }
     }
 
-    Ok((cid, supervisor))
+    Ok((cid, handle))
 }
