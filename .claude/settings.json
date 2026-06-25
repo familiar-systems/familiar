@@ -22,7 +22,8 @@
       "Bash(mise settings get *)",
       "Bash(gh search *)",
       "Bash(gh issue view *)",
-      "Bash(gh run view *)"
+      "Bash(gh run view *)",
+      "Bash(gh pr view *)"
     ],
     "deny": ["Read(./**/.envrc)", "Read(./**/.env)"]
   }

@@ -60,12 +60,14 @@ main.rs
 
 Read rustdoc at each site for detail; this table is a where-to-go index.
 
+**Actors are directory modules.** Each is a `src/actors/<name>/` dir whose `mod.rs` is a pure facade (`mod` decls + `pub use` re-exports that preserve the `crate::actors::<name>::*` import path) - no logic in `mod.rs`. The actor + its messages live in `<name>_actor.rs`; pure kernels in distinctly-named siblings (`toc_snapshot.rs`, `relationship_graph_store.rs`, `database_writer_relationships.rs`); a big multi-handler actor splits handlers by concern (`supervisor/{creation,routing,queries}.rs`) with the struct's fields `pub(super)`. Tests live in `tests.rs`, except pure-function unit tests, which stay inline with their kernel.
+
 | If you are touching... | Read |
 | --- | --- |
-| registry/supervisor lifecycle, drain workflow | `src/actors/{mod,registry,supervisor}.rs` |
-| the single write connection + write commands | `src/actors/database_writer.rs` |
-| CRDT room actors (ToC singleton, Page per-id) | `src/actors/{toc,page}.rs` |
-| relationship graph (server-authoritative, non-CRDT): actor, domain core, REST surface | `src/actors/relationship_graph.rs`, `src/domain/relationship.rs`, `src/routes/relationships.rs` |
+| registry/supervisor lifecycle, drain workflow | `src/actors/mod.rs`, `src/actors/registry/`, `src/actors/supervisor/` |
+| the single write connection + write commands | `src/actors/database_writer/` |
+| CRDT room actors (ToC singleton, Page per-id) | `src/actors/toc/`, `src/actors/page/` |
+| relationship graph (server-authoritative, non-CRDT): actor, domain core, REST surface | `src/actors/relationship_graph/`, `src/domain/relationship.rs`, `src/routes/relationships.rs` |
 | CRDT doc trait, Room orchestrator, room messages | `src/domain/crdt/{doc,room,room_actor}.rs` |
 | pure Page-creation builder (functional core) | `src/domain/page.rs` |
 | concrete Loro docs + block codec | `src/loro/{page,toc,block_codec}.rs` (schema constants live in `campaign-shared::loro`) |
@@ -116,7 +118,7 @@ cargo test -p familiar-systems-campaign --test internal_init_test init_during_dr
 - **`register_sqlite_vec()` must run before any sea-orm pool opens.** Migrations include a `vec0` virtual table. `main.rs` calls it once at startup; tests must call it too (it's `Once`-guarded so spamming is fine).
 - **CampaignId is a Nanoid** minted by the platform tier, not validated here on the wire. `<data_dir>/<campaign_id>.db` is the on-disk shape; no path-traversal concern because Nanoid is URL-safe. **PageId is a ULID** (cleaner btree inserts); WebSocket room ids are `page:<ulid>`.
 - **`SetStopCause` is first-writer-wins.** A supervisor that self-tags `Idle` does not get clobbered by a later drain-side `SetStopCause(Drain)`. See the rustdoc on `SetStopCause`.
-- **Supervisor `on_start` is fallible** (`Result<Self, InitError>`): storage checkout via the `CampaignStore` runs there, so init failures surface as `EnsureError::Init`. The current code still holds `db: Option<CampaignDatabase>` rather than a `SupervisorState` enum (`Starting`/`Restoring`/`Ready`/`Draining`); the `TODO` at `src/actors/supervisor.rs` documents the planned move once heartbeat phase-reporting and room-join gating need it.
+- **Supervisor `on_start` is fallible** (`Result<Self, InitError>`): storage checkout via the `CampaignStore` runs there, so init failures surface as `EnsureError::Init`. The current code still holds `db: Option<CampaignDatabase>` rather than a `SupervisorState` enum (`Starting`/`Restoring`/`Ready`/`Draining`); the `TODO` at `src/actors/supervisor/supervisor_actor.rs` documents the planned move once heartbeat phase-reporting and room-join gating need it.
 - **The `CrdtDoc` trait and the concrete Loro wrappers live here**, in `src/domain/crdt/` and `src/loro/`. `campaign-shared::loro` holds only schema constants and ts-rs-exported types (Toc/Page/ProseMirror conventions), never the Rust wrappers.
 
 ## Testing
