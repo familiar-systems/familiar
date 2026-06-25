@@ -1,0 +1,508 @@
+//! Relationship REST surface: the GM curation endpoints the widget calls.
+//!
+//! Resource-oriented over `/campaign/{id}/relationships`: `POST` creates (an
+//! optional `supersedes` pointer makes it an atomic replace), `PATCH` mutates the
+//! reversible session-stamp axes a relationship is allowed to change (reveal /
+//! superseded / retcon), `DELETE` hard-deletes, and `GET
+//! /pages/{pageId}/relationships` reads the per-page oriented view. The
+//! predicate vocabulary, the session pickers, and the entity typeahead are the three
+//! supporting reads. All GM-only; the graph endpoints (mutations + the page view +
+//! predicates) `ask` the `RelationshipGraph` ref carried on the `CampaignHandle`
+//! `authorize_gm` returns (resolved once by the registry at checkout) - never touching
+//! the supervisor mailbox per request - while the picker reads (sessions + entity
+//! search) go to the supervisor's shared reader pool.
+
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+use serde::Deserialize;
+
+use familiar_systems_campaign_shared::id::{PageId, RelationshipId};
+use familiar_systems_campaign_shared::relationship::{
+    CreateRelationshipRequest, EntitySearchResult, KnowledgeInput, OriginInput,
+    PatchRelationshipRequest, PredicatePairView, RelationshipView, SessionRef, SessionStampPatch,
+    SessionsResponse,
+};
+
+use kameo::error::SendError;
+
+use crate::actors::relationship_graph::{
+    CreateRelationship, CreateRelationshipError, DeleteRelationship, DeleteRelationshipError,
+    KnownPredicatePairs, PatchRelationship, PatchRelationshipError, RelationshipsForPage,
+    StampChange,
+};
+use crate::actors::supervisor::{ListSessions, SearchEntities};
+use crate::domain::relationship::{Knowledge, Origin};
+use crate::middleware::auth::{AuthenticatedUser, authorize_gm};
+use crate::state::AppState;
+
+/// How many entity matches the typeahead asks for. Small: it is a picker, not a list.
+const ENTITY_SEARCH_LIMIT: u64 = 10;
+
+// ---------------------------------------------------------------------------
+// GET /campaign/{id}/pages/{pageId}/relationships
+// ---------------------------------------------------------------------------
+
+#[utoipa::path(
+    get,
+    path = "/campaign/{id}/pages/{pageId}/relationships",
+    tag = "relationships",
+    params(
+        ("id" = String, Path, description = "Campaign ID"),
+        ("pageId" = String, Path, description = "Page whose relationships to read"),
+    ),
+    responses(
+        (status = OK, description = "The page's relationships, oriented to it", body = Vec<RelationshipView>),
+        (status = BAD_REQUEST, description = "Malformed page id"),
+        (status = UNAUTHORIZED, description = "Missing or invalid session"),
+        (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
+        (status = NOT_FOUND, description = "Campaign not on this shard"),
+        (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
+        (status = INTERNAL_SERVER_ERROR, description = "Read failed"),
+    ),
+)]
+pub async fn get_relationships(
+    user: AuthenticatedUser,
+    State(state): State<AppState>,
+    Path((campaign_id, page_id)): Path<(String, String)>,
+) -> Response {
+    let page_id = match parse_page_id(&page_id) {
+        Some(id) => id,
+        None => return (StatusCode::BAD_REQUEST, "Malformed page id.").into_response(),
+    };
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
+        Ok(resolved) => resolved,
+        Err(resp) => return resp,
+    };
+    match handle.graph.ask(RelationshipsForPage { page_id }).await {
+        Ok(views) => (StatusCode::OK, Json(views)).into_response(),
+        Err(e) => read_error(e, "get_relationships"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// POST /campaign/{id}/relationships
+// ---------------------------------------------------------------------------
+
+#[utoipa::path(
+    post,
+    path = "/campaign/{id}/relationships",
+    tag = "relationships",
+    params(("id" = String, Path, description = "Campaign ID")),
+    request_body = CreateRelationshipRequest,
+    responses(
+        (status = CREATED, description = "Relationship created, oriented to the subject", body = RelationshipView),
+        (status = UNAUTHORIZED, description = "Missing or invalid session"),
+        (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
+        (status = NOT_FOUND, description = "Campaign not on this shard, an endpoint page is missing, a referenced session is missing, or the superseded relationship does not exist"),
+        (status = CONFLICT, description = "A live relationship with this predicate pair already exists, or the superseded row is already invalidated"),
+        (status = UNPROCESSABLE_ENTITY, description = "Self-edge, empty predicate, a reveal before origin, or an invalid supersede (different pair / prior origin / takes effect before the replaced fact began)"),
+        (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
+        (status = INTERNAL_SERVER_ERROR, description = "Creation failed"),
+    ),
+)]
+pub async fn create_relationship(
+    user: AuthenticatedUser,
+    State(state): State<AppState>,
+    Path(campaign_id): Path<String>,
+    Json(req): Json<CreateRelationshipRequest>,
+) -> Response {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
+        Ok(resolved) => resolved,
+        Err(resp) => return resp,
+    };
+    let msg = CreateRelationship {
+        subject: req.subject_page_id,
+        other: req.other_page_id,
+        predicate_forward: req.predicate_forward,
+        predicate_reverse: req.predicate_reverse,
+        origin: to_origin(req.origin),
+        knowledge: to_knowledge(req.knowledge),
+        supersedes: req.supersedes,
+    };
+    match handle.graph.ask(msg).await {
+        Ok(view) => (StatusCode::CREATED, Json(view)).into_response(),
+        Err(e) => create_relationship_error(e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PATCH /campaign/{id}/relationships/{relId}
+// ---------------------------------------------------------------------------
+
+#[utoipa::path(
+    patch,
+    path = "/campaign/{id}/relationships/{relId}",
+    tag = "relationships",
+    params(
+        ("id" = String, Path, description = "Campaign ID"),
+        ("relId" = String, Path, description = "Relationship ID"),
+    ),
+    request_body = PatchRelationshipRequest,
+    responses(
+        (status = NO_CONTENT, description = "Applied"),
+        (status = BAD_REQUEST, description = "Malformed relationship id"),
+        (status = UNAUTHORIZED, description = "Missing or invalid session"),
+        (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
+        (status = NOT_FOUND, description = "Campaign not on this shard, relationship not found, or a referenced session is missing"),
+        (status = CONFLICT, description = "Clearing superseded/retcon re-creates a duplicate live fact"),
+        (status = UNPROCESSABLE_ENTITY, description = "Empty patch, revealing a public fact, or an axis event before the fact's origin"),
+        (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
+        (status = INTERNAL_SERVER_ERROR, description = "Patch failed"),
+    ),
+)]
+pub async fn patch_relationship(
+    user: AuthenticatedUser,
+    State(state): State<AppState>,
+    Path((campaign_id, rel_id)): Path<(String, String)>,
+    Json(req): Json<PatchRelationshipRequest>,
+) -> Response {
+    let rel_id = match parse_rel_id(&rel_id) {
+        Some(id) => id,
+        None => return (StatusCode::BAD_REQUEST, "Malformed relationship id.").into_response(),
+    };
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
+        Ok(resolved) => resolved,
+        Err(resp) => return resp,
+    };
+    let patch = match patch_to_message(rel_id, &req) {
+        Ok(patch) => patch,
+        Err(msg) => return (StatusCode::UNPROCESSABLE_ENTITY, msg).into_response(),
+    };
+    // The actor applies every present axis change as one atomic batch (a single
+    // `ApplyRelationshipWrites`), so a multi-axis patch is all-or-nothing.
+    match handle.graph.ask(patch).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => patch_relationship_error(e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /campaign/{id}/relationships/{relId}
+// ---------------------------------------------------------------------------
+
+#[utoipa::path(
+    delete,
+    path = "/campaign/{id}/relationships/{relId}",
+    tag = "relationships",
+    params(
+        ("id" = String, Path, description = "Campaign ID"),
+        ("relId" = String, Path, description = "Relationship ID"),
+    ),
+    responses(
+        (status = NO_CONTENT, description = "Hard-deleted"),
+        (status = BAD_REQUEST, description = "Malformed relationship id"),
+        (status = UNAUTHORIZED, description = "Missing or invalid session"),
+        (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
+        (status = NOT_FOUND, description = "Campaign not on this shard, or relationship not found"),
+        (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
+        (status = INTERNAL_SERVER_ERROR, description = "Delete failed"),
+    ),
+)]
+pub async fn delete_relationship(
+    user: AuthenticatedUser,
+    State(state): State<AppState>,
+    Path((campaign_id, rel_id)): Path<(String, String)>,
+) -> Response {
+    let rel_id = match parse_rel_id(&rel_id) {
+        Some(id) => id,
+        None => return (StatusCode::BAD_REQUEST, "Malformed relationship id.").into_response(),
+    };
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
+        Ok(resolved) => resolved,
+        Err(resp) => return resp,
+    };
+    match handle.graph.ask(DeleteRelationship { rel_id }).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => delete_relationship_error(e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GET /campaign/{id}/relationships/predicates
+// ---------------------------------------------------------------------------
+
+#[utoipa::path(
+    get,
+    path = "/campaign/{id}/relationships/predicates",
+    tag = "relationships",
+    params(("id" = String, Path, description = "Campaign ID")),
+    responses(
+        (status = OK, description = "Known predicate pairs with usage counts", body = Vec<PredicatePairView>),
+        (status = UNAUTHORIZED, description = "Missing or invalid session"),
+        (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
+        (status = NOT_FOUND, description = "Campaign not on this shard"),
+        (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
+        (status = INTERNAL_SERVER_ERROR, description = "Read failed"),
+    ),
+)]
+pub async fn known_predicates(
+    user: AuthenticatedUser,
+    State(state): State<AppState>,
+    Path(campaign_id): Path<String>,
+) -> Response {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
+        Ok(resolved) => resolved,
+        Err(resp) => return resp,
+    };
+    match handle.graph.ask(KnownPredicatePairs).await {
+        Ok(pairs) => {
+            let views: Vec<PredicatePairView> = pairs
+                .into_iter()
+                .map(|p| PredicatePairView {
+                    forward: p.forward,
+                    reverse: p.reverse,
+                    count: p.count as u32,
+                })
+                .collect();
+            (StatusCode::OK, Json(views)).into_response()
+        }
+        Err(e) => read_error(e, "known_predicates"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GET /campaign/{id}/sessions
+// ---------------------------------------------------------------------------
+
+#[utoipa::path(
+    get,
+    path = "/campaign/{id}/sessions",
+    tag = "relationships",
+    params(("id" = String, Path, description = "Campaign ID")),
+    responses(
+        (status = OK, description = "Sessions ascending by ordinal, plus the current one", body = SessionsResponse),
+        (status = UNAUTHORIZED, description = "Missing or invalid session"),
+        (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
+        (status = NOT_FOUND, description = "Campaign not on this shard"),
+        (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
+        (status = INTERNAL_SERVER_ERROR, description = "Read failed"),
+    ),
+)]
+pub async fn list_sessions(
+    user: AuthenticatedUser,
+    State(state): State<AppState>,
+    Path(campaign_id): Path<String>,
+) -> Response {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
+        Ok(resolved) => resolved,
+        Err(resp) => return resp,
+    };
+    match handle.supervisor.ask(ListSessions).await {
+        Ok(rows) => {
+            let sessions: Vec<SessionRef> = rows
+                .into_iter()
+                .map(|(id, ordinal)| SessionRef { id, ordinal })
+                .collect();
+            let current = sessions.iter().max_by_key(|s| s.ordinal).cloned();
+            (StatusCode::OK, Json(SessionsResponse { sessions, current })).into_response()
+        }
+        Err(e) => read_error(e, "list_sessions"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GET /campaign/{id}/entities?q=
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct EntitySearchParams {
+    /// Substring to match against entity page titles.
+    pub q: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/campaign/{id}/entities",
+    tag = "relationships",
+    params(
+        ("id" = String, Path, description = "Campaign ID"),
+        ("q" = String, Query, description = "Substring to match entity names"),
+    ),
+    responses(
+        (status = OK, description = "Matching entity pages (excludes templates)", body = Vec<EntitySearchResult>),
+        (status = UNAUTHORIZED, description = "Missing or invalid session"),
+        (status = FORBIDDEN, description = "Caller is not a GM of this campaign"),
+        (status = NOT_FOUND, description = "Campaign not on this shard"),
+        (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
+        (status = INTERNAL_SERVER_ERROR, description = "Read failed"),
+    ),
+)]
+pub async fn search_entities(
+    user: AuthenticatedUser,
+    State(state): State<AppState>,
+    Path(campaign_id): Path<String>,
+    Query(params): Query<EntitySearchParams>,
+) -> Response {
+    let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
+        Ok(resolved) => resolved,
+        Err(resp) => return resp,
+    };
+    match handle
+        .supervisor
+        .ask(SearchEntities {
+            query: params.q,
+            limit: ENTITY_SEARCH_LIMIT,
+        })
+        .await
+    {
+        Ok(rows) => {
+            let results: Vec<EntitySearchResult> = rows
+                .into_iter()
+                .map(|(id, name)| EntitySearchResult { id, name })
+                .collect();
+            (StatusCode::OK, Json(results)).into_response()
+        }
+        Err(e) => read_error(e, "search_entities"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn to_origin(o: OriginInput) -> Origin {
+    match o {
+        OriginInput::Prior => Origin::Prior,
+        OriginInput::Session(s) => Origin::Session(s),
+    }
+}
+
+fn to_knowledge(k: KnowledgeInput) -> Knowledge {
+    match k {
+        KnowledgeInput::Public => Knowledge::Public,
+        KnowledgeInput::Hidden => Knowledge::Hidden,
+        KnowledgeInput::Revealed(s) => Knowledge::Revealed(s),
+    }
+}
+
+fn to_stamp_change(p: SessionStampPatch) -> StampChange {
+    match p {
+        SessionStampPatch::Set(s) => StampChange::Set(s),
+        SessionStampPatch::Clear => StampChange::Clear,
+    }
+}
+
+/// Build the actor patch from the request, rejecting an empty patch (no axis
+/// present). Predicates and origin are immutable, so only the three mutable axes can
+/// appear. On `Err`, the 422 body message; returned as a `&str` rather than a
+/// `Response` to keep the `Err` variant small (clippy's `result_large_err`).
+fn patch_to_message(
+    rel_id: RelationshipId,
+    req: &PatchRelationshipRequest,
+) -> Result<PatchRelationship, &'static str> {
+    if req.knowledge.is_none() && req.superseded.is_none() && req.retcon.is_none() {
+        return Err("Patch must change at least one of knowledge, superseded, or retcon.");
+    }
+    Ok(PatchRelationship {
+        rel_id,
+        knowledge: req.knowledge.clone().map(to_knowledge),
+        superseded: req.superseded.clone().map(to_stamp_change),
+        retcon: req.retcon.clone().map(to_stamp_change),
+    })
+}
+
+fn parse_page_id(s: &str) -> Option<PageId> {
+    ulid::Ulid::from_string(s).ok().map(PageId::from)
+}
+
+fn parse_rel_id(s: &str) -> Option<RelationshipId> {
+    ulid::Ulid::from_string(s).ok().map(RelationshipId::from)
+}
+
+/// Map a create failure to a response. Each variant maps to a status by name; the
+/// 500-collapsing variant is named (no `_` catch-all), so a new error is a compile
+/// error rather than a silent 500. A route->graph transport failure is folded to 503 by
+/// `rel_error_response`; the closure sees only the actor's own domain error (including
+/// its own `ActorUnavailable` - the DB-writer-unreachable case). Mirrors `routes/pages.rs`.
+fn create_relationship_error(
+    err: SendError<CreateRelationship, CreateRelationshipError>,
+) -> Response {
+    rel_error_response(err, "create_relationship", |err| match err {
+        CreateRelationshipError::SelfEdge | CreateRelationshipError::EmptyPredicate => {
+            Some((StatusCode::UNPROCESSABLE_ENTITY, err.to_string()))
+        }
+        CreateRelationshipError::PageNotFound(_)
+        | CreateRelationshipError::SupersedesNotFound
+        | CreateRelationshipError::SessionNotFound(_) => {
+            Some((StatusCode::NOT_FOUND, err.to_string()))
+        }
+        CreateRelationshipError::DuplicateLiveFact | CreateRelationshipError::SupersedesNotLive => {
+            Some((StatusCode::CONFLICT, err.to_string()))
+        }
+        CreateRelationshipError::SupersedesDifferentPair
+        | CreateRelationshipError::PriorOriginCannotSupersede
+        | CreateRelationshipError::EventBeforeOrigin { .. } => {
+            Some((StatusCode::UNPROCESSABLE_ENTITY, err.to_string()))
+        }
+        CreateRelationshipError::ActorUnavailable => {
+            Some((StatusCode::SERVICE_UNAVAILABLE, err.to_string()))
+        }
+        CreateRelationshipError::Db(_) => None,
+    })
+}
+
+fn patch_relationship_error(err: SendError<PatchRelationship, PatchRelationshipError>) -> Response {
+    rel_error_response(err, "patch_relationship", |err| match err {
+        PatchRelationshipError::NotFound | PatchRelationshipError::SessionNotFound(_) => {
+            Some((StatusCode::NOT_FOUND, err.to_string()))
+        }
+        PatchRelationshipError::DuplicateLiveFact => Some((StatusCode::CONFLICT, err.to_string())),
+        PatchRelationshipError::EventBeforeOrigin { .. } => {
+            Some((StatusCode::UNPROCESSABLE_ENTITY, err.to_string()))
+        }
+        PatchRelationshipError::ActorUnavailable => {
+            Some((StatusCode::SERVICE_UNAVAILABLE, err.to_string()))
+        }
+        PatchRelationshipError::Db(_) => None,
+    })
+}
+
+fn delete_relationship_error(
+    err: SendError<DeleteRelationship, DeleteRelationshipError>,
+) -> Response {
+    rel_error_response(err, "delete_relationship", |err| match err {
+        DeleteRelationshipError::NotFound => Some((StatusCode::NOT_FOUND, err.to_string())),
+        DeleteRelationshipError::ActorUnavailable => {
+            Some((StatusCode::SERVICE_UNAVAILABLE, err.to_string()))
+        }
+        DeleteRelationshipError::Db(_) => None,
+    })
+}
+
+/// Shared shape for the typed mutation errors. Unwraps kameo's `SendError` envelope:
+/// `HandlerError` carries the actor's own domain error, which the classifier maps (the
+/// named `Db` arm and anything unclassified is a logged 500); any other `SendError`
+/// means the graph (or, transitively, its DB writer) is unreachable -> logged 503. This
+/// is the single place route->graph transport is decided, so the per-message closures
+/// stay pure domain mappings.
+fn rel_error_response<M, E: std::fmt::Display>(
+    err: SendError<M, E>,
+    context: &'static str,
+    classify: impl Fn(&E) -> Option<(StatusCode, String)>,
+) -> Response {
+    match err {
+        SendError::HandlerError(e) => match classify(&e) {
+            Some((status, body)) => (status, body).into_response(),
+            None => {
+                tracing::error!(error = %e, context, "relationship mutation failed");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        },
+        transport => {
+            tracing::error!(error = %transport, context, "relationship graph unreachable");
+            StatusCode::SERVICE_UNAVAILABLE.into_response()
+        }
+    }
+}
+
+/// Reads surface only an opaque error (the actor's own `sea_orm::DbErr`, or any kameo
+/// transport failure - graph or supervisor unreachable) wrapped in a `SendError`. All
+/// opaque to the client, so all log and 500.
+fn read_error<E: std::fmt::Display>(e: E, context: &'static str) -> Response {
+    tracing::error!(error = %e, context, "relationship read failed");
+    StatusCode::INTERNAL_SERVER_ERROR.into_response()
+}

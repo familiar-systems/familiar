@@ -10,7 +10,13 @@
 //!     paragraphs into each page's body section), and
 //!   - one Page is named "The Sunken Bastion": the spec renames "Test page" via
 //!     the in-editor title, so this proves an in-editor rename reached
-//!     `pages.name` (the server-authoritative `meta.title` -> `name_sync` flush).
+//!     `pages.name` (the server-authoritative `meta.title` -> `name_sync` flush), and
+//!   - exactly one live relationship row exists (neither superseded nor retconned)
+//!     carrying the predicate pair the spec created through the modal, proving the
+//!     create flow reached SQLite (the RelationshipGraph writes synchronously, so
+//!     this needs no flush), and
+//!   - that live row reads is_secret = true: the spec creates it public then conceals
+//!     it (a knowledge PATCH), proving the mutable knowledge axis persisted.
 //!
 //! It deliberately reuses the campaign crate's own `db` helpers and sea-orm
 //! entities rather than a separate SQLite reader: same driver/WAL semantics the
@@ -24,7 +30,7 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use familiar_systems_campaign::db::{connect_readonly, register_sqlite_vec};
-use familiar_systems_campaign::entities::{blocks, pages};
+use familiar_systems_campaign::entities::{blocks, pages, relationships};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 const MIN_PAGES: u64 = 2;
@@ -32,6 +38,10 @@ const MIN_BODY_BLOCKS_PER_PAGE: u64 = 2;
 /// The spec renames "Test page" to this via the in-editor title; it must persist
 /// to `pages.name`.
 const RENAMED_PAGE: &str = "The Sunken Bastion";
+/// The predicate pair the spec types into the create-relationship modal. The row
+/// is stored canonically (page_a = smaller PageId, predicates assigned to match),
+/// so assert on the unordered pair, never which slot holds which.
+const REL_PREDICATES: [&str; 2] = ["is a resident of", "is the home of"];
 
 #[tokio::main]
 async fn main() {
@@ -95,9 +105,46 @@ async fn main() {
         }
     }
 
+    let rels = relationships::Entity::find()
+        .all(&db)
+        .await
+        .unwrap_or_else(|e| fatal(&format!("query relationships failed: {e}")));
+    // Live = factually current: neither superseded nor retconned. The spec creates one.
+    let live: Vec<&relationships::Model> = rels
+        .iter()
+        .filter(|r| r.superseded_session_id.is_none() && r.retcon_session_id.is_none())
+        .collect();
+    println!("{} relationships ({} live)", rels.len(), live.len());
+    if live.len() != 1 {
+        failures.push(format!(
+            "expected exactly 1 live relationship, found {}",
+            live.len()
+        ));
+    }
+    let has_expected_pair = live.iter().any(|r| {
+        let pair = [r.predicate_a_to_b.as_str(), r.predicate_b_to_a.as_str()];
+        REL_PREDICATES.iter().all(|p| pair.contains(p))
+    });
+    if !has_expected_pair {
+        let pairs: Vec<(&str, &str)> = live
+            .iter()
+            .map(|r| (r.predicate_a_to_b.as_str(), r.predicate_b_to_a.as_str()))
+            .collect();
+        failures.push(format!(
+            "expected a live relationship with predicates {REL_PREDICATES:?} (either slot order), found {pairs:?}"
+        ));
+    }
+    // The spec creates the relationship public, then conceals it (a knowledge PATCH).
+    // The live row must read is_secret = true, proving the mutable knowledge axis
+    // reached SQLite.
+    let is_secret = live.iter().any(|r| r.is_secret);
+    if !is_secret {
+        failures.push("expected the live relationship concealed (is_secret = true)".to_string());
+    }
+
     if failures.is_empty() {
         println!(
-            "OK: {page_count} pages, each with >= {MIN_BODY_BLOCKS_PER_PAGE} body blocks, one renamed to {RENAMED_PAGE:?}"
+            "OK: {page_count} pages, each with >= {MIN_BODY_BLOCKS_PER_PAGE} body blocks, one renamed to {RENAMED_PAGE:?}, one live concealed relationship with {REL_PREDICATES:?}"
         );
         exit(0);
     }

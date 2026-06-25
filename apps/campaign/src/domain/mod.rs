@@ -3,4 +3,5 @@
 
 pub mod crdt;
 pub mod page;
+pub mod relationship;
 pub mod session;

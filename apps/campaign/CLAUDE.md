@@ -21,7 +21,7 @@ Covers `apps/campaign/` only: the `familiar-systems-campaign` Axum + kameo binar
 - `PUT /internal/campaign/{id}/lease`: bearer-protected. Ensures an existing campaign is checked out on this shard. Idempotent.
 - `DELETE /internal/campaign/{id}/lease`: bearer-protected. Releases a campaign from this shard (platform-initiated eviction). Idempotent; returns 200 even if the campaign is not loaded.
 
-**Live:** ToC + Page CRDT room actors, the WebSocket collaboration path, block/ToC persistence, Page creation (entity, template, and session - the last also minting its temporal row - through one kind-tagged `/pages` endpoint), and a `CampaignStore` checkout/release abstraction (local + S3 backends). **Still ahead:** `AgentConversationActor`, `RelationshipGraph` (edges referencing the `sessions` temporal rows), template *instantiation* (cloning a template's block structure into a new entity, distinct from creating the template page), periodic mid-session object-storage writeback, and the supervisor `SupervisorState`/`Restoring` phase. See "Design docs" below for where each is specified.
+**Live:** ToC + Page CRDT room actors, the WebSocket collaboration path, block/ToC persistence, Page creation (entity, template, and session - the last also minting its temporal row - through one kind-tagged `/pages` endpoint), a `CampaignStore` checkout/release abstraction (local + S3 backends), and relationship CRUD over the two-axis temporal model, served by the `RelationshipGraph` actor (surface in `src/routes/relationships.rs` / the campaign OpenAPI spec). **Still ahead:** `AgentConversationActor`, template *instantiation* (cloning a template's block structure into a new entity, distinct from creating the template page), periodic mid-session object-storage writeback, and the supervisor `SupervisorState`/`Restoring` phase. See "Design docs" below for where each is specified.
 
 ## Architecture
 
@@ -31,15 +31,16 @@ main.rs
        └─ CampaignSupervisor     // one per active campaign
             ├─ DatabaseWriteActor // owns the only sea-orm write connection
             ├─ TocActor           // eager singleton CRDT room (the ToC tree)
+            ├─ RelationshipGraph  // eager singleton, server-authoritative graph (not a CRDT room)
             └─ PageActor (×N)     // lazy per-Page CRDT room, keyed by PageId
-            // future: AgentConversationActor, RelationshipGraph
+            // future: AgentConversationActor
 ```
 
-**Single-writer invariant.** `DatabaseWriteActor` owns the only `DatabaseConnection` for a campaign. HTTP handlers and room actors reach the database only by sending it messages: `GetMetadata`, `PatchCampaignMetadata`, `WriteTocSnapshot`, `WritePageBlocks`, `DbCreatePage` (plus a test `Ping`). Room actors debounce CRDT edits and flush full snapshots through it; nothing writes directly.
+**Single-writer invariant.** `DatabaseWriteActor` owns the only `DatabaseConnection` for a campaign. HTTP handlers and room actors reach the database only by sending it messages: `GetMetadata`, `PatchCampaignMetadata`, `WriteTocSnapshot`, `WritePageBlocks`, `DbCreatePage`, `ApplyRelationshipWrites` (plus a test `Ping`). Room actors debounce CRDT edits and flush full snapshots through it; nothing writes directly. `RelationshipGraph` holds authoritative state in petgraph (not a CRDT), validates and canonicalizes relationship mutations, and composes them into atomic `ApplyRelationshipWrites` batches; it is the consistency boundary for relationship invariants and the AI-proposes/GM-disposes gate.
 
 **Lifecycle.** The registry is the only path to spawn supervisors. Storage init (create dir, open pool, run migrations, **check out from the `CampaignStore`**) runs in the supervisor's `on_start`, so a failure surfaces as a typed `InitError` -> `EnsureError::Init`. Spawned supervisors are `link`ed to the registry so `on_link_died` is the authoritative removal path (idle eviction, crash, link death). A per-supervisor idle timer self-stops the supervisor when `last_activity` exceeds `idle_timeout`; eviction drops it from RAM and leaves the `.db` on local disk (no periodic object-storage writeback yet). Room actors self-evict when their subscriber count reaches zero and flush if dirty before stopping.
 
-**Shutdown.** `main` waits for SIGINT/SIGTERM, lets axum drain in-flight requests, then sends `BeginDrain` to the registry. `BeginDrain` flips the phase, snapshots the supervisor map, and runs the drain workflow on a tokio task (not in the registry mailbox) so the registry stays responsive while children stop in parallel. Each supervisor drains its children in order (`PageActor`s, then `TocActor`, then `DatabaseWriteActor`) so pending CRDT snapshots reach disk before the connection closes. `DRAIN_DEADLINE` is the internal safety net; the k8s grace period is the real deadline.
+**Shutdown.** `main` waits for SIGINT/SIGTERM, lets axum drain in-flight requests, then sends `BeginDrain` to the registry. `BeginDrain` flips the phase, snapshots the supervisor map, and runs the drain workflow on a tokio task (not in the registry mailbox) so the registry stays responsive while children stop in parallel. Each supervisor drains its children in order (`PageActor`s, then `TocActor`, then `RelationshipGraph`, then `DatabaseWriteActor`) so pending CRDT snapshots reach disk before the connection closes. `DRAIN_DEADLINE` is the internal safety net; the k8s grace period is the real deadline.
 
 **Bearer + readiness.** `/internal/*` is bearer-protected via `middleware/auth.rs` (the `require_internal_bearer` fn lives in `app-shared::middleware::internal_auth`); the bearer is the layer-3 backstop, Ingress and NetworkPolicy carry layers 1 and 2 (see `infra/CLAUDE.md`). `/health` flips to 503 the moment the registry enters `Draining`.
 
@@ -64,6 +65,7 @@ Read rustdoc at each site for detail; this table is a where-to-go index.
 | registry/supervisor lifecycle, drain workflow | `src/actors/{mod,registry,supervisor}.rs` |
 | the single write connection + write commands | `src/actors/database_writer.rs` |
 | CRDT room actors (ToC singleton, Page per-id) | `src/actors/{toc,page}.rs` |
+| relationship graph (server-authoritative, non-CRDT): actor, domain core, REST surface | `src/actors/relationship_graph.rs`, `src/domain/relationship.rs`, `src/routes/relationships.rs` |
 | CRDT doc trait, Room orchestrator, room messages | `src/domain/crdt/{doc,room,room_actor}.rs` |
 | pure Page-creation builder (functional core) | `src/domain/page.rs` |
 | concrete Loro docs + block codec | `src/loro/{page,toc,block_codec}.rs` (schema constants live in `campaign-shared::loro`) |
@@ -82,7 +84,7 @@ Read rustdoc at each site for detail; this table is a where-to-go index.
 | required env vars (panics on missing) | `src/config.rs` |
 | `AppState` shape (what handlers see) | `src/state.rs` |
 | SQLite pools, sqlite-vec registration | `src/db.rs` |
-| schema (pages, blocks, vec embeddings, metadata, toc_entries) | `src/migrations/`, `src/entities/` |
+| schema (pages, blocks, relationships, sessions, vec embeddings, metadata, toc_entries) | `src/migrations/`, `src/entities/` |
 | vector search escape hatch (vec0 MATCH/k=?) | `src/embeddings.rs` |
 | catalog parser; content embedded from repo-root `content/` | `src/starter_content/{mod,catalog,template,localized}.rs` |
 
@@ -130,7 +132,7 @@ When writing actor tests, set `idle_timeout` to seconds (60+) so the timer doesn
 - **New route**: full service-prefixed path (`/catalog/...` or `/campaign/...`), new module under `src/routes/`, register in `src/openapi.rs` (public) or `internal_router` (bearer). WebSocket routes are merged in `src/router.rs`.
 - **New env var**: panic-on-missing in `Config::from_env`; add a `#[serial]` test for the missing-var case. Update `mise.toml`'s `dev:campaign` env block.
 - **New room actor / `CrdtDoc` impl**: implement `CrdtDoc` for the new doc type in `src/loro/`, wrap it in `Room<D>`, add a `RoomHandle` variant and `JoinRoom` routing in the supervisor, and persist via a new `DatabaseWriteActor` command.
-- **Mutating an entity (Page/ToC), including creating one**: route it through the owning room actor as a message; never write the entity's rows directly from a handler or helper. The actor is the single-threaded consistency boundary, so a write around it drifts its in-memory CRDT doc from SQLite once there are subscribers. `CreatePage` is the pattern: it spawns the `PageActor` in genesis mode rather than inserting rows from the route. Pure value-shaping can live in `src/domain/` (e.g. `domain/page.rs`); the I/O stays in the actor.
+- **Mutating an entity (Page/ToC/relationship), including creating one**: route it through the owning actor as a message; never write the entity's rows directly from a handler or helper. The actor is the single-threaded consistency boundary, so a write around it drifts its in-memory state from SQLite. `CreatePage` is the CRDT-room pattern (spawn the `PageActor` in genesis mode rather than inserting rows from the route); `RelationshipGraph` is the server-authoritative pattern (validate/canonicalize in `domain/relationship.rs`, persist via `ApplyRelationshipWrites`). Pure value-shaping can live in `src/domain/`; the I/O stays in the actor.
 - **New actor message**: bump `last_activity` if it's a real operational supervisor message. Update the supervisor's drain ordering if the new handler does I/O that must complete before `on_stop`.
 - **New `AppState` field**: cheap clone only (`Arc` or kameo `ActorRef`); `AppState` is cloned per handler invocation.
 - **New migration**: new file under `src/migrations/`, register in `migrations/mod.rs`. Every test migrates from empty. If the migration adds or removes a table, add or remove the matching entity (`schema.rs`'s table-set check enforces it); if it changes columns or FKs, update the entity to match (the name/affinity/FK check enforces it).
@@ -143,6 +145,6 @@ The campaign tier is being built in slices. These docs spec what comes next; rea
 - [`docs/plans/2026-05-04-campaign-actor-domain-design.md`](../../docs/plans/2026-05-04-campaign-actor-domain-design.md): canonical actor topology and CRDT room model. The room actors have landed; the supervisor `SupervisorState` machine (including the `Restoring` phase for room-actor checkout) is still ahead.
 - [`docs/plans/2026-03-25-campaign-collaboration-architecture.md`](../../docs/plans/2026-03-25-campaign-collaboration-architecture.md): WebSocket protocol, checkout/checkin, scaling model.
 - [`docs/plans/2026-05-22-campaign-creation-architecture.md`](../../docs/plans/2026-05-22-campaign-creation-architecture.md): campaign creation flow, wizard surface, catalog system, initialization + mirror callback to the platform (template instantiation is not yet built).
-- [`docs/plans/2026-04-10-entity-relationship-temporal-model.md`](../../docs/plans/2026-04-10-entity-relationship-temporal-model.md): relationship schema, sessions-as-knowledge-time, retcon/supersede lifecycle.
+- [`docs/plans/2026-06-23-entity-relationship-temporal-model.md`](../../docs/plans/2026-06-23-entity-relationship-temporal-model.md): relationship schema, sessions-as-knowledge-time, retcon/supersede lifecycle. The `RelationshipGraph` actor + REST surface have landed; per-player visibility and the AI journal pipeline are still ahead.
 - [`docs/plans/2026-03-25-ai-serialization-format-v2.md`](../../docs/plans/2026-03-25-ai-serialization-format-v2.md): serialization compiler, AI tool surface.
 - [`docs/plans/2026-03-30-deployment-architecture.md`](../../docs/plans/2026-03-30-deployment-architecture.md): graceful restart, preview environments, shard topology.

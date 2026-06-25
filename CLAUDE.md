@@ -17,7 +17,7 @@ Full catalog in `docs/plans/`. Read the **authoritative** structure doc before a
 - `docs/plans/2026-05-22-campaign-creation-architecture.md` - campaign creation flow + catalog (state-of-the-world)
 - `docs/plans/2026-05-04-campaign-actor-domain-design.md` - actor topology, CRDT room model, suggestion model
 - `docs/plans/2026-04-11-app-server-prd.md` - platform server (auth, CRUD, shard coordination, billing)
-- `docs/plans/2026-04-10-entity-relationship-temporal-model.md` - relationship schema + temporal model
+- `docs/plans/2026-06-23-entity-relationship-temporal-model.md` - relationship schema + temporal model
 - `docs/plans/2026-02-20-templates-as-pages.md` - templates are pages of kind `template` (`templateId` lineage)
 - `docs/plans/2026-03-30-deployment-architecture.md` - platform/campaign split, graceful restart, previews
 - `docs/plans/2026-05-23-infrastructure.md` - k3s, OpenTofu, certs, CI/CD
@@ -126,11 +126,11 @@ Maximum strictness, no exceptions:
 
 ## Core Domain Concepts
 
-- **Status** (on nodes, blocks, relationships): `gm_only` → `known` → `retconned`. Default is `gm_only`. Status cascades down (GM-only node = all children GM-only), not up.
+- **Status** (on nodes, blocks): `gm_only` → `known` → `retconned`. Default is `gm_only`. Status cascades down (GM-only node = all children GM-only), not up.
 - **Suggestions**: Discriminated union over types (`create_page`, `update_blocks`, `create_relationship`, `journal_draft`, `contradiction`). Always durable. Auto-reject after ~14 days.
 - **AgentConversation**: Persisted record of AI interactions. Provenance for suggestions. Roles: `gm`, `player`, `system`.
 - **Mentions** (block→node or block→block): Derived automatically, power backlinks and transclusion.
-- **Relationships** (node→node): Authored/curated, carry semantic labels. Freeform vocabulary.
+- **Relationships** (node→node): One bidirectional row per fact (forward + reverse predicate), authored, freeform vocabulary. Two session-stamped axes - Factuality and Knowledge - see `docs/glossary.md` § Relationship Lifecycle.
 - **Pages & kinds**: A **Page** is the universal node/document (URL `/p/:id`, LoroDoc-backed). Its `kind` field is a `PageKind` - `entity | template` in code today (`session`/`skill` are future). `entity` = authored world content (NPCs, locations, lore); the AI's extraction/search target. The collective noun "entity" is world content; "page" is any node.
 - **Templates**: A template is a page of kind `template` - no separate `Template` entity. Creating an entity from a template clones the template's block structure; `templateId?: PageId` tracks lineage. Tags are pages connected via `tagged` relationships, not a `tags: string[]` field.
 

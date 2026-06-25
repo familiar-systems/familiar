@@ -8,15 +8,18 @@
 //!   [`DatabaseWriteActor`](database_writer::DatabaseWriteActor) and the idle-eviction
 //!   clock.
 //!
-//! Child room actors under the supervisor:
-//! - [`TocActor`](toc::TocActor): singleton, eagerly spawned on checkout.
-//! - [`PageActor`](page::PageActor): per-Page, lazily spawned on first room join.
+//! Child actors under the supervisor:
+//! - [`TocActor`](toc::TocActor): CRDT singleton, eagerly spawned on checkout.
+//! - [`RelationshipGraph`](relationship_graph::RelationshipGraph): server-
+//!   authoritative graph singleton (not a CRDT room), eagerly spawned on checkout.
+//! - [`PageActor`](page::PageActor): CRDT-per-Page, lazily spawned on first room join.
 //!
-//! Future: AgentConversation, RelationshipGraph, CampaignVocabulary.
+//! Future: AgentConversation, CampaignVocabulary.
 
 pub mod database_writer;
 pub mod page;
 pub mod persist;
 pub mod registry;
+pub mod relationship_graph;
 pub mod supervisor;
 pub mod toc;

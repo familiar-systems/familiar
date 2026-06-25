@@ -8,7 +8,7 @@ Covers `apps/web/` only: the Vite + React SPA (the authenticated app). Overrides
 
 ## Today's surface
 
-Built: the hub (campaign listing), the 4-step creation wizard (`features/onboarding/`), the campaign index (`/c/$campaignId`, which sends a wizard-incomplete campaign to the wizard and a complete one to its home page), and the home-page editor (`/c/$campaignId/p/$pageId`). Still ahead: the rest of the editor surface (this slice is paragraphs + headings only) and the AI system.
+Built: the hub (campaign listing), the 4-step creation wizard (`features/onboarding/`), the campaign index (`/c/$campaignId`, which sends a wizard-incomplete campaign to the wizard and a complete one to its home page), and the home-page editor (`/c/$campaignId/p/$pageId`), and relationship curation on entities (the two-axis temporal model UI; see `features/relationships/`). Still ahead: the rest of the editor surface (this slice is paragraphs + headings only) and the AI system.
 
 No global store and no React Query: routes fetch in `useEffect` and hold local `useState`. The only app-wide state is auth, carried in router context (below).
 

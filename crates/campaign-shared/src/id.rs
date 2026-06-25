@@ -21,6 +21,11 @@ pub struct BlockId(pub Ulid);
 #[fs_id(export_to = "types-campaign/src/generated/id/")]
 pub struct SessionId(pub Ulid);
 
+/// Identifies one relationship edge (an undirected page-to-page fact with a
+/// predicate at each end). ULID for compact, B-tree-friendly identity.
+#[fs_id(export_to = "types-campaign/src/generated/id/")]
+pub struct RelationshipId(pub Ulid);
+
 /// Identifies a specific suggestion made by an AI assistant.
 #[fs_id(export_to = "types-campaign/src/generated/id/")]
 pub struct SuggestionId(pub Ulid);

@@ -35,14 +35,27 @@ use kameo::message::{Context, Message};
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
+use crate::actors::relationship_graph::RelationshipGraph;
 use crate::actors::supervisor::{
-    CampaignSupervisor, CampaignSupervisorArgs, SetStopCause, StopCause,
+    CampaignSupervisor, CampaignSupervisorArgs, RelationshipGraphRef, SetStopCause, StopCause,
 };
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::error::EnsureError;
 use crate::persistence::CampaignStore;
 
 pub const DRAIN_DEADLINE: Duration = Duration::from_secs(600);
+
+/// References to actors needed for 'external' communication.
+/// - `supervisor`: the campaign supervisor actor, handling overall campaign lifecycle
+/// - `graph`: the relationship graph actor, handling all relationship mutations
+///
+/// Everything is technically accessible through the supervisor.
+/// However, it's more efficient to just call subactors directly.
+#[derive(Clone, kameo::Reply)]
+pub struct CampaignHandle {
+    pub supervisor: ActorRef<CampaignSupervisor>,
+    pub graph: ActorRef<RelationshipGraph>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, kameo::Reply)]
 pub enum Phase {
@@ -51,7 +64,7 @@ pub enum Phase {
 }
 
 pub struct CampaignRegistry {
-    supervisors: HashMap<CampaignId, ActorRef<CampaignSupervisor>>,
+    supervisors: HashMap<CampaignId, CampaignHandle>,
     phase: Phase,
     store: Arc<dyn CampaignStore>,
     idle_timeout: Duration,
@@ -101,7 +114,8 @@ impl Actor for CampaignRegistry {
                 supervisor_count = count,
                 "registry stopping without explicit BeginDrain; cleaning up children synchronously"
             );
-            for (_id, sup_ref) in self.supervisors.drain() {
+            for (_id, handle) in self.supervisors.drain() {
+                let sup_ref = handle.supervisor;
                 let _ = sup_ref
                     .tell(SetStopCause(StopCause::RegistryFallback))
                     .await;
@@ -119,7 +133,8 @@ impl Actor for CampaignRegistry {
         reason: ActorStopReason,
     ) -> Result<ControlFlow<ActorStopReason>, Self::Error> {
         let before = self.supervisors.len();
-        self.supervisors.retain(|_, sup_ref| sup_ref.id() != id);
+        self.supervisors
+            .retain(|_, handle| handle.supervisor.id() != id);
         let removed = before - self.supervisors.len();
         if removed > 0 {
             tracing::debug!(
@@ -155,6 +170,7 @@ impl Message<CreateCampaign> for CampaignRegistry {
         let registry_ref = ctx.actor_ref().clone();
         self.ensure_supervisor(registry_ref, msg.campaign_id, Some(msg.owner_user_id))
             .await
+            .map(|handle| handle.supervisor)
     }
 }
 
@@ -181,6 +197,7 @@ impl Message<EnsureCampaign> for CampaignRegistry {
         let registry_ref = ctx.actor_ref().clone();
         self.ensure_supervisor(registry_ref, msg.campaign_id, None)
             .await
+            .map(|handle| handle.supervisor)
     }
 }
 
@@ -205,10 +222,11 @@ impl Message<ReleaseCampaign> for CampaignRegistry {
         msg: ReleaseCampaign,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        let Some(supervisor) = self.supervisors.get(&msg.campaign_id) else {
+        let Some(handle) = self.supervisors.get(&msg.campaign_id) else {
             tracing::debug!("release requested for unloaded campaign; no-op");
             return;
         };
+        let supervisor = &handle.supervisor;
 
         tracing::info!("releasing campaign (platform-initiated)");
 
@@ -231,7 +249,7 @@ impl CampaignRegistry {
         registry_ref: ActorRef<Self>,
         campaign_id: CampaignId,
         owner_user_id: Option<UserId>,
-    ) -> Result<ActorRef<CampaignSupervisor>, EnsureError> {
+    ) -> Result<CampaignHandle, EnsureError> {
         if matches!(self.phase, Phase::Draining) {
             tracing::debug!("rejecting ensure during drain");
             return Err(EnsureError::ShuttingDown);
@@ -263,14 +281,22 @@ impl CampaignRegistry {
             return Err(EnsureError::SupervisorDied);
         }
 
-        self.supervisors
-            .insert(campaign_id.clone(), supervisor.clone());
+        let graph = match supervisor.ask(RelationshipGraphRef).await {
+            Ok(graph) => graph,
+            Err(e) => {
+                tracing::warn!(error = %e, "supervisor unreachable resolving relationship graph");
+                return Err(EnsureError::SupervisorDied);
+            }
+        };
+
+        let handle = CampaignHandle { supervisor, graph };
+        self.supervisors.insert(campaign_id.clone(), handle.clone());
 
         tracing::info!(
             init_total_elapsed_ms = started.elapsed().as_millis() as u64,
             "campaign ensured"
         );
-        Ok(supervisor)
+        Ok(handle)
     }
 }
 
@@ -289,7 +315,7 @@ impl Message<GetPhase> for CampaignRegistry {
 pub struct GetCampaign(pub CampaignId);
 
 impl Message<GetCampaign> for CampaignRegistry {
-    type Reply = Option<ActorRef<CampaignSupervisor>>;
+    type Reply = Option<CampaignHandle>;
 
     #[tracing::instrument(
         skip_all,
@@ -342,7 +368,13 @@ impl Message<BeginDrain> for CampaignRegistry {
         }
         self.phase = Phase::Draining;
 
-        let snapshot: Vec<_> = self.supervisors.drain().collect();
+        // Drain to bare supervisor refs - run_drain only stops supervisors; their
+        // on_stop drains the graph + rooms in order.
+        let snapshot: Vec<_> = self
+            .supervisors
+            .drain()
+            .map(|(id, handle)| (id, handle.supervisor))
+            .collect();
         let count = snapshot.len();
         tracing::info!(
             supervisor_count = count,
@@ -420,6 +452,7 @@ async fn run_drain(
 mod tests {
     use super::CreateCampaign;
     use super::*;
+    use crate::actors::relationship_graph::KnownPredicatePairs;
     use crate::actors::supervisor::Ping as SupPing;
     use crate::db::register_sqlite_vec;
     use crate::persistence::LocalCampaignStore;
@@ -514,6 +547,40 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
+    }
+
+    #[tokio::test]
+    async fn get_campaign_handle_graph_ref_is_live() {
+        ensure_vec0();
+        let tmp = TempDir::new().unwrap();
+        let registry = CampaignRegistry::spawn(CampaignRegistry::new(
+            store_in(tmp.path()),
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+            None,
+        ));
+        let id = CampaignId::generate();
+        registry
+            .ask(CreateCampaign {
+                campaign_id: id.clone(),
+                owner_user_id: user_id(),
+            })
+            .await
+            .unwrap();
+
+        let handle = registry
+            .ask(GetCampaign(id.clone()))
+            .await
+            .unwrap()
+            .expect("campaign handle present after create");
+
+        // The cached graph ref answers directly, proving routes can reach the
+        // RelationshipGraph without a supervisor hop.
+        handle
+            .graph
+            .ask(KnownPredicatePairs)
+            .await
+            .expect("relationship graph reachable via the cached ref");
     }
 
     #[tokio::test]

@@ -11,7 +11,7 @@
 //! The `*Col` types live entirely inside this crate; nothing outside
 //! `apps/campaign/` imports them.
 
-use familiar_systems_campaign_shared::id::{BlockId, PageId, SessionId};
+use familiar_systems_campaign_shared::id::{BlockId, PageId, RelationshipId, SessionId};
 use familiar_systems_campaign_shared::loro::page::Section;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
@@ -102,6 +102,7 @@ macro_rules! ulid_id_column {
 ulid_id_column!(PageIdCol, PageId);
 ulid_id_column!(BlockIdCol, BlockId);
 ulid_id_column!(SessionIdCol, SessionId);
+ulid_id_column!(RelationshipIdCol, RelationshipId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "Text")]

@@ -1,6 +1,6 @@
 # familiar-systems-campaign-shared
 
-Campaign-scoped shared library. Schema types, Loro document wrappers, and the CrdtDoc trait.
+Campaign-scoped shared library. ID brands, Loro schema constants + ts-rs types, relationship/session wire DTOs, and onboarding/notification DTOs.
 
 Everything here is used exclusively by the campaign server. The platform server does not depend on this crate.
 

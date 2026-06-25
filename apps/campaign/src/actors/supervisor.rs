@@ -1,9 +1,11 @@
 //! `CampaignSupervisor`: per-campaign orchestrator.
 //!
-//! Owns the [`CampaignDatabase`] and an idle-eviction clock. Child room
-//! actors: [`TocActor`] (singleton, eager), [`PageActor`] (per-page,
-//! lazy-spawned on first `JoinRoom`). Future: AgentConversation,
-//! RelationshipGraph, CampaignVocabulary.
+//! Owns the [`CampaignDatabase`] and an idle-eviction clock.
+//!
+//! Child actors:
+//! - [`TocActor`] (CRDT singleton, eager)
+//! - [`RelationshipGraph`] (server-authoritative graph singleton, eager)
+//! - [`PageActor`] (per-page, lazy-spawned on first `JoinRoom`). Future: AgentConversation, CampaignVocabulary.
 //!
 //! Storage initialization (checkout, open connection, run migrations,
 //! spawn DatabaseWriteActor) runs in `on_start` via
@@ -23,9 +25,12 @@ use kameo::error::{ActorStopReason, SendError};
 use kameo::message::{Context, Message};
 use kameo::prelude::Actor;
 
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect,
+};
 
-use familiar_systems_campaign_shared::id::{ClientId, PageId};
+use familiar_systems_campaign_shared::id::{ClientId, PageId, SessionId};
 use familiar_systems_campaign_shared::loro::toc::TocPageKind;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
@@ -36,12 +41,13 @@ use crate::actors::database_writer::{
     PatchCampaignMetadata as DbPatchCampaign, PatchCampaignResult,
 };
 use crate::actors::page::{PageActor, PageActorArgs, PageInit};
+use crate::actors::relationship_graph::{RelationshipGraph, RelationshipGraphArgs};
 use crate::actors::toc::{AddPageNode, ResolvePageNode, TocActor, TocActorArgs};
 use crate::clients::platform_internal::PlatformInternalClient;
 use crate::domain::crdt::room_actor;
 use crate::domain::page::DocumentPageKind;
 use crate::entities::columns::{PageIdCol, PageKindCol};
-use crate::entities::{campaign_metadata, pages};
+use crate::entities::{campaign_metadata, pages, sessions};
 use crate::error::InitError;
 use crate::persistence::{CampaignDatabase, CampaignStore};
 
@@ -55,6 +61,7 @@ pub struct CampaignSupervisor {
     store: Arc<dyn CampaignStore>,
     db: Option<CampaignDatabase>,
     toc: ActorRef<TocActor>,
+    relationship_graph: ActorRef<RelationshipGraph>,
     pages: HashMap<PageId, ActorRef<PageActor>>,
     last_activity: Instant,
     idle_timeout: Duration,
@@ -138,6 +145,19 @@ impl Actor for CampaignSupervisor {
             debounce_duration: Duration::from_secs(2),
         });
 
+        // TODO: supervise this child (kameo 0.20 `supervise(...).restart_policy(...)`)
+        // instead of a bare `spawn`. Today a panic here is unobserved: the registry
+        // caches this `ActorRef`, so a dead graph 503s every relationship op until the
+        // campaign idle-evicts and re-checks-out. Supervised restart reuses the actor's
+        // mailbox, so the cached ref stays valid across the restart - recovery without
+        // taking the campaign down. Must reconcile with the manual `on_link_died` /
+        // page-pruning path below.
+        let relationship_graph = RelationshipGraph::spawn(RelationshipGraphArgs {
+            campaign_id: args.campaign_id.clone(),
+            db_reader: db.reader().clone(),
+            db_writer: db.writer().clone(),
+        });
+
         tracing::info!("campaign ready");
 
         let timer_ref = actor_ref.clone();
@@ -197,6 +217,7 @@ impl Actor for CampaignSupervisor {
             store: args.store,
             db: Some(db),
             toc,
+            relationship_graph,
             pages: HashMap::new(),
             last_activity: Instant::now(),
             idle_timeout: args.idle_timeout,
@@ -236,6 +257,15 @@ impl Actor for CampaignSupervisor {
             tracing::warn!(error = ?e, "toc actor already stopped during drain");
         }
         self.toc.wait_for_shutdown_with_result(|_| ()).await;
+
+        // The relationship graph writes through synchronously (no dirty state to
+        // flush), but stop it before the DB connection closes for clean ordering.
+        if let Err(e) = self.relationship_graph.stop_gracefully().await {
+            tracing::warn!(error = ?e, "relationship graph already stopped during drain");
+        }
+        self.relationship_graph
+            .wait_for_shutdown_with_result(|_| ())
+            .await;
 
         if let Some(db) = self.db.take()
             && let Err(e) = db.release(self.store.as_ref(), &self.campaign_id).await
@@ -983,6 +1013,112 @@ impl Message<Ping> for CampaignSupervisor {
     async fn handle(&mut self, _: Ping, _ctx: &mut Context<Self, Self::Reply>) -> Self::Reply {
         self.last_activity = Instant::now();
         Pong
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RelationshipGraphRef (child-ref accessor)
+// ---------------------------------------------------------------------------
+//
+// The supervisor is the campaign's lifecycle mailbox - the hottest path in the
+// process - so relationship work must never serialize behind it. The registry asks
+// this once at checkout (right after `wait_for_startup`) and caches the returned ref
+// in its `CampaignHandle`; routes then talk to the `RelationshipGraph` directly and
+// never touch the supervisor per request. A pure topology accessor - clone the eager
+// singleton's ref, no `last_activity` bump - not a relationship operation. Future
+// children (conversation actor, search actor) get a sibling accessor.
+
+pub struct RelationshipGraphRef;
+
+impl Message<RelationshipGraphRef> for CampaignSupervisor {
+    type Reply = ActorRef<RelationshipGraph>;
+
+    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
+    async fn handle(
+        &mut self,
+        _: RelationshipGraphRef,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.relationship_graph.clone()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Session + entity reads (the relationship modals' pickers)
+// ---------------------------------------------------------------------------
+//
+// Plain reads off the shared reader pool (the `GetMetadata` idiom), not graph
+// concerns, so they live on the supervisor rather than the RelationshipGraph.
+
+/// Every session, ascending by ordinal, as `(id, ordinal)` - the as-of pickers'
+/// source. The id is durable; ordinals can be renumbered.
+#[derive(Debug, Clone, Copy)]
+pub struct ListSessions;
+
+impl Message<ListSessions> for CampaignSupervisor {
+    type Reply = Result<Vec<(SessionId, i64)>, sea_orm::DbErr>;
+
+    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
+    async fn handle(
+        &mut self,
+        _: ListSessions,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        let db = self
+            .db
+            .as_ref()
+            .expect("db must be Some while actor is running");
+        let rows = sessions::Entity::find()
+            .order_by_asc(sessions::Column::Ordinal)
+            .all(db.reader())
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|s| (SessionId::from(s.id), s.ordinal))
+            .collect())
+    }
+}
+
+/// Entity-page name matches for the create modal's object typeahead. Substring
+/// match on the title; templates are a separate kind, so selecting `Entity`
+/// excludes them. Minimal `LIKE`; contract frozen for a later Tantivy /
+/// `CampaignVocabulary` swap.
+#[derive(Debug, Clone)]
+pub struct SearchEntities {
+    pub query: String,
+    pub limit: u64,
+}
+
+impl Message<SearchEntities> for CampaignSupervisor {
+    type Reply = Result<Vec<(PageId, String)>, sea_orm::DbErr>;
+
+    #[tracing::instrument(skip_all, fields(campaign_id = %self.campaign_id.0))]
+    async fn handle(
+        &mut self,
+        msg: SearchEntities,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        let db = self
+            .db
+            .as_ref()
+            .expect("db must be Some while actor is running");
+        let rows = pages::Entity::find()
+            .filter(pages::Column::Kind.eq(PageKindCol::Entity))
+            .filter(pages::Column::Name.contains(msg.query.as_str()))
+            // FIXME we should not do this because because `%` and `_` are interpreted
+            // as wildcards in `LIKE` causing us to fail on like this.
+            // When moving ot tantivy for the name server, ensure we have test for this
+            // and/or use parameter fuzzing.
+            .order_by_asc(pages::Column::Name)
+            .limit(msg.limit)
+            .all(db.reader())
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|p| (PageId::from(p.id), p.name))
+            .collect())
     }
 }
 

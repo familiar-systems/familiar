@@ -3,18 +3,21 @@
 //!
 //! Every write to the campaign DB flows through this actor's mailbox.
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use familiar_systems_app_shared::id::CampaignId;
 use kameo::prelude::{Actor, Context, Message};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, QueryOrder, SqlErr, TransactionTrait,
 };
 
 use crate::domain::page::NewPage;
+use crate::domain::relationship::{Knowledge, NewRelationship};
 use crate::domain::session::next_session_ordinal;
-use crate::entities::columns::{BlockIdCol, PageKindCol, SectionCol, SessionIdCol, StatusCol};
-use crate::entities::{blocks, campaign_metadata, pages, sessions, toc_entries};
+use crate::entities::columns::{
+    BlockIdCol, PageKindCol, RelationshipIdCol, SectionCol, SessionIdCol, StatusCol,
+};
+use crate::entities::{blocks, campaign_metadata, pages, relationships, sessions, toc_entries};
 
 pub struct DatabaseWriteActor {
     campaign_id: CampaignId,
@@ -299,7 +302,7 @@ impl Message<WriteTocSnapshot> for DatabaseWriteActor {
 // WritePageBlocks
 // ---------------------------------------------------------------------------
 
-use familiar_systems_campaign_shared::id::{PageId, SessionId};
+use familiar_systems_campaign_shared::id::{PageId, RelationshipId, SessionId};
 
 use crate::entities::columns::PageIdCol;
 
@@ -580,6 +583,228 @@ impl Message<DbCreateSession> for DatabaseWriteActor {
         txn.commit().await?;
         tracing::debug!(block_count, ordinal, "session created");
         Ok(CreatedSession { page, session })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Relationships (server-authoritative; owned by the RelationshipGraph actor)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, thiserror::Error)]
+pub enum RelationshipWriteError {
+    #[error("a live relationship with this predicate pair already exists")]
+    DuplicateLiveFact,
+    #[error("relationship not found")]
+    NotFound,
+    #[error("database error: {0}")]
+    Db(#[from] sea_orm::DbErr),
+}
+
+/// Narrow a write failure to `DuplicateLiveFact` when the partial unique index
+/// (`idx_relationships_live_fact_unique`) trips. The live-fact index is the only
+/// unique constraint a relationship write can violate (the PK is a freshly generated
+/// ULID), so a unique violation here is unambiguously a duplicate live fact. Applied
+/// to every write: a `Create` collides when it births a fact that already lives, and
+/// a clearing `SetSuperseded { at: None }` / `SetRetcon { at: None }` collides when
+/// it *re-adds* a row to the live set whose canonical fact is already live (un-ending
+/// a row whose supersede minted a same-pair successor).
+fn map_relationship_write_error(e: sea_orm::DbErr) -> RelationshipWriteError {
+    match e.sql_err() {
+        Some(SqlErr::UniqueConstraintViolation(_)) => RelationshipWriteError::DuplicateLiveFact,
+        _ => RelationshipWriteError::Db(e),
+    }
+}
+
+// The relationship primitives below operate on a `&DatabaseTransaction`, not
+// `&self.conn`: they are the per-statement building blocks the `ApplyRelationshipWrites`
+// batch interprets inside one transaction. The actor never calls them directly. They
+// are *dumb* writes - all invariant enforcement (ordering, supersede pre-checks) lives
+// in the actor; the only thing the writer rejects is a duplicate live fact (the index)
+// and a missing row.
+
+/// Insert a brand-new relationship row inside `txn`, stamping `created_at` from `now`
+/// (the id is minted by the owning actor and arrives on `NewRelationship`). The two
+/// axes come straight off `NewRelationship` (a born-finalized
+/// retrofit can already carry `superseded`/`retcon`). A row that births already
+/// superseded or retconned sits outside the live set, so it never collides; a live
+/// birth that duplicates an existing live fact trips the index.
+async fn insert_relationship(
+    txn: &DatabaseTransaction,
+    new: NewRelationship,
+    now: DateTime<Utc>,
+) -> Result<relationships::Model, RelationshipWriteError> {
+    relationships::ActiveModel {
+        id: Set(RelationshipIdCol::from(new.id)),
+        page_a: Set(PageIdCol::from(new.page_a)),
+        page_b: Set(PageIdCol::from(new.page_b)),
+        predicate_a_to_b: Set(new.predicate_a_to_b),
+        predicate_b_to_a: Set(new.predicate_b_to_a),
+        origin_session_id: Set(new.origin.session_id().map(SessionIdCol::from)),
+        superseded_session_id: Set(new.superseded.map(SessionIdCol::from)),
+        retcon_session_id: Set(new.retcon.map(SessionIdCol::from)),
+        is_secret: Set(new.knowledge.is_secret()),
+        reveal_session_id: Set(new.knowledge.reveal_session_id().map(SessionIdCol::from)),
+        created_at: Set(now),
+    }
+    .insert(txn)
+    .await
+    .map_err(map_relationship_write_error)
+}
+
+/// Set (or clear) one nullable session-stamp column on a relationship row inside
+/// `txn`: a blind UPDATE, no one-way-door guard (invalidation is reversible). A
+/// clearing write (`value = None`) can re-add the row to the live set and so trip the
+/// live-fact index, surfaced as `DuplicateLiveFact`. `column` selects which axis.
+async fn set_session_stamp(
+    txn: &DatabaseTransaction,
+    rel_id: RelationshipId,
+    column: StampColumn,
+    value: Option<SessionId>,
+) -> Result<relationships::Model, RelationshipWriteError> {
+    let existing = relationships::Entity::find_by_id(RelationshipIdCol::from(rel_id))
+        .one(txn)
+        .await?
+        .ok_or(RelationshipWriteError::NotFound)?;
+    let mut am: relationships::ActiveModel = existing.into();
+    let stamp = value.map(SessionIdCol::from);
+    match column {
+        StampColumn::Superseded => am.superseded_session_id = Set(stamp),
+        StampColumn::Retcon => am.retcon_session_id = Set(stamp),
+    }
+    am.update(txn).await.map_err(map_relationship_write_error)
+}
+
+/// Which nullable factuality session-stamp axis a [`RelationshipWrite::SetStamp`]
+/// targets. (Knowledge is *not* a stamp: it sets two columns wholesale, via
+/// `RelationshipWrite::SetKnowledge`.)
+#[derive(Debug, Clone, Copy)]
+pub enum StampColumn {
+    Superseded,
+    Retcon,
+}
+
+/// Set a relationship's knowledge wholesale inside `txn`: a blind UPDATE of both
+/// `is_secret` and `reveal_session_id` from a [`Knowledge`] value. The pair is always
+/// legal by construction (`Public` -> `(false, NULL)`, never `(false, Some)`), so this
+/// can never trip the CHECK. Knowledge is not in the live-fact index, so it never trips
+/// the uniqueness index either - the only failure is a missing row.
+async fn set_knowledge(
+    txn: &DatabaseTransaction,
+    rel_id: RelationshipId,
+    knowledge: Knowledge,
+) -> Result<relationships::Model, RelationshipWriteError> {
+    let existing = relationships::Entity::find_by_id(RelationshipIdCol::from(rel_id))
+        .one(txn)
+        .await?
+        .ok_or(RelationshipWriteError::NotFound)?;
+    let mut am: relationships::ActiveModel = existing.into();
+    am.is_secret = Set(knowledge.is_secret());
+    am.reveal_session_id = Set(knowledge.reveal_session_id().map(SessionIdCol::from));
+    am.update(txn).await.map_err(map_relationship_write_error)
+}
+
+/// Hard-delete a relationship row inside `txn`, no audit trail.
+async fn delete_relationship(
+    txn: &DatabaseTransaction,
+    rel_id: RelationshipId,
+) -> Result<(), RelationshipWriteError> {
+    let res = relationships::Entity::delete_by_id(RelationshipIdCol::from(rel_id))
+        .exec(txn)
+        .await?;
+    if res.rows_affected == 0 {
+        return Err(RelationshipWriteError::NotFound);
+    }
+    Ok(())
+}
+
+/// One relationship mutation: the building block the
+/// [`RelationshipGraph`](crate::actors::relationship_graph::RelationshipGraph)
+/// composes into an atomic [`ApplyRelationshipWrites`] batch. Each variant is one
+/// SQL statement; the writer is a dumb interpreter that runs a list of them in a
+/// single transaction. `SetStamp` covers the two reversible factuality axes
+/// (superseded / retcon): `at = Some` stamps it, `None` clears it. `SetKnowledge` sets
+/// the knowledge pair wholesale.
+pub enum RelationshipWrite {
+    Create(NewRelationship),
+    SetStamp {
+        rel_id: RelationshipId,
+        column: StampColumn,
+        at: Option<SessionId>,
+    },
+    SetKnowledge {
+        rel_id: RelationshipId,
+        knowledge: Knowledge,
+    },
+    Delete {
+        rel_id: RelationshipId,
+    },
+}
+
+/// What one [`RelationshipWrite`] committed, threaded back so the actor reflects it
+/// into the in-memory graph. `Create`/`SetStamp` yield the committed row (the actor
+/// upserts it by id); `Delete` yields the removed id. The row is boxed so the two
+/// variants are similar-sized (a `Model` is ~240 bytes; an id is 16).
+#[derive(Debug)]
+pub enum RelationshipWriteOutcome {
+    Upserted(Box<relationships::Model>),
+    Removed(RelationshipId),
+}
+
+/// Apply an ordered list of relationship writes in one transaction, all-or-nothing.
+/// The actor decomposes each GM op into this list (supersede = `[Create, SetStamp]`,
+/// a multi-axis patch a list of `SetStamp`s, the single ops a one-element list); the
+/// writer commits them together or rolls the whole batch back. Outcomes are returned
+/// in write order.
+///
+/// This is the relationship analogue of [`DbCreateSession`]: a `begin`/`commit`
+/// multi-statement write that returns the committed rows. A duplicate *live* fact
+/// trips the partial unique index and rolls the batch back, mapped to
+/// [`RelationshipWriteError::DuplicateLiveFact`].
+pub struct ApplyRelationshipWrites {
+    pub writes: Vec<RelationshipWrite>,
+}
+
+impl Message<ApplyRelationshipWrites> for DatabaseWriteActor {
+    type Reply = Result<Vec<RelationshipWriteOutcome>, RelationshipWriteError>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, writes = msg.writes.len()),
+    )]
+    async fn handle(
+        &mut self,
+        msg: ApplyRelationshipWrites,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        // One `now` for the whole batch, so the rows a single op writes share a
+        // timestamp. Any error drops `txn` (rollback) via `?` before `commit`.
+        let now = Utc::now();
+        let txn = self.conn.begin().await?;
+        let mut outcomes = Vec::with_capacity(msg.writes.len());
+        for write in msg.writes {
+            let outcome = match write {
+                RelationshipWrite::Create(new) => RelationshipWriteOutcome::Upserted(Box::new(
+                    insert_relationship(&txn, new, now).await?,
+                )),
+                RelationshipWrite::SetStamp { rel_id, column, at } => {
+                    RelationshipWriteOutcome::Upserted(Box::new(
+                        set_session_stamp(&txn, rel_id, column, at).await?,
+                    ))
+                }
+                RelationshipWrite::SetKnowledge { rel_id, knowledge } => {
+                    RelationshipWriteOutcome::Upserted(Box::new(
+                        set_knowledge(&txn, rel_id, knowledge).await?,
+                    ))
+                }
+                RelationshipWrite::Delete { rel_id } => {
+                    delete_relationship(&txn, rel_id.clone()).await?;
+                    RelationshipWriteOutcome::Removed(rel_id)
+                }
+            };
+            outcomes.push(outcome);
+        }
+        txn.commit().await?;
+        Ok(outcomes)
     }
 }
 
@@ -1240,5 +1465,134 @@ mod tests {
         let surviving = toc_entries::Entity::find().all(&conn).await.unwrap();
         assert_eq!(surviving.len(), 1, "stale row must survive a failed write");
         assert_eq!(surviving[0].id, "old");
+    }
+
+    // ---- Relationship batch (`ApplyRelationshipWrites`) ----
+
+    async fn seed_rel_page(conn: &DatabaseConnection, name: &str) -> PageId {
+        let id = PageId::generate();
+        pages::ActiveModel {
+            id: Set(PageIdCol::from(id.clone())),
+            name: Set(name.into()),
+            status: Set(StatusCol::GmOnly),
+            kind: Set(PageKindCol::Entity),
+            template_id: Set(None),
+            created_at: Set(Utc::now()),
+            updated_at: Set(Utc::now()),
+        }
+        .insert(conn)
+        .await
+        .expect("seed page");
+        id
+    }
+
+    fn new_rel(page_a: PageId, page_b: PageId, fwd: &str, rev: &str) -> NewRelationship {
+        use crate::domain::relationship::{Knowledge, Origin};
+        NewRelationship {
+            id: RelationshipId::generate(),
+            page_a,
+            page_b,
+            predicate_a_to_b: fwd.into(),
+            predicate_b_to_a: rev.into(),
+            origin: Origin::Prior,
+            superseded: None,
+            retcon: None,
+            knowledge: Knowledge::Public,
+        }
+    }
+
+    /// A batch commits all writes or none. Two valid `Create`s land together, and the
+    /// `Upserted` outcomes come back in write order.
+    #[tokio::test]
+    async fn apply_relationship_writes_commits_all_in_one_txn() {
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        let a = seed_rel_page(&conn, "A").await;
+        let b = seed_rel_page(&conn, "B").await;
+        let c = seed_rel_page(&conn, "C").await;
+
+        let outcomes = actor
+            .ask(ApplyRelationshipWrites {
+                writes: vec![
+                    RelationshipWrite::Create(new_rel(a.clone(), b, "rules", "is ruled by")),
+                    RelationshipWrite::Create(new_rel(a, c, "guards", "is guarded by")),
+                ],
+            })
+            .await
+            .expect("batch commits");
+
+        assert_eq!(outcomes.len(), 2, "one outcome per write, in order");
+        assert!(
+            outcomes
+                .iter()
+                .all(|o| matches!(o, RelationshipWriteOutcome::Upserted(_))),
+            "both creates upserted",
+        );
+        assert_eq!(
+            relationships::Entity::find()
+                .all(&conn)
+                .await
+                .unwrap()
+                .len(),
+            2,
+        );
+    }
+
+    /// A batch is atomic: a later write's failure rolls back the earlier ones. Here a
+    /// valid `Create` is followed by a `SetStamp` on a nonexistent relationship
+    /// (`NotFound`); the create must not survive. This is the atomicity the
+    /// `RelationshipGraph` relies on for supersede but cannot exercise itself (it
+    /// pre-validates rel-ids before issuing the batch). Mirrors
+    /// `db_create_session_rolls_back_atomically_on_failure`.
+    #[tokio::test]
+    async fn apply_relationship_writes_rolls_back_on_failed_action() {
+        db::register_sqlite_vec();
+        let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+        Migrator::up(&conn, None).await.expect("migrate");
+        let actor = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+            campaign_id: CampaignId::generate(),
+            conn: conn.clone(),
+        });
+
+        let a = seed_rel_page(&conn, "A").await;
+        let b = seed_rel_page(&conn, "B").await;
+        let ghost = RelationshipId::generate();
+
+        let err = actor
+            .ask(ApplyRelationshipWrites {
+                writes: vec![
+                    RelationshipWrite::Create(new_rel(a, b, "rules", "is ruled by")),
+                    RelationshipWrite::SetStamp {
+                        rel_id: ghost,
+                        column: StampColumn::Superseded,
+                        at: None,
+                    },
+                ],
+            })
+            .await
+            .expect_err("a NotFound on the second write must fail the batch");
+        assert!(
+            matches!(
+                err,
+                kameo::error::SendError::HandlerError(RelationshipWriteError::NotFound)
+            ),
+            "expected NotFound, got {err:?}",
+        );
+
+        assert_eq!(
+            relationships::Entity::find()
+                .all(&conn)
+                .await
+                .unwrap()
+                .len(),
+            0,
+            "the create must roll back when a later write in the batch fails",
+        );
     }
 }

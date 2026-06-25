@@ -42,8 +42,15 @@ const withRouter: Decorator = (Story) => {
       path: "/c/$campaignId",
       component: () => null,
     });
+    // The relationship chip links to a related page; stub the page route so its
+    // <Link> resolves an href in isolation.
+    const pageRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/c/$campaignId/p/$pageId",
+      component: () => null,
+    });
     return createRouter({
-      routeTree: rootRoute.addChildren([indexRoute, campaignRoute]),
+      routeTree: rootRoute.addChildren([indexRoute, campaignRoute, pageRoute]),
       history: createMemoryHistory({ initialEntries: ["/"] }),
     });
   });

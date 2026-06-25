@@ -279,6 +279,18 @@ sources = [
   "workers/whisperx/uv.lock",
 ]
 
+# Re-bless the committed SQL schema goldens (apps/{campaign,platform}/tests/schema.sql)
+# after an intentional migration change. NOT part of `test` - the goldens are
+# verified by `cargo test` (the `migrated_schema_matches_golden` cases); this only
+# rewrites them. Review the resulting schema.sql diff before committing.
+[tasks."bless-schema"]
+description = "Regenerate the committed SQL schema goldens for the Rust tiers"
+env = { UPDATE_SCHEMA_GOLDEN = "1" }
+run = [
+  "cargo test -p familiar-systems-campaign --test schema migrated_schema_matches_golden",
+  "cargo test -p familiar-systems-platform --test schema migrated_schema_matches_golden",
+]
+
 # --- integration ---
 
 [tasks."web:integration"]

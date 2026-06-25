@@ -10,10 +10,13 @@
 //
 // The happy path: create a Daggerheart campaign through the wizard, edit the
 // seeded home page, create and edit a second page, navigate between them via the
-// table of contents and assert the content survived the server round-trip, then
+// table of contents and assert the content survived the server round-trip,
 // rename the page and assert the ToC updates live (which, because room actors
 // flush on last-subscriber-leave / on stop, also proves it reached the campaign
-// DB).
+// DB), then create a third entity and relate the two through the create-
+// relationship modal, and edit that relationship to conceal it (a knowledge PATCH
+// flipping the now-mutable secret bit; server-authoritative REST; the harness asserts
+// the row, and that it persisted secret, in SQLite).
 
 import { expect, test } from "@playwright/test";
 
@@ -50,7 +53,7 @@ async function typeTwoLines(
   await expect(editor).toContainText(second);
 }
 
-test("create a campaign, edit two pages, and navigate between them via the ToC", async ({
+test("create a campaign, edit pages, navigate the ToC, and relate two entities", async ({
   page,
 }) => {
   // --- Hub (empty on a fresh DB) -> start the first campaign. ---
@@ -101,6 +104,45 @@ test("create a campaign, edit two pages, and navigate between them via the ToC",
 
   // --- Edit the test page: two body paragraph blocks. ---
   await typeTwoLines(page, page.locator(BODY_EDITOR), "Test line one", "Test line two");
+
+  // --- Create a third entity ("Grimhollow") and relate the two. Do this before
+  // the rename below, while the second page still carries its creation name in
+  // `pages.name`: the entity search reads that column, and the in-editor rename
+  // only reaches it on a later flush. ---
+  await sidebar.getByRole("button", { name: "New page" }).click();
+  await page.getByRole("button", { name: /New entity/ }).click();
+  const grimName = page.getByLabel("Name");
+  await grimName.fill("Grimhollow");
+  await grimName.press("Enter");
+  await expect(sidebar.getByRole("button", { name: "Grimhollow" })).toBeVisible();
+  await expect(page.locator(BODY_EDITOR)).toBeVisible();
+  // Body content so the harness's per-page block assertion holds here too.
+  await typeTwoLines(page, page.locator(BODY_EDITOR), "Grim line one", "Grim line two");
+
+  // The create flow: Grimhollow (the open page = subject) relates to "Test page".
+  // A fresh campaign has no known predicates (the typeahead offers only "use
+  // custom") and no sessions (origin defaults to Prior). Create it Public (the
+  // default); the conceal happens in the edit modal below. The modal is portaled to
+  // <body>, so query the page.
+  await page.getByRole("button", { name: "+ add" }).click();
+  await page.getByLabel("Search entities").fill("Test");
+  await page.getByRole("option", { name: /Test page/ }).click();
+  await page.getByLabel("Predicate", { exact: true }).fill("is a resident of");
+  await page.getByLabel("Reverse predicate", { exact: true }).fill("is the home of");
+  await page.getByRole("button", { name: "Create" }).click();
+  // On success the modal closes and the widget refetches; the row appears. The
+  // predicate text is stable regardless of which page is canonical page_a.
+  await expect(page.getByText("is a resident of")).toBeVisible();
+
+  // --- Edit the relationship to conceal it: Public -> Hidden. The secret bit is
+  // freely mutable, so this is a knowledge PATCH (no session needed - a fresh campaign
+  // has none, so end / supersede / retcon / reveal are unavailable, but conceal isn't).
+  // The live row ends up secret (is_secret = true) for the DB assertion. ---
+  await page.getByRole("button", { name: /Edit relationship/ }).click();
+  await expect(page.getByRole("heading", { name: "Edit relationship" })).toBeVisible();
+  await page.getByRole("radio", { name: /Hidden/ }).click();
+  await page.getByRole("button", { name: "Conceal" }).click();
+  await expect(page.getByRole("heading", { name: "Edit relationship" })).toHaveCount(0);
 
   // --- Navigate back to home via the ToC; its content survived. ---
   await sidebar.getByRole("button", { name: "Campaign Base Camp" }).click();

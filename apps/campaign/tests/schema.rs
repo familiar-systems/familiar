@@ -1,6 +1,14 @@
-//! Schema consistency: one self-contained check that the sea-orm entities match
-//! the schema the migrations build. `cargo test` runs it; there is nothing else
-//! to run and no committed artifact to maintain.
+//! Schema consistency: two checks that keep the sea-orm entities and the
+//! migrations honest. `cargo test` runs both; nothing to regenerate by hand.
+//!
+//! `entities_match_schema` compares the migrated DB against an entity-derived one
+//! (the runtime-safety guarantee). `migrated_schema_matches_golden` snapshots the
+//! realized DDL (`sqlite_master`) against the committed `tests/schema.sql`,
+//! catching what the entity comparison structurally can't: CHECK constraints,
+//! partial and non-unique indexes, defaults. The golden is *derived, not
+//! authored* - recomputed from the same `Migrator` production runs and asserted
+//! equal on every run, so it can't silently drift from the migrations; re-bless an
+//! intentional change with `mise run bless-schema` and review the `schema.sql` diff.
 //!
 //! Against a freshly-migrated in-memory DB and an entity-derived in-memory DB,
 //! `entities_match_schema` asserts: the set of migrated user tables (minus the
@@ -11,17 +19,19 @@
 //! the migrated table, and `Entity::find().all()` executes against the live
 //! schema. That is the entity<->migration runtime-safety guarantee.
 //!
-//! Out of scope (sea-orm entities can't express these): CHECK constraints,
-//! non-unique (performance) indexes, column defaults, and the vec0 table shape.
-//! Those are created by the migrations and, where load-bearing, covered by
-//! behavioral tests (e.g. the `campaign_metadata` `id = 1` CHECK in that
-//! migration's own test module).
+//! The *entity* comparison can't express CHECK constraints, partial/composite or
+//! non-unique indexes, column defaults, or the vec0 table shape - sea-orm
+//! entities have no syntax for them. Those are caught instead by the golden
+//! snapshot, and where their *behavior* is load-bearing, by behavioral tests too
+//! (the `campaign_metadata` `id = 1` CHECK in that migration's own test module;
+//! the `relationships` partial unique "live fact" index in
+//! `tests/relationships_test.rs`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use familiar_systems_campaign::db;
 use familiar_systems_campaign::entities::{
-    blocks, campaign_metadata, pages, sessions, toc_entries,
+    blocks, campaign_metadata, pages, relationships, sessions, toc_entries,
 };
 use familiar_systems_campaign::migrations::Migrator;
 use sea_orm::{
@@ -124,12 +134,20 @@ async fn foreign_keys(db: &DatabaseConnection, table: &str) -> Vec<FkAttrs> {
 /// The set of UNIQUE column-groups for `table`. A `#[sea_orm(unique)]` column, a
 /// migration `.unique_key()`, and PRIMARY KEY all surface here as unique indexes.
 /// Non-unique (performance) indexes are excluded, since entities don't declare them.
-/// Index names differ between the two DBs, so we key on the ordered column list.
+/// PARTIAL unique indexes (`... WHERE <predicate>`) are excluded too: a sea-orm
+/// entity can't express a partial or composite unique index, so comparing them
+/// would always false-positive. Like CHECK constraints, they're migration-owned
+/// and behaviorally tested (see `relationships`' live-fact index, exercised in
+/// `tests/relationships_test.rs`). Index names differ between the two DBs, so we
+/// key on the ordered column list.
 async fn unique_indexes(db: &DatabaseConnection, table: &str) -> BTreeSet<Vec<String>> {
     let index_rows = db
         .query_all(Statement::from_string(
             DatabaseBackend::Sqlite,
-            format!("SELECT name FROM pragma_index_list('{table}') WHERE \"unique\" = 1"),
+            format!(
+                "SELECT name FROM pragma_index_list('{table}') \
+                 WHERE \"unique\" = 1 AND \"partial\" = 0"
+            ),
         ))
         .await
         .expect("pragma_index_list");
@@ -236,6 +254,14 @@ async fn entities_match_schema() {
         .await,
         check_entity(&migrated, &entity_db, &schema, backend, toc_entries::Entity).await,
         check_entity(&migrated, &entity_db, &schema, backend, sessions::Entity).await,
+        check_entity(
+            &migrated,
+            &entity_db,
+            &schema,
+            backend,
+            relationships::Entity,
+        )
+        .await,
     ]
     .into_iter()
     .collect();
@@ -245,5 +271,66 @@ async fn entities_match_schema() {
         covered,
         "table-set drift: every migrated user table (except the vec0 `block_embeddings`) \
          must have an entity, and vice versa"
+    );
+}
+
+/// The realized schema as `sqlite_master` stores it after a full migration: every
+/// `CREATE TABLE`/`CREATE INDEX` verbatim, so CHECK constraints, partial and
+/// non-unique indexes, and defaults are all captured (no pragma exposes those).
+/// `sql IS NOT NULL` drops the implicit `sqlite_autoindex_*` rows; `block_embeddings%`
+/// is the vec0 virtual table + its shadow tables, whose DDL tracks the extension,
+/// not us; `seaql_%` is sea-orm's migration bookkeeping.
+async fn dump_schema(db: &DatabaseConnection) -> String {
+    let rows = db
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            "SELECT sql FROM sqlite_master \
+             WHERE sql IS NOT NULL \
+             AND name NOT LIKE 'sqlite_%' \
+             AND name NOT LIKE 'seaql_%' \
+             AND name NOT LIKE 'block_embeddings%' \
+             ORDER BY type, name"
+                .to_owned(),
+        ))
+        .await
+        .expect("sqlite_master");
+    let mut sql = rows
+        .into_iter()
+        .map(|r| r.try_get::<String>("", "sql").unwrap())
+        .collect::<Vec<_>>()
+        .join(";\n\n");
+    sql.push_str(";\n");
+    sql
+}
+
+/// Golden snapshot of the realized schema. Derived, not authored: recomputed from
+/// the same `Migrator` production runs and asserted equal to `tests/schema.sql`
+/// every run, so it can't silently drift from the migrations. This is where CHECK
+/// constraints and partial indexes (invisible to `entities_match_schema`) get
+/// caught. Re-bless an intentional change with `mise run bless-schema`.
+#[tokio::test]
+async fn migrated_schema_matches_golden() {
+    let db = setup_via_migrations().await;
+    let actual = dump_schema(&db).await;
+    let golden = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/schema.sql");
+
+    if std::env::var_os("UPDATE_SCHEMA_GOLDEN").is_some() {
+        std::fs::write(golden, &actual).expect("write schema golden");
+        eprintln!("blessed schema golden: {golden}");
+        return;
+    }
+
+    let expected = std::fs::read_to_string(golden).unwrap_or_else(|_| {
+        panic!(
+            "missing {golden}; create it with `mise run bless-schema` \
+             (or UPDATE_SCHEMA_GOLDEN=1 cargo test -p familiar-systems-campaign \
+             --test schema migrated_schema_matches_golden)"
+        )
+    });
+    assert_eq!(
+        actual, expected,
+        "schema drift: the migrated schema no longer matches tests/schema.sql. \
+         If this change is intentional, re-bless with `mise run bless-schema` and \
+         review the diff."
     );
 }

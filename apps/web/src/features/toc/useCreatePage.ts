@@ -38,8 +38,10 @@ export function useCreatePage(campaignId: CampaignId): CreatePage {
 
 // Build the kind's request variant, POST it, and read the new page id from the
 // kind-tagged response (a session reports its page via `page_id`, the document
-// kinds via `id`).
-async function createByKind(
+// kinds via `id`). Exported (not just via the navigating `useCreatePage`) so the
+// create-relationship modal can mint a bare entity and keep its returned PageId
+// without leaving the page.
+export async function createByKind(
   campaignId: CampaignId,
   kind: PageKind,
   name: string | null,

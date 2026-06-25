@@ -116,6 +116,62 @@
         }
       }
     },
+    "/campaign/{id}/entities": {
+      "get": {
+        "tags": ["relationships"],
+        "operationId": "search_entities",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Substring to match entity names",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching entity pages (excludes templates)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EntitySearchResult"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Caller is not a GM of this campaign"
+          },
+          "404": {
+            "description": "Campaign not on this shard"
+          },
+          "500": {
+            "description": "Read failed"
+          },
+          "503": {
+            "description": "Server restarting or platform unreachable"
+          }
+        }
+      }
+    },
     "/campaign/{id}/pages": {
       "post": {
         "tags": ["pages"],
@@ -172,6 +228,328 @@
           },
           "501": {
             "description": "Creating an entity from a template is not yet supported"
+          },
+          "503": {
+            "description": "Server restarting or platform unreachable"
+          }
+        }
+      }
+    },
+    "/campaign/{id}/pages/{pageId}/relationships": {
+      "get": {
+        "tags": ["relationships"],
+        "operationId": "get_relationships",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageId",
+            "in": "path",
+            "description": "Page whose relationships to read",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page's relationships, oriented to it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RelationshipView"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed page id"
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Caller is not a GM of this campaign"
+          },
+          "404": {
+            "description": "Campaign not on this shard"
+          },
+          "500": {
+            "description": "Read failed"
+          },
+          "503": {
+            "description": "Server restarting or platform unreachable"
+          }
+        }
+      }
+    },
+    "/campaign/{id}/relationships": {
+      "post": {
+        "tags": ["relationships"],
+        "operationId": "create_relationship",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRelationshipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Relationship created, oriented to the subject",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Caller is not a GM of this campaign"
+          },
+          "404": {
+            "description": "Campaign not on this shard, an endpoint page is missing, a referenced session is missing, or the superseded relationship does not exist"
+          },
+          "409": {
+            "description": "A live relationship with this predicate pair already exists, or the superseded row is already invalidated"
+          },
+          "422": {
+            "description": "Self-edge, empty predicate, a reveal before origin, or an invalid supersede (different pair / prior origin / takes effect before the replaced fact began)"
+          },
+          "500": {
+            "description": "Creation failed"
+          },
+          "503": {
+            "description": "Server restarting or platform unreachable"
+          }
+        }
+      }
+    },
+    "/campaign/{id}/relationships/predicates": {
+      "get": {
+        "tags": ["relationships"],
+        "operationId": "known_predicates",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Known predicate pairs with usage counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PredicatePairView"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Caller is not a GM of this campaign"
+          },
+          "404": {
+            "description": "Campaign not on this shard"
+          },
+          "500": {
+            "description": "Read failed"
+          },
+          "503": {
+            "description": "Server restarting or platform unreachable"
+          }
+        }
+      }
+    },
+    "/campaign/{id}/relationships/{relId}": {
+      "delete": {
+        "tags": ["relationships"],
+        "operationId": "delete_relationship",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "relId",
+            "in": "path",
+            "description": "Relationship ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Hard-deleted"
+          },
+          "400": {
+            "description": "Malformed relationship id"
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Caller is not a GM of this campaign"
+          },
+          "404": {
+            "description": "Campaign not on this shard, or relationship not found"
+          },
+          "500": {
+            "description": "Delete failed"
+          },
+          "503": {
+            "description": "Server restarting or platform unreachable"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["relationships"],
+        "operationId": "patch_relationship",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "relId",
+            "in": "path",
+            "description": "Relationship ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchRelationshipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Applied"
+          },
+          "400": {
+            "description": "Malformed relationship id"
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Caller is not a GM of this campaign"
+          },
+          "404": {
+            "description": "Campaign not on this shard, relationship not found, or a referenced session is missing"
+          },
+          "409": {
+            "description": "Clearing superseded/retcon re-creates a duplicate live fact"
+          },
+          "422": {
+            "description": "Empty patch, revealing a public fact, or an axis event before the fact's origin"
+          },
+          "500": {
+            "description": "Patch failed"
+          },
+          "503": {
+            "description": "Server restarting or platform unreachable"
+          }
+        }
+      }
+    },
+    "/campaign/{id}/sessions": {
+      "get": {
+        "tags": ["relationships"],
+        "operationId": "list_sessions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Campaign ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sessions ascending by ordinal, plus the current one",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session"
+          },
+          "403": {
+            "description": "Caller is not a GM of this campaign"
+          },
+          "404": {
+            "description": "Campaign not on this shard"
+          },
+          "500": {
+            "description": "Read failed"
           },
           "503": {
             "description": "Server restarting or platform unreachable"
@@ -399,6 +777,51 @@
         ],
         "description": "Create a new Page in a campaign, discriminated by `kind`. The wire shape is\n`{ \"kind\": \"entity\" | \"template\" | \"session\", \"content\": { ... } }`.\n\nA missing `status` defaults to `gmOnly` (the domain default for new content).\n`parent` places the Page in the table of contents: omitted appends it at the\nToC root; `Some(id)` nests it as the last child of that Page's ToC node."
       },
+      "CreateRelationshipRequest": {
+        "type": "object",
+        "description": "`POST /campaign/{id}/relationships` body. Creating a relationship names both\nendpoints (it is undirected, owned by neither page); `subject_page_id` /\n`other_page_id` set the orientation and the server canonicalizes by id.\n`supersedes` makes it an atomic replace: the named live relationship is ended in\nthe same transaction at this create's origin session (so `origin` must be a\nsession, not `Prior`, when `supersedes` is set).",
+        "required": [
+          "subject_page_id",
+          "other_page_id",
+          "predicate_forward",
+          "predicate_reverse",
+          "origin",
+          "knowledge"
+        ],
+        "properties": {
+          "knowledge": {
+            "$ref": "#/components/schemas/KnowledgeInput"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/OriginInput"
+          },
+          "other_page_id": {
+            "$ref": "#/components/schemas/PageId"
+          },
+          "predicate_forward": {
+            "type": "string",
+            "description": "Reads subject -> other."
+          },
+          "predicate_reverse": {
+            "type": "string",
+            "description": "Reads other -> subject."
+          },
+          "subject_page_id": {
+            "$ref": "#/components/schemas/PageId"
+          },
+          "supersedes": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RelationshipId",
+                "description": "The live relationship this one replaces, ended atomically. `None` for a\nplain create."
+              }
+            ]
+          }
+        }
+      },
       "CreateSessionBody": {
         "type": "object",
         "description": "Body for creating a `session` page - its document plus its temporal record,\nminted together in one genesis transaction.\n\n`name` is required and non-blank, like every other page kind, and unique among\nsessions (\"The End of Perth\"). The client renders `Session {ordinal}: {name}`\nfrom the response's `ordinal` and `name`.",
@@ -496,6 +919,127 @@
           }
         }
       },
+      "EntitySearchResult": {
+        "type": "object",
+        "description": "A matched entity page from `GET /campaign/{id}/entities?q=`, for the object\ntypeahead.",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/PageId"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "KnowledgeInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["public"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["hidden"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/SessionId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["revealed"]
+              }
+            }
+          }
+        ],
+        "description": "A knowledge state as the client supplies it - on create (the born state) and on\npatch (the new state, set wholesale). The input analog of [`KnowledgeView`]: public,\nsecret (hidden), or secret and revealed at a session."
+      },
+      "KnowledgeView": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Born public: known to the players from the moment it became true.",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["public"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Born secret, not yet revealed (GM-only). Drives the row's GM-wash.",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["hidden"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Born secret, learned by the players at this session.",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/ViewSessionOrdinal",
+                "description": "Born secret, learned by the players at this session."
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["revealed"]
+              }
+            }
+          }
+        ],
+        "description": "The knowledge axis in the viewer's terms: public (always known), secret and not yet\nrevealed, or revealed to the players at a session. Mirrors the server-internal\n`Knowledge` sum; the secret bit is implicit in the variant (`Public` = not secret,\nthe others secret). Adjacent tagging per the convention guard."
+      },
+      "OriginInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["prior"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/SessionId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["session"]
+              }
+            }
+          }
+        ],
+        "description": "Where a relationship became true, as a create supplies it: the input analog of\nthe output [`ViewSessionPoint`]. A sum, not a nullable `SessionId`, so `Prior`\nis a first-class choice the picker offers. The client sends back a `SessionId`\nit got from `GET /sessions`, so a raw `SessionId` crossing the wire as *input*\nis fine (the no-raw-`SessionId` rule is about the read view's ordinals)."
+      },
       "PageId": {
         "type": "string",
         "format": "ulid",
@@ -588,10 +1132,148 @@
           }
         }
       },
+      "PatchRelationshipRequest": {
+        "type": "object",
+        "description": "`PATCH /campaign/{id}/relationships/{relId}` body: independent, reversible edits to\nthe three mutable axes. Each field optional (absent = leave that axis unchanged); at\nleast one must be present. Predicates and origin are immutable, so they are absent\nhere. The present edits apply as one atomic batch.\n\n`knowledge` is set wholesale to the new state (`Public | Hidden | Revealed(s)`),\nfreely - reveal, conceal, or re-hide. `superseded` is the factuality end (set = end,\nclear = un-end); `retcon` is the terminal strike (set = retcon, clear = un-retcon).\nEnd-*with-successor* is not a patch - it goes through `POST /relationships` with\n`supersedes` (the successor is a new row).",
+        "properties": {
+          "knowledge": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/KnowledgeInput"
+              }
+            ]
+          },
+          "retcon": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionStampPatch"
+              }
+            ]
+          },
+          "superseded": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionStampPatch"
+              }
+            ]
+          }
+        }
+      },
+      "PredicatePairView": {
+        "type": "object",
+        "description": "One known predicate pair and its usage count, for the create modal's predicate\ntypeahead + reverse autofill. Wire form of the server-internal `PredicatePair`.",
+        "required": ["forward", "reverse", "count"],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "forward": {
+            "type": "string"
+          },
+          "reverse": {
+            "type": "string"
+          }
+        }
+      },
+      "RelatedPage": {
+        "type": "object",
+        "description": "The other endpoint of a relationship, as the viewer of one page sees it.",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/PageId"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "RelationshipId": {
+        "type": "string",
+        "format": "ulid",
+        "description": "Identifies one relationship edge (an undirected page-to-page fact with a\npredicate at each end). ULID for compact, B-tree-friendly identity."
+      },
+      "RelationshipView": {
+        "type": "object",
+        "description": "One relationship as rendered on a given page: oriented so the client never\ncomputes direction, and projected onto both axes. The server picks `predicate`\n(forward *from the viewed page*) and `predicate_reverse` (back toward it) from\nthe stored undirected pair, and resolves session identities to ordinals.",
+        "required": ["id", "other", "predicate", "predicate_reverse", "origin", "knowledge"],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/RelationshipId"
+          },
+          "knowledge": {
+            "$ref": "#/components/schemas/KnowledgeView",
+            "description": "Knowledge axis."
+          },
+          "origin": {
+            "$ref": "#/components/schemas/ViewSessionPoint",
+            "description": "Factuality start."
+          },
+          "other": {
+            "$ref": "#/components/schemas/RelatedPage",
+            "description": "The page at the other end of the edge."
+          },
+          "predicate": {
+            "type": "string",
+            "description": "The predicate read forward, from the viewed page toward `other`."
+          },
+          "predicate_reverse": {
+            "type": "string",
+            "description": "The predicate read back, from `other` toward the viewed page."
+          },
+          "retcon": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ViewSessionOrdinal",
+                "description": "The session a retcon struck the fact. `None` = not retconned."
+              }
+            ]
+          },
+          "superseded": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ViewSessionOrdinal",
+                "description": "Factuality end: the session the fact stopped being true. `None` = still true."
+              }
+            ]
+          }
+        }
+      },
       "SessionId": {
         "type": "string",
         "format": "ulid",
         "description": "Identifies a play session (discord call, table session, etc.)."
+      },
+      "SessionRef": {
+        "type": "object",
+        "description": "A session by its durable id + curated ordinal, for the as-of pickers. The id is\nwhat create/patch send back (ordinals can be renumbered; ids are stable).",
+        "required": ["id", "ordinal"],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/SessionId"
+          },
+          "ordinal": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       },
       "SessionResponse": {
         "type": "object",
@@ -618,6 +1300,60 @@
           "session_id": {
             "$ref": "#/components/schemas/SessionId",
             "description": "The temporal record - the durable identity relationships reference."
+          }
+        }
+      },
+      "SessionStampPatch": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Stamp the axis with this session.",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/SessionId",
+                "description": "Stamp the axis with this session."
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["set"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Clear the axis back to NULL.",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["clear"]
+              }
+            }
+          }
+        ],
+        "description": "A patch to one nullable session-stamp axis: set it to a session, or clear it back\nto NULL (the reversible correction). A field left absent (`null`) on\n[`PatchRelationshipRequest`] leaves that axis unchanged; present-and-`Clear` is an\nexplicit un-set. Adjacent tagging per the convention guard."
+      },
+      "SessionsResponse": {
+        "type": "object",
+        "description": "`GET /campaign/{id}/sessions`: every session ascending by ordinal, plus the\ncurrent (max-ordinal) one for the picker's default. `current` is `None` when the\ncampaign has no sessions yet (the picker then offers `Prior` only).",
+        "required": ["sessions"],
+        "properties": {
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionRef"
+              }
+            ]
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionRef"
+            }
           }
         }
       },
@@ -698,6 +1434,49 @@
             "description": "RFC 3339 timestamp."
           }
         }
+      },
+      "ViewSessionOrdinal": {
+        "type": "object",
+        "description": "A session referred to by its curated ordinal, in the viewer's terms. Used bare\nfor the session-only axes (superseded / retcon / reveal) and inside\n[`ViewSessionPoint::Session`].",
+        "required": ["ordinal"],
+        "properties": {
+          "ordinal": {
+            "type": "integer",
+            "format": "int64",
+            "description": "\"Session N\". Serialized as a JSON number (counts are small); `#[ts(type)]`\nkeeps the TS type `number` rather than ts-rs's default `bigint` for `i64`."
+          }
+        }
+      },
+      "ViewSessionPoint": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Before the campaign's first session.",
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["prior"]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "At a session, by its curated ordinal.",
+            "required": ["content", "kind"],
+            "properties": {
+              "content": {
+                "$ref": "#/components/schemas/ViewSessionOrdinal",
+                "description": "At a session, by its curated ordinal."
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["session"]
+              }
+            }
+          }
+        ],
+        "description": "A point on the factuality origin axis, in the viewer's terms: before the campaign\nbegan, or at a session (by its curated ordinal). A sum rather than a nullable\nordinal so `Prior` is a first-class value the client can't confuse with a missing\nfield. (Only `origin` can be `Prior`; the session-only axes -\nsuperseded/retcon/reveal - use a bare [`ViewSessionOrdinal`].) Adjacent tagging\n(`{ \"kind\": \"...\", \"content\": { ... } }`) per the convention guard in\n`crates/app-shared/tests/conventions.rs`."
       }
     }
   }

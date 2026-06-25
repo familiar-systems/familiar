@@ -50,7 +50,7 @@ pub async fn get_campaign(
         ))))
         .await
     {
-        Ok(Some(sup)) => sup,
+        Ok(Some(handle)) => handle.supervisor,
         Ok(None) => return StatusCode::NOT_FOUND.into_response(),
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
@@ -121,7 +121,7 @@ pub async fn patch_campaign(
         ))))
         .await
     {
-        Ok(Some(sup)) => sup,
+        Ok(Some(handle)) => handle.supervisor,
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
