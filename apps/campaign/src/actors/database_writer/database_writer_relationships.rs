@@ -143,7 +143,7 @@ pub(super) async fn delete_relationship(
 
 /// One relationship mutation: the building block the
 /// [`RelationshipGraph`](crate::actors::relationship_graph::RelationshipGraph)
-/// composes into an atomic [`ApplyRelationshipWrites`] batch. Each variant is one
+/// composes into an atomic [`ApplyRelationshipWrites`](super::ApplyRelationshipWrites) batch. Each variant is one
 /// SQL statement; the writer is a dumb interpreter that runs a list of them in a
 /// single transaction. `SetStamp` covers the two reversible factuality axes
 /// (superseded / retcon): `at = Some` stamps it, `None` clears it. `SetKnowledge` sets

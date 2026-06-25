@@ -1,7 +1,7 @@
 //! `TocActor`: the campaign's table-of-contents CRDT room.
 //!
-//! Facade module. The actor lives in [`toc_actor`]; the pure row<->tree
-//! serialization in [`toc_snapshot`]. Re-exports preserve the
+//! Facade module. The actor lives in `toc_actor`; the pure row<->tree
+//! serialization in `toc_snapshot`. Re-exports preserve the
 //! `crate::actors::toc::*` import surface.
 
 #[cfg(test)]
