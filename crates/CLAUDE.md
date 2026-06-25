@@ -11,7 +11,7 @@ Covers `crates/` only: the four Rust library crates the two servers share. Overr
 | `fs-id-macros` | `#[fs_id]` proc-macro (branded-ID codegen) | — |
 | `fs-id` | re-exports the macro + allowed inner types (`Nanoid`, `Uuid`, `Ulid`) | — |
 | `app-shared` | types both servers need: IDs (`CampaignId`, `UserId`), auth (Hanko validator, `AuthenticatedUser` extractor), campaign-CRUD DTOs | `types-app` |
-| `campaign-shared` | campaign-only types: IDs (`PageId`, `BlockId`, ...), Loro schema constants, onboarding/notification DTOs | `types-campaign` |
+| `campaign-shared` | campaign-only types: IDs (`PageId`, `BlockId`, `RelationshipId`, `SessionId`), relationship/session wire DTOs, Loro schema constants, onboarding/notification DTOs | `types-campaign` |
 
 Split rule (from root CLAUDE.md): "does the platform server need this type?" Yes → `app-shared`. No → `campaign-shared`.
 

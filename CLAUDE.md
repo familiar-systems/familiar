@@ -126,11 +126,11 @@ Maximum strictness, no exceptions:
 
 ## Core Domain Concepts
 
-- **Status** (on nodes, blocks, relationships): `gm_only` → `known` → `retconned`. Default is `gm_only`. Status cascades down (GM-only node = all children GM-only), not up.
+- **Status** (on nodes, blocks): `gm_only` → `known` → `retconned`. Default is `gm_only`. Status cascades down (GM-only node = all children GM-only), not up.
 - **Suggestions**: Discriminated union over types (`create_page`, `update_blocks`, `create_relationship`, `journal_draft`, `contradiction`). Always durable. Auto-reject after ~14 days.
 - **AgentConversation**: Persisted record of AI interactions. Provenance for suggestions. Roles: `gm`, `player`, `system`.
 - **Mentions** (block→node or block→block): Derived automatically, power backlinks and transclusion.
-- **Relationships** (node→node): Authored/curated, carry semantic labels. Freeform vocabulary.
+- **Relationships** (node→node): One bidirectional row per fact (forward + reverse predicate), authored, freeform vocabulary. Two session-stamped axes - Factuality and Knowledge - see `docs/glossary.md` § Relationship Lifecycle.
 - **Pages & kinds**: A **Page** is the universal node/document (URL `/p/:id`, LoroDoc-backed). Its `kind` field is a `PageKind` - `entity | template` in code today (`session`/`skill` are future). `entity` = authored world content (NPCs, locations, lore); the AI's extraction/search target. The collective noun "entity" is world content; "page" is any node.
 - **Templates**: A template is a page of kind `template` - no separate `Template` entity. Creating an entity from a template clones the template's block structure; `templateId?: PageId` tracks lineage. Tags are pages connected via `tagged` relationships, not a `tags: string[]` field.
 
