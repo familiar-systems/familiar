@@ -17,6 +17,16 @@ catalog:
   tailwindcss: ^4.3.1
   tailwindcss-animate: ^1.0.7
   typescript: ^6.0.3
+  # Accessible component primitives (packages/ui). React Aria provides the RTL +
+  # locale-aware behavior the design requires; @react-aria/test-utils provides
+  # ARIA-pattern interaction testers for CI. test-utils is pre-1.0, pinned exact
+  # (a caret on a prerelease only matches other prereleases of the same tuple).
+  react-aria-components: ^1.19.0
+  "@react-aria/test-utils": 1.0.0-rc.0
+  # Compiler-based i18n (apps/web). Messages compile to typed ESM functions, so a
+  # missing key is a missing export (build error). Build-time only: the compiler
+  # emits self-contained runtime into src/paraglide, so this is a devDependency.
+  "@inlang/paraglide-js": ^2.20.0
   # Editor stack (shared between packages/editor and apps/web). The TipTap v3
   # packages pin each other exactly and release in lockstep, so a single caret
   # resolves them consistently. loro-crdt tracks the campaign server's loro

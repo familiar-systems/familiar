@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react";
 import { useCreateCampaign } from "../features/onboarding/useCreateCampaign";
+import { m } from "../paraglide/messages.js";
 import { assetPath } from "../lib/paths";
 
 const CROSSHATCH_URL = `url('${assetPath("/crosshatch.svg")}')`;
@@ -29,6 +30,10 @@ export function EmptyHubCard(): React.ReactElement {
       <Banner className="h-14" />
 
       <div className="px-10 py-14 text-center md:px-14">
+        {/* The raven passage stays inline English: it mixes prose with an inline
+            gold-styled word, which Paraglide's plain-string messages can't carry
+            without a rich-text interpolation helper. Localized once that helper
+            lands (the same one the hero headings need). */}
         <p className="mx-auto mb-6 max-w-lg font-display text-lg leading-relaxed text-pretty text-foreground/90 italic md:text-xl">
           You sit at the desk, empty but for one paper. The sheet is blank but your mind conjures a
           large, black corvid gazing back at you. Its glowing, purple eyes lock with yours.
@@ -45,7 +50,7 @@ export function EmptyHubCard(): React.ReactElement {
           className="inline-flex items-center gap-2 rounded-full bg-gold px-8 py-4 font-medium text-white shadow-lg shadow-gold/25 transition-colors hover:bg-gold/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Plus className="size-4" />
-          <span>{state.creating ? "Opening the door..." : "Start your first campaign."}</span>
+          <span>{state.creating ? m.hubCreateInProgress() : m.hubStartFirstCampaign()}</span>
         </button>
         {state.error !== null ? (
           <p role="alert" data-testid="create-error" className="mt-4 text-sm text-foreground/70">

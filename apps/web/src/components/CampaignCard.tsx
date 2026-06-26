@@ -1,7 +1,9 @@
 import type { Campaign, CampaignId } from "@familiar-systems/types-app";
 import { Link } from "@tanstack/react-router";
 import { Clock, Pencil, XCircle } from "lucide-react";
-import { relativeTime } from "../lib/relative-time";
+import { formatRelativeTime } from "../lib/localization";
+import { m } from "../paraglide/messages.js";
+import { getLocale } from "../paraglide/runtime.js";
 
 type CardState = "draft" | "init-failed" | "initialized";
 
@@ -81,12 +83,10 @@ function GraphPaperCard({ state, campaignId }: GraphPaperCardProps): React.React
             isDraft ? "text-primary" : "text-[#92400e] dark:text-amber-400",
           ].join(" ")}
         >
-          {isDraft ? "Draft" : "Init failed"}
+          {isDraft ? m.campaignCardDraft() : m.campaignCardInitFailed()}
         </p>
         <p className="max-w-65 font-display text-[15px] text-muted-foreground italic">
-          {isDraft
-            ? "An empty sheet lays at the desk. Your mind swims with possibilities."
-            : "Something went wrong. Click to retry."}
+          {isDraft ? m.campaignCardDraftCopy() : m.campaignCardInitFailedCopy()}
         </p>
       </div>
     </Link>
@@ -115,7 +115,7 @@ interface InitializedCardProps {
 }
 
 function InitializedCard({ campaign, loaded }: InitializedCardProps): React.ReactElement {
-  const display = campaign.name ?? "Untitled campaign";
+  const display = campaign.name ?? m.campaignCardUntitled();
   const hasTagline = campaign.tagline !== null && campaign.tagline !== "";
 
   return (
@@ -193,7 +193,7 @@ function InitializedCard({ campaign, loaded }: InitializedCardProps): React.Reac
               loaded ? "text-gold" : "text-muted-foreground",
             ].join(" ")}
           >
-            {loaded ? "Loaded" : "Ready to Load"}
+            {loaded ? m.campaignCardLoaded() : m.campaignCardReadyToLoad()}
           </span>
         </div>
 
@@ -213,10 +213,10 @@ function InitializedCard({ campaign, loaded }: InitializedCardProps): React.Reac
         <div className="flex items-center justify-between border-t border-black/6 pt-3 text-xs text-muted-foreground dark:border-white/8">
           <span className="inline-flex items-center gap-1.5">
             <Clock className="size-3.25" />
-            {relativeTime(campaign.updated_at)}
+            {formatRelativeTime(getLocale(), campaign.updated_at)}
           </span>
           <span className="font-display text-primary italic">
-            {campaign.game_system ?? "System not yet chosen"}
+            {campaign.game_system ?? m.campaignCardNoSystem()}
           </span>
         </div>
       </div>

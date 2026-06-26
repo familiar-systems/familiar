@@ -1,5 +1,6 @@
 dist/
 src/routeTree.gen.ts
+src/paraglide/
 .tanstack/
 test-results/
 playwright-report/

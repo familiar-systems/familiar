@@ -264,6 +264,8 @@ sources = [
   "vitest.config.*",
   "apps/**/vitest.config.*",
   "packages/**/vitest.config.*",
+  "apps/web/messages/**",
+  "apps/web/project.inlang/**",
   "!**/node_modules/**",
   "!**/dist/**",
 ]
@@ -308,6 +310,11 @@ sources = [
   "apps/web/integration/**/*.ts",
   "apps/web/playwright.config.ts",
   "apps/web/package.json",
+  "apps/web/messages/**",
+  "apps/web/project.inlang/**",
+  "packages/ui/src/**/*.ts",
+  "packages/ui/src/**/*.tsx",
+  "packages/design/src/**",
   "pnpm-lock.yaml",
 ]
 
@@ -327,6 +334,11 @@ sources = [
   "apps/web/.storybook/**",
   "apps/web/vitest.stories.config.ts",
   "apps/web/package.json",
+  "apps/web/messages/**",
+  "apps/web/project.inlang/**",
+  "packages/ui/src/**/*.ts",
+  "packages/ui/src/**/*.tsx",
+  "packages/design/src/**",
   "pnpm-lock.yaml",
 ]
 
@@ -557,6 +569,10 @@ sources = [
   "apps/**/tsconfig*.json",
   "packages/**/tsconfig*.json",
   "apps/web/tsr.config.json",
+  # Paraglide compiles these to typed m.* functions before tsc; a message or
+  # locale change alters the generated types, so they must invalidate typecheck.
+  "apps/web/messages/**",
+  "apps/web/project.inlang/**",
   "!**/node_modules/**",
   "!**/dist/**",
 ]

@@ -2,6 +2,7 @@ import type { MeResponse } from "@familiar-systems/types-app";
 import { Link } from "@tanstack/react-router";
 import { LogOut, Settings as SettingsIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { m } from "../paraglide/messages.js";
 import { hanko } from "../lib/hanko";
 import { spaRoute } from "../lib/paths";
 
@@ -50,7 +51,7 @@ export function UserMenu({ me }: UserMenuProps): React.ReactElement {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Open account menu"
+        aria-label={m.userMenuOpenAriaLabel()}
         onClick={() => setOpen((o) => !o)}
         className={[
           "h-9 w-9 rounded-full",
@@ -74,7 +75,7 @@ export function UserMenu({ me }: UserMenuProps): React.ReactElement {
         >
           <div className="px-3 py-2">
             <span className="block text-xs tracking-[0.2em] text-muted-foreground uppercase">
-              Signed in as
+              {m.userMenuSignedInAs()}
             </span>
             <span
               className="mt-1 block truncate font-display text-sm text-foreground"
@@ -91,7 +92,7 @@ export function UserMenu({ me }: UserMenuProps): React.ReactElement {
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-foreground/5 focus:bg-foreground/5 focus:outline-none"
           >
             <SettingsIcon className="size-4 text-primary" />
-            <span>Settings</span>
+            <span>{m.userMenuSettings()}</span>
           </Link>
           <a
             role="menuitem"
@@ -100,7 +101,7 @@ export function UserMenu({ me }: UserMenuProps): React.ReactElement {
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-foreground/5 focus:bg-foreground/5 focus:outline-none"
           >
             <LogOut className="size-4 text-muted-foreground" />
-            <span>Sign out</span>
+            <span>{m.userMenuSignOut()}</span>
           </a>
         </div>
       ) : null}

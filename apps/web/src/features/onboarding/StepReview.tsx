@@ -1,6 +1,7 @@
 // Step 4: review and initialize. Final summary plus the wax seal.
 
 import type { AudioMode } from "@familiar-systems/types-campaign";
+import { m } from "../../paraglide/messages.js";
 import { type SealState, WaxSeal } from "./WaxSeal";
 
 interface StepReviewProps {
@@ -43,14 +44,16 @@ export function StepReview({
     <div className="space-y-8 enter-from-below">
       <header className="space-y-3">
         <p className="text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase">
-          Step four
+          {m.stepReviewEyebrow()}
         </p>
+        {/* Headline stays inline English: the gold-emphasized "seal" is inline
+            markup Paraglide's plain-string messages can't carry yet; localized
+            with a rich-text helper (Phase 4). */}
         <h2 className="font-display text-3xl leading-tight font-medium tracking-tight md:text-4xl">
           Review, then <em className="text-gold italic">seal</em>.
         </h2>
         <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
-          Pressing the seal commits the campaign. You can rename, swap templates, and edit settings
-          inside the campaign once it exists.
+          {m.stepReviewLede()}
         </p>
       </header>
 
@@ -58,15 +61,15 @@ export function StepReview({
         className="grid gap-4 rounded-2xl border border-foreground/10 bg-bronze-muted/20 p-6 md:grid-cols-2"
         data-testid="review-summary"
       >
-        <ReviewRow label="Name">
+        <ReviewRow label={m.stepReviewRowName()}>
           <span className="font-display text-lg font-medium tracking-tight">
             {name || <Empty />}
           </span>
         </ReviewRow>
-        <ReviewRow label="Tagline">
+        <ReviewRow label={m.stepReviewRowTagline()}>
           {tagline ? <span className="text-base">{tagline}</span> : <Empty />}
         </ReviewRow>
-        <ReviewRow label="System">
+        <ReviewRow label={m.stepReviewRowSystem()}>
           {systemDisplay ? (
             <span className="inline-flex items-center gap-2">
               <span
@@ -80,21 +83,25 @@ export function StepReview({
             <Empty />
           )}
         </ReviewRow>
-        <ReviewRow label="Templates">
+        <ReviewRow label={m.stepReviewRowTemplates()}>
           <span className="text-base">
-            {templateSlugs.size === 0 ? <Empty /> : `${templateSlugs.size} selected`}
+            {templateSlugs.size === 0 ? (
+              <Empty />
+            ) : (
+              m.stepReviewTemplatesSelected({ count: templateSlugs.size })
+            )}
           </span>
         </ReviewRow>
-        <ReviewRow label="Audio">
+        <ReviewRow label={m.stepReviewRowAudio()}>
           <span className="text-base">{describeAudio(audio)}</span>
         </ReviewRow>
-        <ReviewRow label="AI evals">
+        <ReviewRow label={m.stepReviewRowEvals()}>
           <span className="text-base">
             {evalsEnabled === null
-              ? "(not set)"
+              ? m.stepReviewNotSet()
               : evalsEnabled
-                ? "Anonymized signal shared."
-                : "No signal sent."}
+                ? m.stepReviewEvalsShared()
+                : m.stepReviewEvalsNotShared()}
           </span>
         </ReviewRow>
       </dl>
@@ -106,13 +113,11 @@ export function StepReview({
           className="space-y-2 rounded-2xl border border-foreground/10 bg-bronze-muted/40 p-5"
         >
           <p className="font-display text-base font-medium tracking-tight text-foreground">
-            The seal cracked.
+            {m.stepReviewErrorTitle()}
           </p>
           <p className="text-sm leading-relaxed text-muted-foreground">{errorMessage}</p>
           <p className="text-xs leading-relaxed text-muted-foreground/80">
-            This is a known thin-slice failure: the platform minted your campaign id, but the
-            initialization pipeline is not wired up yet. Your campaign exists in a draft state.
-            Refresh the page and you can try again, or return to the hub.
+            {m.stepReviewErrorDetail()}
           </p>
         </div>
       ) : null}
@@ -132,7 +137,7 @@ export function StepReview({
             onClick={onBack}
             className="rounded-full border border-foreground/10 bg-background/60 px-4 py-2 text-sm text-foreground transition-colors hover:bg-foreground/5"
           >
-            Back
+            {m.stepReviewBack()}
           </button>
         </div>
       </div>
@@ -155,18 +160,18 @@ function ReviewRow({ label, children }: ReviewRowProps): React.ReactElement {
 }
 
 function Empty(): React.ReactElement {
-  return <span className="text-muted-foreground italic">(not set)</span>;
+  return <span className="text-muted-foreground italic">{m.stepReviewNotSet()}</span>;
 }
 
 function describeAudio(mode: AudioMode | null): string {
   switch (mode) {
     case null:
-      return "(not set)";
+      return m.stepReviewNotSet();
     case "opt-in":
-      return "Recording. Audio improves transcription.";
+      return m.stepReviewAudioOptIn();
     case "opt-out":
-      return "Recording. Audio excluded from training.";
+      return m.stepReviewAudioOptOut();
     case "text-only":
-      return "Text only. No recordings.";
+      return m.stepReviewAudioTextOnly();
   }
 }

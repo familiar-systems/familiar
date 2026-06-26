@@ -1,0 +1,4 @@
+{
+  "extends": "@familiar-systems/tsconfig/library.json",
+  "include": ["src"]
+}

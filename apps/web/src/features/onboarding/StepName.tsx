@@ -2,6 +2,7 @@
 // type, the lede, and the input. No system picker, no privacy buttons.
 
 import { useEffect, useRef } from "react";
+import { m } from "../../paraglide/messages.js";
 
 interface StepNameProps {
   name: string;
@@ -19,18 +20,21 @@ export function StepName({ name, tagline, onChange }: StepNameProps): React.Reac
     <div className="space-y-8 enter-from-below">
       <header className="space-y-3">
         <p className="text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase">
-          Step one
+          {m.stepNameEyebrow()}
         </p>
+        {/* Headline stays inline English: the gold-emphasized "in name" is
+            inline markup Paraglide's plain-string messages can't carry yet;
+            localized with a rich-text helper (Phase 4). */}
         <h2 className="font-display text-3xl leading-tight font-medium tracking-tight md:text-4xl">
           Every world begins <em className="text-gold italic">in name</em>.
         </h2>
         <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
-          What do you call this place? A working title is fine; you can rename it later.
+          {m.stepNameLede()}
         </p>
       </header>
 
       <div className="space-y-6">
-        <Field label="Campaign name" hint="Required" htmlFor="ob-name">
+        <Field label={m.stepNameNameLabel()} hint={m.stepNameNameHintRequired()} htmlFor="ob-name">
           <input
             id="ob-name"
             ref={nameRef}
@@ -40,19 +44,22 @@ export function StepName({ name, tagline, onChange }: StepNameProps): React.Reac
             onChange={(e) => {
               onChange({ name: e.target.value, tagline });
             }}
-            placeholder="The Embergrove Saga"
+            placeholder={m.stepNameNamePlaceholder()}
             maxLength={80}
             className="w-full rounded-xl border border-foreground/10 bg-background/60 px-4 py-3 font-display text-2xl text-foreground placeholder:text-muted-foreground/60 focus:border-gold/50 focus:ring-2 focus:ring-gold/20 focus:outline-none"
           />
         </Field>
 
         <Field
+          // Label stays inline English: the muted "· optional" suffix is
+          // inline markup Paraglide's plain-string messages can't carry yet;
+          // localized with a rich-text helper (Phase 4).
           label={
             <>
               Tagline <span className="font-normal text-muted-foreground">· optional</span>
             </>
           }
-          hint="One line of mood"
+          hint={m.stepNameTaglineHint()}
           htmlFor="ob-tagline"
         >
           <input
@@ -63,7 +70,7 @@ export function StepName({ name, tagline, onChange }: StepNameProps): React.Reac
             onChange={(e) => {
               onChange({ name, tagline: e.target.value });
             }}
-            placeholder="An autumn court, a debt come due, four ravens above the gate."
+            placeholder={m.stepNameTaglinePlaceholder()}
             maxLength={140}
             className="w-full rounded-xl border border-foreground/10 bg-background/60 px-4 py-3 text-base text-foreground placeholder:text-muted-foreground/60 focus:border-gold/50 focus:ring-2 focus:ring-gold/20 focus:outline-none"
           />

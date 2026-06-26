@@ -4,6 +4,8 @@
     "baseUrl": "."
   },
   "references": [
+    { "path": "packages/design" },
+    { "path": "packages/ui" },
     { "path": "packages/types-app" },
     { "path": "packages/types-campaign" },
     { "path": "packages/editor" },
