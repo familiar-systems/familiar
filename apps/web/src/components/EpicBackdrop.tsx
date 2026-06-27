@@ -49,9 +49,9 @@ export function EpicBackdrop(): React.ReactElement {
 
       {/* Ambient glow orbs. motion-safe gates the pulse for vestibular users. */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-25">
-        <div className="absolute top-[14%] left-[16%] size-120 rounded-full bg-primary/30 blur-[140px] motion-safe:animate-pulse" />
+        <div className="absolute inset-s-[16%] top-[14%] size-120 rounded-full bg-primary/30 blur-[140px] motion-safe:animate-pulse" />
         <div
-          className="absolute right-[10%] bottom-[12%] size-105 rounded-full bg-gold/25 blur-[120px] motion-safe:animate-pulse"
+          className="absolute inset-e-[10%] bottom-[12%] size-105 rounded-full bg-gold/25 blur-[120px] motion-safe:animate-pulse"
           style={{ animationDelay: "3s" }}
         />
       </div>

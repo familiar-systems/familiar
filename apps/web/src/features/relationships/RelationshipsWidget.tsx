@@ -67,7 +67,7 @@ function Header({
         <button
           type="button"
           onClick={onAdd}
-          className="ml-auto font-sans text-[11px] text-primary hover:underline"
+          className="ms-auto font-sans text-[11px] text-primary hover:underline"
         >
           + add
         </button>

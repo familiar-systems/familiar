@@ -6,7 +6,8 @@
 // mechanism).
 
 import type { KnowledgeInput, SessionId, SessionRef } from "@familiar-systems/types-campaign";
-import { Eye, EyeOff, type LucideIcon } from "lucide-react";
+import { SegmentedControl, SegmentedItem } from "@familiar-systems/ui";
+import { Eye, EyeOff } from "lucide-react";
 
 // The Prior sentinel for the "as of" select: session ids are ULIDs, so a plain word
 // can't collide. Only the create modal offers it (a fact can originate before play);
@@ -24,7 +25,7 @@ export function EntityChip({
     <span className="inline-flex items-baseline rounded bg-bronze/10 px-1.5 py-0.5 font-display font-semibold text-foreground shadow-[inset_0_-1px_0] shadow-bronze/35">
       {name}
       {isNew ? (
-        <span className="ml-0.5 font-sans text-[9px] tracking-wide text-muted-foreground uppercase">
+        <span className="ms-0.5 font-sans text-[9px] tracking-wide text-muted-foreground uppercase">
           new
         </span>
       ) : null}
@@ -84,11 +85,6 @@ export function SessionSelect({
   );
 }
 
-const KNOWLEDGE_ACTIVE: Record<"known" | "hidden", string> = {
-  known: "bg-gold/15 text-foreground",
-  hidden: "bg-primary/15 text-primary",
-};
-
 // The knowledge axis as a control producing a `KnowledgeInput`, ported from the
 // wireframe's two-segment "To the players" toggle: [Hidden] [Revealed / Public].
 // Knowledge is freely mutable - clicking Hidden conceals (even a once-public fact),
@@ -129,31 +125,36 @@ export function KnowledgeControl({
 
   return (
     <div className="flex flex-col gap-2">
-      <div
-        role="radiogroup"
+      <SegmentedControl
         aria-label="To the players"
-        className="inline-flex w-fit overflow-hidden rounded-lg border border-foreground/15"
+        isDisabled={disabled}
+        selectedKeys={hidden ? ["hidden"] : ["shown"]}
+        onSelectionChange={(keys) => {
+          // Hidden conceals; the other segment reveals (public, or a secret fact
+          // back to its reveal session). disallowEmptySelection keeps one active.
+          if ([...keys][0] === "hidden") onChange({ kind: "hidden" });
+          else reveal();
+        }}
       >
-        <KnowledgeButton
-          active={hidden}
-          disabled={disabled}
-          Icon={EyeOff}
-          label="Hidden"
-          tone="hidden"
-          onClick={() => onChange({ kind: "hidden" })}
-        />
-        <KnowledgeButton
-          active={!hidden}
-          disabled={disabled || !canReveal}
-          Icon={Eye}
-          label={bornSecret ? "Revealed" : "Public"}
-          tone="known"
-          onClick={reveal}
-        />
-      </div>
+        <SegmentedItem
+          id="hidden"
+          className="data-[selected]:bg-primary/15 data-[selected]:text-primary"
+        >
+          <EyeOff className="size-3.5" aria-hidden="true" />
+          Hidden
+        </SegmentedItem>
+        <SegmentedItem
+          id="shown"
+          isDisabled={!canReveal}
+          className="data-[selected]:bg-gold/15 data-[selected]:text-foreground"
+        >
+          <Eye className="size-3.5" aria-hidden="true" />
+          {bornSecret ? "Revealed" : "Public"}
+        </SegmentedItem>
+      </SegmentedControl>
 
       {bornSecret && !hidden && revealSession !== null ? (
-        <div className="flex flex-wrap items-center gap-2 pl-1 font-sans text-[12px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2 ps-1 font-sans text-[12px] text-muted-foreground">
           <span>Revealed at</span>
           <SessionSelect
             ariaLabel="Reveal session"
@@ -165,45 +166,10 @@ export function KnowledgeControl({
           />
         </div>
       ) : bornSecret && !hidden && !canReveal ? (
-        <span className="pl-1 font-sans text-[12px] text-muted-foreground italic">
+        <span className="ps-1 font-sans text-[12px] text-muted-foreground italic">
           no sessions yet
         </span>
       ) : null}
     </div>
-  );
-}
-
-function KnowledgeButton({
-  active,
-  disabled,
-  Icon,
-  label,
-  tone,
-  onClick,
-}: {
-  active: boolean;
-  disabled: boolean;
-  Icon: LucideIcon;
-  label: string;
-  tone: "known" | "hidden";
-  onClick: () => void;
-}): React.ReactElement {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      disabled={disabled}
-      onClick={onClick}
-      className={[
-        "inline-flex items-center gap-1.5 border-foreground/12 px-3 py-1.5 font-sans text-[13px] transition-colors [&+&]:border-l disabled:opacity-40",
-        active
-          ? `${KNOWLEDGE_ACTIVE[tone]} font-semibold`
-          : "text-muted-foreground hover:bg-gold/6 hover:text-foreground",
-      ].join(" ")}
-    >
-      <Icon className="size-3.5" aria-hidden="true" />
-      {label}
-    </button>
   );
 }

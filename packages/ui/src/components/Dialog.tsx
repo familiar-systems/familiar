@@ -6,10 +6,15 @@ import {
   Heading,
   ModalOverlay,
 } from "react-aria-components";
+import type { ModalOverlayProps } from "react-aria-components";
 
 import { cn } from "../lib/cn";
 
-export interface ModalProps {
+// Extends the overlay props so the modal works both ways: inside a DialogTrigger
+// (open state from context) or controlled by a parent that mounts it on demand
+// (isOpen + onOpenChange). isDismissable / isKeyboardDismissDisabled ride through
+// too, so a caller can hold the modal open during an in-flight request.
+export interface ModalProps extends Omit<ModalOverlayProps, "className" | "children"> {
   children: ReactNode;
   /** Click-outside / Escape dismissal. Default true. */
   isDismissable?: boolean;
@@ -27,9 +32,14 @@ const overlayClass =
 const panelClass =
   "w-full max-w-lg rounded-2xl border border-foreground/10 bg-background p-6 shadow-2xl shadow-primary/10 outline-none data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95";
 
-export function Modal({ children, isDismissable = true, className }: ModalProps): ReactElement {
+export function Modal({
+  children,
+  isDismissable = true,
+  className,
+  ...props
+}: ModalProps): ReactElement {
   return (
-    <ModalOverlay isDismissable={isDismissable} className={overlayClass}>
+    <ModalOverlay {...props} isDismissable={isDismissable} className={overlayClass}>
       <AriaModal className={cn(panelClass, className)}>{children}</AriaModal>
     </ModalOverlay>
   );

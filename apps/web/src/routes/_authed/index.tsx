@@ -72,7 +72,7 @@ function PopulatedHub({ campaigns }: PopulatedHubProps): React.ReactElement {
         </span>
         {/* Hero heading stays inline English: the gold-emphasized "worlds" is
             inline markup Paraglide's plain-string messages can't carry yet.
-            Localized with a rich-text interpolation helper (Phase 4). */}
+            Localized with a rich-text interpolation helper later. */}
         <h1 className="font-display text-5xl leading-none font-medium tracking-tight enter-from-below [animation-delay:100ms] md:text-7xl lg:text-8xl">
           Your <em className="font-normal text-gold italic">worlds</em> await.
         </h1>

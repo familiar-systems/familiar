@@ -18,6 +18,7 @@
 // (BYO presents no per-template toggle in v0; the BYO bundle ships as-is.)
 
 import type { CatalogResponse, SystemEntry, TemplateRef } from "@familiar-systems/types-campaign";
+import { TextField } from "@familiar-systems/ui";
 import { Check, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { m } from "../../paraglide/messages.js";
@@ -92,7 +93,7 @@ export function StepSystem({
         </p>
         {/* Headline stays inline English: the gold-emphasized "system" is
             inline markup Paraglide's plain-string messages can't carry yet;
-            localized with a rich-text helper (Phase 4). */}
+            localized with a rich-text interpolation helper later. */}
         <h2 className="font-display text-3xl leading-tight font-medium tracking-tight md:text-4xl">
           Choose your <em className="text-gold italic">system</em>.
         </h2>
@@ -102,7 +103,7 @@ export function StepSystem({
       </header>
 
       <div className="relative">
-        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute inset-s-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
           ref={inputRef}
           data-testid="system-search-input"
@@ -112,7 +113,7 @@ export function StepSystem({
             setQuery(e.target.value);
           }}
           placeholder={m.stepSystemSearchPlaceholder()}
-          className="w-full rounded-xl border border-foreground/10 bg-background/60 py-3 pr-4 pl-10 text-base text-foreground placeholder:text-muted-foreground/60 focus:border-gold/50 focus:ring-2 focus:ring-gold/20 focus:outline-none"
+          className="w-full rounded-xl border border-foreground/10 bg-background/60 py-3 ps-10 pe-4 text-base text-foreground placeholder:text-muted-foreground/60 focus:border-gold/50 focus:ring-2 focus:ring-gold/20 focus:outline-none"
         />
       </div>
 
@@ -278,13 +279,6 @@ function BringYourOwn({
   onPick,
   onCustomNameChange,
 }: BringYourOwnProps): React.ReactElement {
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (selected) {
-      inputRef.current?.focus();
-    }
-  }, [selected]);
-
   const placeholder = m.stepSystemByoNamePlaceholder({ byoDefault: BYO_DEFAULT_NAME });
 
   return (
@@ -335,27 +329,16 @@ function BringYourOwn({
       </button>
 
       {selected ? (
-        <div className="space-y-2 rounded-2xl border border-foreground/10 bg-bronze-muted/20 p-4">
-          <div className="flex items-baseline justify-between gap-4">
-            <label htmlFor="byo-name" className="text-sm font-medium text-foreground">
-              {m.stepSystemByoNameLabel()}
-            </label>
-            <span className="text-xs tracking-wider text-muted-foreground uppercase">
-              {m.stepSystemByoNameOptional()}
-            </span>
-          </div>
-          <input
-            id="byo-name"
-            ref={inputRef}
-            data-testid="byo-name-input"
-            type="text"
+        <div className="rounded-2xl border border-foreground/10 bg-bronze-muted/20 p-4">
+          <TextField
+            label={m.stepSystemByoNameLabel()}
+            hint={m.stepSystemByoNameOptional()}
+            // Mounts only once BYO is picked, so autoFocus lands here then.
+            autoFocus
             value={customName}
-            onChange={(e) => {
-              onCustomNameChange(e.target.value);
-            }}
+            onChange={onCustomNameChange}
             placeholder={placeholder}
-            maxLength={60}
-            className="w-full rounded-xl border border-foreground/10 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-gold/50 focus:ring-2 focus:ring-gold/20 focus:outline-none"
+            inputProps={{ "data-testid": "byo-name-input", maxLength: 60 }}
           />
         </div>
       ) : null}

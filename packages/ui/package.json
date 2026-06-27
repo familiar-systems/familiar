@@ -19,7 +19,8 @@
     "@familiar-systems/design": "workspace:*",
     "react": "catalog:",
     "react-aria-components": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "tailwind-merge": "catalog:"
   },
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",
@@ -27,6 +28,7 @@
     "@storybook/react-vite": "^10.4.4",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "oxlint-tailwindcss": "catalog:",
     "storybook": "^10.4.4",
     "typescript": "catalog:",
     "vitest": "catalog:"

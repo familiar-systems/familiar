@@ -20,7 +20,7 @@
     "tailwindcss/enforce-canonical": "warn",
     "tailwindcss/enforce-sort-order": "warn",
     "tailwindcss/enforce-shorthand": "warn",
-    "tailwindcss/enforce-logical": "off",
+    "tailwindcss/enforce-logical": "error",
     "tailwindcss/enforce-physical": "off",
     "tailwindcss/enforce-consistent-important-position": "warn",
     "tailwindcss/enforce-negative-arbitrary-values": "warn",

@@ -17,6 +17,9 @@ type Story = StoryObj<typeof meta>;
 
 export const Empty: Story = {};
 export const Filled: Story = { args: { defaultValue: "The Siege of Grimhollow" } };
+export const WithHint: Story = { args: { hint: "Required" } };
+// The parchment-ink treatment for ceremonial / hero inputs.
+export const Inline: Story = { args: { variant: "inline" } };
 
 export const Typing: Story = {
   play: async ({ canvas, userEvent }) => {

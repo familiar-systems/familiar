@@ -48,7 +48,7 @@ export function StepReview({
         </p>
         {/* Headline stays inline English: the gold-emphasized "seal" is inline
             markup Paraglide's plain-string messages can't carry yet; localized
-            with a rich-text helper (Phase 4). */}
+            with a rich-text interpolation helper later. */}
         <h2 className="font-display text-3xl leading-tight font-medium tracking-tight md:text-4xl">
           Review, then <em className="text-gold italic">seal</em>.
         </h2>

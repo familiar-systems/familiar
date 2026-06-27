@@ -40,7 +40,7 @@ export function StepPrivacy({
         </p>
         {/* Headline stays inline English: the gold-emphasized "your data" is
             inline markup Paraglide's plain-string messages can't carry yet;
-            localized with a rich-text helper (Phase 4). */}
+            localized with a rich-text interpolation helper later. */}
         <h2 className="font-display text-3xl leading-tight font-medium tracking-tight md:text-4xl">
           Two questions about <em className="text-gold italic">your data</em>
         </h2>
@@ -61,7 +61,7 @@ export function StepPrivacy({
             title={m.stepPrivacyAudioOptInTitle()}
             // Bullets 2-4 stay inline English: each carries a mid-sentence
             // <strong> Paraglide's plain-string messages can't carry yet;
-            // localized with a rich-text helper (Phase 4).
+            // localized with a rich-text interpolation helper later.
             bullets={[
               m.stepPrivacyAudioOptInBullet1(),
               <>
@@ -105,7 +105,7 @@ export function StepPrivacy({
         <FieldHead label={m.stepPrivacyEvalsLabel()} hint={m.stepPrivacyRequiredChoice()} />
         {/* Lede stays inline English: the italic "anonymized signal" is a
             mid-sentence span Paraglide's plain-string messages can't carry
-            yet; localized with a rich-text helper (Phase 4). */}
+            yet; localized with a rich-text interpolation helper later. */}
         <p className="text-sm leading-relaxed text-muted-foreground">
           Independent of audio, your familiar can send back{" "}
           <em className="italic">anonymized signal</em> about what worked and what didn't. Used to
@@ -121,7 +121,7 @@ export function StepPrivacy({
             pill={m.stepPrivacyEvalsOnPill()}
             // Bullets 3-4 stay inline English: each carries a mid-sentence
             // <strong> Paraglide's plain-string messages can't carry yet;
-            // localized with a rich-text helper (Phase 4).
+            // localized with a rich-text interpolation helper later.
             bullets={[
               m.stepPrivacyEvalsOnBullet1(),
               m.stepPrivacyEvalsOnBullet2(),
@@ -151,7 +151,7 @@ export function StepPrivacy({
 
       {/* Footnote stays inline English: the two <strong>never</strong> spans
           are mid-sentence markup Paraglide's plain-string messages can't carry
-          yet; localized with a rich-text helper (Phase 4). */}
+          yet; localized with a rich-text interpolation helper later. */}
       <p className="text-xs leading-relaxed text-muted-foreground/80">
         Either way, your data is <strong>never</strong> used to train generative models, and is
         <strong> never</strong> sold or shared.
@@ -214,7 +214,7 @@ function RadioCardBullets({
             </span>
           ) : null}
         </span>
-        <ul className="ml-4 list-disc space-y-1 text-xs leading-snug text-muted-foreground marker:text-muted-foreground/40">
+        <ul className="ms-4 list-disc space-y-1 text-xs leading-snug text-muted-foreground marker:text-muted-foreground/40">
           {bullets.map((bullet, i) => (
             // Bullets are static at compile time, so the array index is stable.
             // eslint-disable-next-line react/no-array-index-key

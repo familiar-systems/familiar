@@ -6,9 +6,15 @@
  * properties for direct var() use. Dark mode flips the raw tokens on `.dark`;
  * the `--color-*` indirection resolves per-element through the cascade.
  *
- * Scales below (text/radius/shadow/spacing/container/motion) are plain custom
- * properties, deliberately NOT in `@theme`, so they stay available as var()
- * without overriding Tailwind's built-in utility scales. */
+ * Scales below (text/shadow/spacing/container/motion) are plain custom
+ * properties for direct var() use. NOTE: being outside `@theme` does NOT shield
+ * Tailwind utilities — v4 utilities read these CSS variables by name at runtime,
+ * so any `--text-*`/`--container-*`/`--radius-*` defined here overrides the
+ * matching `rounded-*`/`text-*` utility. The values here that collide
+ * (`--text-*`, `--container-*`) deliberately mirror Tailwind's defaults, so the
+ * override is a no-op. The radius scale was removed for exactly this reason: its
+ * values diverged from Tailwind's, silently inflating every `rounded-*` (lg
+ * 8px→16px) app-wide. Keep the radius scale as Tailwind's default. */
 
 :root {
   /* Signals built-in dual-scheme support to the browser and extensions like
@@ -52,15 +58,6 @@
   --text-5xl: 3rem;
   --text-7xl: 4.5rem;
   --text-8xl: 6rem;
-
-  /* Radii */
-  --radius-sm: 0.5rem; /* inputs, chips */
-  --radius-md: 0.75rem; /* code blocks, icon containers */
-  --radius-lg: 1rem; /* buttons */
-  --radius-xl: 1rem; /* alias */
-  --radius-2xl: 1.25rem; /* standard cards */
-  --radius-3xl: 1.5rem; /* large feature cards */
-  --radius-full: 9999px;
 
   /* Elevation — colored, not grey: plum/gold reads as candlelit, not SaaS */
   --shadow-gold: 0 10px 15px -3px rgb(184 149 48 / 0.25);

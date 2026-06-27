@@ -16,6 +16,7 @@ export const Primary: Story = { args: { variant: "primary" } };
 export const Secondary: Story = { args: { variant: "secondary", children: "View on GitHub" } };
 export const Outline: Story = { args: { variant: "outline", children: "Outline" } };
 export const Ghost: Story = { args: { variant: "ghost", children: "Ghost" } };
+export const Danger: Story = { args: { variant: "danger", children: "Delete permanently" } };
 
 // Proves the whole styling pipeline end to end: the gold token from
 // packages/design, surfaced as `bg-gold`, generated because apps/web @sources

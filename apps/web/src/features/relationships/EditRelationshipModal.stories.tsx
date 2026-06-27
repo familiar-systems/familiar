@@ -280,7 +280,9 @@ export const EscapeCloses: Story = {
   },
 };
 
-// The ref guard collapses a rapid double-trigger to a single submit.
+// Double-submit is guarded twice: the action button disables the instant a submit
+// is in flight (so a second click can't fire), backed by a synchronous ref guard
+// for the same-tick race. One submit reaches the server.
 export const DoubleSubmitGuarded: Story = {
   play: async ({ args, userEvent }) => {
     ctl(args.onSubmit).mockImplementation(() => new Promise(() => {})); // never settles
@@ -288,7 +290,7 @@ export const DoubleSubmitGuarded: Story = {
     await userEvent.click(screen.getByLabelText("Delete"));
     const del = screen.getByRole("button", { name: "Delete permanently" });
     await userEvent.click(del);
-    await userEvent.click(del);
+    await expect(del).toBeDisabled();
     await expect(args.onSubmit).toHaveBeenCalledTimes(1);
   },
 };

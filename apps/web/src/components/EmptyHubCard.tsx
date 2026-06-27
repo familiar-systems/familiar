@@ -1,3 +1,4 @@
+import { Button } from "@familiar-systems/ui";
 import { Plus } from "lucide-react";
 import { useCreateCampaign } from "../features/onboarding/useCreateCampaign";
 import { m } from "../paraglide/messages.js";
@@ -42,16 +43,17 @@ export function EmptyHubCard(): React.ReactElement {
         <p className="mx-auto mb-9 max-w-lg font-display text-2xl leading-snug font-medium text-pretty italic md:text-3xl">
           &ldquo;your <span className="text-gold">worlds</span> await.&rdquo;
         </p>
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="lg"
           data-testid="start-first-campaign"
-          onClick={onStart}
-          disabled={state.creating}
-          className="inline-flex items-center gap-2 rounded-full bg-gold px-8 py-4 font-medium text-white shadow-lg shadow-gold/25 transition-colors hover:bg-gold/90 disabled:cursor-not-allowed disabled:opacity-60"
+          onPress={onStart}
+          isDisabled={state.creating}
+          className="gap-2"
         >
           <Plus className="size-4" />
           <span>{state.creating ? m.hubCreateInProgress() : m.hubStartFirstCampaign()}</span>
-        </button>
+        </Button>
         {state.error !== null ? (
           <p role="alert" data-testid="create-error" className="mt-4 text-sm text-foreground/70">
             {state.error}

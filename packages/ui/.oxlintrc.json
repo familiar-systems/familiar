@@ -1,0 +1,12 @@
+{
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
+  "jsPlugins": ["oxlint-tailwindcss"],
+  "settings": {
+    "tailwindcss": {
+      "entryPoint": "../design/src/styles.css"
+    }
+  },
+  "rules": {
+    "tailwindcss/enforce-logical": "error"
+  }
+}

@@ -3,7 +3,7 @@ import type { ButtonProps as AriaButtonProps } from "react-aria-components";
 
 import { cn } from "../lib/cn";
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "icon";
+export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "icon" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonProps extends Omit<AriaButtonProps, "className"> {
@@ -27,6 +27,7 @@ const variantClass: Record<ButtonVariant, string> = {
     "rounded-lg border border-foreground/10 bg-transparent text-foreground hover:bg-foreground/5",
   ghost: "rounded-lg text-primary hover:bg-primary/5",
   icon: "rounded-full border border-foreground/10 bg-foreground/5 text-foreground hover:bg-foreground/10",
+  danger: "rounded-full bg-red-700 text-white shadow-md shadow-red-700/25 hover:bg-red-700/90",
 };
 
 const paddedSize: Record<ButtonSize, string> = {
