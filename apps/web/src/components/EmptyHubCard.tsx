@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { useCreateCampaign } from "../features/onboarding/useCreateCampaign";
 import { m } from "../paraglide/messages.js";
 import { assetPath } from "../lib/paths";
+import { Trans } from "./Trans";
 
 const CROSSHATCH_URL = `url('${assetPath("/crosshatch.svg")}')`;
 
@@ -31,17 +32,17 @@ export function EmptyHubCard(): React.ReactElement {
       <Banner className="h-14" />
 
       <div className="px-10 py-14 text-center md:px-14">
-        {/* The raven passage stays inline English: it mixes prose with an inline
-            gold-styled word, which Paraglide's plain-string messages can't carry
-            without a rich-text interpolation helper. Localized once that helper
-            lands (the same one the hero headings need). */}
+        {/* Two paragraphs, two messages: the intro is plain prose and the call
+            carries the inline gold word. They render as separate elements with
+            different type, so they were never one translatable unit. */}
         <p className="mx-auto mb-6 max-w-lg font-display text-lg leading-relaxed text-pretty text-foreground/90 italic md:text-xl">
-          You sit at the desk, empty but for one paper. The sheet is blank but your mind conjures a
-          large, black corvid gazing back at you. Its glowing, purple eyes lock with yours.
-          &ldquo;Master Wizard,&rdquo; the raven whispers,
+          {m.emptyHubRavenIntro()}
         </p>
         <p className="mx-auto mb-9 max-w-lg font-display text-2xl leading-snug font-medium text-pretty italic md:text-3xl">
-          &ldquo;your <span className="text-gold">worlds</span> await.&rdquo;
+          <Trans
+            message={m.emptyHubRavenCall()}
+            components={{ gold: (c) => <span className="text-gold">{c}</span> }}
+          />
         </p>
         <Button
           variant="primary"

@@ -12,6 +12,7 @@
 // records but won't train; "opt-in" both records and trains.
 
 import type { AudioMode } from "@familiar-systems/types-campaign";
+import { Trans } from "../../components/Trans";
 import { m } from "../../paraglide/messages.js";
 
 interface StepPrivacyProps {
@@ -32,17 +33,22 @@ export function StepPrivacy({
     onChange({ audio, evalsEnabled: v });
   };
 
+  // Shared across the privacy bullets and footnote: <b> in a message renders
+  // as <strong>. The emphasis is structural copy, so it lives in the message;
+  // the element is supplied here.
+  const strong = (c: string) => <strong>{c}</strong>;
+
   return (
     <div className="space-y-8 enter-from-below">
       <header className="space-y-3">
         <p className="text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase">
           {m.stepPrivacyEyebrow()}
         </p>
-        {/* Headline stays inline English: the gold-emphasized "your data" is
-            inline markup Paraglide's plain-string messages can't carry yet;
-            localized with a rich-text interpolation helper later. */}
         <h2 className="font-display text-3xl leading-tight font-medium tracking-tight md:text-4xl">
-          Two questions about <em className="text-gold italic">your data</em>
+          <Trans
+            message={m.stepPrivacyHeading()}
+            components={{ gold: (c) => <em className="text-gold italic">{c}</em> }}
+          />
         </h2>
         <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
           {m.stepPrivacyLede()}
@@ -59,20 +65,11 @@ export function StepPrivacy({
             testid="audio-opt-in"
             selected={audio === "opt-in"}
             title={m.stepPrivacyAudioOptInTitle()}
-            // Bullets 2-4 stay inline English: each carries a mid-sentence
-            // <strong> Paraglide's plain-string messages can't carry yet;
-            // localized with a rich-text interpolation helper later.
             bullets={[
               m.stepPrivacyAudioOptInBullet1(),
-              <>
-                Used only to improve <strong>speech recognition</strong> models in your languages.
-              </>,
-              <>
-                <strong>Never</strong> used to train generative AI or LLMs.
-              </>,
-              <>
-                <strong>Never</strong> sold, licensed, or shared outside familiar.systems.
-              </>,
+              <Trans message={m.stepPrivacyAudioOptInBullet2()} components={{ b: strong }} />,
+              <Trans message={m.stepPrivacyAudioOptInBullet3()} components={{ b: strong }} />,
+              <Trans message={m.stepPrivacyAudioOptInBullet4()} components={{ b: strong }} />,
               m.stepPrivacyAudioOptInBullet5(),
             ]}
             onClick={() => {
@@ -103,14 +100,11 @@ export function StepPrivacy({
       {/* ---- Question 2: AI evals ---- */}
       <fieldset className="space-y-3" data-testid="evals-fieldset">
         <FieldHead label={m.stepPrivacyEvalsLabel()} hint={m.stepPrivacyRequiredChoice()} />
-        {/* Lede stays inline English: the italic "anonymized signal" is a
-            mid-sentence span Paraglide's plain-string messages can't carry
-            yet; localized with a rich-text interpolation helper later. */}
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Independent of audio, your familiar can send back{" "}
-          <em className="italic">anonymized signal</em> about what worked and what didn't. Used to
-          tune prompts and tooling, especially for less-common languages and systems where the
-          defaults stumble.
+          <Trans
+            message={m.stepPrivacyEvalsLede()}
+            components={{ i: (c) => <em className="italic">{c}</em> }}
+          />
         </p>
 
         <div className="grid gap-2" role="radiogroup" aria-label={m.stepPrivacyEvalsAriaLabel()}>
@@ -119,18 +113,11 @@ export function StepPrivacy({
             selected={evalsEnabled === true}
             title={m.stepPrivacyEvalsOnTitle()}
             pill={m.stepPrivacyEvalsOnPill()}
-            // Bullets 3-4 stay inline English: each carries a mid-sentence
-            // <strong> Paraglide's plain-string messages can't carry yet;
-            // localized with a rich-text interpolation helper later.
             bullets={[
               m.stepPrivacyEvalsOnBullet1(),
               m.stepPrivacyEvalsOnBullet2(),
-              <>
-                Used to improve <strong>prompts and tooling</strong>, not to train models.
-              </>,
-              <>
-                <strong>Never</strong> sold, licensed, or shared outside familiar.systems.
-              </>,
+              <Trans message={m.stepPrivacyEvalsOnBullet3()} components={{ b: strong }} />,
+              <Trans message={m.stepPrivacyEvalsOnBullet4()} components={{ b: strong }} />,
               m.stepPrivacyEvalsOnBullet5(),
             ]}
             onClick={() => {
@@ -149,12 +136,8 @@ export function StepPrivacy({
         </div>
       </fieldset>
 
-      {/* Footnote stays inline English: the two <strong>never</strong> spans
-          are mid-sentence markup Paraglide's plain-string messages can't carry
-          yet; localized with a rich-text interpolation helper later. */}
       <p className="text-xs leading-relaxed text-muted-foreground/80">
-        Either way, your data is <strong>never</strong> used to train generative models, and is
-        <strong> never</strong> sold or shared.
+        <Trans message={m.stepPrivacyFootnote()} components={{ b: strong }} />
       </p>
     </div>
   );

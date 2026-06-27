@@ -1,6 +1,7 @@
 // Step 4: review and initialize. Final summary plus the wax seal.
 
 import type { AudioMode } from "@familiar-systems/types-campaign";
+import { Trans } from "../../components/Trans";
 import { m } from "../../paraglide/messages.js";
 import { type SealState, WaxSeal } from "./WaxSeal";
 
@@ -46,11 +47,11 @@ export function StepReview({
         <p className="text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase">
           {m.stepReviewEyebrow()}
         </p>
-        {/* Headline stays inline English: the gold-emphasized "seal" is inline
-            markup Paraglide's plain-string messages can't carry yet; localized
-            with a rich-text interpolation helper later. */}
         <h2 className="font-display text-3xl leading-tight font-medium tracking-tight md:text-4xl">
-          Review, then <em className="text-gold italic">seal</em>.
+          <Trans
+            message={m.stepReviewHeading()}
+            components={{ gold: (c) => <em className="text-gold italic">{c}</em> }}
+          />
         </h2>
         <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
           {m.stepReviewLede()}

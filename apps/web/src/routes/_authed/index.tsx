@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { CampaignCard } from "../../components/CampaignCard";
 import { EmptyHubCard } from "../../components/EmptyHubCard";
+import { Trans } from "../../components/Trans";
 import { useCreateCampaign } from "../../features/onboarding/useCreateCampaign";
 import { client } from "../../lib/api";
 import { m } from "../../paraglide/messages.js";
@@ -70,11 +71,11 @@ function PopulatedHub({ campaigns }: PopulatedHubProps): React.ReactElement {
         <span className="block text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase enter-from-below">
           {m.hubWelcomeBack()}
         </span>
-        {/* Hero heading stays inline English: the gold-emphasized "worlds" is
-            inline markup Paraglide's plain-string messages can't carry yet.
-            Localized with a rich-text interpolation helper later. */}
         <h1 className="font-display text-5xl leading-none font-medium tracking-tight enter-from-below [animation-delay:100ms] md:text-7xl lg:text-8xl">
-          Your <em className="font-normal text-gold italic">worlds</em> await.
+          <Trans
+            message={m.hubHero()}
+            components={{ gold: (c) => <em className="font-normal text-gold italic">{c}</em> }}
+          />
         </h1>
         <button
           type="button"

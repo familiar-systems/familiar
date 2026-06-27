@@ -21,6 +21,7 @@ import type { CatalogResponse, SystemEntry, TemplateRef } from "@familiar-system
 import { TextField } from "@familiar-systems/ui";
 import { Check, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Trans } from "../../components/Trans";
 import { m } from "../../paraglide/messages.js";
 import { fuzzyMatchSystems } from "./fuzzyMatch";
 
@@ -91,11 +92,11 @@ export function StepSystem({
         <p className="text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase">
           {m.stepSystemEyebrow()}
         </p>
-        {/* Headline stays inline English: the gold-emphasized "system" is
-            inline markup Paraglide's plain-string messages can't carry yet;
-            localized with a rich-text interpolation helper later. */}
         <h2 className="font-display text-3xl leading-tight font-medium tracking-tight md:text-4xl">
-          Choose your <em className="text-gold italic">system</em>.
+          <Trans
+            message={m.stepSystemHeading()}
+            components={{ gold: (c) => <em className="text-gold italic">{c}</em> }}
+          />
         </h2>
         <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
           {m.stepSystemLede()}

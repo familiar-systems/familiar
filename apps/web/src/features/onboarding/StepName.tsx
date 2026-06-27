@@ -2,6 +2,7 @@
 // type, the lede, and the input. No system picker, no privacy buttons.
 
 import { TextField } from "@familiar-systems/ui";
+import { Trans } from "../../components/Trans";
 import { m } from "../../paraglide/messages.js";
 
 interface StepNameProps {
@@ -17,11 +18,11 @@ export function StepName({ name, tagline, onChange }: StepNameProps): React.Reac
         <p className="text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase">
           {m.stepNameEyebrow()}
         </p>
-        {/* Headline stays inline English: the gold-emphasized "in name" is
-            inline markup Paraglide's plain-string messages can't carry yet;
-            localized with a rich-text interpolation helper later. */}
         <h2 className="font-display text-3xl leading-tight font-medium tracking-tight md:text-4xl">
-          Every world begins <em className="text-gold italic">in name</em>.
+          <Trans
+            message={m.stepNameHeading()}
+            components={{ gold: (c) => <em className="text-gold italic">{c}</em> }}
+          />
         </h2>
         <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
           {m.stepNameLede()}
@@ -43,11 +44,10 @@ export function StepName({ name, tagline, onChange }: StepNameProps): React.Reac
           }}
         />
 
-        {/* Tagline label stays inline English: the muted "· optional" suffix is inline
-            markup the plain-string i18n can't carry until a rich-text interpolation
-            helper lands. Optional, signalled by the absent Required hint. */}
+        {/* Optional field: no Required hint, and "optional" is carried in the
+            label text itself rather than as separate styled markup. */}
         <TextField
-          label="Tagline"
+          label={m.stepNameTaglineLabel()}
           hint={m.stepNameTaglineHint()}
           value={tagline}
           onChange={(value) => onChange({ name, tagline: value })}
