@@ -7,7 +7,7 @@ use familiar_systems_app_shared::id::{CampaignId, UserId};
 use kameo::actor::{ActorRef, Spawn};
 use kameo::error::SendError;
 use tempfile::TempDir;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 
 use super::*;
 use crate::actors::relationship_graph::KnownPredicatePairs;
@@ -191,6 +191,64 @@ async fn concurrent_ensures_coalesce_on_one_load() {
         ids.windows(2).all(|w| w[0] == w[1]),
         "all coalesced ensures must yield the same supervisor, got {ids:?}"
     );
+}
+
+// `resolve` is the shared read path for every route; these cover the two
+// transient outcomes the async redesign introduced (the integration suite only
+// exercises the immediately-Ready path, since LocalCampaignStore loads sub-ms).
+
+#[tokio::test]
+async fn resolve_none_is_not_loaded() {
+    assert!(matches!(
+        resolve(None, READY).await,
+        Err(ResolveError::NotLoaded)
+    ));
+}
+
+#[tokio::test]
+async fn resolve_draining_state_is_draining() {
+    ensure_vec0();
+    let tmp = TempDir::new().unwrap();
+    let (registry, _table) = spawn_registry(
+        store_in(tmp.path()),
+        Duration::from_secs(60),
+        Duration::from_secs(60),
+    );
+    // Borrow a live supervisor ref for a synthetic Draining slot; resolve never
+    // touches the supervisor for this variant.
+    let handle = create_ready(&registry, CampaignId::generate(), user_id()).await;
+    let state = CampaignState::Draining {
+        supervisor: handle.supervisor,
+    };
+    assert!(matches!(
+        resolve(Some(state), READY).await,
+        Err(ResolveError::Draining)
+    ));
+}
+
+#[tokio::test]
+async fn resolve_loading_times_out_as_still_loading() {
+    ensure_vec0();
+    let tmp = TempDir::new().unwrap();
+    let (registry, _table) = spawn_registry(
+        store_in(tmp.path()),
+        Duration::from_secs(60),
+        Duration::from_secs(60),
+    );
+    let handle = create_ready(&registry, CampaignId::generate(), user_id()).await;
+
+    // A load that never publishes a terminal outcome. Hold the sender so the
+    // channel stays open: a dropped sender would surface as LoadFailed, not
+    // StillLoading.
+    let (_tx, rx) = watch::channel(LoadOutcome::Pending);
+    let state = CampaignState::Loading(LoadingEntry {
+        rx,
+        supervisor: handle.supervisor,
+    });
+    assert!(matches!(
+        resolve(Some(state), Duration::from_millis(50)).await,
+        Err(ResolveError::StillLoading)
+    ));
 }
 
 #[tokio::test]

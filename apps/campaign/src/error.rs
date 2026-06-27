@@ -68,11 +68,6 @@ pub enum InitError {
 pub enum EnsureError {
     #[error("init failed: {0}")]
     Init(#[from] InitError),
-    /// The supervisor was spawned but its actor task ended before
-    /// reporting Ready. Treat as a transient failure; the platform may
-    /// retry.
-    #[error("supervisor died before reaching Ready")]
-    SupervisorDied,
     /// The registry is in its drain phase and won't accept new
     /// campaigns. Maps to 503 at the HTTP layer; the platform retries
     /// against whichever shard takes over the campaign.

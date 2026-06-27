@@ -62,23 +62,28 @@ pub async fn ws_upgrade(
             StatusCode::FORBIDDEN
         })?;
 
-    // Step 3: ensure the campaign is loaded on this shard, then await readiness
-    // (the checkout runs off the registry's mailbox; a cold load may still be
-    // in flight). Any failure -> 503; the client retries.
-    let checkout = state
-        .registry
-        .ask(EnsureCampaign {
-            campaign_id: campaign_id.clone(),
-        })
-        .await
-        .map_err(|e| {
-            tracing::warn!(
-                campaign_id = %campaign_id.0,
-                error = %e,
-                "ws upgrade failed: could not ensure campaign"
-            );
-            StatusCode::SERVICE_UNAVAILABLE
-        })?;
+    // Step 3: resolve the campaign to a live supervisor. Read the routing-table
+    // snapshot first (mirrors the GM REST routes); only round-trip the registry
+    // mailbox to initiate a checkout when the campaign isn't present yet. The
+    // checkout runs off the mailbox, so a cold load may still be in flight when
+    // we await readiness below. Any failure -> 503; the client retries.
+    let checkout = match state.table.load().get(&campaign_id).cloned() {
+        Some(existing) => existing,
+        None => state
+            .registry
+            .ask(EnsureCampaign {
+                campaign_id: campaign_id.clone(),
+            })
+            .await
+            .map_err(|e| {
+                tracing::warn!(
+                    campaign_id = %campaign_id.0,
+                    error = %e,
+                    "ws upgrade failed: could not ensure campaign"
+                );
+                StatusCode::SERVICE_UNAVAILABLE
+            })?,
+    };
 
     let supervisor = resolve(Some(checkout), READY_WAIT_TIMEOUT)
         .await

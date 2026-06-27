@@ -77,7 +77,7 @@ pub struct CampaignHandle {
 /// Terminal-or-pending result an awaiter reads from a [`CampaignState::Loading`]
 /// entry's `watch`. The driver task publishes `Ready`/`Failed`; the registry
 /// separately flips the table entry to [`CampaignState::Ready`] (or removes it).
-pub enum LoadOutcome {
+pub(crate) enum LoadOutcome {
     Pending,
     Ready(CampaignHandle),
     Failed,
@@ -88,8 +88,8 @@ pub enum LoadOutcome {
 /// (linked) supervisor and lets the load-completion guard reject a stale flip.
 #[derive(Clone)]
 pub struct LoadingEntry {
-    pub rx: watch::Receiver<LoadOutcome>,
-    pub supervisor: ActorRef<CampaignSupervisor>,
+    pub(crate) rx: watch::Receiver<LoadOutcome>,
+    pub(crate) supervisor: ActorRef<CampaignSupervisor>,
 }
 
 /// One campaign's slot in the [`CampaignTable`].

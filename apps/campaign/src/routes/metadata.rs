@@ -48,8 +48,7 @@ pub async fn get_campaign(
     let supervisor = match resolve(state.table.load().get(&cid).cloned(), READY_WAIT_TIMEOUT).await
     {
         Ok(handle) => handle.supervisor,
-        Err(ResolveError::NotLoaded) => return StatusCode::NOT_FOUND.into_response(),
-        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        Err(e) => return e.status().into_response(),
     };
 
     let caller = UserId(user.id);
@@ -115,9 +114,9 @@ pub async fn patch_campaign(
     let supervisor = match resolve(state.table.load().get(&cid).cloned(), READY_WAIT_TIMEOUT).await
     {
         Ok(handle) => handle.supervisor,
-        Err(ResolveError::NotLoaded) => {
+        Err(e @ ResolveError::NotLoaded) => {
             return (
-                StatusCode::NOT_FOUND,
+                e.status(),
                 Json(CampaignErrorResponse {
                     error: "Campaign not checked out on this shard.".to_string(),
                     campaign_id,
@@ -125,9 +124,9 @@ pub async fn patch_campaign(
             )
                 .into_response();
         }
-        Err(_) => {
+        Err(e) => {
             return (
-                StatusCode::SERVICE_UNAVAILABLE,
+                e.status(),
                 Json(CampaignErrorResponse {
                     error: "Server is restarting.".to_string(),
                     campaign_id,
