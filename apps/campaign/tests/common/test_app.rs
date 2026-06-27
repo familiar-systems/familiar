@@ -1,6 +1,7 @@
+use arc_swap::ArcSwap;
 use familiar_systems_app_shared::auth::HankoSessionValidator;
 use familiar_systems_campaign::{
-    actors::registry::CampaignRegistry,
+    actors::registry::{CampaignRegistry, CampaignTable},
     clients::platform_internal::PlatformInternalClient,
     config::{Config, StorageBackend},
     db::register_sqlite_vec,
@@ -10,6 +11,7 @@ use familiar_systems_campaign::{
     state::AppState,
 };
 use kameo::actor::{ActorRef, Spawn};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -34,6 +36,7 @@ pub struct TestApp {
     pub bearer: String,
     pub data_dir: TempDir,
     pub registry: ActorRef<CampaignRegistry>,
+    pub table: CampaignTable,
 }
 
 #[allow(dead_code)]
@@ -85,7 +88,9 @@ pub async fn spawn_app() -> TestApp {
     let platform_internal = PlatformInternalClient::new(platform.uri(), &bearer);
     let store: Arc<dyn familiar_systems_campaign::persistence::CampaignStore> =
         Arc::new(LocalCampaignStore::new(data_dir.path().to_path_buf()));
+    let table: CampaignTable = Arc::new(ArcSwap::from_pointee(HashMap::new()));
     let registry = CampaignRegistry::spawn(CampaignRegistry::new(
+        table.clone(),
         store,
         config.idle_timeout,
         config.eviction_check_interval,
@@ -97,6 +102,7 @@ pub async fn spawn_app() -> TestApp {
         catalog,
         platform_internal,
         registry: registry.clone(),
+        table: table.clone(),
     };
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -112,5 +118,6 @@ pub async fn spawn_app() -> TestApp {
         bearer,
         data_dir,
         registry,
+        table,
     }
 }

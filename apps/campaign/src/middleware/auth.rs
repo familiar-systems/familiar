@@ -13,7 +13,7 @@ use familiar_systems_app_shared::id::{CampaignId, UserId};
 use familiar_systems_app_shared::middleware::internal_auth::InternalBearerConfig;
 use fs_id::Nanoid;
 
-use crate::actors::registry::{CampaignHandle, GetCampaign};
+use crate::actors::registry::{CampaignHandle, READY_WAIT_TIMEOUT, resolve};
 use crate::state::AppState;
 
 pub use familiar_systems_app_shared::auth::AuthenticatedUser;
@@ -56,10 +56,11 @@ pub async fn authorize_gm(
 ) -> Result<(CampaignId, CampaignHandle), Response> {
     let cid = CampaignId::from(Nanoid::from(campaign_id));
 
-    let handle = match state.registry.ask(GetCampaign(cid.clone())).await {
-        Ok(Some(handle)) => handle,
-        Ok(None) => return Err(StatusCode::NOT_FOUND.into_response()),
-        Err(_) => return Err(StatusCode::SERVICE_UNAVAILABLE.into_response()),
+    // Read the routing-table snapshot directly (no registry round-trip). A
+    // campaign mid-cold-load resolves once ready (bounded wait); absent = 404.
+    let handle = match resolve(state.table.load().get(&cid).cloned(), READY_WAIT_TIMEOUT).await {
+        Ok(handle) => handle,
+        Err(e) => return Err(e.status().into_response()),
     };
 
     let caller = UserId(user.id);

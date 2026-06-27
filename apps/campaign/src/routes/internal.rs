@@ -7,8 +7,10 @@
 //! - `PUT  /internal/campaign/{id}/lease`: ensure an existing campaign is
 //!   checked out (loaded from disk / object storage).
 
-use crate::actors::registry::{CreateCampaign, EnsureCampaign, ReleaseCampaign};
-use crate::error::EnsureError;
+use crate::actors::registry::{
+    CampaignState, CreateCampaign, EnsureCampaign, READY_WAIT_TIMEOUT, ReleaseCampaign, resolve,
+};
+use crate::error::{EnsureError, ResolveError};
 use crate::state::AppState;
 use axum::{
     Json,
@@ -19,6 +21,28 @@ use familiar_systems_app_shared::campaigns::internal::CreateCampaignRequest;
 use familiar_systems_app_shared::id::CampaignId;
 use fs_id::Nanoid;
 use kameo::error::SendError;
+
+/// Await a just-initiated checkout to a terminal state and map it to a status,
+/// preserving the previous synchronous-ensure contract for the platform:
+/// ready -> 200, load failure (init error / supervisor died) -> 500, drain or
+/// timeout -> 503. The checkout itself runs off the registry's mailbox.
+async fn await_checkout(
+    state: CampaignState,
+    campaign_id: impl std::fmt::Display,
+    op: &str,
+) -> StatusCode {
+    match resolve(Some(state), READY_WAIT_TIMEOUT).await {
+        Ok(_handle) => StatusCode::OK,
+        Err(ResolveError::LoadFailed) => {
+            tracing::error!(campaign_id = %campaign_id, op = %op, "checkout load failed");
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+        Err(e) => {
+            tracing::warn!(campaign_id = %campaign_id, op = %op, reason = %e, "checkout not ready");
+            e.status()
+        }
+    }
+}
 
 /// `POST /internal/campaign`: create a new campaign with the given owner.
 /// Idempotent on `campaign_id`.
@@ -35,7 +59,7 @@ pub async fn create_campaign(
         })
         .await
     {
-        Ok(_supervisor_ref) => StatusCode::OK,
+        Ok(state) => await_checkout(state, &campaign_id_display, "create").await,
         Err(SendError::HandlerError(EnsureError::ShuttingDown)) => {
             tracing::info!(
                 campaign_id = %campaign_id_display,
@@ -77,7 +101,7 @@ pub async fn acquire_lease(
         })
         .await
     {
-        Ok(_supervisor_ref) => StatusCode::OK,
+        Ok(state) => await_checkout(state, &campaign_id, "lease").await,
         Err(SendError::HandlerError(EnsureError::ShuttingDown)) => {
             tracing::info!(
                 campaign_id = %campaign_id,

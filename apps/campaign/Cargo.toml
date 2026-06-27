@@ -15,6 +15,7 @@ familiar-systems-app-shared = { path = "../../crates/app-shared" }
 familiar-systems-campaign-shared = { path = "../../crates/campaign-shared" }
 fs-id = { path = "../../crates/fs-id" }
 
+arc-swap = { workspace = true }
 chrono = { workspace = true }
 futures-util = { workspace = true }
 include_dir = "0.7"

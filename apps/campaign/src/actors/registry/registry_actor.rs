@@ -1,38 +1,49 @@
-//! `CampaignRegistry`: process-lifetime owner of per-campaign supervisors.
+//! `CampaignRegistry`: process-lifetime owner of the shard's routing table.
 //!
-//! The registry is the only path through which HTTP handlers obtain a
-//! `CampaignSupervisor` reference. Spawning happens here, in the
-//! registry's mailbox, so that:
+//! The registry maps each checked-out campaign to a [`CampaignState`] in a
+//! lock-free [`CampaignTable`] (an [`ArcSwap`] snapshot map). HTTP/WS handlers
+//! hold a clone of that `Arc` and read snapshots wait-free; **the registry
+//! actor is the only writer** — every mutation flows through its mailbox
+//! (message handlers + `on_link_died`), so the RCU (load -> clone -> store)
+//! never races. Concurrent writers would lose updates, which is exactly why
+//! the detached load driver never touches the table itself: it publishes to a
+//! `watch` channel and asks the registry to do the table write.
 //!
-//! - The map is mutated only from one task.
-//! - The kameo `link` is established immediately after spawn, so the
-//!   registry's `on_link_died` is the authoritative removal path. When a
-//!   supervisor self-evicts on idle (or crashes), the registry observes
-//!   the death and removes the entry.
+//! ## Async checkout
 //!
-//! Shutdown is decoupled from the registry's mailbox. [`BeginDrain`]
-//! sets the registry's [`Phase`] to `Draining`, snapshots the live
-//! supervisors, and spawns the drain workflow on the tokio runtime via
-//! `run_drain`. The handler returns immediately, so the registry can
-//! keep replying to incoming queries with `ShuttingDown` instead of
-//! blocking its mailbox on supervisor `wait_for_shutdown` futures. The
-//! drain task runs all supervisor stops in parallel via [`JoinSet`], so
-//! wall time is `max(child_drain_time)` rather than the sum.
+//! Checkout is non-blocking. On a miss the handler spawns the supervisor,
+//! links it, inserts a [`CampaignState::Loading`] entry, spawns a detached
+//! driver, and returns immediately — the registry mailbox never awaits a
+//! supervisor's `on_start` (which can take seconds once the store is S3).
+//! Concurrent checkouts of the same campaign coalesce on the one `Loading`
+//! entry's `watch`. The driver runs `wait_for_startup` off-mailbox, then asks
+//! the registry to flip `Loading -> Ready` (or remove on failure).
 //!
-//! The idle timeout and eviction check interval are both configured per
-//! environment via [`Config`](crate::config::Config). Tests construct
-//! the registry with their own short values.
+//! ## Shutdown
+//!
+//! [`BeginDrain`] flips the registry [`Phase`] to `Draining`, marks every
+//! entry `Draining`, snapshots the supervisors, and spawns `run_drain` on the
+//! tokio runtime. The handler returns immediately so the registry keeps
+//! replying while children stop in parallel via [`JoinSet`] (wall time
+//! `max(child_drain_time)`, not the sum). Per-campaign `ReleaseCampaign`
+//! marks just that entry `Draining`. In both cases `on_link_died` removes the
+//! entry once the supervisor finishes.
+//!
+//! The idle timeout and eviction check interval are configured per environment
+//! via [`Config`](crate::config::Config). Tests construct the registry with
+//! their own short values and their own [`CampaignTable`] handle.
 
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use arc_swap::ArcSwap;
 use familiar_systems_app_shared::id::{CampaignId, UserId};
 use kameo::actor::{Actor, ActorId, ActorRef, Spawn, WeakActorRef};
 use kameo::error::ActorStopReason;
 use kameo::message::{Context, Message};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 use tokio::task::JoinSet;
 
 use crate::actors::relationship_graph::RelationshipGraph;
@@ -40,10 +51,16 @@ use crate::actors::supervisor::{
     CampaignSupervisor, CampaignSupervisorArgs, RelationshipGraphRef, SetStopCause, StopCause,
 };
 use crate::clients::platform_internal::PlatformInternalClient;
-use crate::error::EnsureError;
+use crate::error::{EnsureError, ResolveError};
 use crate::persistence::CampaignStore;
 
 pub const DRAIN_DEADLINE: Duration = Duration::from_secs(600);
+
+/// Bounded wait for an in-flight checkout before a request gives up. A
+/// stopgap: a request that lands mid-load blocks up to this long, then 503s
+/// (the load continues in the background, so a retry usually succeeds). This
+/// is the seam for a real loading-screen / progress UX later.
+pub const READY_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// References to actors needed for 'external' communication.
 /// - `supervisor`: the campaign supervisor actor, handling overall campaign lifecycle
@@ -57,6 +74,88 @@ pub struct CampaignHandle {
     pub graph: ActorRef<RelationshipGraph>,
 }
 
+/// Terminal-or-pending result an awaiter reads from a [`CampaignState::Loading`]
+/// entry's `watch`. The driver task publishes `Ready`/`Failed`; the registry
+/// separately flips the table entry to [`CampaignState::Ready`] (or removes it).
+pub enum LoadOutcome {
+    Pending,
+    Ready(CampaignHandle),
+    Failed,
+}
+
+/// An in-flight checkout. `rx` lets any number of waiters await the load's
+/// terminal outcome; `supervisor` lets `on_link_died` match this entry to its
+/// (linked) supervisor and lets the load-completion guard reject a stale flip.
+#[derive(Clone)]
+pub struct LoadingEntry {
+    pub rx: watch::Receiver<LoadOutcome>,
+    pub supervisor: ActorRef<CampaignSupervisor>,
+}
+
+/// One campaign's slot in the [`CampaignTable`].
+#[derive(Clone, kameo::Reply)]
+pub enum CampaignState {
+    /// Checkout in flight. Awaiters resolve via the `watch`.
+    Loading(LoadingEntry),
+    /// Live and serving.
+    Ready(CampaignHandle),
+    /// Being torn down (platform release or shard drain). Reads 503 until
+    /// `on_link_died` removes the entry.
+    Draining {
+        supervisor: ActorRef<CampaignSupervisor>,
+    },
+}
+
+impl CampaignState {
+    /// The supervisor backing this slot, in any state. Lets `on_link_died` and
+    /// the drain paths address the actor without matching on the variant.
+    pub fn supervisor(&self) -> &ActorRef<CampaignSupervisor> {
+        match self {
+            CampaignState::Loading(e) => &e.supervisor,
+            CampaignState::Ready(h) => &h.supervisor,
+            CampaignState::Draining { supervisor } => supervisor,
+        }
+    }
+}
+
+/// The shard's routing table: a lock-free snapshot map from campaign to its
+/// checkout state. The registry actor is the only writer (see module docs);
+/// route handlers hold a clone of this `Arc` and read snapshots wait-free.
+pub type CampaignTable = Arc<ArcSwap<HashMap<CampaignId, CampaignState>>>;
+
+/// Resolve a routing-table entry to a live handle, awaiting an in-flight load
+/// up to `timeout`. Shared by the direct-read path (public GM routes read the
+/// `ArcSwap` snapshot) and the ensure path (WS/internal await the reply).
+pub async fn resolve(
+    state: Option<CampaignState>,
+    timeout: Duration,
+) -> Result<CampaignHandle, ResolveError> {
+    match state {
+        None => Err(ResolveError::NotLoaded),
+        Some(CampaignState::Ready(handle)) => Ok(handle),
+        Some(CampaignState::Draining { .. }) => Err(ResolveError::Draining),
+        Some(CampaignState::Loading(mut entry)) => {
+            let waited = tokio::time::timeout(
+                timeout,
+                entry.rx.wait_for(|o| !matches!(o, LoadOutcome::Pending)),
+            )
+            .await;
+            match waited {
+                Ok(Ok(guard)) => match &*guard {
+                    LoadOutcome::Ready(handle) => Ok(handle.clone()),
+                    // `Failed`, or `Pending` (unreachable: `wait_for` only
+                    // returns when the predicate holds) -> treat as a failed
+                    // load rather than panicking.
+                    LoadOutcome::Failed | LoadOutcome::Pending => Err(ResolveError::LoadFailed),
+                },
+                // Sender dropped without a terminal value (driver panicked).
+                Ok(Err(_)) => Err(ResolveError::LoadFailed),
+                Err(_elapsed) => Err(ResolveError::StillLoading),
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, kameo::Reply)]
 pub enum Phase {
     Ready,
@@ -64,7 +163,7 @@ pub enum Phase {
 }
 
 pub struct CampaignRegistry {
-    supervisors: HashMap<CampaignId, CampaignHandle>,
+    table: CampaignTable,
     phase: Phase,
     store: Arc<dyn CampaignStore>,
     idle_timeout: Duration,
@@ -74,19 +173,30 @@ pub struct CampaignRegistry {
 
 impl CampaignRegistry {
     pub fn new(
+        table: CampaignTable,
         store: Arc<dyn CampaignStore>,
         idle_timeout: Duration,
         eviction_check_interval: Duration,
         platform_client: Option<PlatformInternalClient>,
     ) -> Self {
         Self {
-            supervisors: HashMap::new(),
+            table,
             phase: Phase::Ready,
             store,
             idle_timeout,
             eviction_check_interval,
             platform_client,
         }
+    }
+
+    /// Single-writer RCU on the routing table. Only the registry actor's task
+    /// calls this, so a plain load -> clone -> store needs no compare-and-swap
+    /// retry loop.
+    fn write_table<R>(&self, f: impl FnOnce(&mut HashMap<CampaignId, CampaignState>) -> R) -> R {
+        let mut map = HashMap::clone(&self.table.load());
+        let out = f(&mut map);
+        self.table.store(Arc::new(map));
+        out
     }
 }
 
@@ -108,20 +218,19 @@ impl Actor for CampaignRegistry {
         _actor_ref: WeakActorRef<Self>,
         _reason: ActorStopReason,
     ) -> Result<(), Self::Error> {
-        let count = self.supervisors.len();
-        if count > 0 {
+        let states: Vec<CampaignState> = self.table.load().values().cloned().collect();
+        if !states.is_empty() {
             tracing::warn!(
-                supervisor_count = count,
+                supervisor_count = states.len(),
                 "registry stopping without explicit BeginDrain; cleaning up children synchronously"
             );
-            for (_id, handle) in self.supervisors.drain() {
-                let sup_ref = handle.supervisor;
-                let _ = sup_ref
-                    .tell(SetStopCause(StopCause::RegistryFallback))
-                    .await;
-                let _ = sup_ref.stop_gracefully().await;
-                sup_ref.wait_for_shutdown_with_result(|_| ()).await;
+            for state in states {
+                let sup = state.supervisor().clone();
+                let _ = sup.tell(SetStopCause(StopCause::RegistryFallback)).await;
+                let _ = sup.stop_gracefully().await;
+                sup.wait_for_shutdown_with_result(|_| ()).await;
             }
+            self.write_table(|map| map.clear());
         }
         Ok(())
     }
@@ -132,23 +241,31 @@ impl Actor for CampaignRegistry {
         id: ActorId,
         reason: ActorStopReason,
     ) -> Result<ControlFlow<ActorStopReason>, Self::Error> {
-        let before = self.supervisors.len();
-        self.supervisors
-            .retain(|_, handle| handle.supervisor.id() != id);
-        let removed = before - self.supervisors.len();
-        if removed > 0 {
-            tracing::debug!(
-                ?reason,
-                supervisor_count = self.supervisors.len(),
-                "supervisor removed from registry via link_died"
-            );
+        let removed = self.write_table(|map| {
+            let before = map.len();
+            map.retain(|_, st| st.supervisor().id() != id);
+            before != map.len()
+        });
+        if removed {
+            tracing::debug!(?reason, "supervisor removed from registry via link_died");
         }
+        // We learn that a supervisor has drained only here, via the kameo
+        // link, rather than having the supervisor pre-notify the registry.
+        // That keeps the supervisor decoupled (it holds no ActorRef back to
+        // us). The cost is a brief window after a supervisor self-stops (idle
+        // eviction) but before this fires, during which a direct table read
+        // can still see `Ready` and hand out a handle to a stopping
+        // supervisor; the caller's send then fails and surfaces as 503. If
+        // draining ever grows long enough that this window causes user-visible
+        // errors, give the supervisor an `ActorRef<CampaignRegistry>` and have
+        // it mark `Draining` before `ctx.stop()` so reads reject cleanly.
         Ok(ControlFlow::Continue(()))
     }
 }
 
 /// Create a new campaign on this shard with the given owner. Idempotent
-/// on `campaign_id`: if the supervisor already exists, returns it.
+/// on `campaign_id`: if the supervisor already exists (or is loading),
+/// returns its state rather than spawning a second one.
 #[derive(Debug, Clone)]
 pub struct CreateCampaign {
     pub campaign_id: CampaignId,
@@ -156,7 +273,7 @@ pub struct CreateCampaign {
 }
 
 impl Message<CreateCampaign> for CampaignRegistry {
-    type Reply = Result<ActorRef<CampaignSupervisor>, EnsureError>;
+    type Reply = Result<CampaignState, EnsureError>;
 
     #[tracing::instrument(
         skip_all,
@@ -168,9 +285,8 @@ impl Message<CreateCampaign> for CampaignRegistry {
         ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         let registry_ref = ctx.actor_ref().clone();
-        self.ensure_supervisor(registry_ref, msg.campaign_id, Some(msg.owner_user_id))
+        self.ensure(registry_ref, msg.campaign_id, Some(msg.owner_user_id))
             .await
-            .map(|handle| handle.supervisor)
     }
 }
 
@@ -183,7 +299,7 @@ pub struct EnsureCampaign {
 }
 
 impl Message<EnsureCampaign> for CampaignRegistry {
-    type Reply = Result<ActorRef<CampaignSupervisor>, EnsureError>;
+    type Reply = Result<CampaignState, EnsureError>;
 
     #[tracing::instrument(
         skip_all,
@@ -195,16 +311,14 @@ impl Message<EnsureCampaign> for CampaignRegistry {
         ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         let registry_ref = ctx.actor_ref().clone();
-        self.ensure_supervisor(registry_ref, msg.campaign_id, None)
-            .await
-            .map(|handle| handle.supervisor)
+        self.ensure(registry_ref, msg.campaign_id, None).await
     }
 }
 
 /// Release a specific campaign from this shard. If the campaign is not
-/// loaded, this is a no-op. If loaded, tags it with `PlatformRelease` and
-/// stops it gracefully. The `on_link_died` handler removes the map entry
-/// once the supervisor finishes shutting down.
+/// loaded, this is a no-op. Otherwise marks the entry `Draining`, tags the
+/// supervisor with `PlatformRelease`, and stops it gracefully. The
+/// `on_link_died` handler removes the entry once the supervisor finishes.
 #[derive(Debug, Clone)]
 pub struct ReleaseCampaign {
     pub campaign_id: CampaignId,
@@ -222,13 +336,28 @@ impl Message<ReleaseCampaign> for CampaignRegistry {
         msg: ReleaseCampaign,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        let Some(handle) = self.supervisors.get(&msg.campaign_id) else {
+        let Some(state) = self.table.load().get(&msg.campaign_id).cloned() else {
             tracing::debug!("release requested for unloaded campaign; no-op");
             return;
         };
-        let supervisor = &handle.supervisor;
+        if matches!(state, CampaignState::Draining { .. }) {
+            tracing::debug!("release requested for already-draining campaign; no-op");
+            return;
+        }
+        let supervisor = state.supervisor().clone();
 
         tracing::info!("releasing campaign (platform-initiated)");
+
+        // Mark Draining so direct table reads 503 while it drains, instead of
+        // handing out a handle to a stopping supervisor.
+        self.write_table(|map| {
+            map.insert(
+                msg.campaign_id.clone(),
+                CampaignState::Draining {
+                    supervisor: supervisor.clone(),
+                },
+            );
+        });
 
         let _ = supervisor
             .tell(SetStopCause(StopCause::PlatformRelease))
@@ -239,31 +368,87 @@ impl Message<ReleaseCampaign> for CampaignRegistry {
     }
 }
 
+/// Reported by a load driver once a checkout reaches a terminal state. The
+/// registry (sole table writer) flips `Loading -> Ready` or removes the entry.
+struct LoadComplete {
+    campaign_id: CampaignId,
+    supervisor_id: ActorId,
+    handle: Option<CampaignHandle>,
+}
+
+impl Message<LoadComplete> for CampaignRegistry {
+    type Reply = ();
+
+    async fn handle(
+        &mut self,
+        msg: LoadComplete,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.write_table(|map| {
+            // Guard the load-vs-death race: only act if the entry is still the
+            // SAME `Loading` we started. If `on_link_died` already removed it
+            // (supervisor went Ready then died instantly), drop this late
+            // completion rather than resurrecting a dead supervisor as Ready.
+            let still_ours = matches!(
+                map.get(&msg.campaign_id),
+                Some(CampaignState::Loading(e)) if e.supervisor.id() == msg.supervisor_id
+            );
+            if !still_ours {
+                return;
+            }
+            match msg.handle {
+                Some(handle) => {
+                    map.insert(msg.campaign_id.clone(), CampaignState::Ready(handle));
+                }
+                None => {
+                    map.remove(&msg.campaign_id);
+                }
+            }
+        });
+    }
+}
+
 impl CampaignRegistry {
-    #[tracing::instrument(
-        skip_all,
-        fields(campaign_id = %campaign_id.0),
-    )]
-    async fn ensure_supervisor(
+    async fn ensure(
         &mut self,
         registry_ref: ActorRef<Self>,
         campaign_id: CampaignId,
         owner_user_id: Option<UserId>,
-    ) -> Result<CampaignHandle, EnsureError> {
+    ) -> Result<CampaignState, EnsureError> {
         if matches!(self.phase, Phase::Draining) {
             tracing::debug!("rejecting ensure during drain");
             return Err(EnsureError::ShuttingDown);
         }
 
-        if let Some(existing) = self.supervisors.get(&campaign_id) {
-            tracing::debug!("supervisor already running");
-            return Ok(existing.clone());
+        let current = self.table.load().get(&campaign_id).cloned();
+        match current {
+            Some(existing @ (CampaignState::Ready(_) | CampaignState::Loading(_))) => {
+                tracing::debug!("campaign already checked out");
+                Ok(existing)
+            }
+            Some(CampaignState::Draining { .. }) => {
+                // Being torn down on this shard; the platform re-routes.
+                tracing::debug!("rejecting ensure for draining campaign");
+                Err(EnsureError::ShuttingDown)
+            }
+            None => {
+                tracing::info!("starting async checkout");
+                Ok(self
+                    .start_load(registry_ref, campaign_id, owner_user_id)
+                    .await)
+            }
         }
+    }
 
-        tracing::info!("spawning campaign supervisor");
-
-        let started = Instant::now();
-
+    /// Spawn the supervisor, link it, insert a `Loading` entry, and detach the
+    /// driver. Returns the `Loading` state for the caller to await. Does NOT
+    /// block on startup — that runs in the detached [`run_load`] task.
+    async fn start_load(
+        &self,
+        registry_ref: ActorRef<Self>,
+        campaign_id: CampaignId,
+        owner_user_id: Option<UserId>,
+    ) -> CampaignState {
         let supervisor = CampaignSupervisor::spawn(CampaignSupervisorArgs {
             campaign_id: campaign_id.clone(),
             owner_user_id,
@@ -273,30 +458,86 @@ impl CampaignRegistry {
             platform_client: self.platform_client.clone(),
         });
 
+        // Link before the load drives so `on_link_died` is the authoritative
+        // removal path even if the supervisor dies mid-startup. This is a fast
+        // local registration, not a startup wait, so it's safe in the mailbox.
         registry_ref.link(&supervisor).await;
 
-        supervisor.wait_for_startup().await;
-        if !supervisor.is_alive() {
-            tracing::warn!("supervisor died during startup");
-            return Err(EnsureError::SupervisorDied);
-        }
+        let (tx, rx) = watch::channel(LoadOutcome::Pending);
+        let state = CampaignState::Loading(LoadingEntry {
+            rx,
+            supervisor: supervisor.clone(),
+        });
+        self.write_table(|map| {
+            map.insert(campaign_id.clone(), state.clone());
+        });
 
-        let graph = match supervisor.ask(RelationshipGraphRef).await {
-            Ok(graph) => graph,
+        // Detached: a disconnecting client can't orphan a half-loaded
+        // supervisor or wedge the entry in `Loading`.
+        tokio::spawn(run_load(registry_ref, campaign_id, supervisor, tx));
+
+        state
+    }
+}
+
+/// Drive a checkout to a terminal state off the registry's mailbox: wait for
+/// the supervisor's `on_start`, resolve its relationship graph, then publish
+/// the outcome to awaiters (the `watch`) and to the registry ([`LoadComplete`],
+/// the sole table writer).
+#[tracing::instrument(skip_all, fields(campaign_id = %campaign_id.0))]
+async fn run_load(
+    registry_ref: ActorRef<CampaignRegistry>,
+    campaign_id: CampaignId,
+    supervisor: ActorRef<CampaignSupervisor>,
+    tx: watch::Sender<LoadOutcome>,
+) {
+    let started = Instant::now();
+    let supervisor_id = supervisor.id();
+
+    supervisor.wait_for_startup().await;
+
+    let handle = if !supervisor.is_alive() {
+        tracing::warn!("supervisor died during startup");
+        None
+    } else {
+        match supervisor.ask(RelationshipGraphRef).await {
+            Ok(graph) => Some(CampaignHandle {
+                supervisor: supervisor.clone(),
+                graph,
+            }),
             Err(e) => {
                 tracing::warn!(error = %e, "supervisor unreachable resolving relationship graph");
-                return Err(EnsureError::SupervisorDied);
+                None
             }
-        };
+        }
+    };
 
-        let handle = CampaignHandle { supervisor, graph };
-        self.supervisors.insert(campaign_id.clone(), handle.clone());
-
-        tracing::info!(
-            init_total_elapsed_ms = started.elapsed().as_millis() as u64,
-            "campaign ensured"
-        );
-        Ok(handle)
+    match handle {
+        Some(handle) => {
+            // Unblock awaiters first, then flip the table.
+            let _ = tx.send(LoadOutcome::Ready(handle.clone()));
+            let _ = registry_ref
+                .tell(LoadComplete {
+                    campaign_id,
+                    supervisor_id,
+                    handle: Some(handle),
+                })
+                .await;
+            tracing::info!(
+                init_total_elapsed_ms = started.elapsed().as_millis() as u64,
+                "campaign loaded"
+            );
+        }
+        None => {
+            let _ = tx.send(LoadOutcome::Failed);
+            let _ = registry_ref
+                .tell(LoadComplete {
+                    campaign_id,
+                    supervisor_id,
+                    handle: None,
+                })
+                .await;
+        }
     }
 }
 
@@ -311,30 +552,8 @@ impl Message<GetPhase> for CampaignRegistry {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct GetCampaign(pub CampaignId);
-
-impl Message<GetCampaign> for CampaignRegistry {
-    type Reply = Option<CampaignHandle>;
-
-    #[tracing::instrument(
-        skip_all,
-        fields(campaign_id = %id.0),
-    )]
-    async fn handle(
-        &mut self,
-        GetCampaign(id): GetCampaign,
-        _ctx: &mut Context<Self, Self::Reply>,
-    ) -> Self::Reply {
-        if matches!(self.phase, Phase::Draining) {
-            return None;
-        }
-        self.supervisors.get(&id).cloned()
-    }
-}
-
-/// Returns the IDs of all campaigns currently loaded in the registry.
-/// Empty during drain (campaigns are being stopped, not available).
+/// Returns the IDs of all campaigns currently in the routing table (any
+/// state). Empty during drain (campaigns are being stopped, not available).
 #[derive(Debug, Clone, Copy)]
 pub struct ListLoaded;
 
@@ -349,7 +568,7 @@ impl Message<ListLoaded> for CampaignRegistry {
         if matches!(self.phase, Phase::Draining) {
             return Vec::new();
         }
-        self.supervisors.keys().cloned().collect()
+        self.table.load().keys().cloned().collect()
     }
 }
 
@@ -368,13 +587,25 @@ impl Message<BeginDrain> for CampaignRegistry {
         }
         self.phase = Phase::Draining;
 
-        // Drain to bare supervisor refs - run_drain only stops supervisors; their
-        // on_stop drains the graph + rooms in order.
-        let snapshot: Vec<_> = self
-            .supervisors
-            .drain()
-            .map(|(id, handle)| (id, handle.supervisor))
-            .collect();
+        // Snapshot supervisor refs and mark every entry `Draining` so direct
+        // table reads 503 while children stop. run_drain only stops the
+        // supervisors; their on_stop drains the graph + rooms in order, and
+        // on_link_died removes each entry as it finishes.
+        let snapshot = self.write_table(|map| {
+            let snap: Vec<(CampaignId, ActorRef<CampaignSupervisor>)> = map
+                .iter()
+                .map(|(id, st)| (id.clone(), st.supervisor().clone()))
+                .collect();
+            for (id, sup) in &snap {
+                map.insert(
+                    id.clone(),
+                    CampaignState::Draining {
+                        supervisor: sup.clone(),
+                    },
+                );
+            }
+            snap
+        });
         let count = snapshot.len();
         tracing::info!(
             supervisor_count = count,

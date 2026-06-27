@@ -1,9 +1,10 @@
 mod common;
 
 use familiar_systems_app_shared::id::CampaignId;
-use familiar_systems_campaign::actors::registry::CreateCampaign;
+use familiar_systems_campaign::actors::registry::{CreateCampaign, resolve};
 use familiar_systems_campaign_shared::onboarding::metadata::CampaignMetadataResponse;
 use serde_json::json;
+use std::time::Duration;
 use wiremock::{
     Mock, ResponseTemplate,
     matchers::{header, method, path},
@@ -23,9 +24,7 @@ fn wizard_payload() -> serde_json::Value {
 }
 
 async fn create_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
-    let _: kameo::actor::ActorRef<
-        familiar_systems_campaign::actors::supervisor::CampaignSupervisor,
-    > = app
+    let state = app
         .registry
         .ask(CreateCampaign {
             campaign_id: campaign_id.clone(),
@@ -33,6 +32,9 @@ async fn create_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
         })
         .await
         .expect("create campaign");
+    resolve(Some(state), Duration::from_secs(30))
+        .await
+        .expect("campaign ready");
 }
 
 #[tokio::test]

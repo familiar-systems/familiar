@@ -12,13 +12,14 @@ mod common;
 
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::CampaignId;
-use familiar_systems_campaign::actors::registry::CreateCampaign;
+use familiar_systems_campaign::actors::registry::{CreateCampaign, resolve};
 use familiar_systems_campaign::actors::supervisor::{CreateSession, JoinRoom};
 use familiar_systems_campaign_shared::id::ClientId;
 use familiar_systems_campaign_shared::loro::toc::{
     CONTAINER_TOC, KEY_KIND, KEY_ORDINAL, KEY_PAGE_KIND, KIND_PAGE,
 };
 use loro::{LoroDoc, LoroValue, TreeParentId, ValueOrContainer};
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 fn as_string(v: Option<ValueOrContainer>) -> Option<String> {
@@ -39,7 +40,7 @@ fn as_i64(v: Option<ValueOrContainer>) -> Option<i64> {
 async fn session_toc_node_carries_kind_and_ordinal() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
-    let supervisor = app
+    let state = app
         .registry
         .ask(CreateCampaign {
             campaign_id,
@@ -47,6 +48,10 @@ async fn session_toc_node_carries_kind_and_ordinal() {
         })
         .await
         .expect("create campaign");
+    let supervisor = resolve(Some(state), Duration::from_secs(30))
+        .await
+        .expect("campaign ready")
+        .supervisor;
 
     // Create a session. CreateSession awaits its AddPageNode, so the node is live
     // in the toc doc by the time the call returns.

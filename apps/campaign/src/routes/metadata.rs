@@ -1,8 +1,9 @@
 //! `GET /campaign/{id}` and `PATCH /campaign/{id}` -- campaign metadata.
 
 use crate::actors::database_writer::{GetMetadata, MetadataError, PatchCampaignError};
-use crate::actors::registry::GetCampaign;
+use crate::actors::registry::{READY_WAIT_TIMEOUT, resolve};
 use crate::actors::supervisor::PatchCampaignMetadata;
+use crate::error::ResolveError;
 use crate::middleware::auth::AuthenticatedUser;
 use crate::state::AppState;
 use axum::{
@@ -43,15 +44,11 @@ pub async fn get_campaign(
     State(state): State<AppState>,
     Path(campaign_id): Path<String>,
 ) -> impl IntoResponse {
-    let supervisor = match state
-        .registry
-        .ask(GetCampaign(CampaignId::from(Nanoid::from(
-            campaign_id.clone(),
-        ))))
-        .await
+    let cid = CampaignId::from(Nanoid::from(campaign_id.clone()));
+    let supervisor = match resolve(state.table.load().get(&cid).cloned(), READY_WAIT_TIMEOUT).await
     {
-        Ok(Some(handle)) => handle.supervisor,
-        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+        Ok(handle) => handle.supervisor,
+        Err(ResolveError::NotLoaded) => return StatusCode::NOT_FOUND.into_response(),
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
 
@@ -114,15 +111,11 @@ pub async fn patch_campaign(
         "patching campaign metadata"
     );
 
-    let supervisor = match state
-        .registry
-        .ask(GetCampaign(CampaignId::from(Nanoid::from(
-            campaign_id.clone(),
-        ))))
-        .await
+    let cid = CampaignId::from(Nanoid::from(campaign_id.clone()));
+    let supervisor = match resolve(state.table.load().get(&cid).cloned(), READY_WAIT_TIMEOUT).await
     {
-        Ok(Some(handle)) => handle.supervisor,
-        Ok(None) => {
+        Ok(handle) => handle.supervisor,
+        Err(ResolveError::NotLoaded) => {
             return (
                 StatusCode::NOT_FOUND,
                 Json(CampaignErrorResponse {
