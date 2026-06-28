@@ -1,6 +1,7 @@
+use arc_swap::ArcSwap;
 use familiar_systems_app_shared::auth::HankoSessionValidator;
 use familiar_systems_campaign::{
-    actors::registry::{BeginDrain, CampaignRegistry, ListLoaded},
+    actors::registry::{BeginDrain, CampaignRegistry, CampaignTable, ListLoaded},
     clients::platform_internal::PlatformInternalClient,
     config::Config,
     db::register_sqlite_vec,
@@ -11,6 +12,7 @@ use familiar_systems_campaign::{
     state::AppState,
 };
 use kameo::actor::Spawn;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -32,7 +34,15 @@ async fn main() -> Result<(), StartupError> {
     register_sqlite_vec();
 
     let store = persistence::store_from_config(&config);
+
+    // Routing table.
+    // - Writers: only the [`CampaignRegistry`]
+    // - Readers: all HTTP handlers
+    // Note: The ArcSwap crate suggests using a static [`ArcSwap`] for the routing table.
+    // However, that breaks some test isolation for us.
+    let table: CampaignTable = Arc::new(ArcSwap::from_pointee(HashMap::new()));
     let registry = CampaignRegistry::spawn(CampaignRegistry::new(
+        table.clone(),
         store,
         config.idle_timeout,
         config.eviction_check_interval,
@@ -45,6 +55,7 @@ async fn main() -> Result<(), StartupError> {
         catalog,
         platform_internal,
         registry: registry.clone(),
+        table,
     };
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));

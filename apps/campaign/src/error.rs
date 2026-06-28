@@ -8,6 +8,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use axum::http::StatusCode;
 use familiar_systems_app_shared::id::CampaignId;
 
 use crate::persistence::StoreError;
@@ -67,14 +68,46 @@ pub enum InitError {
 pub enum EnsureError {
     #[error("init failed: {0}")]
     Init(#[from] InitError),
-    /// The supervisor was spawned but its actor task ended before
-    /// reporting Ready. Treat as a transient failure; the platform may
-    /// retry.
-    #[error("supervisor died before reaching Ready")]
-    SupervisorDied,
     /// The registry is in its drain phase and won't accept new
     /// campaigns. Maps to 503 at the HTTP layer; the platform retries
     /// against whichever shard takes over the campaign.
     #[error("registry is shutting down")]
     ShuttingDown,
+}
+
+/// Outcome of resolving a campaign from the registry's routing table to a
+/// live [`CampaignHandle`](crate::actors::registry::CampaignHandle). Checkout
+/// is async: a request may land while a campaign is mid-load or mid-drain.
+#[derive(Debug, thiserror::Error)]
+pub enum CampaignResolveError {
+    /// No entry in the routing table. The campaign isn't checked out on this
+    /// shard (the platform hasn't leased it here).
+    #[error("campaign not loaded on this shard")]
+    NotLoaded,
+    /// The campaign is being torn down (platform release or shard drain).
+    #[error("campaign is draining")]
+    Draining,
+    /// The async load reached a terminal failure (init error, supervisor
+    /// died during startup). Transient; a retry re-attempts checkout.
+    #[error("campaign load failed")]
+    LoadFailed,
+    /// Still loading when the bounded wait elapsed. Transient; the load
+    /// continues in the background, so a retry usually finds it ready.
+    #[error("campaign still loading")]
+    StillLoading,
+}
+
+impl CampaignResolveError {
+    /// Default HTTP status. `NotLoaded` is the only 404 (the campaign genuinely
+    /// isn't here); every other variant is a transient 503 the caller retries.
+    /// Callers that need a different mapping (e.g. internal create treating a
+    /// load failure as 500) match the variant directly.
+    pub fn status(&self) -> StatusCode {
+        match self {
+            CampaignResolveError::NotLoaded => StatusCode::NOT_FOUND,
+            CampaignResolveError::Draining
+            | CampaignResolveError::LoadFailed
+            | CampaignResolveError::StillLoading => StatusCode::SERVICE_UNAVAILABLE,
+        }
+    }
 }

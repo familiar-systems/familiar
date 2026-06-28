@@ -1,18 +1,17 @@
 mod common;
 
 use familiar_systems_app_shared::id::{CampaignId, UserId};
-use familiar_systems_campaign::actors::registry::CreateCampaign;
+use familiar_systems_campaign::actors::registry::{CreateCampaign, resolve};
 use familiar_systems_campaign_shared::onboarding::metadata::CampaignMetadataResponse;
 use serde_json::json;
+use std::time::Duration;
 use wiremock::{
     Mock, ResponseTemplate,
     matchers::{method, path},
 };
 
 async fn create_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
-    let _: kameo::actor::ActorRef<
-        familiar_systems_campaign::actors::supervisor::CampaignSupervisor,
-    > = app
+    let state = app
         .registry
         .ask(CreateCampaign {
             campaign_id: campaign_id.clone(),
@@ -20,6 +19,9 @@ async fn create_campaign(app: &common::TestApp, campaign_id: &CampaignId) {
         })
         .await
         .expect("create campaign");
+    resolve(Some(state), Duration::from_secs(30))
+        .await
+        .expect("campaign ready");
 }
 
 fn wizard_payload() -> serde_json::Value {
@@ -131,9 +133,7 @@ async fn get_campaign_by_different_user_returns_403() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
 
-    let _: kameo::actor::ActorRef<
-        familiar_systems_campaign::actors::supervisor::CampaignSupervisor,
-    > = app
+    let state = app
         .registry
         .ask(CreateCampaign {
             campaign_id: campaign_id.clone(),
@@ -141,6 +141,9 @@ async fn get_campaign_by_different_user_returns_403() {
         })
         .await
         .expect("create campaign");
+    resolve(Some(state), Duration::from_secs(30))
+        .await
+        .expect("campaign ready");
 
     let resp = reqwest::Client::new()
         .get(format!("{}/campaign/{}", app.base_url, campaign_id.0))

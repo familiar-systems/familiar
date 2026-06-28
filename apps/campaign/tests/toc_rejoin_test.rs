@@ -15,13 +15,14 @@ mod common;
 
 use familiar_systems_app_shared::campaigns::internal::CampaignRole;
 use familiar_systems_app_shared::id::CampaignId;
-use familiar_systems_campaign::actors::registry::CreateCampaign;
+use familiar_systems_campaign::actors::registry::{CreateCampaign, resolve};
 use familiar_systems_campaign::actors::supervisor::{CreatePage, JoinRoom};
 use familiar_systems_campaign::domain::crdt::doc::Snapshot;
 use familiar_systems_campaign::domain::page::DocumentPageKind;
 use familiar_systems_campaign_shared::id::ClientId;
 use familiar_systems_campaign_shared::loro::toc::CONTAINER_TOC;
 use loro::{LoroDoc, TreeParentId};
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 /// Decode a room snapshot the way a joining client does (into a raw LoroDoc)
@@ -39,7 +40,7 @@ fn snapshot_root_count(snapshot: &Snapshot) -> usize {
 async fn toc_rejoin_after_leave_still_gets_full_snapshot() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
-    let supervisor = app
+    let state = app
         .registry
         .ask(CreateCampaign {
             campaign_id,
@@ -47,6 +48,10 @@ async fn toc_rejoin_after_leave_still_gets_full_snapshot() {
         })
         .await
         .expect("create campaign");
+    let supervisor = resolve(Some(state), Duration::from_secs(30))
+        .await
+        .expect("campaign ready")
+        .supervisor;
 
     // Populate the ToC with two root-level Pages. CreatePage awaits its
     // AddPageNode, so each node is live in the doc by the time the call returns.

@@ -1,6 +1,8 @@
 use crate::{
-    actors::registry::CampaignRegistry, clients::platform_internal::PlatformInternalClient,
-    config::Config, starter_content::catalog::RawCatalog,
+    actors::registry::{CampaignRegistry, CampaignTable},
+    clients::platform_internal::PlatformInternalClient,
+    config::Config,
+    starter_content::catalog::RawCatalog,
 };
 use familiar_systems_app_shared::auth::HankoSessionValidator;
 use kameo::actor::ActorRef;
@@ -17,7 +19,10 @@ pub struct AppState {
     pub catalog: Arc<RawCatalog>,
     /// Bearer-attached client for platform `/internal/platform/*` callbacks.
     pub platform_internal: PlatformInternalClient,
-    /// Handle to the process-lifetime `CampaignRegistry`. HTTP handlers
-    /// ask the registry to ensure or look up per-campaign supervisors.
+    /// Handle to the process-lifetime `CampaignRegistry`. Handlers ask it to
+    /// initiate a checkout (`EnsureCampaign`/`CreateCampaign`).
     pub registry: ActorRef<CampaignRegistry>,
+    /// Lock-free routing-table snapshot, written only by the registry actor.
+    /// Handlers read it directly to resolve a campaign to its `CampaignState`.
+    pub table: CampaignTable,
 }
