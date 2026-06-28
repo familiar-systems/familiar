@@ -20,14 +20,21 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 # files during install (even --frozen-lockfile), so they must be in the image.
 COPY patches/ patches/
 
-# Copy only the site's package.json (no other apps/packages needed at install)
+# Copy package.json for the site's workspace dependency closure. The site
+# imports @familiar-systems/design's CSS; design dev-depends on tsconfig, which
+# `--filter site...` pulls into the install graph, so its package.json must exist.
 COPY apps/site/package.json apps/site/package.json
+COPY packages/design/package.json packages/design/package.json
+COPY tooling/tsconfig/package.json tooling/tsconfig/package.json
 
-# Install deps for site only (frozen lockfile for reproducibility)
+# Install deps for site and its workspace dependencies (frozen lockfile for reproducibility)
 RUN pnpm install --frozen-lockfile --filter @familiar-systems/site...
 
-# Copy site source
+# Copy source for the site and the design package it imports. tsconfig source is
+# not needed: the astro build runs no tsc, and its package.json already satisfies
+# the workspace symlink.
 COPY apps/site/ apps/site/
+COPY packages/design/ packages/design/
 
 # Build static site + pagefind index.
 # All three values are required and have no defaults; astro.config.mjs throws
