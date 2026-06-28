@@ -10,7 +10,7 @@
 use crate::actors::registry::{
     CampaignState, CreateCampaign, EnsureCampaign, READY_WAIT_TIMEOUT, ReleaseCampaign, resolve,
 };
-use crate::error::{EnsureError, ResolveError};
+use crate::error::{CampaignResolveError, EnsureError};
 use crate::state::AppState;
 use axum::{
     Json,
@@ -33,7 +33,7 @@ async fn await_checkout(
 ) -> StatusCode {
     match resolve(Some(state), READY_WAIT_TIMEOUT).await {
         Ok(_handle) => StatusCode::OK,
-        Err(ResolveError::LoadFailed) => {
+        Err(CampaignResolveError::LoadFailed) => {
             tracing::error!(campaign_id = %campaign_id, op = %op, "checkout load failed");
             StatusCode::INTERNAL_SERVER_ERROR
         }

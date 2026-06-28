@@ -34,8 +34,12 @@ async fn main() -> Result<(), StartupError> {
     register_sqlite_vec();
 
     let store = persistence::store_from_config(&config);
-    // The routing table is created here and shared by-Arc with both the
-    // registry (its sole writer) and AppState (handlers read snapshots).
+
+    // Routing table.
+    // - Writers: only the [`CampaignRegistry`]
+    // - Readers: all HTTP handlers
+    // Note: The ArcSwap crate suggests using a static [`ArcSwap`] for the routing table.
+    // However, that breaks some test isolation for us.
     let table: CampaignTable = Arc::new(ArcSwap::from_pointee(HashMap::new()));
     let registry = CampaignRegistry::spawn(CampaignRegistry::new(
         table.clone(),

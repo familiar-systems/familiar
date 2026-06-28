@@ -3,7 +3,7 @@
 use crate::actors::database_writer::{GetMetadata, MetadataError, PatchCampaignError};
 use crate::actors::registry::{READY_WAIT_TIMEOUT, resolve};
 use crate::actors::supervisor::PatchCampaignMetadata;
-use crate::error::ResolveError;
+use crate::error::CampaignResolveError;
 use crate::middleware::auth::AuthenticatedUser;
 use crate::state::AppState;
 use axum::{
@@ -114,7 +114,7 @@ pub async fn patch_campaign(
     let supervisor = match resolve(state.table.load().get(&cid).cloned(), READY_WAIT_TIMEOUT).await
     {
         Ok(handle) => handle.supervisor,
-        Err(e @ ResolveError::NotLoaded) => {
+        Err(e @ CampaignResolveError::NotLoaded) => {
             return (
                 e.status(),
                 Json(CampaignErrorResponse {

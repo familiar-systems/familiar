@@ -51,7 +51,7 @@ use crate::actors::supervisor::{
     CampaignSupervisor, CampaignSupervisorArgs, RelationshipGraphRef, SetStopCause, StopCause,
 };
 use crate::clients::platform_internal::PlatformInternalClient;
-use crate::error::{EnsureError, ResolveError};
+use crate::error::{CampaignResolveError, EnsureError};
 use crate::persistence::CampaignStore;
 
 pub const DRAIN_DEADLINE: Duration = Duration::from_secs(600);
@@ -74,21 +74,18 @@ pub struct CampaignHandle {
     pub graph: ActorRef<RelationshipGraph>,
 }
 
-/// Terminal-or-pending result an awaiter reads from a [`CampaignState::Loading`]
-/// entry's `watch`. The driver task publishes `Ready`/`Failed`; the registry
-/// separately flips the table entry to [`CampaignState::Ready`] (or removes it).
-pub(crate) enum LoadOutcome {
+pub(crate) enum CampaignLoadOutcome {
     Pending,
     Ready(CampaignHandle),
     Failed,
 }
 
-/// An in-flight checkout. `rx` lets any number of waiters await the load's
-/// terminal outcome; `supervisor` lets `on_link_died` match this entry to its
-/// (linked) supervisor and lets the load-completion guard reject a stale flip.
 #[derive(Clone)]
-pub struct LoadingEntry {
-    pub(crate) rx: watch::Receiver<LoadOutcome>,
+pub struct CampaignLoadingEntry {
+    /// Interested watchers should use this to await the load's terminal outcome.
+    pub(crate) rx: watch::Receiver<CampaignLoadOutcome>,
+    /// The supervisor backing this slot, in any state.
+    /// Allows `on_link_died` to match this entry to its kameo-linked supervisor.
     pub(crate) supervisor: ActorRef<CampaignSupervisor>,
 }
 
@@ -96,19 +93,18 @@ pub struct LoadingEntry {
 #[derive(Clone, kameo::Reply)]
 pub enum CampaignState {
     /// Checkout in flight. Awaiters resolve via the `watch`.
-    Loading(LoadingEntry),
+    Loading(CampaignLoadingEntry),
     /// Live and serving.
     Ready(CampaignHandle),
-    /// Being torn down (platform release or shard drain). Reads 503 until
-    /// `on_link_died` removes the entry.
+    /// Being torn down (platform release or shard drain).
+    /// Reads 503 until `on_link_died` removes the entry.
     Draining {
         supervisor: ActorRef<CampaignSupervisor>,
     },
 }
 
 impl CampaignState {
-    /// The supervisor backing this slot, in any state. Lets `on_link_died` and
-    /// the drain paths address the actor without matching on the variant.
+    /// Lets [`Actor::on_link_died`] and the drain paths address the supervisor without matching on [`CampaignState`] variants.
     pub fn supervisor(&self) -> &ActorRef<CampaignSupervisor> {
         match self {
             CampaignState::Loading(e) => &e.supervisor,
@@ -129,28 +125,32 @@ pub type CampaignTable = Arc<ArcSwap<HashMap<CampaignId, CampaignState>>>;
 pub async fn resolve(
     state: Option<CampaignState>,
     timeout: Duration,
-) -> Result<CampaignHandle, ResolveError> {
+) -> Result<CampaignHandle, CampaignResolveError> {
     match state {
-        None => Err(ResolveError::NotLoaded),
+        None => Err(CampaignResolveError::NotLoaded),
         Some(CampaignState::Ready(handle)) => Ok(handle),
-        Some(CampaignState::Draining { .. }) => Err(ResolveError::Draining),
+        Some(CampaignState::Draining { .. }) => Err(CampaignResolveError::Draining),
         Some(CampaignState::Loading(mut entry)) => {
             let waited = tokio::time::timeout(
                 timeout,
-                entry.rx.wait_for(|o| !matches!(o, LoadOutcome::Pending)),
+                entry
+                    .rx
+                    .wait_for(|o| !matches!(o, CampaignLoadOutcome::Pending)),
             )
             .await;
             match waited {
                 Ok(Ok(guard)) => match &*guard {
-                    LoadOutcome::Ready(handle) => Ok(handle.clone()),
+                    CampaignLoadOutcome::Ready(handle) => Ok(handle.clone()),
                     // `Failed`, or `Pending` (unreachable: `wait_for` only
                     // returns when the predicate holds) -> treat as a failed
                     // load rather than panicking.
-                    LoadOutcome::Failed | LoadOutcome::Pending => Err(ResolveError::LoadFailed),
+                    CampaignLoadOutcome::Failed | CampaignLoadOutcome::Pending => {
+                        Err(CampaignResolveError::LoadFailed)
+                    }
                 },
                 // Sender dropped without a terminal value (driver panicked).
-                Ok(Err(_)) => Err(ResolveError::LoadFailed),
-                Err(_elapsed) => Err(ResolveError::StillLoading),
+                Ok(Err(_)) => Err(CampaignResolveError::LoadFailed),
+                Err(_elapsed) => Err(CampaignResolveError::StillLoading),
             }
         }
     }
@@ -463,8 +463,8 @@ impl CampaignRegistry {
         // local registration, not a startup wait, so it's safe in the mailbox.
         registry_ref.link(&supervisor).await;
 
-        let (tx, rx) = watch::channel(LoadOutcome::Pending);
-        let state = CampaignState::Loading(LoadingEntry {
+        let (tx, rx) = watch::channel(CampaignLoadOutcome::Pending);
+        let state = CampaignState::Loading(CampaignLoadingEntry {
             rx,
             supervisor: supervisor.clone(),
         });
@@ -489,7 +489,7 @@ async fn run_load(
     registry_ref: ActorRef<CampaignRegistry>,
     campaign_id: CampaignId,
     supervisor: ActorRef<CampaignSupervisor>,
-    tx: watch::Sender<LoadOutcome>,
+    tx: watch::Sender<CampaignLoadOutcome>,
 ) {
     let started = Instant::now();
     let supervisor_id = supervisor.id();
@@ -515,7 +515,7 @@ async fn run_load(
     match handle {
         Some(handle) => {
             // Unblock awaiters first, then flip the table.
-            let _ = tx.send(LoadOutcome::Ready(handle.clone()));
+            let _ = tx.send(CampaignLoadOutcome::Ready(handle.clone()));
             let _ = registry_ref
                 .tell(LoadComplete {
                     campaign_id,
@@ -529,7 +529,7 @@ async fn run_load(
             );
         }
         None => {
-            let _ = tx.send(LoadOutcome::Failed);
+            let _ = tx.send(CampaignLoadOutcome::Failed);
             let _ = registry_ref
                 .tell(LoadComplete {
                     campaign_id,

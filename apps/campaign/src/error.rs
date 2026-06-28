@@ -79,7 +79,7 @@ pub enum EnsureError {
 /// live [`CampaignHandle`](crate::actors::registry::CampaignHandle). Checkout
 /// is async: a request may land while a campaign is mid-load or mid-drain.
 #[derive(Debug, thiserror::Error)]
-pub enum ResolveError {
+pub enum CampaignResolveError {
     /// No entry in the routing table. The campaign isn't checked out on this
     /// shard (the platform hasn't leased it here).
     #[error("campaign not loaded on this shard")]
@@ -97,17 +97,17 @@ pub enum ResolveError {
     StillLoading,
 }
 
-impl ResolveError {
+impl CampaignResolveError {
     /// Default HTTP status. `NotLoaded` is the only 404 (the campaign genuinely
     /// isn't here); every other variant is a transient 503 the caller retries.
     /// Callers that need a different mapping (e.g. internal create treating a
     /// load failure as 500) match the variant directly.
     pub fn status(&self) -> StatusCode {
         match self {
-            ResolveError::NotLoaded => StatusCode::NOT_FOUND,
-            ResolveError::Draining | ResolveError::LoadFailed | ResolveError::StillLoading => {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
+            CampaignResolveError::NotLoaded => StatusCode::NOT_FOUND,
+            CampaignResolveError::Draining
+            | CampaignResolveError::LoadFailed
+            | CampaignResolveError::StillLoading => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
 }

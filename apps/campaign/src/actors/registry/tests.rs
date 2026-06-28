@@ -13,7 +13,7 @@ use super::*;
 use crate::actors::relationship_graph::KnownPredicatePairs;
 use crate::actors::supervisor::Ping as SupPing;
 use crate::db::register_sqlite_vec;
-use crate::error::{EnsureError, ResolveError};
+use crate::error::{CampaignResolveError, EnsureError};
 use crate::persistence::{CampaignStore, LocalCampaignStore};
 
 const READY: Duration = Duration::from_secs(30);
@@ -201,7 +201,7 @@ async fn concurrent_ensures_coalesce_on_one_load() {
 async fn resolve_none_is_not_loaded() {
     assert!(matches!(
         resolve(None, READY).await,
-        Err(ResolveError::NotLoaded)
+        Err(CampaignResolveError::NotLoaded)
     ));
 }
 
@@ -222,7 +222,7 @@ async fn resolve_draining_state_is_draining() {
     };
     assert!(matches!(
         resolve(Some(state), READY).await,
-        Err(ResolveError::Draining)
+        Err(CampaignResolveError::Draining)
     ));
 }
 
@@ -240,14 +240,14 @@ async fn resolve_loading_times_out_as_still_loading() {
     // A load that never publishes a terminal outcome. Hold the sender so the
     // channel stays open: a dropped sender would surface as LoadFailed, not
     // StillLoading.
-    let (_tx, rx) = watch::channel(LoadOutcome::Pending);
-    let state = CampaignState::Loading(LoadingEntry {
+    let (_tx, rx) = watch::channel(CampaignLoadOutcome::Pending);
+    let state = CampaignState::Loading(CampaignLoadingEntry {
         rx,
         supervisor: handle.supervisor,
     });
     assert!(matches!(
         resolve(Some(state), Duration::from_millis(50)).await,
-        Err(ResolveError::StillLoading)
+        Err(CampaignResolveError::StillLoading)
     ));
 }
 
@@ -318,7 +318,7 @@ async fn failed_load_resolves_failed_and_removes_entry() {
     // The async load hits an init failure -> resolve surfaces LoadFailed...
     assert!(matches!(
         resolve(Some(state), READY).await,
-        Err(ResolveError::LoadFailed)
+        Err(CampaignResolveError::LoadFailed)
     ));
     // ...and the failed entry is dropped so a retry can re-checkout.
     wait_until_absent(&table, &id, Duration::from_secs(2)).await;
