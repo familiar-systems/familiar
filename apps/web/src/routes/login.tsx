@@ -75,9 +75,9 @@ function Login(): React.ReactElement {
 
       {/* Ambient glow orbs. motion-safe gates the pulse for vestibular users. */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-30">
-        <div className="absolute top-[12%] left-[18%] size-120 rounded-full bg-primary/30 blur-[140px] motion-safe:animate-pulse" />
+        <div className="absolute inset-s-[18%] top-[12%] size-120 rounded-full bg-primary/30 blur-[140px] motion-safe:animate-pulse" />
         <div
-          className="absolute right-[12%] bottom-[10%] size-105 rounded-full bg-gold/25 blur-[120px] motion-safe:animate-pulse"
+          className="absolute inset-e-[12%] bottom-[10%] size-105 rounded-full bg-gold/25 blur-[120px] motion-safe:animate-pulse"
           style={{ animationDelay: "3s" }}
         />
       </div>
@@ -135,7 +135,7 @@ function Login(): React.ReactElement {
       {/* Theme toggle, last in source order so it stacks on top of the
         full-viewport content column at the same z-index and clicks aren't
         absorbed by the empty area of the centered flex container. */}
-      <ThemeToggle className="absolute top-6 right-6 z-10" />
+      <ThemeToggle className="absolute inset-e-6 top-6 z-10" />
     </div>
   );
 }

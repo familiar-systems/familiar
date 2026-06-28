@@ -18,8 +18,11 @@
 // (BYO presents no per-template toggle in v0; the BYO bundle ships as-is.)
 
 import type { CatalogResponse, SystemEntry, TemplateRef } from "@familiar-systems/types-campaign";
+import { TextField } from "@familiar-systems/ui";
 import { Check, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Trans } from "../../components/Trans";
+import { m } from "../../paraglide/messages.js";
 import { fuzzyMatchSystems } from "./fuzzyMatch";
 
 /**
@@ -87,19 +90,21 @@ export function StepSystem({
     <div className="space-y-6 enter-from-below">
       <header className="space-y-3">
         <p className="text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase">
-          Step two
+          {m.stepSystemEyebrow()}
         </p>
         <h2 className="font-display text-3xl leading-tight font-medium tracking-tight md:text-4xl">
-          Choose your <em className="text-gold italic">system</em>.
+          <Trans
+            message={m.stepSystemHeading()}
+            components={{ gold: (c) => <em className="text-gold italic">{c}</em> }}
+          />
         </h2>
         <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
-          Search by name. Each system bundles a starter set of templates; you can adjust the bundle
-          below. Or bring your own.
+          {m.stepSystemLede()}
         </p>
       </header>
 
       <div className="relative">
-        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute inset-s-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
           ref={inputRef}
           data-testid="system-search-input"
@@ -108,28 +113,26 @@ export function StepSystem({
           onChange={(e) => {
             setQuery(e.target.value);
           }}
-          placeholder="Try ‘blades’, ‘daggerheart’, ‘dnd’..."
-          className="w-full rounded-xl border border-foreground/10 bg-background/60 py-3 pr-4 pl-10 text-base text-foreground placeholder:text-muted-foreground/60 focus:border-gold/50 focus:ring-2 focus:ring-gold/20 focus:outline-none"
+          placeholder={m.stepSystemSearchPlaceholder()}
+          className="w-full rounded-xl border border-foreground/10 bg-background/60 py-3 ps-10 pe-4 text-base text-foreground placeholder:text-muted-foreground/60 focus:border-gold/50 focus:ring-2 focus:ring-gold/20 focus:outline-none"
         />
       </div>
 
       {catalog === null ? (
         <p data-testid="catalog-loading" className="text-sm text-muted-foreground">
-          Fetching the catalog...
+          {m.stepSystemCatalogLoading()}
         </p>
       ) : (
         <>
           {showPopular ? (
             <p className="text-xs tracking-[0.18em] text-muted-foreground/70 uppercase">
-              Most-played
+              {m.stepSystemMostPlayed()}
             </p>
           ) : null}
 
           <div data-testid="system-list" className="grid gap-3 md:grid-cols-2">
             {list.length === 0 ? (
-              <p className="col-span-full text-sm text-muted-foreground">
-                No system answers to that name. Try the Bring your own card below.
-              </p>
+              <p className="col-span-full text-sm text-muted-foreground">{m.stepSystemNoMatch()}</p>
             ) : null}
             {list.map((system) => (
               <SystemCard
@@ -213,9 +216,11 @@ function TemplatesEditor({
       className="space-y-3 rounded-2xl border border-foreground/10 bg-bronze-muted/20 p-5"
     >
       <header className="space-y-1">
-        <h3 className="font-display text-lg font-medium tracking-tight">Starter templates</h3>
+        <h3 className="font-display text-lg font-medium tracking-tight">
+          {m.stepSystemTemplatesHeading()}
+        </h3>
         <p className="text-sm text-muted-foreground">
-          {system.name} ships with these. Toggle any off if you do not want them.
+          {m.stepSystemTemplatesLede({ systemName: system.name })}
         </p>
       </header>
       <div className="flex flex-wrap gap-2">
@@ -253,10 +258,7 @@ function TemplatesEditor({
           );
         })}
       </div>
-      <p className="text-xs text-muted-foreground/80">
-        Missing a template? Pick the closest fit; you can create freeform Things inside the
-        campaign.
-      </p>
+      <p className="text-xs text-muted-foreground/80">{m.stepSystemTemplatesFootnote()}</p>
     </div>
   );
 }
@@ -278,14 +280,7 @@ function BringYourOwn({
   onPick,
   onCustomNameChange,
 }: BringYourOwnProps): React.ReactElement {
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (selected) {
-      inputRef.current?.focus();
-    }
-  }, [selected]);
-
-  const placeholder = `‘The Five-Card Oracle’ · ‘Homebrew d20’ · leave blank for ‘${BYO_DEFAULT_NAME}’`;
+  const placeholder = m.stepSystemByoNamePlaceholder({ byoDefault: BYO_DEFAULT_NAME });
 
   return (
     <div className="space-y-3" data-testid="bring-your-own">
@@ -294,7 +289,7 @@ function BringYourOwn({
         className="flex items-center gap-3 text-xs tracking-[0.18em] text-muted-foreground/70 uppercase"
       >
         <span className="h-px flex-1 bg-foreground/10" />
-        or, off the shelf
+        {m.stepSystemByoDivider()}
         <span className="h-px flex-1 bg-foreground/10" />
       </p>
 
@@ -321,37 +316,30 @@ function BringYourOwn({
         </span>
         <span className="flex-1 space-y-2">
           <span className="flex flex-wrap items-baseline gap-2">
-            <span className="font-display text-lg font-medium tracking-tight">Bring your own</span>
+            <span className="font-display text-lg font-medium tracking-tight">
+              {m.stepSystemByoTitle()}
+            </span>
             <span className="inline-flex items-center rounded-full border border-foreground/10 bg-background/60 px-2 py-0.5 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
-              Always available
+              {m.stepSystemByoBadge()}
             </span>
           </span>
           <span className="block text-sm leading-snug text-muted-foreground">
-            A blank room. You bring the rules; we bring the wiki.
+            {m.stepSystemByoDescription()}
           </span>
         </span>
       </button>
 
       {selected ? (
-        <div className="space-y-2 rounded-2xl border border-foreground/10 bg-bronze-muted/20 p-4">
-          <div className="flex items-baseline justify-between gap-4">
-            <label htmlFor="byo-name" className="text-sm font-medium text-foreground">
-              What do you call your system?
-            </label>
-            <span className="text-xs tracking-wider text-muted-foreground uppercase">Optional</span>
-          </div>
-          <input
-            id="byo-name"
-            ref={inputRef}
-            data-testid="byo-name-input"
-            type="text"
+        <div className="rounded-2xl border border-foreground/10 bg-bronze-muted/20 p-4">
+          <TextField
+            label={m.stepSystemByoNameLabel()}
+            hint={m.stepSystemByoNameOptional()}
+            // Mounts only once BYO is picked, so autoFocus lands here then.
+            autoFocus
             value={customName}
-            onChange={(e) => {
-              onCustomNameChange(e.target.value);
-            }}
+            onChange={onCustomNameChange}
             placeholder={placeholder}
-            maxLength={60}
-            className="w-full rounded-xl border border-foreground/10 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-gold/50 focus:ring-2 focus:ring-gold/20 focus:outline-none"
+            inputProps={{ "data-testid": "byo-name-input", maxLength: 60 }}
           />
         </div>
       ) : null}

@@ -44,13 +44,16 @@ crates/fs-id, fs-id-macros  Rust utility crates: type-safe ID branding (#[fs_id]
 packages/types-app      @familiar-systems/types-app, generated from app-shared via ts-rs (CampaignId, UserId)
 packages/types-campaign @familiar-systems/types-campaign, generated from campaign-shared via ts-rs (PageId, BlockId, PageHandle, TocEntry, ...)
 packages/editor         @familiar-systems/editor, TipTap/ProseMirror schema + custom extensions (THE shared contract)
+packages/design         @familiar-systems/design, CSS design tokens + Tailwind v4 entry (the shared look: color, type, radii, motion). CSS-only, no components.
+packages/ui             @familiar-systems/ui, accessible component primitives (thin React Aria Components wrappers styled with design tokens)
 ```
 
 ### Critical Dependency Rules
 
-- **Dependency direction: `web -> editor -> types-campaign -> types-app`.** The editor depends on campaign types. Campaign types depend on app types. `web` also depends on `types-app` directly (for auth, campaign listing).
-- **`apps/site` depends only on `types-app`.** The public site needs platform-level types only (CampaignId, UserId).
-- **`apps/web` depends on `types-app`, `types-campaign`, and `editor`.** The client/server boundary is enforced by the dependency graph. There is no server-side TypeScript to import.
+- **Type dependency direction: `web -> editor -> types-campaign -> types-app`.** The editor depends on campaign types. Campaign types depend on app types. `web` also depends on `types-app` directly (for auth, campaign listing).
+- **Presentational packages (`design`, `ui`) sit alongside the type chain.** `design` (CSS tokens) is consumed by both apps; `ui` (`design` + React Aria) is used **fully by `apps/web`** and **selectively by `apps/site`** inside React demo islands. `ui` stays domain-agnostic (pure presentational, data via props) so it never needs `types-campaign`; the marketing site can import it without pulling in app/campaign types.
+- **`apps/site` depends on `types-app`, `design`, and (in demo islands) `ui`.** No `types-campaign`/`editor` in the static pages; only the islands run React.
+- **`apps/web` depends on `types-app`, `types-campaign`, `editor`, `design`, and `ui`.** The client/server boundary is enforced by the dependency graph. There is no server-side TypeScript to import.
 - **Each package's `src/index.ts` is its public API.** Import from `@familiar-systems/types-app` or `@familiar-systems/types-campaign`, never from `@familiar-systems/types-campaign/generated/PageId`.
 - **Domain logic is Rust.** Two Rust binaries (platform + campaign server) and two shared crates own all backend logic. TypeScript is frontend-only.
 - **Two shared crates, two type packages, same split.** `app-shared` / `types-app` holds types both servers need (IDs, auth). `campaign-shared` / `types-campaign` holds campaign-only concerns (Loro schema constants and ts-rs types, ToC schema, ProseMirror conventions, onboarding DTOs); the concrete Loro doc wrappers and the `CrdtDoc` trait are app-local in `apps/campaign`. The test: "does the platform server need this type?" If yes, `app-shared`. If no, `campaign-shared`. Both crates export TypeScript types via ts-rs to their corresponding package.

@@ -12,6 +12,8 @@
 // records but won't train; "opt-in" both records and trains.
 
 import type { AudioMode } from "@familiar-systems/types-campaign";
+import { Trans } from "../../components/Trans";
+import { m } from "../../paraglide/messages.js";
 
 interface StepPrivacyProps {
   audio: AudioMode | null;
@@ -31,49 +33,44 @@ export function StepPrivacy({
     onChange({ audio, evalsEnabled: v });
   };
 
+  // Shared across the privacy bullets and footnote: <b> in a message renders
+  // as <strong>. The emphasis is structural copy, so it lives in the message;
+  // the element is supplied here.
+  const strong = (c: string) => <strong>{c}</strong>;
+
   return (
     <div className="space-y-8 enter-from-below">
       <header className="space-y-3">
         <p className="text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase">
-          Step three
+          {m.stepPrivacyEyebrow()}
         </p>
         <h2 className="font-display text-3xl leading-tight font-medium tracking-tight md:text-4xl">
-          Two questions about <em className="text-gold italic">your data</em>
+          <Trans
+            message={m.stepPrivacyHeading()}
+            components={{ gold: (c) => <em className="text-gold italic">{c}</em> }}
+          />
         </h2>
         <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
-          Your familiar can be as quiet or as helpful as you want. We need an explicit choice on
-          each of the two questions below. No defaults, no pre-ticked boxes. You can change either
-          of these any time from settings.
+          {m.stepPrivacyLede()}
         </p>
       </header>
 
       {/* ---- Question 1: Audio ---- */}
       <fieldset className="space-y-3" data-testid="audio-fieldset">
-        <FieldHead label="1. Session audio" hint="Required choice" />
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          Some tables record their sessions and let the familiar transcribe; others keep everything
-          in text. Tabletop sessions also trip up off-the-shelf speech models (fantasy names, system
-          jargon, overlapping voices, different languages), so we tune our own transcription on real
-          audio from people who opt in.
-        </p>
+        <FieldHead label={m.stepPrivacyAudioLabel()} hint={m.stepPrivacyRequiredChoice()} />
+        <p className="text-sm leading-relaxed text-muted-foreground">{m.stepPrivacyAudioLede()}</p>
 
-        <div className="grid gap-2" role="radiogroup" aria-label="Session audio">
+        <div className="grid gap-2" role="radiogroup" aria-label={m.stepPrivacyAudioAriaLabel()}>
           <RadioCardBullets
             testid="audio-opt-in"
             selected={audio === "opt-in"}
-            title="Opt in. Record and help improve transcription."
+            title={m.stepPrivacyAudioOptInTitle()}
             bullets={[
-              "You upload audio; your familiar transcribes and drafts recaps.",
-              <>
-                Used only to improve <strong>speech recognition</strong> models in your languages.
-              </>,
-              <>
-                <strong>Never</strong> used to train generative AI or LLMs.
-              </>,
-              <>
-                <strong>Never</strong> sold, licensed, or shared outside familiar.systems.
-              </>,
-              "Switch off anytime; your audio leaves the training pool.",
+              m.stepPrivacyAudioOptInBullet1(),
+              <Trans message={m.stepPrivacyAudioOptInBullet2()} components={{ b: strong }} />,
+              <Trans message={m.stepPrivacyAudioOptInBullet3()} components={{ b: strong }} />,
+              <Trans message={m.stepPrivacyAudioOptInBullet4()} components={{ b: strong }} />,
+              m.stepPrivacyAudioOptInBullet5(),
             ]}
             onClick={() => {
               setAudio("opt-in");
@@ -82,8 +79,8 @@ export function StepPrivacy({
           <RadioCardTagline
             testid="audio-opt-out"
             selected={audio === "opt-out"}
-            title="Opt out. Record, but don't train on me."
-            tagline="You still get full transcription. Your audio is processed, returned as text, and excluded from any future training run."
+            title={m.stepPrivacyAudioOptOutTitle()}
+            tagline={m.stepPrivacyAudioOptOutTagline()}
             onClick={() => {
               setAudio("opt-out");
             }}
@@ -91,8 +88,8 @@ export function StepPrivacy({
           <RadioCardTagline
             testid="audio-text-only"
             selected={audio === "text-only"}
-            title="Text only. Never record."
-            tagline="You'll paste notes by hand. Audio features stay off; nothing is uploaded or transcribed at any point."
+            title={m.stepPrivacyAudioTextOnlyTitle()}
+            tagline={m.stepPrivacyAudioTextOnlyTagline()}
             onClick={() => {
               setAudio("text-only");
             }}
@@ -102,30 +99,26 @@ export function StepPrivacy({
 
       {/* ---- Question 2: AI evals ---- */}
       <fieldset className="space-y-3" data-testid="evals-fieldset">
-        <FieldHead label="2. AI evals & tooling" hint="Required choice" />
+        <FieldHead label={m.stepPrivacyEvalsLabel()} hint={m.stepPrivacyRequiredChoice()} />
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Independent of audio, your familiar can send back{" "}
-          <em className="italic">anonymized signal</em> about what worked and what didn't. Used to
-          tune prompts and tooling, especially for less-common languages and systems where the
-          defaults stumble.
+          <Trans
+            message={m.stepPrivacyEvalsLede()}
+            components={{ i: (c) => <em className="italic">{c}</em> }}
+          />
         </p>
 
-        <div className="grid gap-2" role="radiogroup" aria-label="AI evals">
+        <div className="grid gap-2" role="radiogroup" aria-label={m.stepPrivacyEvalsAriaLabel()}>
           <RadioCardBullets
             testid="evals-on"
             selected={evalsEnabled === true}
-            title="Evals are fine. Help us tune the AI."
-            pill="Please help"
+            title={m.stepPrivacyEvalsOnTitle()}
+            pill={m.stepPrivacyEvalsOnPill()}
             bullets={[
-              "Anonymized: no account name, no player names, no campaign title.",
-              "Your writing stays yours; never reused as content.",
-              <>
-                Used to improve <strong>prompts and tooling</strong>, not to train models.
-              </>,
-              <>
-                <strong>Never</strong> sold, licensed, or shared outside familiar.systems.
-              </>,
-              "Switch off anytime.",
+              m.stepPrivacyEvalsOnBullet1(),
+              m.stepPrivacyEvalsOnBullet2(),
+              <Trans message={m.stepPrivacyEvalsOnBullet3()} components={{ b: strong }} />,
+              <Trans message={m.stepPrivacyEvalsOnBullet4()} components={{ b: strong }} />,
+              m.stepPrivacyEvalsOnBullet5(),
             ]}
             onClick={() => {
               setEvals(true);
@@ -134,8 +127,8 @@ export function StepPrivacy({
           <RadioCardTagline
             testid="evals-off"
             selected={evalsEnabled === false}
-            title="No evals. Keep it to yourself."
-            tagline="Your familiar still works exactly the same. We just won't learn from what worked and what didn't in your campaign."
+            title={m.stepPrivacyEvalsOffTitle()}
+            tagline={m.stepPrivacyEvalsOffTagline()}
             onClick={() => {
               setEvals(false);
             }}
@@ -144,8 +137,7 @@ export function StepPrivacy({
       </fieldset>
 
       <p className="text-xs leading-relaxed text-muted-foreground/80">
-        Either way, your data is <strong>never</strong> used to train generative models, and is
-        <strong> never</strong> sold or shared.
+        <Trans message={m.stepPrivacyFootnote()} components={{ b: strong }} />
       </p>
     </div>
   );
@@ -205,7 +197,7 @@ function RadioCardBullets({
             </span>
           ) : null}
         </span>
-        <ul className="ml-4 list-disc space-y-1 text-xs leading-snug text-muted-foreground marker:text-muted-foreground/40">
+        <ul className="ms-4 list-disc space-y-1 text-xs leading-snug text-muted-foreground marker:text-muted-foreground/40">
           {bullets.map((bullet, i) => (
             // Bullets are static at compile time, so the array index is stable.
             // eslint-disable-next-line react/no-array-index-key

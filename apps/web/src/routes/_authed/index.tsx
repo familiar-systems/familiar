@@ -3,8 +3,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { CampaignCard } from "../../components/CampaignCard";
 import { EmptyHubCard } from "../../components/EmptyHubCard";
+import { Trans } from "../../components/Trans";
 import { useCreateCampaign } from "../../features/onboarding/useCreateCampaign";
 import { client } from "../../lib/api";
+import { m } from "../../paraglide/messages.js";
 
 interface ListState {
   campaigns: Campaign[] | null;
@@ -20,7 +22,7 @@ function Hub(): React.ReactElement {
       const { data, response } = await client.GET("/campaigns");
       if (cancelled) return;
       if (!response.ok || !data) {
-        setList({ campaigns: null, error: `List failed (${response.status})` });
+        setList({ campaigns: null, error: m.hubListFailed({ status: response.status }) });
         return;
       }
       setList({ campaigns: data as Campaign[], error: null });
@@ -40,7 +42,7 @@ function Hub(): React.ReactElement {
   if (list.campaigns === null) {
     return (
       <section className="mx-auto w-full max-w-3xl px-8 pt-24">
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <p className="text-sm text-muted-foreground">{m.appLoading()}</p>
       </section>
     );
   }
@@ -67,10 +69,13 @@ function PopulatedHub({ campaigns }: PopulatedHubProps): React.ReactElement {
     <section className="mx-auto w-full max-w-5xl px-8 pt-24 pb-32">
       <header className="mb-16 flex flex-col items-center gap-6 text-center">
         <span className="block text-xs font-medium tracking-[0.28em] text-muted-foreground uppercase enter-from-below">
-          Welcome back
+          {m.hubWelcomeBack()}
         </span>
         <h1 className="font-display text-5xl leading-none font-medium tracking-tight enter-from-below [animation-delay:100ms] md:text-7xl lg:text-8xl">
-          Your <em className="font-normal text-gold italic">worlds</em> await.
+          <Trans
+            message={m.hubHero()}
+            components={{ gold: (c) => <em className="font-normal text-gold italic">{c}</em> }}
+          />
         </h1>
         <button
           type="button"
@@ -81,7 +86,7 @@ function PopulatedHub({ campaigns }: PopulatedHubProps): React.ReactElement {
           disabled={state.creating}
           className="inline-flex items-center gap-2 rounded-full bg-gold px-6 py-3 text-sm font-medium text-white shadow-md shadow-gold/25 transition-colors hover:bg-gold/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {state.creating ? "Opening the door..." : "Start a new campaign"}
+          {state.creating ? m.hubCreateInProgress() : m.hubStartNewCampaign()}
         </button>
         {state.error !== null ? (
           <p role="alert" className="text-sm text-foreground/70">

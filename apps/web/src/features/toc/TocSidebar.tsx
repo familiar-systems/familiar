@@ -64,7 +64,7 @@ export function TocSidebar({ campaignId }: TocSidebarProps): React.ReactElement 
 
   return (
     <>
-      <aside className="flex h-full w-64 shrink-0 flex-col border-r border-foreground/10 bg-background/50 backdrop-blur-sm">
+      <aside className="flex h-full w-64 shrink-0 flex-col border-e border-foreground/10 bg-background/50 backdrop-blur-sm">
         <div className="flex items-center justify-between gap-2 p-3">
           <span className="font-sans text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
             Contents

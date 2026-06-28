@@ -1,20 +1,7 @@
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
 @plugin "@tailwindcss/typography";
-@custom-variant dark (&:where(.dark, .dark *));
-
-@theme {
-  --color-primary: #5a4a6a;
-  --color-gold: #b89530;
-  --color-bronze: #5c3a1f;
-  --color-bronze-muted: #ead8b8;
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: "Alegreya", Georgia, serif;
-  --font-display: "Cormorant Garamond", Georgia, serif;
-}
-
-@import "./theme.css";
+@import "@familiar-systems/design/styles.css";
 @import "./typography.css";
 @import "./pagefind.css";
 @import "./components.css";

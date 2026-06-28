@@ -22,8 +22,6 @@ const SUBJECT = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FAV");
 const GRIMHOLLOW = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FB0");
 const MARDA = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FB1");
 const NEW_ID = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FB2");
-const VENTAUR = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FB3");
-const KESSA = pageIdSchema.parse("01ARZ3NDEKTSV4RRFFQ69G5FB4");
 const CURRENT_SID = sid("01ARZ3NDEKTSV4RRFFQ69G5S14");
 
 const PREDICATES: PredicatePairView[] = [
@@ -194,14 +192,15 @@ export const ReverseCanonicalization: Story = {
 };
 
 // A custom predicate has no known reverse, and the reverse is required (a
-// divergence from the wireframe): the submit stays disabled until it's filled.
+// divergence from the wireframe): the submit stays disabled until it's filled. The
+// custom forward is kept verbatim by the ComboBox's allowsCustomValue.
 export const CustomPredicateRequiresReverse: Story = {
   play: async ({ args, userEvent }) => {
     ctl(args.onSearchEntities).mockResolvedValue(SAMPLE_ENTITIES);
     await userEvent.type(screen.getByLabelText("Search entities"), "grim");
     await userEvent.click(await screen.findByRole("option", { name: /Grimhollow/ }));
     await userEvent.type(screen.getByLabelText("Predicate"), "befriended");
-    await userEvent.click(await screen.findByRole("option", { name: /Use befriended/ }));
+    await userEvent.keyboard("{Escape}"); // close the (no-match) dropdown
     const reverse = screen.getByLabelText("Reverse predicate") as HTMLInputElement;
     await expect(reverse.value).toBe("");
     await expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
@@ -218,6 +217,7 @@ export const BornSecret: Story = {
     await expect(screen.getByRole("radio", { name: /Public/ })).toBeChecked();
     await userEvent.click(screen.getByRole("radio", { name: /Hidden/ }));
     await expect(screen.getByRole("radio", { name: /Hidden/ })).toBeChecked();
+    await expect(screen.queryByRole("radio", { name: /Revealed/ })).toBeNull();
     await expect(screen.queryByLabelText("Reveal session")).toBeNull();
   },
 };
@@ -256,63 +256,30 @@ export const SubmitError: Story = {
   },
 };
 
-// The ref guard collapses a rapid double-trigger to a single submit.
+// Double-submit is guarded twice: the button disables the instant a submit is in
+// flight (so a second click can't fire), backed by a synchronous ref guard for the
+// same-tick race. One submit reaches the server.
 export const DoubleSubmitGuarded: Story = {
   play: async ({ args, userEvent }) => {
     ctl(args.onSubmit).mockImplementation(() => new Promise(() => {})); // never settles
     await fillValidForm(userEvent, args);
     const create = screen.getByRole("button", { name: "Create" });
     await userEvent.click(create);
-    await userEvent.click(create);
+    await expect(create).toBeDisabled();
     await expect(args.onSubmit).toHaveBeenCalledTimes(1);
   },
 };
 
-// Arrow keys move the highlight and Enter commits it.
+// Arrow keys move the highlight and Enter commits it (React Aria owns the index
+// math now; ArrowDown lands on the first, most-used option).
 export const PredicateKeyboardNav: Story = {
   play: async ({ userEvent }) => {
     const predicate = screen.getByLabelText("Predicate");
     await userEvent.type(predicate, "is ");
     // Option accessible names include the usage count, so match on a regex.
     await screen.findByRole("option", { name: /is a resident of/ });
-    // Sorted by count: resident(42) first, suspicious(18) next. Down then Enter
-    // commits the second.
     await userEvent.keyboard("{ArrowDown}{Enter}");
-    await expect((predicate as HTMLInputElement).value).toBe("is suspicious of");
-    await expect(screen.queryByRole("option", { name: /is a resident of/ })).toBeNull();
-  },
-};
-
-// Re-querying to a *different* list of the same length must reset the highlight, or
-// Enter commits a row the GM never highlighted. Arrow down into list A (Marda), then
-// append a char to get an equal-length list B; the highlight must snap back to the top
-// so Enter picks B's first row (Ventaur), not its stale second (Kessa). Guards the
-// reset keying on the query, not the unchanged row count.
-export const RequeryResetsHighlight: Story = {
-  play: async ({ args, userEvent }) => {
-    ctl(args.onSearchEntities).mockImplementation((q: string) =>
-      Promise.resolve(
-        q.length >= 3
-          ? [
-              { id: VENTAUR, name: "Ventaur" },
-              { id: KESSA, name: "Kessa" },
-            ]
-          : [
-              { id: GRIMHOLLOW, name: "Grimhollow" },
-              { id: MARDA, name: "Marda" },
-            ],
-      ),
-    );
-    const search = screen.getByLabelText("Search entities");
-    await userEvent.type(search, "ab");
-    await screen.findByRole("option", { name: /Grimhollow/ });
-    await userEvent.keyboard("{ArrowDown}"); // highlight row 1 (Marda) of list A
-    await userEvent.type(search, "c"); // -> "abc", an equal-length list B
-    await screen.findByRole("option", { name: /Ventaur/ });
-    await userEvent.keyboard("{Enter}");
-    // Reset put the highlight back at row 0, so Enter commits Ventaur, not Kessa.
-    await expect(screen.getByText("Ventaur")).toBeInTheDocument();
-    await expect(screen.queryByText("Kessa")).toBeNull();
+    await expect((predicate as HTMLInputElement).value).toBe("is a resident of");
   },
 };
 

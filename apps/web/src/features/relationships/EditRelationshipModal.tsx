@@ -25,9 +25,16 @@ import type {
   SessionsResponse,
   ViewSessionOrdinal,
 } from "@familiar-systems/types-campaign";
+import {
+  Button,
+  Checkbox,
+  Dialog,
+  Modal,
+  SegmentedControl,
+  SegmentedItem,
+} from "@familiar-systems/ui";
 import { RotateCcw, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useRef, useState } from "react";
 
 import { EntityChip, KnowledgeControl, SessionSelect } from "./relationshipChrome";
 
@@ -119,10 +126,8 @@ export function EditRelationshipModal({
   const ordinalOf = (id: SessionId): number | null =>
     allSessions.find((s) => s.id === id)?.ordinal ?? null;
 
-  // Knowledge, freely mutable. `bornSecret` is the secret bit frozen at open: it tells
-  // the control whether its "known" segment means plain "Public" or "Revealed at a
-  // session" (a born-public fact reveals as Public; a secret one stamps a session).
-  const bornSecret = view.knowledge.kind !== "public";
+  // Knowledge, freely mutable to any of its three states; edit offers all three (create
+  // restricts to Public/Hidden).
   const [knowledge, setKnowledge] = useState<KnowledgeInput>(() =>
     knowledgeInputFromView(view.knowledge, allSessions),
   );
@@ -154,22 +159,7 @@ export function EditRelationshipModal({
   const endDefaultAsOf = sessionIdForOrdinal(view.superseded, allSessions) ?? defaultAsOf;
   const retconDefaultAsOf = sessionIdForOrdinal(view.retcon, allSessions) ?? defaultAsOf;
 
-  const dialogRef = useRef<HTMLDivElement>(null);
   const submittingRef = useRef(false);
-
-  useEffect(() => {
-    dialogRef.current?.focus();
-  }, []);
-
-  // The edit modal has no typeahead dropdowns, so Escape is the single, simple
-  // authority: it dismisses the dialog (never mid-request).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape" && !busy) onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
 
   const hasSessions = availableSessions.length > 0;
   // Arming retcon dims the factuality axis (a retcon governs factuality wholesale).
@@ -312,23 +302,19 @@ export function EditRelationshipModal({
       ? `ended S${view.superseded.ordinal}`
       : `true from ${originText}, ongoing`;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-foreground/20 px-4 pt-[6vh] backdrop-blur-sm"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose();
+  // Two axes plus a corrections drawer make this taller than the create modal, so
+  // the panel scrolls internally rather than pushing submit off-screen.
+  return (
+    <Modal
+      isOpen
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
+      isDismissable={!busy}
+      isKeyboardDismissDisabled={busy}
+      className="max-h-[88vh] max-w-xl overflow-y-auto"
     >
-      {/* Two axes plus a corrections drawer make this taller than the create modal,
-          so the dialog scrolls internally rather than pushing submit off-screen. */}
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-relationship-title"
-        tabIndex={-1}
-        className="max-h-[88vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-foreground/10 bg-background/95 p-5 shadow-2xl shadow-primary/10 backdrop-blur-md focus:outline-none"
-      >
+      <Dialog aria-labelledby="edit-relationship-title" className="outline-none">
         <div className="flex items-baseline gap-2">
           <h2
             id="edit-relationship-title"
@@ -336,15 +322,16 @@ export function EditRelationshipModal({
           >
             Edit relationship
           </h2>
-          <button
-            type="button"
+          <Button
+            variant="icon"
+            size="sm"
             aria-label="Close"
-            onClick={onClose}
-            disabled={busy}
-            className="ml-auto flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-50"
+            isDisabled={busy}
+            onPress={onClose}
+            className="ms-auto border-0 bg-transparent text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
           >
             <X className="size-4" />
-          </button>
+          </Button>
         </div>
 
         {/* Current line: what is being edited, and its persisted state. */}
@@ -352,7 +339,7 @@ export function EditRelationshipModal({
           <EntityChip name={subjectName} />
           <span className="text-foreground/70">{view.predicate}</span>
           <EntityChip name={view.other.name} />
-          <span className="ml-1 font-sans text-[11px] tracking-wide text-muted-foreground/80 not-italic">
+          <span className="ms-1 font-sans text-[11px] tracking-wide text-muted-foreground/80 not-italic">
             · true of {originText} · {lifeWord} · {visWord}
           </span>
         </p>
@@ -369,7 +356,7 @@ export function EditRelationshipModal({
             <KnowledgeControl
               value={knowledge}
               disabled={busy}
-              bornSecret={bornSecret}
+              allowReveal
               sessions={availableSessions}
               onChange={setKnowledge}
             />
@@ -385,33 +372,41 @@ export function EditRelationshipModal({
             <span className="font-sans text-[11px] text-muted-foreground/70 italic">{factNow}</span>
           </div>
 
-          <div
-            role="radiogroup"
+          <SegmentedControl
             aria-label="In the fiction"
-            className="mt-2 inline-flex w-fit overflow-hidden rounded-lg border border-foreground/15"
-          >
-            <FactButton
-              active={factuality.kind === "live"}
-              disabled={factualityDisabled}
-              label="Ongoing"
-              onClick={() => setFactuality({ kind: "live" })}
-            />
-            <FactButton
-              active={factuality.kind === "ended"}
-              disabled={factualityDisabled || !hasSessions}
-              label="Ended"
-              Icon={RotateCcw}
-              onClick={() =>
+            className="mt-2"
+            isDisabled={factualityDisabled}
+            selectedKeys={factuality.kind === "live" ? ["live"] : ["ended"]}
+            onSelectionChange={(keys) => {
+              if ([...keys][0] === "live") {
+                setFactuality({ kind: "live" });
+              } else {
+                // Re-pressing Ended is a no-op for the group (already selected), so
+                // this only fires on a fresh end (from live), starting blank at the
+                // persisted session; the existing successor draft is never reset.
                 setFactuality((f) =>
-                  // Re-pressing Ended keeps the current end + successor draft; only a
-                  // fresh end (from live/retcon) starts blank at the persisted session.
                   f.kind === "ended"
                     ? f
                     : { kind: "ended", asOf: endDefaultAsOf, forward: "", reverse: "" },
-                )
+                );
               }
-            />
-          </div>
+            }}
+          >
+            <SegmentedItem
+              id="live"
+              className="data-[selected]:bg-gold/15 data-[selected]:text-foreground"
+            >
+              Ongoing
+            </SegmentedItem>
+            <SegmentedItem
+              id="ended"
+              isDisabled={!hasSessions}
+              className="data-[selected]:bg-gold/15 data-[selected]:text-foreground"
+            >
+              <RotateCcw className="size-3.5" aria-hidden="true" />
+              Ended
+            </SegmentedItem>
+          </SegmentedControl>
           {!hasSessions ? (
             <p className="mt-2 font-sans text-[12px] text-muted-foreground italic">
               This campaign has no sessions yet, so a fact can't be ended.
@@ -504,22 +499,18 @@ export function EditRelationshipModal({
           {correctionsOpen ? (
             <div className="mt-3 flex flex-col gap-4">
               <div className="flex flex-col gap-2">
-                <label className="inline-flex items-center gap-2 font-sans text-[13px] text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={correction.kind === "retcon"}
-                    disabled={busy || !hasSessions}
-                    onChange={(e) =>
-                      setCorrection(
-                        e.target.checked
-                          ? { kind: "retcon", asOf: retconDefaultAsOf }
-                          : { kind: "none" },
-                      )
-                    }
-                    className="accent-gold"
-                  />
+                <Checkbox
+                  isSelected={correction.kind === "retcon"}
+                  isDisabled={busy || !hasSessions}
+                  onChange={(checked) =>
+                    setCorrection(
+                      checked ? { kind: "retcon", asOf: retconDefaultAsOf } : { kind: "none" },
+                    )
+                  }
+                  className="text-[13px]"
+                >
                   Retcon
-                </label>
+                </Checkbox>
                 <p className="font-sans text-[12px] text-muted-foreground italic">
                   Never happened in the fiction, struck as a believed falsehood in snapshots before
                   it was caught.
@@ -547,18 +538,17 @@ export function EditRelationshipModal({
               </div>
 
               <div className="flex flex-col gap-2 border-t border-foreground/10 pt-3">
-                <label className="inline-flex items-center gap-2 font-sans text-[13px] text-red-700 dark:text-red-400">
-                  <input
-                    type="checkbox"
-                    checked={correction.kind === "delete"}
-                    disabled={busy}
-                    onChange={(e) =>
-                      setCorrection(e.target.checked ? { kind: "delete" } : { kind: "none" })
-                    }
-                    className="accent-red-700"
-                  />
+                <Checkbox
+                  tone="danger"
+                  isSelected={correction.kind === "delete"}
+                  isDisabled={busy}
+                  onChange={(checked) =>
+                    setCorrection(checked ? { kind: "delete" } : { kind: "none" })
+                  }
+                  className="text-[13px]"
+                >
                   Delete
-                </label>
+                </Checkbox>
                 <p className="font-sans text-[12px] text-muted-foreground italic">
                   Expunge the record, no audit trail. Only for spurious AI extractions or test data.
                 </p>
@@ -572,65 +562,20 @@ export function EditRelationshipModal({
         ) : null}
 
         <div className="mt-5 flex items-center gap-2 border-t border-foreground/10 pt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-full border border-foreground/20 px-4 py-2 font-sans text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 disabled:opacity-50"
-          >
+          <Button variant="outline" isDisabled={busy} onPress={onClose}>
             Cancel
-          </button>
+          </Button>
           <div className="flex-1" />
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={!canSubmit}
-            className={[
-              "inline-flex items-center gap-2 rounded-full px-5 py-2 font-sans text-sm font-medium text-white shadow-md transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-              correction.kind === "delete"
-                ? "bg-red-700 shadow-red-700/25 hover:bg-red-700/90"
-                : "bg-gold shadow-gold/25 hover:bg-gold/90",
-            ].join(" ")}
+          <Button
+            variant={correction.kind === "delete" ? "danger" : "primary"}
+            isDisabled={!canSubmit}
+            onPress={() => void submit()}
           >
             {busy ? "Saving..." : action.label}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-function FactButton({
-  active,
-  disabled,
-  label,
-  Icon,
-  onClick,
-}: {
-  active: boolean;
-  disabled: boolean;
-  label: string;
-  Icon?: typeof RotateCcw;
-  onClick: () => void;
-}): React.ReactElement {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      disabled={disabled}
-      onClick={onClick}
-      className={[
-        "inline-flex items-center gap-1.5 border-foreground/12 px-3 py-1.5 font-sans text-[13px] transition-colors [&+&]:border-l disabled:opacity-40",
-        active
-          ? "bg-gold/15 font-semibold text-foreground"
-          : "text-muted-foreground hover:bg-gold/6 hover:text-foreground",
-      ].join(" ")}
-    >
-      {Icon !== undefined ? <Icon className="size-3.5" aria-hidden="true" /> : null}
-      {label}
-    </button>
+      </Dialog>
+    </Modal>
   );
 }
 

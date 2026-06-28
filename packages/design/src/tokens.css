@@ -1,0 +1,111 @@
+/* familiar.systems design tokens — the single source of truth for both apps.
+ *
+ * Raw semantic tokens live here unprefixed (`--primary`, `--gold`, ...). The
+ * Tailwind `@theme` block in styles.css maps them to `--color-*` so they both
+ * generate utilities (bg-primary, text-gold) and re-expose `--color-*` custom
+ * properties for direct var() use. Dark mode flips the raw tokens on `.dark`;
+ * the `--color-*` indirection resolves per-element through the cascade.
+ *
+ * Scales below (text/shadow/spacing/container/motion) are plain custom
+ * properties for direct var() use. NOTE: being outside `@theme` does NOT shield
+ * Tailwind utilities — v4 utilities read these CSS variables by name at runtime,
+ * so any `--text-*`/`--container-*`/`--radius-*` defined here overrides the
+ * matching `rounded-*`/`text-*` utility. The values here that collide
+ * (`--text-*`, `--container-*`) deliberately mirror Tailwind's defaults, so the
+ * override is a no-op. The radius scale was removed for exactly this reason: its
+ * values diverged from Tailwind's, silently inflating every `rounded-*` (lg
+ * 8px→16px) app-wide. Keep the radius scale as Tailwind's default. */
+
+:root {
+  /* Signals built-in dual-scheme support to the browser and extensions like
+     Dark Reader, so they don't auto-darken on top of ours, and gives native
+     controls (scrollbars, form elements) a matching tone. */
+  color-scheme: light;
+
+  /* Canvas */
+  --background: #f8f4ec; /* parchment */
+  --foreground: #1c1917; /* dark brown */
+  --muted: #ede8dd; /* beige */
+  --muted-foreground: #57534e; /* brown */
+  --primary-foreground: #ffffff;
+
+  /* Brand */
+  --primary: #5a4a6a; /* plum — accents, links, identity */
+  --gold: #b89530; /* warm gold — CTAs, badges, trust */
+  --bronze: #5c3a1f; /* dark walnut — hero masks, mechanism */
+  --bronze-muted: #ead8b8; /* pale bronze — card surfaces */
+
+  /* Structural */
+  --line: #c9c1c5; /* mauve — timeline connectors */
+  --step-bg: #ebe4ef; /* pale lilac — step icon containers */
+  --step-hover: #d8d2d2; /* taupe — step icon hover */
+
+  /* Semantic (used sparingly; do not flip in dark) */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #dc2626;
+  --accent-blue: #1d4ed8;
+
+  /* Type size ladder (mirrors Tailwind defaults; backs the .type-* classes) */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  --text-5xl: 3rem;
+  --text-7xl: 4.5rem;
+  --text-8xl: 6rem;
+
+  /* Elevation — colored, not grey: plum/gold reads as candlelit, not SaaS */
+  --shadow-gold: 0 10px 15px -3px rgb(184 149 48 / 0.25);
+  --shadow-gold-soft: 0 10px 15px -3px rgb(184 149 48 / 0.1);
+  --shadow-primary: 0 25px 50px -12px rgb(90 74 106 / 0.1);
+  --shadow-ambient: 0 0 40px rgba(90, 74, 106, 0.04);
+
+  /* Spacing scale (Tailwind-parity subset) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-24: 6rem;
+  --space-32: 8rem;
+
+  /* Containers */
+  --container-7xl: 80rem; /* full-width sections */
+  --container-4xl: 56rem; /* prose + feature grids */
+  --container-3xl: 48rem; /* narrow CTAs */
+  --container-2xl: 42rem; /* subtitle blocks */
+
+  /* Motion */
+  --ease-brand: cubic-bezier(0.22, 1, 0.36, 1); /* ease-out-quart */
+  --dur-fast: 200ms;
+  --dur-base: 300ms;
+  --dur-slow: 500ms;
+  --dur-fade: 800ms;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: #0f0d0a; /* deep warm charcoal */
+  --foreground: #e7e5e4; /* light stone */
+  --muted: #1c1917;
+  --muted-foreground: #a8a29e;
+
+  --primary: #9a86aa; /* light plum */
+  --gold: #d4a944; /* bright gold */
+  --bronze: #c4956b; /* lit bronze */
+  --bronze-muted: #2a1f14; /* deep ember */
+
+  --line: #39313a;
+  --step-bg: #1f1a24;
+  --step-hover: #2b252a;
+}

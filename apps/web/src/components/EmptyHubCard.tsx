@@ -1,6 +1,9 @@
+import { Button } from "@familiar-systems/ui";
 import { Plus } from "lucide-react";
 import { useCreateCampaign } from "../features/onboarding/useCreateCampaign";
+import { m } from "../paraglide/messages.js";
 import { assetPath } from "../lib/paths";
+import { Trans } from "./Trans";
 
 const CROSSHATCH_URL = `url('${assetPath("/crosshatch.svg")}')`;
 
@@ -29,24 +32,29 @@ export function EmptyHubCard(): React.ReactElement {
       <Banner className="h-14" />
 
       <div className="px-10 py-14 text-center md:px-14">
+        {/* Two paragraphs, two messages: the intro is plain prose and the call
+            carries the inline gold word. They render as separate elements with
+            different type, so they were never one translatable unit. */}
         <p className="mx-auto mb-6 max-w-lg font-display text-lg leading-relaxed text-pretty text-foreground/90 italic md:text-xl">
-          You sit at the desk, empty but for one paper. The sheet is blank but your mind conjures a
-          large, black corvid gazing back at you. Its glowing, purple eyes lock with yours.
-          &ldquo;Master Wizard,&rdquo; the raven whispers,
+          {m.emptyHubRavenIntro()}
         </p>
         <p className="mx-auto mb-9 max-w-lg font-display text-2xl leading-snug font-medium text-pretty italic md:text-3xl">
-          &ldquo;your <span className="text-gold">worlds</span> await.&rdquo;
+          <Trans
+            message={m.emptyHubRavenCall()}
+            components={{ gold: (c) => <span className="text-gold">{c}</span> }}
+          />
         </p>
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="lg"
           data-testid="start-first-campaign"
-          onClick={onStart}
-          disabled={state.creating}
-          className="inline-flex items-center gap-2 rounded-full bg-gold px-8 py-4 font-medium text-white shadow-lg shadow-gold/25 transition-colors hover:bg-gold/90 disabled:cursor-not-allowed disabled:opacity-60"
+          onPress={onStart}
+          isDisabled={state.creating}
+          className="gap-2"
         >
           <Plus className="size-4" />
-          <span>{state.creating ? "Opening the door..." : "Start your first campaign."}</span>
-        </button>
+          <span>{state.creating ? m.hubCreateInProgress() : m.hubStartFirstCampaign()}</span>
+        </Button>
         {state.error !== null ? (
           <p role="alert" data-testid="create-error" className="mt-4 text-sm text-foreground/70">
             {state.error}

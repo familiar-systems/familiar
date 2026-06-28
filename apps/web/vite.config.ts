@@ -1,3 +1,4 @@
+import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -27,6 +28,24 @@ export default defineConfig({
   plugins: [
     tanstackRouter({ target: "react", autoCodeSplitting: true }),
     react(),
+    // Compiles messages/*.json to typed m.* functions in src/paraglide. The
+    // localStorage strategy persists the user's choice; preferredLanguage seeds
+    // first-time visitors from the browser; baseLocale is the fallback. No `url`
+    // strategy: locale is a hidden preference on the auth-walled SPA, not a route
+    // segment. localStorageKey "locale" is shared with the index.html pre-paint
+    // script (mirrors the theme pattern) so both read the same key. This plugin is
+    // the authoritative compiler for dev/build/test; the package.json generate:i18n
+    // script re-emits the same output (declarations included) so `tsc` has types
+    // when it runs outside Vite. emitTsDeclarations on both keeps the generated file
+    // set identical, so a parallel `mise run check` can't race one path into
+    // deleting the other's .d.ts.
+    paraglideVitePlugin({
+      project: "./project.inlang",
+      outdir: "./src/paraglide",
+      strategy: ["localStorage", "preferredLanguage", "baseLocale"],
+      localStorageKey: "locale",
+      emitTsDeclarations: true,
+    }),
     tailwindcss(),
     wasm(),
   ],

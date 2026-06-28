@@ -1,17 +1,19 @@
-// The ToC "New" flow as a modal: choose what to create, then name it. Replaces
-// the old inline create-row. Two steps in one dialog: a picker (the "New menu"
-// from the design system) and a naming step with the cursor in the field. The
-// set of creatable kinds and their per-row metadata come from NEW_MENU, which is
-// keyed off the generated PageKind so it can't drift from the server.
+// The ToC "New" flow as a modal: choose what to create, then name it. Two steps
+// in one dialog: a picker (the "New menu" from the design system) and a naming
+// step with the cursor in the field. The set of creatable kinds and their
+// per-row metadata come from NEW_MENU, keyed off the generated PageKind so it
+// can't drift from the server.
 //
-// Rendered through a portal to document.body: the ToC <aside> sets a
-// backdrop-filter, which would otherwise become the containing block for this
-// fixed overlay and trap it inside the 16rem sidebar.
+// The shell is @familiar-systems/ui's Modal/Dialog (React Aria): it portals to
+// document.body (escaping the ToC <aside>'s backdrop-filter containing block),
+// traps focus, locks scroll, and dismisses on outside-press/Escape. It's held
+// open during an in-flight create via isDismissable/isKeyboardDismissDisabled so
+// a create is never orphaned with its UI gone.
 
 import type { PageKind } from "@familiar-systems/types-campaign";
+import { Button, Dialog, Modal, TextField } from "@familiar-systems/ui";
 import { ChevronLeft } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useRef, useState } from "react";
 
 import { NEW_MENU_ROWS, type NewMenuColor, type NewMenuEntry } from "./newMenu";
 
@@ -49,32 +51,11 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   // Synchronous double-submit guard: `busy` is async React state, so a same-tick
   // Enter-keydown + button-click (or a fast double-click) can both clear the
   // `canSubmit` gate before the first `setBusy(true)` re-renders -- firing two
   // POSTs and creating two pages. A ref flips synchronously, closing that window.
   const submittingRef = useRef(false);
-
-  // Escape closes the dialog, but never mid-request: an in-flight create should
-  // not be orphaned with its UI gone.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape" && !busy) onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
-
-  // Land the cursor in the name field on reaching the naming step; with a
-  // default (session) select it so the GM can type straight over it.
-  useEffect(() => {
-    if (chosen === null) return;
-    const el = inputRef.current;
-    if (el === null) return;
-    el.focus();
-    if (el.value !== "") el.select();
-  }, [chosen]);
 
   function choose(row: Chosen): void {
     setChosen(row);
@@ -104,29 +85,26 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
     }
   }
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-foreground/20 px-4 pt-[12vh] backdrop-blur-sm"
-      onMouseDown={(e) => {
-        // Backdrop click closes; clicks inside the card have a different target.
-        if (e.target === e.currentTarget && !busy) onClose();
+  return (
+    <Modal
+      isOpen
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
+      isDismissable={!busy}
+      isKeyboardDismissDisabled={busy}
+      className="max-w-md"
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-page-title"
-        className="w-full max-w-md overflow-hidden rounded-2xl border border-foreground/10 bg-background/95 p-2 shadow-2xl shadow-primary/10 backdrop-blur-md"
-      >
+      <Dialog aria-labelledby="new-page-title" className="outline-none">
         {chosen === null ? (
           <>
             <h2
               id="new-page-title"
-              className="px-3 pt-3 pb-2 font-display text-lg font-semibold text-foreground"
+              className="pb-2 font-display text-lg font-semibold text-foreground"
             >
               What are you creating?
             </h2>
-            <div className="flex flex-col">
+            <div className="-mx-2 flex flex-col">
               {NEW_MENU_ROWS.map(({ kind, entry }) => {
                 const Icon = entry.icon;
                 const accent = ROW_ACCENT[entry.color];
@@ -136,7 +114,7 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
                     type="button"
                     onClick={() => choose({ kind, entry })}
                     className={[
-                      "grid grid-cols-[26px_1fr] items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+                      "grid grid-cols-[26px_1fr] items-center gap-3 rounded-xl px-3 py-3 text-start transition-colors",
                       accent.row,
                     ].join(" ")}
                   >
@@ -167,8 +145,13 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
             </div>
           </>
         ) : (
-          <>
-            <div className="flex items-center gap-1 px-1 pt-1">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit();
+            }}
+          >
+            <div className="flex items-center gap-1 pb-3">
               <button
                 type="button"
                 aria-label="Back"
@@ -188,52 +171,37 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
                 {chosen.entry.label}
               </h2>
             </div>
-            <div className="space-y-2 p-3">
-              <div className="flex items-baseline justify-between">
-                <label htmlFor="new-page-name" className="text-sm font-medium text-foreground">
-                  Name
-                </label>
-                <span className="text-xs tracking-wider text-muted-foreground uppercase">
-                  {chosen.entry.nameRequired ? "Required" : "Optional"}
-                </span>
-              </div>
-              <input
-                id="new-page-name"
-                ref={inputRef}
-                type="text"
+            <div className="space-y-2">
+              <TextField
+                label="Name"
+                hint={chosen.entry.nameRequired ? "Required" : "Optional"}
+                // The field mounts only once a kind is chosen, so autoFocus lands here
+                // then; selecting the prefilled default name lets the GM type over it.
+                autoFocus
                 value={name}
-                disabled={busy}
+                onChange={setName}
+                isDisabled={busy}
                 placeholder={
                   chosen.entry.nameRequired ? "Name this page" : chosen.entry.defaultName
                 }
-                maxLength={120}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void submit();
-                  }
+                inputProps={{
+                  maxLength: 120,
+                  className: "font-display text-xl",
+                  onFocus: (e) => e.currentTarget.select(),
                 }}
-                className="w-full rounded-xl border border-foreground/10 bg-background/60 px-4 py-3 font-display text-xl text-foreground placeholder:text-muted-foreground/60 focus:border-gold/50 focus:ring-2 focus:ring-gold/20 focus:outline-none disabled:opacity-60"
               />
               {error !== null ? (
                 <p className="text-xs text-red-700 dark:text-red-400">{error}</p>
               ) : null}
               <div className="flex justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => void submit()}
-                  disabled={!canSubmit}
-                  className="inline-flex items-center gap-2 rounded-full bg-gold px-5 py-2 text-sm font-medium text-white shadow-md shadow-gold/25 transition-colors hover:bg-gold/90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
+                <Button type="submit" isDisabled={!canSubmit}>
                   {busy ? "Creating..." : "Create"}
-                </button>
+                </Button>
               </div>
             </div>
-          </>
+          </form>
         )}
-      </div>
-    </div>,
-    document.body,
+      </Dialog>
+    </Modal>
   );
 }

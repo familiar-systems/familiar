@@ -8,6 +8,8 @@ import {
 } from "@tanstack/react-router";
 import type { Decorator, Preview } from "@storybook/react-vite";
 import { useRef, useState } from "react";
+import { I18nProvider } from "react-aria-components";
+import { getTextDirection } from "../src/paraglide/runtime.js";
 
 // Tailwind v4 entry (processed by @tailwindcss/vite, inherited from
 // vite.config.ts). Without this stories render unstyled.
@@ -57,18 +59,52 @@ const withRouter: Decorator = (Story) => {
   return <RouterProvider router={router} />;
 };
 
+// Wraps every story in React Aria's locale context (locale-aware formatting +
+// RTL) and sets `dir` so logical CSS and rtl: utilities react. The "Locale"
+// toolbar switches it (ar mirrors to RTL); headless story tests run at en.
+const withI18n: Decorator = (Story, context) => {
+  const localeGlobal = context.globals.locale;
+  const locale = typeof localeGlobal === "string" ? localeGlobal : "en";
+  // Single-source the writing direction off Paraglide's Intl-backed resolver
+  // rather than a hand-maintained RTL set, so the app and Storybook never drift.
+  const dir = getTextDirection(locale);
+  return (
+    <I18nProvider locale={locale}>
+      <div dir={dir}>
+        <Story />
+      </div>
+    </I18nProvider>
+  );
+};
+
 const preview: Preview = {
   decorators: [
     withRouter,
-    // Toggles the `.dark` class on the preview <html> — the exact mechanism the
-    // app uses (src/lib/theme.ts adds `.dark` to documentElement; global.css's
-    // `@custom-variant dark (.dark)` + theme.css's `.dark { --vars }` do the
-    // rest). Adds a light/dark switch to the Storybook toolbar.
+    withI18n,
+    // Light/dark switch: toggles `.dark` on the preview <html>, the same
+    // mechanism the app uses (src/lib/theme.ts). The dark tokens come from
+    // packages/design via global.css.
     withThemeByClassName({
       themes: { light: "", dark: "dark" },
       defaultTheme: "light",
     }),
   ],
+  globalTypes: {
+    locale: {
+      description: "Locale (ar mirrors to RTL)",
+      defaultValue: "en",
+      toolbar: {
+        title: "Locale",
+        icon: "globe",
+        items: [
+          { value: "en", title: "English" },
+          { value: "ar", title: "العربية (RTL)" },
+          { value: "zh-Hans", title: "中文" },
+        ],
+        dynamicTitle: true,
+      },
+    },
+  },
   parameters: {
     layout: "centered",
   },

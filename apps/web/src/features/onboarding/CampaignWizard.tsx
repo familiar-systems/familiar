@@ -10,6 +10,7 @@ import type {
   SystemEntry,
 } from "@familiar-systems/types-campaign";
 import { useEffect, useMemo, useState } from "react";
+import { m } from "../../paraglide/messages.js";
 import { campaignClient } from "../../lib/campaigns-api";
 import { StepName } from "./StepName";
 import { StepPrivacy } from "./StepPrivacy";
@@ -17,13 +18,6 @@ import { StepRail } from "./StepRail";
 import { StepReview } from "./StepReview";
 import { BYO_COLOR, BYO_DEFAULT_NAME, StepSystem, type SystemPick } from "./StepSystem";
 import type { SealState } from "./WaxSeal";
-
-const STEPS = [
-  { id: "name", label: "Name your world" },
-  { id: "system", label: "Choose your system" },
-  { id: "privacy", label: "Privacy" },
-  { id: "review", label: "Review and seal" },
-] as const;
 
 interface CampaignWizardProps {
   campaignId: string;
@@ -37,6 +31,15 @@ export function CampaignWizard({
   locale,
   onDone,
 }: CampaignWizardProps): React.ReactElement {
+  // Step labels resolve per render so a locale change re-localizes the rail;
+  // ids are DOM keys / data-step values, not user-facing.
+  const STEPS = [
+    { id: "name", label: m.wizardStepNameLabel() },
+    { id: "system", label: m.wizardStepSystemLabel() },
+    { id: "privacy", label: m.wizardStepPrivacyLabel() },
+    { id: "review", label: m.wizardStepReviewLabel() },
+  ];
+
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
@@ -59,7 +62,7 @@ export function CampaignWizard({
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error || !data) {
-          setErrorMessage("Catalog unavailable");
+          setErrorMessage(m.wizardCatalogUnavailable());
           return;
         }
         setCatalog(data);
@@ -120,7 +123,7 @@ export function CampaignWizard({
     if (systemDisplay === null || audio === null || evalsEnabled === null) {
       // Should be unreachable since canAdvance gates the initialization step,
       // but guard so we never POST a partial payload.
-      setErrorMessage("Wizard payload incomplete; please review each step.");
+      setErrorMessage(m.wizardPayloadIncomplete());
       return;
     }
     setSealState("sealing");
@@ -140,7 +143,7 @@ export function CampaignWizard({
       body,
     });
     if (error) {
-      setErrorMessage(error.error ?? "Something went wrong; please try again.");
+      setErrorMessage(error.error ?? m.wizardGenericError());
       setSealState("cracked");
       return;
     }
@@ -232,7 +235,7 @@ function Footer({ step, canAdvance, setStep }: FooterProps): React.ReactElement 
         disabled={step === 0}
         className="rounded-full px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Back
+        {m.wizardBack()}
       </button>
       <button
         type="button"
@@ -243,7 +246,7 @@ function Footer({ step, canAdvance, setStep }: FooterProps): React.ReactElement 
         disabled={!canAdvance}
         className="inline-flex items-center gap-2 rounded-full bg-gold px-6 py-2.5 text-sm font-medium text-white shadow-md shadow-gold/25 transition-colors hover:bg-gold/90 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
       >
-        Continue
+        {m.wizardContinue()}
       </button>
     </footer>
   );

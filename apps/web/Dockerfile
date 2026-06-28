@@ -24,6 +24,8 @@ COPY patches/ patches/
 
 # Copy only the package.json files for the web build dependency tree
 COPY apps/web/package.json apps/web/package.json
+COPY packages/design/package.json packages/design/package.json
+COPY packages/ui/package.json packages/ui/package.json
 COPY packages/editor/package.json packages/editor/package.json
 COPY packages/types-app/package.json packages/types-app/package.json
 COPY packages/types-campaign/package.json packages/types-campaign/package.json
@@ -35,6 +37,8 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 
 # Copy source for all packages needed by the web build
 COPY apps/web/ apps/web/
+COPY packages/design/ packages/design/
+COPY packages/ui/ packages/ui/
 COPY packages/editor/ packages/editor/
 COPY packages/types-app/ packages/types-app/
 COPY packages/types-campaign/ packages/types-campaign/

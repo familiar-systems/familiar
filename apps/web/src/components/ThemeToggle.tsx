@@ -1,4 +1,5 @@
 import { Moon, Sun } from "lucide-react";
+import { m } from "../paraglide/messages.js";
 import { useTheme } from "../lib/theme";
 
 interface ThemeToggleProps {
@@ -13,7 +14,7 @@ export function ThemeToggle({ className }: ThemeToggleProps): React.ReactElement
     <button
       type="button"
       onClick={toggle}
-      aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+      aria-label={isDark ? m.themeToggleToLight() : m.themeToggleToDark()}
       className={[
         "inline-flex items-center justify-center rounded-full p-2",
         "border border-foreground/10 bg-background/40 backdrop-blur-md",

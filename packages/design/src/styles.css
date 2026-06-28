@@ -1,0 +1,137 @@
+/* familiar.systems design system — Tailwind v4 entry.
+ *
+ * Apps import this once, after `@import "tailwindcss"`, via
+ * `@import "@familiar-systems/design/styles.css"`. It registers the dark
+ * variant, maps the raw tokens (tokens.css) into Tailwind's color/font theme,
+ * sets the base body surface, and ships the semantic .type-* classes. */
+
+@import "./tokens.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Map raw tokens -> Tailwind color/font theme. Non-inline on purpose: the
+   utilities reference `--color-*`, which indirect to the raw tokens that flip
+   on `.dark`, so dark mode resolves through the cascade per element. */
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-gold: var(--gold);
+  --color-bronze: var(--bronze);
+  --color-bronze-muted: var(--bronze-muted);
+  --color-line: var(--line);
+  --color-step-bg: var(--step-bg);
+  --color-step-hover: var(--step-hover);
+
+  --font-sans: "Alegreya", Georgia, serif;
+  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font-prose-heading: "Cinzel", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  transition:
+    background-color 0.3s,
+    color 0.3s;
+}
+
+/* Semantic type styles. Display = Cormorant Garamond, body = Alegreya. */
+.type-hero-h1 {
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 8vw, 6rem);
+  font-weight: 500;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+}
+
+.type-h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 6vw, 3.5rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.type-h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.type-h3 {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.type-h4 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.type-eyebrow {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-gold);
+}
+
+.type-subtitle {
+  font-family: var(--font-sans);
+  font-size: clamp(1.125rem, 2vw, 1.5rem);
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.type-body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.75;
+  color: var(--foreground);
+}
+
+.type-body-lg {
+  font-family: var(--font-sans);
+  font-size: 1.125rem;
+  line-height: 1.7;
+}
+
+.type-meta {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+
+.type-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.type-quote {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.25rem;
+  line-height: 1.55;
+  color: var(--foreground);
+  border-left: 3px solid color-mix(in srgb, var(--color-gold), transparent 60%);
+  padding-left: 1rem;
+}
+
+.type-code {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}

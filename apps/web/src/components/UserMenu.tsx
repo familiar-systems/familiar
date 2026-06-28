@@ -1,7 +1,8 @@
 import type { MeResponse } from "@familiar-systems/types-app";
-import { Link } from "@tanstack/react-router";
+import { Menu, MenuItem, MenuTrigger } from "@familiar-systems/ui";
 import { LogOut, Settings as SettingsIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Button as AriaButton, Header, Separator } from "react-aria-components";
+import { m } from "../paraglide/messages.js";
 import { hanko } from "../lib/hanko";
 import { spaRoute } from "../lib/paths";
 
@@ -10,33 +11,11 @@ interface UserMenuProps {
 }
 
 export function UserMenu({ me }: UserMenuProps): React.ReactElement {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const firstItemRef = useRef<HTMLAnchorElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onMouseDown = (e: MouseEvent): void => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("keydown", onKey);
-    firstItemRef.current?.focus();
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
   const initial = (me.email[0] ?? "?").toUpperCase();
 
-  const onSignOut = async (e: React.MouseEvent): Promise<void> => {
-    e.preventDefault();
+  // hanko.logout() can reject (network); redirect regardless so the user always
+  // lands on /login. A hard navigation (not the router) clears in-memory state.
+  const onSignOut = async (): Promise<void> => {
     try {
       await hanko.logout();
     } finally {
@@ -44,66 +23,39 @@ export function UserMenu({ me }: UserMenuProps): React.ReactElement {
     }
   };
 
+  // The avatar is a bespoke trigger, not a generic Button variant, so it draws on
+  // React Aria's Button directly. MenuTrigger + Popover supply the open state,
+  // outside-press/Escape dismissal, and focus management.
   return (
-    <div ref={wrapRef} className="relative">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Open account menu"
-        onClick={() => setOpen((o) => !o)}
-        className={[
-          "h-9 w-9 rounded-full",
-          "border border-foreground/10 bg-background/60 backdrop-blur-sm",
-          "font-display text-sm text-primary",
-          "hover:bg-background/80 transition-colors",
-          "inline-flex items-center justify-center",
-        ].join(" ")}
+    <MenuTrigger>
+      <AriaButton
+        aria-label={m.userMenuOpenAriaLabel()}
+        className="inline-flex size-9 items-center justify-center rounded-full border border-foreground/10 bg-background/60 font-display text-sm text-primary backdrop-blur-sm transition-colors outline-none hover:bg-background/80 data-[focus-visible]:ring-2 data-[focus-visible]:ring-primary/50"
       >
         {initial}
-      </button>
-
-      {open ? (
-        <div
-          role="menu"
-          className={[
-            "absolute right-0 top-11 w-64 z-20",
-            "rounded-2xl border border-foreground/10 bg-background/85 backdrop-blur-md",
-            "shadow-2xl shadow-primary/10 p-2",
-          ].join(" ")}
-        >
-          <div className="px-3 py-2">
-            <span className="block text-xs tracking-[0.2em] text-muted-foreground uppercase">
-              Signed in as
-            </span>
-            <span
-              className="mt-1 block truncate font-display text-sm text-foreground"
-              title={me.email}
-            >
-              {me.email}
-            </span>
-          </div>
-          <div className="my-1 h-px bg-foreground/10" />
-          <Link
-            ref={firstItemRef}
-            role="menuitem"
-            to="/settings"
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-foreground/5 focus:bg-foreground/5 focus:outline-none"
+      </AriaButton>
+      <Menu className="w-64">
+        <Header className="px-3 py-2">
+          <span className="block text-xs tracking-[0.2em] text-muted-foreground uppercase">
+            {m.userMenuSignedInAs()}
+          </span>
+          <span
+            className="mt-1 block truncate font-display text-sm text-foreground"
+            title={me.email}
           >
-            <SettingsIcon className="size-4 text-primary" />
-            <span>Settings</span>
-          </Link>
-          <a
-            role="menuitem"
-            href={spaRoute("login")}
-            onClick={onSignOut}
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-foreground/5 focus:bg-foreground/5 focus:outline-none"
-          >
-            <LogOut className="size-4 text-muted-foreground" />
-            <span>Sign out</span>
-          </a>
-        </div>
-      ) : null}
-    </div>
+            {me.email}
+          </span>
+        </Header>
+        <Separator className="my-1 h-px bg-foreground/10" />
+        <MenuItem className="gap-3" href="/settings">
+          <SettingsIcon className="size-4 text-primary" />
+          <span>{m.userMenuSettings()}</span>
+        </MenuItem>
+        <MenuItem className="gap-3" onAction={() => void onSignOut()}>
+          <LogOut className="size-4 text-muted-foreground" />
+          <span>{m.userMenuSignOut()}</span>
+        </MenuItem>
+      </Menu>
+    </MenuTrigger>
   );
 }

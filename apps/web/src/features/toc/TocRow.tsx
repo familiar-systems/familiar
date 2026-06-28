@@ -59,10 +59,12 @@ export function TocRow({
       style={{
         transform: CSS.Translate.toString(transform),
         transition,
-        paddingLeft: depth * indentWidth + ROW_INDENT_BASE,
+        // Logical (not paddingLeft) so the tree indents from the inline-start and
+        // mirrors under RTL. The lint can't see inline styles, so this is by hand.
+        paddingInlineStart: depth * indentWidth + ROW_INDENT_BASE,
       }}
       className={[
-        "group flex items-center gap-1 rounded-md py-1 pr-1 text-sm",
+        "group flex items-center gap-1 rounded-md py-1 pe-1 text-sm",
         isDragging ? "opacity-40" : "",
         active ? "bg-primary/10 text-foreground" : "text-foreground/80 hover:bg-primary/5",
       ].join(" ")}
@@ -87,7 +89,7 @@ export function TocRow({
       <button
         type="button"
         onClick={() => (pageId !== null ? onNavigate(pageId) : onToggleCollapse(node.treeId))}
-        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-start"
       >
         {pageIcon !== null ? (
           <pageIcon.Icon className={`size-4 shrink-0 ${pageIcon.className}`} />

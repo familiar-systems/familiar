@@ -15,6 +15,7 @@
 // Desktop (md+): labels reappear inline next to each dot.
 
 import { Check } from "lucide-react";
+import { m } from "../../paraglide/messages.js";
 
 interface StepRailProps {
   current: number;
@@ -25,7 +26,7 @@ export function StepRail({ current, steps }: StepRailProps): React.ReactElement 
   return (
     <ol
       className="flex items-center gap-1 md:gap-3"
-      aria-label="Wizard progress"
+      aria-label={m.stepRailAriaLabel()}
       data-testid="step-rail"
     >
       {steps.map((step, i) => {

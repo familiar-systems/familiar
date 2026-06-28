@@ -1,6 +1,7 @@
 # Per-Dockerfile ignore (BuildKit feature). Overrides any root .dockerignore.
-# Keeps the build context lean: the site only needs the workspace config
-# files plus apps/site/.
+# Keeps the build context lean: the site needs the workspace config files,
+# apps/site/, and the two workspace members it depends on (packages/design for
+# its CSS, tooling/tsconfig for the install graph).
 
 **/node_modules
 **/dist
@@ -10,16 +11,22 @@
 .git
 *.md
 
-# Other workspace members
+# Other workspace members not needed by the site build.
 apps/web
 apps/platform
 apps/campaign
 crates
-packages
+packages/ui
+packages/editor
+packages/types-app
+packages/types-campaign
 workers
 infra
 docs
-tooling
+tooling/openapi-codegen
+tooling/oxlint
+tooling/svg
+tooling/linocut_svg_converter.py
 
 # Rust build artefacts
 target

@@ -11,6 +11,7 @@
 // `tmp/NewCampaignOnboarding/wax_seal.jsx`.
 
 import { useEffect, useRef } from "react";
+import { m } from "../../paraglide/messages.js";
 import { FONT_BY_SCRIPT, TRACKING_BY_SCRIPT, sealLayout, sealMark } from "./sealMark";
 
 export type SealState = "idle" | "sealing" | "cracked";
@@ -33,7 +34,7 @@ export function WaxSeal({
   locale,
   onClick,
   disabled = false,
-  label = "Press to seal",
+  label = m.waxSealDefaultLabel(),
 }: WaxSealProps): React.ReactElement {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const mark = sealMark(campaignName, locale);
@@ -61,9 +62,9 @@ export function WaxSeal({
         disabled={disabled || isSealing}
         aria-label={
           isCracked
-            ? "The seal cracked. Try again."
+            ? m.waxSealCrackedAriaLabel()
             : mark
-              ? `${label} (monogram: ${mark.text})`
+              ? m.waxSealMonogramAriaLabel({ label, monogram: mark.text })
               : label
         }
         className={[
@@ -115,7 +116,7 @@ export function WaxSeal({
           isCracked ? "text-foreground/70" : "text-muted-foreground",
         ].join(" ")}
       >
-        {isCracked ? "The seal cracked" : isSealing ? "Sealing..." : label}
+        {isCracked ? m.waxSealCrackedStatus() : isSealing ? m.waxSealSealingStatus() : label}
       </span>
     </div>
   );
