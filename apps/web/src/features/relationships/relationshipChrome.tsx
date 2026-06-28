@@ -85,55 +85,45 @@ export function SessionSelect({
   );
 }
 
-// The knowledge axis as a control producing a `KnowledgeInput`, ported from the
-// wireframe's two-segment "To the players" toggle: [Hidden] [Revealed / Public].
-// Knowledge is freely mutable - clicking Hidden conceals (even a once-public fact),
-// clicking the other segment reveals. `bornSecret` is the fact's secret bit frozen at
-// the control's opening value (create passes `false`); it decides only what the right
-// segment means: a plain "Public" (no session) for a fact that opened public, or
-// "Revealed" with an inline session `<select>` for a secret fact. A secret fact can't
-// be revealed without a session, so that segment is disabled when there are none.
+// The knowledge axis as a control producing a `KnowledgeInput`, one segment per state of
+// the freely-mutable `Knowledge` sum: [Hidden] [Revealed] [Public]. Each segment sets its
+// state wholesale, so any transition is one click (the domain allows conceal, reveal, and
+// re-publicize alike). Revealed stamps a session - the current one by default, changeable
+// via the inline picker below - so it is disabled when the campaign has none. `allowReveal`
+// drops the Revealed segment for create, where a fact revealed the session it is born reads
+// as plain public.
 export function KnowledgeControl({
   value,
   onChange,
   sessions,
-  bornSecret,
+  allowReveal,
   disabled = false,
 }: {
   value: KnowledgeInput;
   onChange: (k: KnowledgeInput) => void;
   sessions: SessionRef[];
-  bornSecret: boolean;
+  allowReveal: boolean;
   disabled?: boolean;
 }): React.ReactElement {
-  const hidden = value.kind === "hidden";
   const revealSession = value.kind === "revealed" ? value.content : null;
-  // Sessions arrive ascending by ordinal, so the last is the current one - the default
-  // a freshly-revealed secret fact lands on.
+  // Sessions arrive ascending by ordinal, so the last is the current one - the default a
+  // freshly-revealed fact lands on, and the proof a reveal can be stamped at all.
   const current = sessions.at(-1) ?? null;
-  // A secret fact needs a session to be revealed; a public fact ("Public") does not.
-  const canReveal = !bornSecret || current !== null;
-
-  function reveal(): void {
-    if (!bornSecret) {
-      onChange({ kind: "public" });
-      return;
-    }
-    const target = revealSession ?? current?.id ?? null;
-    if (target !== null) onChange({ kind: "revealed", content: target });
-  }
 
   return (
     <div className="flex flex-col gap-2">
       <SegmentedControl
         aria-label="To the players"
         isDisabled={disabled}
-        selectedKeys={hidden ? ["hidden"] : ["shown"]}
+        selectedKeys={[value.kind]}
         onSelectionChange={(keys) => {
-          // Hidden conceals; the other segment reveals (public, or a secret fact
-          // back to its reveal session). disallowEmptySelection keeps one active.
-          if ([...keys][0] === "hidden") onChange({ kind: "hidden" });
-          else reveal();
+          const next = [...keys][0];
+          if (next === "hidden") onChange({ kind: "hidden" });
+          else if (next === "public") onChange({ kind: "public" });
+          else if (next === "revealed") {
+            const target = revealSession ?? current?.id ?? null;
+            if (target !== null) onChange({ kind: "revealed", content: target });
+          }
         }}
       >
         <SegmentedItem
@@ -143,17 +133,26 @@ export function KnowledgeControl({
           <EyeOff className="size-3.5" aria-hidden="true" />
           Hidden
         </SegmentedItem>
+        {allowReveal ? (
+          <SegmentedItem
+            id="revealed"
+            isDisabled={current === null}
+            className="data-[selected]:bg-gold/15 data-[selected]:text-foreground"
+          >
+            <Eye className="size-3.5" aria-hidden="true" />
+            Revealed
+          </SegmentedItem>
+        ) : null}
         <SegmentedItem
-          id="shown"
-          isDisabled={!canReveal}
+          id="public"
           className="data-[selected]:bg-gold/15 data-[selected]:text-foreground"
         >
           <Eye className="size-3.5" aria-hidden="true" />
-          {bornSecret ? "Revealed" : "Public"}
+          Public
         </SegmentedItem>
       </SegmentedControl>
 
-      {bornSecret && !hidden && revealSession !== null ? (
+      {value.kind === "revealed" ? (
         <div className="flex flex-wrap items-center gap-2 ps-1 font-sans text-[12px] text-muted-foreground">
           <span>Revealed at</span>
           <SessionSelect
@@ -165,10 +164,6 @@ export function KnowledgeControl({
             onSelect={(id) => onChange({ kind: "revealed", content: id })}
           />
         </div>
-      ) : bornSecret && !hidden && !canReveal ? (
-        <span className="ps-1 font-sans text-[12px] text-muted-foreground italic">
-          no sessions yet
-        </span>
       ) : null}
     </div>
   );

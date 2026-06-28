@@ -217,6 +217,7 @@ export const BornSecret: Story = {
     await expect(screen.getByRole("radio", { name: /Public/ })).toBeChecked();
     await userEvent.click(screen.getByRole("radio", { name: /Hidden/ }));
     await expect(screen.getByRole("radio", { name: /Hidden/ })).toBeChecked();
+    await expect(screen.queryByRole("radio", { name: /Revealed/ })).toBeNull();
     await expect(screen.queryByLabelText("Reveal session")).toBeNull();
   },
 };

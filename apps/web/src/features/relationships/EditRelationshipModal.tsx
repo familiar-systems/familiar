@@ -126,10 +126,8 @@ export function EditRelationshipModal({
   const ordinalOf = (id: SessionId): number | null =>
     allSessions.find((s) => s.id === id)?.ordinal ?? null;
 
-  // Knowledge, freely mutable. `bornSecret` is the secret bit frozen at open: it tells
-  // the control whether its "known" segment means plain "Public" or "Revealed at a
-  // session" (a born-public fact reveals as Public; a secret one stamps a session).
-  const bornSecret = view.knowledge.kind !== "public";
+  // Knowledge, freely mutable to any of its three states; edit offers all three (create
+  // restricts to Public/Hidden).
   const [knowledge, setKnowledge] = useState<KnowledgeInput>(() =>
     knowledgeInputFromView(view.knowledge, allSessions),
   );
@@ -358,7 +356,7 @@ export function EditRelationshipModal({
             <KnowledgeControl
               value={knowledge}
               disabled={busy}
-              bornSecret={bornSecret}
+              allowReveal
               sessions={availableSessions}
               onChange={setKnowledge}
             />

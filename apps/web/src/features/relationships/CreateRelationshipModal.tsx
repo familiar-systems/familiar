@@ -374,7 +374,7 @@ export function CreateRelationshipModal({
 
         {/* To the players: public (known) or hidden (GM-only). A new fact starts on
             the public track; revealing a secret fact at a session is an edit, not a
-            create, so `bornSecret={false}` keeps this a plain Public/Hidden choice. */}
+            create, so `allowReveal={false}` keeps this a plain Public/Hidden choice. */}
         <div className="mt-3 flex flex-col gap-2">
           <span className="font-sans text-[10px] tracking-wide text-muted-foreground uppercase">
             To the players
@@ -382,7 +382,7 @@ export function CreateRelationshipModal({
           <KnowledgeControl
             value={knowledge}
             disabled={busy}
-            bornSecret={false}
+            allowReveal={false}
             sessions={sessions.sessions}
             onChange={setKnowledge}
           />

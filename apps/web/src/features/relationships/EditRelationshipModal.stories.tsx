@@ -118,6 +118,41 @@ export const RevealSecret: Story = {
   },
 };
 
+// Re-publicizing a hidden fact: clicking Public sets the knowledge wholesale back to
+// public, a single PATCH. The regression guard for the two-segment control that let a
+// once-secret fact reach only Revealed, never plain Public.
+export const RePublicizeHiddenFact: Story = {
+  args: { view: view({ knowledge: { kind: "hidden" } }) },
+  play: async ({ args, userEvent }) => {
+    ctl(args.onSubmit).mockResolvedValue(undefined);
+    await expect(screen.getByRole("radio", { name: /Hidden/ })).toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: /Public/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Show players" }));
+    await waitFor(() =>
+      expect(args.onSubmit).toHaveBeenCalledWith({
+        kind: "patch",
+        body: { knowledge: { kind: "public" }, superseded: null, retcon: null },
+      }),
+    );
+  },
+};
+
+// A revealed (once-secret, now-disclosed) fact drops straight back to public too.
+export const RePublicizeRevealedFact: Story = {
+  args: { view: view({ knowledge: { kind: "revealed", content: { ordinal: 3 } } }) },
+  play: async ({ args, userEvent }) => {
+    ctl(args.onSubmit).mockResolvedValue(undefined);
+    await userEvent.click(screen.getByRole("radio", { name: /Public/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Show players" }));
+    await waitFor(() =>
+      expect(args.onSubmit).toHaveBeenCalledWith({
+        kind: "patch",
+        body: { knowledge: { kind: "public" }, superseded: null, retcon: null },
+      }),
+    );
+  },
+};
+
 // Ending without a successor is a superseded PATCH; the reveal/retcon axes are null.
 export const End: Story = {
   play: async ({ args, userEvent }) => {
@@ -259,11 +294,14 @@ export const Delete: Story = {
   },
 };
 
-// With no sessions, a fact can't be ended or retconned (both need a session); delete
-// stays available.
+// With no sessions, a fact can't be ended, retconned, or revealed (each needs a session);
+// Public/Hidden stay usable and delete stays available.
 export const NoSessionsGating: Story = {
   args: { sessions: SESSIONS_EMPTY },
   play: async ({ userEvent }) => {
+    await expect(screen.getByRole("radio", { name: /Revealed/ })).toBeDisabled();
+    await expect(screen.getByRole("radio", { name: /Public/ })).toBeEnabled();
+    await expect(screen.getByRole("radio", { name: /Hidden/ })).toBeEnabled();
     await expect(screen.getByRole("radio", { name: /Ended/ })).toBeDisabled();
     await expect(screen.getByText(/no sessions yet/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Corrections/ }));
