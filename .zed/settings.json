@@ -2,7 +2,8 @@
   "file_types": {
     "GitHub Actions": [".github/workflows/*.yml", ".github/workflows/*.yaml"],
     "OpenTofu": ["tf", "tofu"],
-    "OpenTofu Vars": ["tfvars"]
+    "OpenTofu Vars": ["tfvars"],
+    "Caddyfile": ["Caddyfile*", "*.caddyfile"] // https://github.com/nusnewob/caddyfile-zed
   },
   "lsp": {
     "oxlint": {
@@ -58,6 +59,20 @@
           }
         }
       ]
+    },
+    "Caddyfile": {
+      // Settings from https://github.com/nusnewob/caddyfile-zed
+      "format_on_save": "on",
+      "tab_size": 2,
+      "formatter": {
+        "external": {
+          "command": "caddy",
+          "arguments": ["fmt", "-c", "-"]
+          // for Caddy docker container
+          // "command": "docker",
+          // "arguments": ["run", "--rm", "-i", "caddy", "caddy", "fmt", "-c", "-"]
+        }
+      }
     },
     "CSS": {
       "format_on_save": "on",

@@ -1,5 +1,5 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { I18nProvider } from "react-aria-components";
+import { I18nProvider, RouterProvider as AriaRouterProvider } from "react-aria-components";
 import { useAuth } from "./lib/auth";
 import { m } from "./paraglide/messages.js";
 import { getLocale } from "./paraglide/runtime.js";
@@ -16,6 +16,11 @@ import { router } from "./router";
 // matching text direction). getLocale() reads Paraglide's strategy chain
 // (localStorage -> browser preference -> baseLocale); it is stable per page
 // load because switching locale reloads (no in-session switcher yet).
+//
+// AriaRouterProvider routes every React Aria link's href through TanStack:
+// click does client nav (no reload) and useHref carries the basepath/preview
+// prefix into the rendered <a>, so middle-click / open-in-new-tab work. navigate
+// gets the logical href; router.navigate re-applies the prefix.
 export function App(): React.ReactElement {
   const { state, error } = useAuth();
 
@@ -24,7 +29,12 @@ export function App(): React.ReactElement {
 
   return (
     <I18nProvider locale={getLocale()}>
-      <RouterProvider router={router} context={{ auth: state }} />
+      <AriaRouterProvider
+        navigate={(to, options) => void router.navigate({ to, ...options })}
+        useHref={(to) => router.buildLocation({ to }).href}
+      >
+        <RouterProvider router={router} context={{ auth: state }} />
+      </AriaRouterProvider>
     </I18nProvider>
   );
 }

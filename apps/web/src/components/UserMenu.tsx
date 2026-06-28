@@ -1,6 +1,5 @@
 import type { MeResponse } from "@familiar-systems/types-app";
 import { Menu, MenuItem, MenuTrigger } from "@familiar-systems/ui";
-import { useNavigate } from "@tanstack/react-router";
 import { LogOut, Settings as SettingsIcon } from "lucide-react";
 import { Button as AriaButton, Header, Separator } from "react-aria-components";
 import { m } from "../paraglide/messages.js";
@@ -12,7 +11,6 @@ interface UserMenuProps {
 }
 
 export function UserMenu({ me }: UserMenuProps): React.ReactElement {
-  const navigate = useNavigate();
   const initial = (me.email[0] ?? "?").toUpperCase();
 
   // hanko.logout() can reject (network); redirect regardless so the user always
@@ -49,7 +47,7 @@ export function UserMenu({ me }: UserMenuProps): React.ReactElement {
           </span>
         </Header>
         <Separator className="my-1 h-px bg-foreground/10" />
-        <MenuItem className="gap-3" onAction={() => void navigate({ to: "/settings" })}>
+        <MenuItem className="gap-3" href="/settings">
           <SettingsIcon className="size-4 text-primary" />
           <span>{m.userMenuSettings()}</span>
         </MenuItem>

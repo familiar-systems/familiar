@@ -76,8 +76,8 @@ catalogs:
       specifier: ^1.18.0
       version: 1.18.0
     oxlint-tailwindcss:
-      specifier: ^1.3.0
-      version: 1.3.0
+      specifier: ^1.3.3
+      version: 1.3.3
     playwright:
       specifier: ^1.60.0
       version: 1.60.0
@@ -362,7 +362,7 @@ importers:
         version: 4.1.8(playwright@1.60.0)(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8)
       oxlint-tailwindcss:
         specifier: 'catalog:'
-        version: 1.3.0(@oxlint/plugins@1.69.0)
+        version: 1.3.3
       playwright:
         specifier: 'catalog:'
         version: 1.60.0
@@ -510,7 +510,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       oxlint-tailwindcss:
         specifier: 'catalog:'
-        version: 1.3.0(@oxlint/plugins@1.69.0)
+        version: 1.3.3
       storybook:
         specifier: ^10.4.4
         version: 10.4.4(@testing-library/dom@10.4.1)(@types/react@19.2.17)(prettier@3.8.4)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -4672,11 +4672,9 @@ packages:
       vite-plus:
         optional: true
 
-  oxlint-tailwindcss@1.3.0:
-    resolution: {integrity: sha512-j0WiThmhn56VccrsvBHulEytoiG2EQ7g2t9IF21zAkRp2RUWMnmuLnqyUqk6UqVHVedoKBTTJCI0BWP0rYBFNQ==}
+  oxlint-tailwindcss@1.3.3:
+    resolution: {integrity: sha512-oCUxCggTadACJINj2FSekgY95QbspO806x7+QpGer22U6AuZOIJ0T/Ncz25K9BG+tvE3YmbsG2Iw7D4hj05aIw==}
     engines: {node: '>=20'}
-    peerDependencies:
-      '@oxlint/plugins': '>=1.43.0 <2'
 
   oxlint@1.69.0:
     resolution: {integrity: sha512-ypZkK/aDc5NQV8zIR6s2H2Tl3aNW8FmJ1m9+2qsaYuRenl8vgnHNCGwTHviWJdUQzglOlHFchgopdtGhSy17Rw==}
@@ -10188,9 +10186,8 @@ snapshots:
       '@oxfmt/binding-win32-ia32-msvc': 0.54.0
       '@oxfmt/binding-win32-x64-msvc': 0.54.0
 
-  oxlint-tailwindcss@1.3.0(@oxlint/plugins@1.69.0):
+  oxlint-tailwindcss@1.3.3:
     dependencies:
-      '@oxlint/plugins': 1.69.0
       '@tailwindcss/node': 4.3.1
       tailwindcss: 4.3.1
 

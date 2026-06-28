@@ -19,7 +19,7 @@ catalog:
   # oxlint plugin enforcing logical (RTL-safe) properties + canonical classes.
   # Shared by apps/web and packages/ui so the primitives and the app hold the
   # same RTL guard.
-  oxlint-tailwindcss: ^1.3.0
+  oxlint-tailwindcss: ^1.3.3
   typescript: ^6.0.3
   # Accessible component primitives (packages/ui). React Aria provides the RTL +
   # locale-aware behavior the design requires; @react-aria/test-utils provides
