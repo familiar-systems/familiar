@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-03-25
 **Supersedes:** AI Serialization Format v1 (undated)
-**Related decisions:** [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md), [AI PRD](./2026-02-22-ai-prd.md), [Templates as Pages](./2026-02-20-templates-as-pages.md)
+**Related decisions:** [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md), [AI PRD](./2026-02-22-ai-prd.md), [Templates](./2026-06-29-templates.md)
 
 ---
 
@@ -15,6 +15,8 @@ The agent cannot work directly with ProseMirror JSON or Loro CRDT operations - i
 
 The core insight: **the serialization format is markdown**. The page tree is the heading hierarchy. References are wiki-links. Status annotations and graph context are the only non-markdown additions. The agent reads and writes a format that is nearly indistinguishable from what a human would write in Obsidian or Logseq.
 
+> **Page identity lives in frontmatter; visibility serializes as spans.** The title, the page's `status`, and extensible identity fields (e.g. `aliases`) live in YAML frontmatter; the body uses native heading levels (`#` is the top section). In-flow content carries visibility as `<player_visible>` / `<gm_only>` spans (see _Visibility Status_), one status per block with nothing inherited down the heading tree. The authoring-side mirror is [Templates](2026-06-29-templates.md).
+
 ---
 
 ## The Serialization Format
@@ -22,24 +24,32 @@ The core insight: **the serialization format is markdown**. The page tree is the
 ### Design Principles
 
 1. **Markdown is the format.** The heading hierarchy (`#`, `##`, `###`) defines the page tree. Content is standard markdown. LLMs are most fluent in markdown - it is the format they are best trained to read and produce.
-2. **Headings are the tree.** `## History` is a section. `### Session 3` nested inside it is a child. The tree structure users create by dragging blocks in the editor and nesting headings is the same tree the agent sees and addresses.
+2. **Headings are the tree.** `# History` is a section. `## Session 3` nested inside it is a child. The page title is not a heading; it is frontmatter (see _Page Identity_ below). The tree structure users create by dragging blocks in the editor and nesting headings is the same tree the agent sees and addresses.
 3. **References are wiki-links.** `{Silver Compact}` in the text is a reference to the Page named "Silver Compact." The linker resolves names to graph nodes. The agent never sees or writes IDs.
 4. **Non-markdown annotations exist only for data that isn't page content.** Graph-derived relationships, computed TOCs, and visibility status need markup. Everything else is markdown.
-5. **Status tightens downward, never loosens.** A `[gm_only]` annotation on a heading applies to the entire subtree. A block inside a `[gm_only]` section cannot be `[known]`. The only valid override direction is toward restriction.
+5. **Visibility is literal per block, fail-closed.** Each block carries its own status; nothing inherits down the heading tree. A block is player-visible only if its own status is `player_visible`; the stored default is `gm_only`, so a forgotten reveal hides rather than leaks. In the markdown this serializes as `<player_visible>` / `<gm_only>` spans, run-length encoding over per-block status, not a scope (see _Visibility Status_).
 
 ### Full Page Example (Tier 3)
 
 ```md
-# Kael [known]
+---
+name: Kael
+status: player_visible
+aliases: [The Quartermaster]
+---
 
-#NPC #Human #Villain [gm_only]
+#NPC #Human <gm_only>#Villain</gm_only>
 
+<player_visible>
 Kael is a former {Silver Compact} operative turned informant,
 working out of the {Rusty Anchor} in {Northport}. He knows more
 than he lets on and trusts no one.
+</player_visible>
 
+<gm_only>
 He's still reporting to the {Silver Compact}. His defection was
-staged. [gm_only]
+staged.
+</gm_only>
 
 <relationships>
 @Silver Compact - formerly affiliated with | former operative
@@ -47,18 +57,21 @@ staged. [gm_only]
 @Tormund - distrusts | distrusted by
 </relationships>
 
-## Appearance
+<player_visible>
+# Appearance
 
 Wiry build, dark eyes that never settle. A scar runs from
 his left ear to his jaw - he says it's from a bar fight.
 It isn't.
 
-## Personality
+# Personality
 
 Deflects with humor. Answers questions with questions. Loyal
 to whoever is paying - or so he wants people to think.
+</player_visible>
 
-## Secrets [gm_only]
+<gm_only>
+# Secrets
 
 Kael is still reporting to the {Silver Compact}. His "betrayal"
 was staged to place him as a mole inside {Northport}'s
@@ -67,63 +80,79 @@ intelligence network.
 <prior>His handler is {Whisper}, who operates out of {Ashenmoor}.</prior>
 <suggestion>His handler is {Whisper}, who operates out of {Ashenmoor},
 but he's begun feeding {Whisper} false intelligence.</suggestion>
+</gm_only>
 
-## History
+<player_visible>
+# History
 
-### Session 0
+## Session 0
 
 Kael was introduced to the party by {Tormund} at the
 {Rusty Anchor}.
 
-### Session 3
+## Session 3
 
 Kael revealed his former ties to the {Silver Compact}
 during the ambush at {Northport} docks.
 
-### Session 7
+## Session 7
 
 The party discovered Kael had been feeding information
 to both sides.
+</player_visible>
 
-## GM Notes [gm_only]
+<gm_only>
+# GM Notes
 
 Planning to have Kael betray the party in session 9. The reveal
 should come through {Whisper} showing up at the {Rusty Anchor}.
+</gm_only>
 ```
 
 **Note on `<prior>/<suggestion>` rendering:** The agent sees its own pending suggestions inline as `<prior>/<suggestion>` pairs. This is a serialization-time projection - the underlying representation is a mark on block UUIDs (see "Suggestion Model" below). The agent doesn't manage marks or UUIDs. It sees readable diffs of its own work.
 
 ### Format Elements
 
-#### Page Title and Type
+#### Page Identity (Frontmatter)
 
 ```md
-# Kael [known]
+---
+name: Kael
+status: player_visible
+aliases: [The Quartermaster]
+---
 ```
 
-The H1 is the page title. The bracketed annotation is the page's visibility status. A page's stored default is `gm_only` (fail closed: a newly created page is hidden until the GM reveals it); `[known]` on the title marks a page that has been revealed to players, and is the visibility baseline for everything below it.
+The page's identity lives in YAML frontmatter, not in the body: `name` (the title, stored as `meta.title`), the page's visibility `status`, and extensible identity fields like `aliases` (alternate names the linker resolves against). The title is a field, never a heading, so the body owns the full heading range and `#` is the top section.
+
+`status` is the page node's own visibility. The stored default is `gm_only` (fail closed: a newly created page is hidden until the GM reveals it); `status: player_visible` reveals the page to players. It is the node's own status and nothing more: it neither reveals nor hides anything in the body, because every in-flow block carries its own status independently and nothing inherits down the heading tree. Status sits in frontmatter because the page root annotates no content positioned in the flow; in-flow content carries its visibility through `<player_visible>` / `<gm_only>` spans instead.
+
+Frontmatter is a typed, extensible identity block. The discipline that keeps it from becoming a junk drawer: it holds page facets with no per-item visibility that are not content. Anything that can be secret per item (tags, a concealed alias) stays inline under a visibility span.
 
 #### Tags
 
 ```md
-#NPC #Human #Villain [gm_only]
+#NPC #Human <gm_only>#Villain</gm_only>
 ```
 
-Hashtag syntax, immediately after the title. Tags are graph relationships (`Kael -[tagged]-> NPC`) rendered in a compact form. Tags inherit the page's visibility status by default; individual tags can tighten with `[gm_only]`. In this example, players see `#NPC #Human` but not `#Villain`.
+Hashtag syntax, immediately after the frontmatter, before the preamble. Tags are graph relationships (`Kael -[tagged]-> NPC`) rendered in a compact form, each carrying its own visibility (the `tagged` relationship's status). Hidden tags are wrapped in a `<gm_only>` span; the rest are player-visible. In this example players see `#NPC #Human` but not `#Villain`, and the player-facing serialization drops the wrapped tag entirely.
 
 Tags are Pages in the graph - the "NPC" tag is itself a page. Tagging is a relationship with the label `tagged`.
 
 #### Preamble
 
-The content between the H1 and the first structural element (`<relationships>`, `<toc>`, or the first `##` heading) is the preamble. It has no explicit tag - its position defines it.
+The content between the frontmatter (and the tags line) and the first structural element (`<relationships>`, `<toc>`, or the first `#` heading) is the preamble. It has no explicit tag - its position defines it.
 
 The preamble is the most important text on the page for retrieval. It is the index card: dense with identity, role, affiliations, and what makes this entity interesting. It is the text returned at the cheapest retrieval tier. When the agent packs 20 entities into a context window for entity resolution, it packs 20 preambles.
 
-Preamble blocks inherit the page's visibility status. Individual paragraphs can tighten:
+Preamble blocks are hidden by default. The player-facing index-card paragraph is wrapped in a `<player_visible>` span; a secret one is simply left unwrapped:
 
 ```md
-He's still reporting to the {Silver Compact}. His defection was
-staged. [gm_only]
+<player_visible>
+Kael is a former {Silver Compact} operative turned informant.
+</player_visible>
+
+He's still reporting to the {Silver Compact}. His defection was staged.
 ```
 
 The preamble is backed by its own storage container and is **AI-authored by default**, kept current by the maintenance pipeline in [Multi-Section Document Structure](2026-06-07-multi-section-document-structure.md#preamble-maintenance). Its position still defines it in this format (see *Preamble as Implicit Position*); the storage container does not change the markdown.
@@ -158,56 +187,61 @@ Relationships with `[gm_only]` status are excluded when serializing for a player
 
 #### Visibility Status
 
+Visibility is **literal per block**. Each block stores its own status, and that status is the whole truth: a block is player-visible only if its own status is `player_visible`. **Nothing inherits.** A heading marked `gm_only` does not hide the blocks beneath it; a heading marked `player_visible` does not reveal them. The stored default is `gm_only`, so a block with no reveal is hidden. `retconned` content is excluded from the serialization entirely (retrievable only on explicit request).
+
+In the markdown, visibility serializes as XML-like spans wrapping a contiguous run of equal-status blocks:
+
 ```md
-## Secrets [gm_only]
+<player_visible>
+# Appearance
+
+Wiry build, dark eyes that never settle.
+</player_visible>
+
+<gm_only>
+# Secrets
+
+His defection was staged.
+</gm_only>
 ```
 
-Status annotations appear on headings (applying to the entire subtree) or on individual paragraphs (applying to that block). The inheritance rule: **status can only tighten as you descend the tree, never loosen.**
+A span is **run-length encoding over per-block status, not a scope.** The compiler coalesces a maximal run of equal-status blocks into one span on the way out and expands it back to per-block status on the way in. The span lives only in the markdown; storage is always one status per block, and a block added later does not "fall into" a surrounding span. Treating a span as an inherited scope would silently rebuild a cascade, which is exactly what the literal model rejects.
 
-```
-Page (known)
-├── Preamble paragraph (known) ✓ - inherits
-├── Preamble paragraph (gm_only) ✓ - tighter than parent
-├── History (known)
-│   ├── Session 0 (known) ✓ - inherits
-│   └── Session 3 paragraph (gm_only) ✓ - tighter than parent
-└── Secrets (gm_only)
-    └── paragraph (gm_only) ✓ - inherits (no loosening possible)
-```
+Spans beat a per-block suffix for an LLM: the boundary is a single attention target, and a block's status is decodable from its enclosing tag rather than inferred from the absence of a mark (the negative inference models do worst under long context). Labeling differs by surface, on the principle "deltas where a mistake fails safe, total labeling where a wrong inference is costly":
 
-A `[known]` block inside a `[gm_only]` section is a **parse error**. If the agent produces it, the compiler rejects it. If the GM wants to make one piece of a `gm_only` section visible to players, it belongs in a `known` section instead.
+- **Agent read and write (`f` / `f⁻¹`):** total labeling. Every region is wrapped, so the agent never infers a secret from the absence of a tag.
+- **Human authoring** (on-disk templates): `<player_visible>` deltas only; bare gaps default `gm_only`. A forgotten wrap hides, never leaks. Owned by [Templates](2026-06-29-templates.md).
+- **Player-facing serialization:** the role filter in `f()` keeps only `player_visible` blocks and strips the tags, emitting clean content. Nothing to mislabel, so the player view is structurally leak-proof. The same page thus projects two cards: player-facing RAG packs the `player_visible` subset, GM-facing RAG packs all of it.
 
-The stored default is `gm_only` at every level (fail closed): a page, section, or block is hidden unless made visible, and a newly created page is invisible to players until the GM reveals it (`[known]` on its title). Within a revealed page, body blocks inherit the page's visible baseline, and `[gm_only]` flags the ones that tighten back to secret, so secrets stay loud in the format. `[retconned]` content is excluded from the serialization entirely (retrievable only on explicit request).
+Visibility is **co-authored with content**: a single `suggest_replace` carries each block's visibility alongside its prose, because secrecy is part of what the content means. An agent that writes a block without wrapping it has produced `gm_only` content by default.
 
-Visibility is **one uniform axis**: the same status tag can sit on the page (`meta.status`), a section (its heading), or any block, and a thing is visible to players iff it and all of its ancestors are visible. "The party has not met this NPC" (a `gm_only` page) and "this fact is a secret" (a `gm_only` block on a visible page) are the same tag at different heights. Visibility is **co-authored with content**: a single `suggest_replace` carries per-block visibility alongside the prose, because secrecy is part of what the content means.
-
-Because visibility reaches per-block into the **preamble**, the same page projects two cards: player-facing RAG packs only the visible subset of the preamble and body, while GM-facing RAG packs all of it. The role filter in `f()` already performs this projection; per-block preamble visibility is what makes the two cards diverge.
+Why fail-closed: the dangerous direction is a secret going public, so the safe state must be the default. A forgotten reveal leaves a block `gm_only`; the inverse would leak. And because the model is literal, a GM who reveals a fact sees exactly that fact revealed, with no ancestor that can silently swallow the reveal and surface the omission days later.
 
 #### Sections
 
 ```md
-## Appearance
+# Appearance
 
 ...
 
-## Secrets [gm_only]
+# Secrets
 
 ...
 
-## History
+# History
 
-### Session 0
+## Session 0
 
 ...
 
-### Session 3
+## Session 3
 
 ...
 ```
 
-Sections are markdown headings. The heading hierarchy defines the page tree. Sections can nest (`### Session 0` inside `## History`). Section names must be unique within their parent - this enables path-based addressing (`History/Session 0`).
+Sections are markdown headings. The heading hierarchy defines the page tree. Sections can nest (`## Session 0` inside `# History`). Section names must be unique within their parent - this enables path-based addressing (`History/Session 0`).
 
-Sections are defined by the template page. When a Page is created from a template, it clones the template's section structure. The GM can add, remove, or rename sections. The agent addresses sections by the heading text.
+The heading hierarchy is the page's structure for navigation and addressing, independent of visibility (which is per block; see _Visibility Status_). When a Page is created from a template, it clones the template's heading structure. The GM can add, remove, or rename headings within the body. The agent addresses them by heading text.
 
 #### Pending Suggestions (Conversation-Scoped)
 
@@ -259,16 +293,23 @@ The serialization format supports multiple retrieval tiers. The tier selected de
 Preamble + tags + relationships + TOC. Enough to understand who/what this is, how it connects, and what's on its page. ~100-150 tokens per entity.
 
 ```md
-# Kael [known]
+---
+name: Kael
+status: player_visible
+---
 
-#NPC #Human #Villain [gm_only]
+#NPC #Human <gm_only>#Villain</gm_only>
 
+<player_visible>
 Kael is a former {Silver Compact} operative turned informant,
 working out of the {Rusty Anchor} in {Northport}. He knows more
 than he lets on and trusts no one.
+</player_visible>
 
+<gm_only>
 He's still reporting to the {Silver Compact}. His defection was
-staged. [gm_only]
+staged.
+</gm_only>
 
 <relationships>
 @Silver Compact - formerly affiliated with | former operative
@@ -295,16 +336,23 @@ GM Notes [gm_only] (150 words)
 Tier 1 plus embedding-selected blocks relevant to the current query. The TOC provides structural context; the RAG blocks provide specific content without loading the full page. The assembled pack is `meta + preamble + relationships + TOC + matched blocks in their TOC position`.
 
 ```md
-# Kael [known]
+---
+name: Kael
+status: player_visible
+---
 
-#NPC #Human #Villain [gm_only]
+#NPC #Human <gm_only>#Villain</gm_only>
 
+<player_visible>
 Kael is a former {Silver Compact} operative turned informant,
 working out of the {Rusty Anchor} in {Northport}. He knows more
 than he lets on and trusts no one.
+</player_visible>
 
+<gm_only>
 He's still reporting to the {Silver Compact}. His defection was
-staged. [gm_only]
+staged.
+</gm_only>
 
 <relationships>
 @Silver Compact - formerly affiliated with | former operative
@@ -433,7 +481,7 @@ new_content: ""
 
 The anchor content (the part of `old_content` that appears unchanged in `new_content`) is included in the suggestion's `target_blocks`. The editor's inline diff rendering compares target blocks against proposed blocks at the block level and classifies each as unchanged, modified, inserted, or deleted - showing the GM exactly what's changing and what's just context.
 
-**Start-of-document insertion:** The page title heading (`# Kael [known]`) always exists (every page has at least a title from the template), so matching the title and proposing `title + new content` handles this case. A completely empty page is not a meaningful edge case.
+**Start-of-document insertion:** Every page has a non-empty preamble (at least the index-card block from the template), so matching an existing leading block and proposing `block + new content` handles insertion at the top. A completely empty page is not a meaningful edge case.
 
 **Used by:** P&R ("flesh out the backstory", "add a section about his childhood"), SessionIngest (proposing journal drafts, inserting new session entries into History).
 
@@ -588,11 +636,11 @@ f(
 **Process:**
 
 1. Walk the LoroDoc tree, emitting markdown with heading hierarchy
-2. Extract status attributes from nodes, emit `[gm_only]` annotations where status tightens
+2. Read each block's status, coalesce maximal contiguous runs of equal status, and emit `<player_visible>` / `<gm_only>` spans (the default is `gm_only`)
 3. Resolve Page references to display names, emit `{Name}` wiki-links
 4. Query the graph for the Page's relationships and tags, emit `<relationships>` and hashtag blocks
 5. Compute TOC with word counts from the heading structure
-6. Filter by role - exclude `gm_only` subtrees for player-facing serialization
+6. Filter by role - for player-facing serialization keep only `player_visible` blocks and strip the spans (literal per block; no subtree pruning)
 7. If `conversation_id` is provided: find suggestion marks owned by that conversation, render as `<prior>/<suggestion>` pairs inline. Ignore all other conversations' suggestion marks.
 8. If `conversation_id` is `None`: ignore all suggestion marks, serialize pure content. Used for non-agent contexts (export, preview).
 
@@ -642,7 +690,7 @@ The PageActor receives this and applies it - adding the mark, storing the metada
 
 **Superseding proposals from the same conversation:** When the compiler identifies that the target blocks already have a pending suggestion from the same conversation, the `CompiledSuggestion` includes a supersession flag. The PageActor removes the old suggestion mark (recording `superseded` in the outcomes table) and applies the new one.
 
-**Validation:** The compiler rejects invalid status inheritance (a `[known]` block inside a `[gm_only]` section), unresolvable references (logged for GM review, not a hard failure), and structural violations (headings that don't match the template's expected sections - warning, not error).
+**Validation:** Each block's visibility is taken literally from its enclosing span, so there is no ancestor gate to reconcile. Malformed visibility spans (overlapping or unclosed `<player_visible>` / `<gm_only>`) are a parse error on this write path, and a block whose span membership is ambiguous resolves fail-closed to `gm_only`. The compiler logs unresolvable references for GM review (not a hard failure) and warns on structural violations (headings that don't match the template's expected sections).
 
 ### Reference Resolution (The Linker)
 
@@ -665,6 +713,8 @@ This is the same entity resolution capability required for SessionIngest transcr
 
 ## Template Pages and Agent Instructions
 
+> The on-disk **authoring and import** format for templates (per-locale markdown, frontmatter metadata, localization) is owned by [Templates](2026-06-29-templates.md). This section describes the agent's view of a template page. One reconciliation with that doc: the authoring guidance below is not stored on the template; it lives in a **skill** loaded when an entity is cloned, defined and localized once. (Visibility is the same literal, fail-closed convention in both: unwrapped is `gm_only`, a `<player_visible>` span reveals.)
+
 ### Templates Define Structure
 
 A template (template) page defines the section layout, status defaults, and placeholder content for a page kind. When a page is created from a template, the system clones the template's structure.
@@ -672,30 +722,36 @@ A template (template) page defines the section layout, status defaults, and plac
 Example NPC template:
 
 ```md
-# {Name} [known]
+---
+name: NPC
+---
 
 #NPC
 
+<player_visible>
 {Who is this person? What's their role in the campaign?
 What would you need to know if they came up unexpectedly?}
 
-## Appearance
+# Appearance
 
 {What do people notice first?}
 
-## Personality
+# Personality
 
 {How do they behave? What do they want?}
+</player_visible>
 
-## Secrets [gm_only]
+# Secrets
 
 {What the players don't know.}
 
-## History
+<player_visible>
+# History
 
 {How they got here.}
+</player_visible>
 
-## GM Notes [gm_only]
+# GM Notes
 
 {Running notes, plans, future hooks.}
 ```
@@ -743,11 +799,16 @@ Session pages follow the same serialization format but serve a different purpose
 ### Session Template
 
 ```md
-# Session 14: The Northport Docks [known]
+---
+name: "Session 14: The Northport Docks"
+status: player_visible
+---
 
+<player_visible>
 {What happened this session in 2-3 sentences. Written by AI
 after processing, editable by GM. This becomes the session's
 index card for future retrieval.}
+</player_visible>
 
 <relationships>
 @The Silver Compact (arc)
@@ -757,17 +818,19 @@ index card for future retrieval.}
 ...
 </toc>
 
-## Journal
+<player_visible>
+# Journal
 
 {The narrative of what happened. AI-drafted from transcript,
 GM-reviewed. The canonical record.}
+</player_visible>
 
-## Prep Notes [gm_only]
+# Prep Notes
 
 {What the GM planned before the session. Valuable for
 post-session diffing - what happened vs. what was planned.}
 
-## Sources [gm_only]
+# Sources
 
 {Transcript segments, player recollections, GM notes.
 The raw material the journal was derived from.}
@@ -783,9 +846,9 @@ The session preamble is the single most important piece of text for retrieval ac
 
 ### Markdown over Custom DSL
 
-**Decision:** The serialization format is standard markdown with minimal annotations, not a custom DSL with XML-like block wrappers.
+**Decision:** The serialization format is standard markdown with minimal annotations, not a custom DSL. The one XML-like construct in the content flow is the visibility span (`<player_visible>` / `<gm_only>`), a deliberate, narrow exception.
 
-**Why:** LLMs are most fluent in markdown. Users already think in markdown. The heading hierarchy provides tree structure, path-based addressing, and splice anchoring without any custom syntax. The fewer non-markdown elements in the format, the less parsing the compiler needs and the fewer opportunities for the LLM to produce invalid output.
+**Why:** LLMs are most fluent in markdown. Users already think in markdown. The heading hierarchy provides tree structure, path-based addressing, and splice anchoring without any custom syntax. The fewer non-markdown elements, the less parsing and the fewer ways for the LLM to produce invalid output. Visibility earns its XML exception because a span boundary is a single attention target and makes a block's status locally decodable, where a per-block markdown suffix would push meaning into the absence of a mark. The exception stays scoped to visibility (alongside the existing `<relationships>` / `<toc>` / `<prior>`-`<suggestion>` projections); everything else stays markdown.
 
 ### Wiki-Links without IDs
 
@@ -829,15 +892,15 @@ The session preamble is the single most important piece of text for retrieval ac
 
 **Why:** A conversation should be entirely self-contained and portable. It's a document. Reopening it after days should not require resolving foreign keys or joining PageActor rooms to discover what was suggested. The active suggestion on the page has its own lifecycle (accepted, rejected, superseded) that the conversation doesn't need to track structurally. The outcomes table provides status decoration at read time for users who want it, and eval signal for measuring agent quality.
 
-### Status Tightens Downward Only
+### Visibility Is Literal Per Block, Fail-Closed
 
-**Decision:** `[gm_only]` inside `[known]` is valid. `[known]` inside `[gm_only]` is a parse error. Status can only tighten as you descend the heading hierarchy.
+**Decision:** Each block carries its own status; nothing inherits down the heading tree. A block is player-visible only if its own status is `player_visible`. The stored default is `gm_only`. In the markdown this serializes as `<player_visible>` / `<gm_only>` spans (run-length encoding over per-block status, not a scope).
 
-**Why:** A `gm_only` section with a `known` child is a locked room with an open window - the classification on the container is meaningless. This constraint simplifies the player-facing filter (prune `gm_only` subtrees, no need to check children for overrides) and eliminates a class of accidental information leaks.
+**Why:** Fail-closed because the dangerous direction is a secret going public, so the safe state is the default and a forgotten reveal hides. Literal (no cascade) because an inheriting model only ever governed a block explicitly revealed under a hidden ancestor, and there it silently overrode the GM's reveal: a hidden-omission failure that surfaces days later when a player reads. Leak-safety comes from the fail-closed default, not from an ancestor gate, so dropping the cascade costs no safety while removing that failure and the editor-vs-serialization divergence it required.
 
 ### Tags as Hashtags
 
-**Decision:** Tags render as `#NPC #Human #Villain [gm_only]` using hashtag syntax.
+**Decision:** Tags render as `#NPC #Human <gm_only>#Villain</gm_only>` using hashtag syntax, hidden tags wrapped in a `<gm_only>` span.
 
 **Why:** Universally understood (Obsidian, Logseq, social media). Visually distinct from narrative relationships. Tags are graph relationships (`tagged` edges to tag-Pages) but serve a different purpose than narrative edges - the hashtag syntax makes this distinction visible.
 

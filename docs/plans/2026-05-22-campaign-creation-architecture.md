@@ -1,6 +1,6 @@
 # Campaign Creation Architecture
 
-**Status**: Built and functional as of 2026-05-22. The full creation flow works end-to-end: hub listing, campaign creation, 4-step wizard, metadata mirroring, idle eviction. The campaign editor (post-wizard) is a placeholder. WebSocket, SSE, and template instantiation (LoroDoc compilation from YAML) are not yet built. See [TODO](#todo) for the full list.
+**Status**: Built and functional as of 2026-05-22. The full creation flow works end-to-end: hub listing, campaign creation, 4-step wizard, metadata mirroring, idle eviction. The campaign editor (post-wizard) is a placeholder. WebSocket, SSE, and template instantiation (LoroDoc compilation from authored template content) are not yet built. See [TODO](#todo) for the full list.
 
 Supersedes [`docs/archive/plans/2026-05-11-new-campaign-onboarding.md`](../archive/plans/2026-05-11-new-campaign-onboarding.md).
 
@@ -143,11 +143,11 @@ CampaignRegistry (process-lifetime singleton)
 Game systems and templates live in `content/` at the repo root, embedded at build time via `include_dir!`. Parse failures fail the build.
 
 - `content/systems.yaml`: System definitions (id, name, tagline, color, popular, bundle of template slugs). Plus `byo:` sibling with its own default bundle.
-- `content/templates/{common,<system-id>}/*.yaml`: Template files with `meta` (name, description, icon as `LocalizedString`) and `body` (serde_yaml::Value, not yet compiled).
+- `content/templates/{common,<system-id>}/*.yaml`: Template files with `meta` (name, description, icon as `LocalizedString`) and `body` (serde_yaml::Value, not yet compiled). The authoring format is being reworked to per-locale markdown; see [Templates](2026-06-29-templates.md).
 
 `GET /catalog/systems` resolves `LocalizedString` fields per locale with fallback chain (requested locale -> `en` -> first available). Returns `CatalogResponse { systems, byo }` with resolved strings.
 
-Template body compilation to LoroDoc is not yet built. The catalog serves metadata only.
+Template body compilation to blocks is not yet built, and the selected system's `bundle` is not yet consumed at creation (a new campaign is born with one empty home page). Both are owned by [Templates](2026-06-29-templates.md).
 
 ## Heartbeat reconciliation
 
@@ -174,7 +174,7 @@ The `loaded` flag on `GET /api/campaigns` responses comes from this cache. It le
 
 - **WebSocket**: CRDT sync (Loro protocol), room multiplexing, presence. Supervisor uses connection count as activity signal for checkout/checkin lifecycle.
 - **Server-sent events**: Error notifications (persistence degraded, server restarting).
-- **Template instantiation**: Compile YAML body to ProseMirror-shaped LoroDoc. The compiler, instantiation route, and template hashes (`seeded_structure_hash`, `seeded_content_hash`) are designed but not built.
+- **Template instantiation**: Compile the template markdown body to ProseMirror-shaped blocks, consume a system's `bundle` at campaign creation, and clone entities from templates (`from_template_id`). Owned by [Templates](2026-06-29-templates.md). Template hashes (`seeded_structure_hash`, `seeded_content_hash`) were part of the earlier design and are not yet carried into the new doc.
 - **PageActor, TocActor, AgentConversation actors**: Per-entity actors for CRDT rooms. Currently only the supervisor and database writer exist.
 - **Campaign editor UI**: Post-wizard view is a placeholder. Needs the editor surface, page navigation, ToC rendering.
 - **Starter template content**: Template YAML files are partially authored. System catalog entries exist but template coverage across systems is incomplete.

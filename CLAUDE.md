@@ -18,7 +18,7 @@ Full catalog in `docs/plans/`. Read the **authoritative** structure doc before a
 - `docs/plans/2026-05-04-campaign-actor-domain-design.md` - actor topology, CRDT room model, suggestion model
 - `docs/plans/2026-04-11-app-server-prd.md` - platform server (auth, CRUD, shard coordination, billing)
 - `docs/plans/2026-06-23-entity-relationship-temporal-model.md` - relationship schema + temporal model
-- `docs/plans/2026-02-20-templates-as-pages.md` - templates are pages of kind `template` (`templateId` lineage)
+- `docs/plans/2026-06-29-templates.md` - templates are pages of kind `template`; authoring/import format and per-block visibility (`template_id` lineage)
 - `docs/plans/2026-03-30-deployment-architecture.md` - platform/campaign split, graceful restart, previews
 - `docs/plans/2026-05-23-infrastructure.md` - k3s, OpenTofu, certs, CI/CD
 - `docs/plans/2026-02-20-public-site-design.md` - Astro public site (has drifted; verify against `apps/site`)

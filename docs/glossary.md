@@ -42,9 +42,9 @@ _"Page" is the supertype that reaches a URL and the API; it is not the word a GM
 
 **entity** - The page kind (`kind == entity`) for authored world content: NPCs, locations, factions, items, lore, arcs, or whatever your templates define. The collective, user-facing noun for "what exists in the world" and the AI's extraction/resolution/search target end to end. The concrete label a GM picks for one entity stays specific - NPC, Location - via its tag and template; "entity" is the category, not the per-page label.
 
-**Template** - A page of kind `template`: the page that `entity` pages clone from. Defines the default section structure and block layout for new entities of that type (an NPC template, a Location template). Creating an entity from a template clones its section structure; `templateId` tracks the lineage. Templates render a subset of an entity's sections (no derived sections like an AI "sounds like" block), carry OnCreate directives (e.g., `OnCreate: tag as #NPC`) and an AI Instructions block, are excluded from RAG/embedding, and are surfaced to the agent as a `create_page` template. `kind == entity` listings exclude them.
+**Template** - A page of kind `template`: the page that `entity` pages clone from. Defines the default section structure and block layout for new entities of that type (an NPC template, a Location template). Creating an entity from a template clones its section structure; `templateId` tracks the lineage. Templates render a subset of an entity's sections (no derived sections like an AI "sounds like" block), carry OnCreate directives (e.g., `OnCreate: tag as #NPC`; authoring guidance lives in a skill loaded on clone, not on the template), are excluded from RAG/embedding, and are surfaced to the agent as a `create_page` template. `kind == entity` listings exclude them.
 
-> See [templates-as-pages](plans/2026-02-20-templates-as-pages.md) for the full design.
+> See [Templates](plans/2026-06-29-templates.md) for the full design, including how templates are authored on disk (per-locale markdown) and imported.
 
 **Skill** _(future kind)_ - A page of kind `skill`: a GM-authored, campaign-specific instruction the agent loads to do its work ("how to draft a journal for this table", "how we name our taverns"). Loaded by the agent as instruction, not world content; excluded from `kind == entity` listings. Distinct from a **Memory** by provenance (the GM writes skills; the AI writes memories), and from the shipped **Global skills** of the Agent Instruction Stack, which are product-level instruction files rather than pages in the campaign graph. Lands with the agent system.
 
@@ -113,19 +113,17 @@ A relationship moves along **two orthogonal, authored, session-stamped axes**. *
 
 ### Status
 
-A single field on pages and blocks, capturing both visibility and canonicity. (Relationships do not carry this `Status`; they move along the two temporal axes above - Knowledge and Factuality - instead.) Status applies at two levels: a whole page can be GM-only (the secret villain the players don't know exists yet), or individual blocks within a Known page can be GM-only (the NPC the players have met, but they don't know he's secretly a vampire).
+A single field on pages and blocks, capturing both visibility and canonicity. (Relationships do not carry this `Status`; they move along the two temporal axes above - Knowledge and Factuality - instead.) Status applies at two levels: a whole page can be GM-only (the secret villain the players don't know exists yet), or individual blocks within a player-visible page can be GM-only (the NPC the players have met, but they don't know he's secretly a vampire). Visibility is **literal per block**: each block's own status is the whole truth and nothing inherits down the heading hierarchy; the stored default is `gm_only` (fail-closed). The enum lives in `crates/campaign-shared/src/status.rs`.
 
-**GM-only** - True and secret. Only the GM can see it. The AI uses it for context retrieval and consistency checking. Default for all new content.
+**GM-only** (`gm_only`) - True and secret. Only the GM can see it. The AI uses it for context retrieval and consistency checking. Default for all new content.
 
-**Known** - True and public. Visible to everyone. Standard state for anything established in play and shared with the table.
+**Player-visible** (`player_visible`) - True and public. Visible to everyone. Standard state for anything established in play and shared with the table. (The code variant is still named `Known`; a rename to `PlayerVisible` is pending, tracked in `status.rs`.)
 
-**Retconned** - No longer true, but visible to everyone. The table established this in play and has since decided it didn't happen. The AI ignores it for active world-state queries but can reference it on explicit request.
-
-**Status tightening** - Internal implementation constraint: in page content, status can only tighten as you descend the heading hierarchy, never loosen. A `[known]` block inside a `[gm_only]` section is a parse error. Not user-facing - enforced by the serialization compiler.
+**Retconned** (`retconned`) - No longer true, but visible to everyone. The table established this in play and has since decided it didn't happen. The AI ignores it for active world-state queries but can reference it on explicit request.
 
 > A relationship's player-visibility is **not** a `Status` value; it is the freely-mutable, session-stamped **Knowledge** axis (Public / Hidden / Revealed) - see Relationship Lifecycle above.
 
-> See [vision.md](vision.md) for the status design philosophy.
+> See [vision.md](vision.md) for the status design philosophy, and [AI Serialization Format v2](plans/2026-03-25-ai-serialization-format-v2.md) for how per-block visibility serializes as `<player_visible>` / `<gm_only>` spans.
 
 ---
 
@@ -194,7 +192,7 @@ A single field on pages and blocks, capturing both visibility and canonicity. (R
 - **Tier 2** - Index card + selected section content. Used for related entities that need more context.
 - **Tier 3 (Full Page)** - Complete serialized page with all content. Used when the agent is actively editing.
 
-**Preamble** - The content between the H1 and the first structural element. The most important text on the page for retrieval - the index card. Dense with identity, role, affiliations. No explicit tag marks it; position defines it.
+**Preamble** - The content between the title/frontmatter and the first heading. The most important text on the page for retrieval - the index card. Dense with identity, role, affiliations. No explicit tag marks it; position defines it.
 
 **TOC (Table of Contents)** - A computed summary of page structure with word counts per section. Not editable content. Appears in tier 1 and 2 to let the agent estimate context cost before requesting the full page.
 
