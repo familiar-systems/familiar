@@ -3,7 +3,7 @@
 **Status:** Active
 **Date:** 2026-05-04
 **Supersedes:** [`2026-03-25-campaign-actor-domain-design.md`](../archive/plans/2026-03-25-campaign-actor-domain-design.md) (refines and extends [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md))
-**Related decisions:** [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md), [Project Structure](./2026-03-26-project-structure-design.md)
+**Related decisions:** [AI Serialization & Editing Model](./2026-06-30-ai-serialization-and-editing-model.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md), [Project Structure](./2026-03-26-project-structure-design.md)
 **Validated by:** [`experiment-single-campaign-editor/tiptap-loro-kameo-rust`](../../../experiment-single-campaign-editor/tiptap-loro-kameo-rust) (throwaway spike that proved Loro + TipTap + kameo + loro-protocol end to end)
 
 > **What changed from the 2026-03-25 version**
@@ -35,7 +35,7 @@
 
 | Document                                                                              | What it decides                                                                                                                                                                                            |
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md)              | The markdown format agents read/write, progressive disclosure tiers, suggestion model (marks on blocks), compiler interface, tool signatures                                                               |
+| [AI Serialization & Editing Model](./2026-06-30-ai-serialization-and-editing-model.md)              | The markdown format agents read/write, progressive disclosure tiers, suggestion model (marks on blocks), compiler interface                                                               |
 | [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md) | The Node.js/Yjs architecture this design replaces. Campaign checkout/checkin model, blob-free files at rest, lossless reconstruction requirement. Many concepts carry forward; the implementation changes. |
 | [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md)             | The three AI workflows (SessionIngest, P&R, Q&A), suggestion lifecycle, conversation system                                                                                                                |
 | [AI PRD](./2026-02-22-ai-prd.md)                                                      | Tool system, suggestion types, retrieval capabilities                                                                                                                                                      |

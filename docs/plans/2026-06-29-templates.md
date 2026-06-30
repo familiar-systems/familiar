@@ -2,9 +2,9 @@
 
 **Status:** Draft
 **Date:** 2026-06-29
-**Related:** [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md) · [Multi-Section Document Structure](2026-06-07-multi-section-document-structure.md) · [Campaign Creation Architecture](2026-05-22-campaign-creation-architecture.md) · [Glossary](../glossary.md)
+**Related:** [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md) · [Multi-Section Document Structure](2026-06-07-multi-section-document-structure.md) · [Campaign Creation Architecture](2026-05-22-campaign-creation-architecture.md) · [Glossary](../glossary.md)
 
-> This doc owns the template system end to end: what a template **is** (a page you clone from), how templates are **authored** on disk and **imported** into a campaign, and the **visibility contract** a cloned page inherits. It subsumes the earlier "Templates as Pages" and "Template Authoring & Import Format" notes. The storage/CRDT layout it feeds is owned by [Multi-Section Document Structure](2026-06-07-multi-section-document-structure.md); the agent-facing markdown dialect it borrows from is owned by [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md).
+> This doc owns the template system end to end: what a template **is** (a page you clone from), how templates are **authored** on disk and **imported** into a campaign, and the **visibility contract** a cloned page inherits. It subsumes the earlier "Templates as Pages" and "Template Authoring & Import Format" notes. The storage/CRDT layout it feeds is owned by [Multi-Section Document Structure](2026-06-07-multi-section-document-structure.md); the agent-facing markdown dialect it borrows from is owned by [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md).
 
 ---
 
@@ -77,7 +77,7 @@ Prose is localized because the placeholder prompts seed a page the GM and agent 
 
 ### Format: a graph-independent subset of the agent dialect
 
-The template body is a subset of the agent markdown dialect ([AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md)). Reusing that dialect is the point: it is what the markdown-to-blocks compiler consumes from the agent anyway.
+The template body is a subset of the agent markdown dialect ([AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md)). Reusing that dialect is the point: it is what the markdown-to-blocks compiler consumes from the agent anyway.
 
 In scope:
 
@@ -168,7 +168,7 @@ Explicit section demarcation only becomes necessary for a kind with more than tw
 
 In markdown, visibility serializes as XML-like spans: `<player_visible>...</player_visible>` (and, on the agent's read view, `<gm_only>...</gm_only>`). A span is **run-length encoding over per-block status, not a stored scope.** Storage stays one status per block; the compiler coalesces a contiguous run of equal-status blocks into one span on the way out, and expands a span back to per-block status on the way in. The span lives only in the markdown. The instant it hits storage it is per-block again, and a block added later does not "fall into" a scope. If a span ever persisted as an inherited scope, that would silently rebuild the cascade this model exists to avoid.
 
-A span is chosen over a per-block suffix because it reads better to an LLM: a span boundary is one attention target, and a block's status is decodable from its enclosing tag rather than inferred from the absence of a mark. Human authoring (these template files) uses `<player_visible>` spans only, with bare gaps defaulting to `gm_only`; the agent's read and write views use total labeling (both tags). The full per-surface treatment is owned by [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md).
+A span is chosen over a per-block suffix because it reads better to an LLM: a span boundary is one attention target, and a block's status is decodable from its enclosing tag rather than inferred from the absence of a mark. Human authoring (these template files) uses `<player_visible>` spans only, with bare gaps defaulting to `gm_only`; the agent's read and write views use total labeling (both tags). The full per-surface treatment is owned by [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md).
 
 ### Vocabulary
 
@@ -180,7 +180,7 @@ The terms are `gm_only` / `player_visible` / `retconned`, one set across the UI,
 
 ### Markdown to blocks (the shared core)
 
-A markdown-to-blocks compiler turns a template's body into the rows page genesis already understands: a sequence of `(Section, blob)` where the blob is the existing at-rest block shape (`{ nodeName, attributes (including a freshly minted block id), children }`, the output of the block codec). This is the same transformation the agent write path (`f⁻¹`) needs, so it is built once as a shared, graph-independent core; the AI path layers the excluded dialect features on top later.
+A markdown-to-blocks compiler turns a template's body into the rows page genesis already understands: a sequence of `(Section, blob)` where the blob is the existing at-rest block shape (`{ nodeName, attributes (including a freshly minted block id), children }`, the output of the block codec). This is a **one-way parse**: it mints fresh block ids and has no prior document to reconcile against. It is *not* the agent write path - `f⁻¹` is a stateful diff/patch that aligns edited markdown back onto existing blocks (see [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md)). The two share a parser direction at most; this core stays graph-independent, and the AI path's dialect features layer on separately.
 
 A known limitation rides along: the block codec is plain-text only today (it drops rich-text marks), so v0 templates are headings and plain paragraphs. Bold, italic, and links wait on the codec's marks work and do not block this effort.
 
@@ -209,14 +209,14 @@ On a campaign's first checkout, the selected system's `bundle` is instantiated a
 - **Structure-parity lint** across a template's locale files. Add when a second locale exists.
 - **Template evolution.** When a GM updates a template, existing entities cloned from it are unaffected (snapshots). Opt-in sync or diff-and-suggest is a future product decision.
 - **`systems.yaml` labels.** Whether to keep the system name and tagline as per-string `LocalizedString` maps or move them to per-locale files; leaning keep, since they are short config strings with no structural-parity problem.
-- **Alias visibility.** Aliases ship as a public frontmatter list. A secret alias (a concealed identity) would need per-item visibility and move to an inline form; deferred until concealed identities are a real feature.
+- **Alias visibility / multiple names.** Aliases ship as a public frontmatter list with a single display name. Multiple names per entity, each permission/knowledge-scoped (the *many* case - a concealed identity, or names revealed over time), need per-item visibility and an inline form; deferred until that is a real feature. In-prose references stay honest meanwhile via frozen labels (see [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md)).
 - **Wizard-to-creation wiring.** The selected system id and locale must reach campaign creation so the `bundle` can be instantiated; today the bundle is read-only wizard decoration.
 
 ---
 
 ## References
 
-- [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md): the agent markdown dialect this format subsets; the visibility model and the span serialization.
+- [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md): the agent markdown dialect this format subsets; the visibility model and the span serialization.
 - [Multi-Section Document Structure](2026-06-07-multi-section-document-structure.md): the section model, the container-vs-heading distinction, preamble-by-position, and the per-block visibility filter.
 - [Campaign Creation Architecture](2026-05-22-campaign-creation-architecture.md): the catalog and creation flow the bundle consumption plugs into.
 - `crates/campaign-shared/src/status.rs`: the `Status` enum (`gm_only` / `player_visible` / `retconned`).

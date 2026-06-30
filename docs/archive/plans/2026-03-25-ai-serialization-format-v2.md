@@ -1,6 +1,8 @@
 # familiar.systems - AI Serialization Format & Agent Editing Model (v2)
 
-**Status:** Draft
+> **Archived 2026-06-30. Superseded by [AI Serialization & Editing Model](../../plans/2026-06-30-ai-serialization-and-editing-model.md).** This version over-specified mechanism; its invariants and reasoning were carried forward into the replacement and the premature detail dropped. Retained for history only.
+
+**Status:** Superseded (archived 2026-06-30)
 **Date:** 2026-03-25
 **Supersedes:** AI Serialization Format v1 (undated)
 **Related decisions:** [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md), [AI Workflow Unification](./2026-02-14-ai-workflow-unification-design.md), [AI PRD](./2026-02-22-ai-prd.md), [Templates](./2026-06-29-templates.md)

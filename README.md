@@ -112,7 +112,7 @@ Use `mise tasks` to list every task with its description.
 
 - [AI workflow](docs/plans/2026-02-14-ai-workflow-unification-design.md): interactive and batch AI design
 - [AI PRD](docs/plans/2026-02-22-ai-prd.md): full AI system requirements
-- [AI serialization](docs/plans/2026-03-25-ai-serialization-format-v2.md): agent serialization format, compiler pipeline, tool signatures
+- [AI serialization](docs/plans/2026-06-30-ai-serialization-and-editing-model.md): agent serialization format, compiler pipeline, editing model
 - [Campaign actors](docs/plans/2026-05-04-campaign-actor-domain-design.md): actor topology, trait system, WebSocket architecture
 - [Entity-relationship temporal model](docs/plans/2026-06-23-entity-relationship-temporal-model.md): relationship schema, sessions as knowledge time, lifecycle
 

@@ -2,9 +2,9 @@
 
 **Status:** Draft
 **Date:** 2026-06-07
-**Related:** [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md) · [Campaign Actor Domain Design](2026-05-04-campaign-actor-domain-design.md) · [Templates](2026-06-29-templates.md) · [Glossary](../glossary.md)
+**Related:** [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md) · [Campaign Actor Domain Design](2026-05-04-campaign-actor-domain-design.md) · [Templates](2026-06-29-templates.md) · [Glossary](../glossary.md)
 
-> This is the **storage / CRDT structure** layer for pages. The agent-facing markdown format and retrieval tiers are owned by [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md); this doc describes how a page's LoroDoc is laid out underneath that format.
+> This is the **storage / CRDT structure** layer for pages. The agent-facing markdown format and retrieval tiers are owned by [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md); this doc describes how a page's LoroDoc is laid out underneath that format.
 
 ---
 
@@ -77,7 +77,7 @@ Two sections play the same role in different kinds:
 | Entity | `preamble`         | retrieval |
 | Skill  | `description`      | routing   |
 
-Both are bounded, dense, no-headings prose, **always loaded** as the cheap tier; the `body` loads on demand. This mirrors the [retrieval tiers](2026-03-25-ai-serialization-format-v2.md) and the Agent Skills loading model (name + description at startup, body on activation). Because the index card is its **own section**, "load every skill's routing card" is a single targeted read (`WHERE section = 'description'` across `kind = skill` pages), the same cheap fleet-wide projection shape planned for page names in `CampaignVocabulary` (a future actor, not yet built), with no per-skill doc woken up.
+Both are bounded, dense, no-headings prose, **always loaded** as the cheap tier; the `body` loads on demand. This mirrors the [retrieval tiers](2026-06-30-ai-serialization-and-editing-model.md) and the Agent Skills loading model (name + description at startup, body on activation). Because the index card is its **own section**, "load every skill's routing card" is a single targeted read (`WHERE section = 'description'` across `kind = skill` pages), the same cheap fleet-wide projection shape planned for page names in `CampaignVocabulary` (a future actor, not yet built), with no per-skill doc woken up.
 
 ---
 
@@ -123,7 +123,7 @@ Unlike Entity/Skill, a session is **two linked halves**: the `kind = session` pa
 
 ## Preamble Maintenance
 
-The preamble is the page's retrieval card (the [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md) Tier-1 index card), and it is **AI-authored by default**. It is kept faithful to the body by the same eventual-consistency pipeline that drives embeddings, not by a human curating it:
+The preamble is the page's retrieval card (the [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md) Tier-1 index card), and it is **AI-authored by default**. It is kept faithful to the body by the same eventual-consistency pipeline that drives embeddings, not by a human curating it:
 
 - **One pipeline for every derived-from-text artifact.** A body edit (debounced) enqueues an off-peak regeneration pass. Embeddings, the computed ToC, and page size ride this path; so does the preamble.
 - **Write-back splits by authorability.** Non-authored projections (ToC, size, embeddings) write back **silently**. Authorable artifacts (the preamble, relationships) write back as **suggestions**: a proposal the GM disposes of, never a silent overwrite. Silent regeneration of an authorable artifact would clobber a GM edit and violate "AI proposes, GM disposes"; the suggestion gate is what makes the preamble covenant-safe.
@@ -201,7 +201,7 @@ What looked relevant but is not the path (kept here so it is not re-litigated):
 
 To keep terminology single-valued (surface, do not silently apply):
 
-- **[AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md):**
+- **[AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md):**
   - "the GM can add, remove, or rename sections" should read as "add/rename **headings within the freeform body section**"; the *section list* is kind-declared.
   - `suggest_replace` gains a `reason` argument, **requires a prior full read** (the drift harness), and returns the registered *proposal* (the page is unchanged until the GM accepts; the conversation's own later reads show its pending suggestion inline).
   - The preamble is **AI-authored and maintained** via the pipeline in *Preamble Maintenance* above, alongside the `create-or-edit-preamble` skill; the markdown stays positional/no-wrapper ("Preamble as Implicit Position" is unaffected).
@@ -228,7 +228,7 @@ To keep terminology single-valued (surface, do not silently apply):
 - Agent Skills specification (`SKILL.md` format, startup vs activation loading): https://agentskills.io/specification
 
 **Internal**
-- [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md) — agent markdown, retrieval tiers, preamble, suggestion model
+- [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md) — agent markdown, retrieval tiers, preamble, suggestion model
 - [Campaign Actor Domain Design](2026-05-04-campaign-actor-domain-design.md) — single-doc-per-page, permission model, multi-doc rejection
 - [Templates](2026-06-29-templates.md) — templates are pages; section structure cloning
 - [Glossary](../glossary.md) — PageKind, Skill, Session sub-entities

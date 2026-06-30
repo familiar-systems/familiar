@@ -91,7 +91,7 @@ The primary way relationships enter the graph is through the AI: the GM uploads 
 **Tag** - A page representing a classification (e.g., `#NPC`, `#Human`). Tags are never created explicitly - tagging a page with `#Villain` auto-creates the Villain tag page if it doesn't exist. Tagging is a relationship with the label `tagged`. A tag's page auto-generates a listing of everything tagged with it, exactly like a [Wikipedia category page](https://en.wikipedia.org/wiki/Category:2001_establishments_in_the_United_States). The GM can add content to a tag's page - notes like "NPCs in this campaign tend to be untrustworthy" become context the AI uses when working with tagged entities.
 
 > See [entity-relationship-temporal-model](plans/2026-06-23-entity-relationship-temporal-model.md) for the relationship schema and temporal model.
-> See [ai-serialization-format-v2](plans/2026-03-25-ai-serialization-format-v2.md) for how mentions and relationships appear in the agent's markdown format.
+> See [AI Serialization & Editing Model](plans/2026-06-30-ai-serialization-and-editing-model.md) for how mentions and relationships appear in the agent's markdown format.
 
 ### Relationship Lifecycle
 
@@ -123,7 +123,7 @@ A single field on pages and blocks, capturing both visibility and canonicity. (R
 
 > A relationship's player-visibility is **not** a `Status` value; it is the freely-mutable, session-stamped **Knowledge** axis (Public / Hidden / Revealed) - see Relationship Lifecycle above.
 
-> See [vision.md](vision.md) for the status design philosophy, and [AI Serialization Format v2](plans/2026-03-25-ai-serialization-format-v2.md) for how per-block visibility serializes as `<player_visible>` / `<gm_only>` spans.
+> See [vision.md](vision.md) for the status design philosophy, and [AI Serialization & Editing Model](plans/2026-06-30-ai-serialization-and-editing-model.md) for how per-block visibility serializes as `<player_visible>` / `<gm_only>` spans.
 
 ---
 
@@ -168,7 +168,7 @@ A single field on pages and blocks, capturing both visibility and canonicity. (R
 
 **Contradiction** - A special suggestion type that proposes no graph mutation. Flags an inconsistency between new content and established canon, with references to both sides.
 
-> See [ai-serialization-format-v2](plans/2026-03-25-ai-serialization-format-v2.md) for the suggestion mark model and compiler pipeline.
+> See [AI Serialization & Editing Model](plans/2026-06-30-ai-serialization-and-editing-model.md) for the suggestion mark model and compiler pipeline.
 
 ### Conversations
 
@@ -196,7 +196,7 @@ A single field on pages and blocks, capturing both visibility and canonicity. (R
 
 **TOC (Table of Contents)** - A computed summary of page structure with word counts per section. Not editable content. Appears in tier 1 and 2 to let the agent estimate context cost before requesting the full page.
 
-> See [ai-serialization-format-v2](plans/2026-03-25-ai-serialization-format-v2.md) for the full format specification, retrieval tiers, and agent write tools.
+> See [AI Serialization & Editing Model](plans/2026-06-30-ai-serialization-and-editing-model.md) for the full format specification, retrieval tiers, and agent write tools.
 
 ### AI Pipeline (Audio Processing)
 
@@ -215,7 +215,7 @@ Three layers, most specific wins:
 2. **Template AI instructions** - Campaign-specific, per-template, GM-editable. Define what a specific template needs.
 3. **(Future) System-specific skills** - Game-system knowledge from starter packs. Currently part of the global layer for Milestone 1.
 
-> See [ai-serialization-format-v2](plans/2026-03-25-ai-serialization-format-v2.md) for how the instruction stack composes.
+> See [AI Serialization & Editing Model](plans/2026-06-30-ai-serialization-and-editing-model.md) for how the instruction stack composes.
 
 ---
 

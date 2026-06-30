@@ -23,7 +23,7 @@ Full catalog in `docs/plans/`. Read the **authoritative** structure doc before a
 - `docs/plans/2026-05-23-infrastructure.md` - k3s, OpenTofu, certs, CI/CD
 - `docs/plans/2026-02-20-public-site-design.md` - Astro public site (has drifted; verify against `apps/site`)
 - `docs/discovery/2026-03-09-sqlite-over-postgres-decision.md` - SQLite over Postgres
-- AI system (designed, **not built**): `2026-02-14-ai-workflow-unification-design.md`, `2026-02-22-ai-prd.md`, `2026-03-25-ai-serialization-format-v2.md`, `2026-03-25-loro-tiptap-spike.md`
+- AI system (designed, **not built**): `2026-02-14-ai-workflow-unification-design.md`, `2026-02-22-ai-prd.md`, `2026-06-30-ai-serialization-and-editing-model.md`, `2026-03-25-loro-tiptap-spike.md`
 
 Superseded docs live in `docs/archive/` (historical only).
 
