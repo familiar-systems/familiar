@@ -42,11 +42,11 @@ _"Page" is the supertype that reaches a URL and the API; it is not the word a GM
 
 **entity** - The page kind (`kind == entity`) for authored world content: NPCs, locations, factions, items, lore, arcs, or whatever your templates define. The collective, user-facing noun for "what exists in the world" and the AI's extraction/resolution/search target end to end. The concrete label a GM picks for one entity stays specific - NPC, Location - via its tag and template; "entity" is the category, not the per-page label.
 
-**Template** - A page of kind `template`: the page that `entity` pages clone from. Defines the default section structure and block layout for new entities of that type (an NPC template, a Location template). Creating an entity from a template clones its section structure; `templateId` tracks the lineage. Templates render a subset of an entity's sections (no derived sections like an AI "sounds like" block), carry OnCreate directives (e.g., `OnCreate: tag as #NPC`; authoring guidance lives in a skill loaded on clone, not on the template), are excluded from RAG/embedding, and are surfaced to the agent as a `create_page` template. `kind == entity` listings exclude them.
+**Template** - A page of kind `template`: the page that `entity` pages clone from. Defines the default section structure and block layout for new entities of that type (an NPC template, a Location template). Creating an entity from a template clones its section structure; `templateId` tracks the lineage. Templates render a subset of an entity's sections (no derived sections like an AI "sounds like" block), carry an `OnCreate` tag applied on clone (e.g., `OnCreate: tag as #NPC`), keep authoring guidance in a skill the agent calls rather than on the template, are excluded from RAG/embedding, and are surfaced to the agent as a `create_page` template. `kind == entity` listings exclude them.
 
 > See [Templates](plans/2026-06-29-templates.md) for the full design, including how templates are authored on disk (per-locale markdown) and imported.
 
-**Skill** _(future kind)_ - A page of kind `skill`: a GM-authored, campaign-specific instruction the agent loads to do its work ("how to draft a journal for this table", "how we name our taverns"). Loaded by the agent as instruction, not world content; excluded from `kind == entity` listings. Distinct from a **Memory** by provenance (the GM writes skills; the AI writes memories), and from the shipped **Global skills** of the Agent Instruction Stack, which are product-level instruction files rather than pages in the campaign graph. Lands with the agent system.
+**Skill** _(future kind)_ - A page of kind `skill`: a GM-authored, campaign-specific instruction the agent calls when it needs it ("how to draft a journal for this table", "how we name our taverns"). Self-triggered and role-gated like a tool (a GM-only authoring skill never enters a player's context); loaded as instruction, not world content; excluded from `kind == entity` listings. Distinct from a **Memory** by provenance (the GM writes skills; the AI writes memories), and from the shipped **Global skills** of the Agent Instruction Stack, which are product-level instruction files rather than pages in the campaign graph. Lands with the agent system.
 
 **Memory** _(future kind)_ - A page of kind `memory`: the AI's durable, long-term notes about the campaign, accumulated across sessions and carried forward - learned patterns and standing facts about how this table plays. AI-authored, GM-curated (the GM can read, edit, and prune them). Like a **Skill**, it is loaded by the agent as instruction, not world content, and excluded from `kind == entity` listings; the difference is provenance. Lands with the agent system.
 
@@ -209,13 +209,13 @@ Audio goes in, structured session data comes out. Processing runs on GPU workers
 
 ### Agent Instruction Stack
 
-Three layers, most specific wins:
+Skills are instruction the agent **calls** like a tool, not content the engine injects. They are self-triggered (the model pulls a skill when the task needs it) and role-gated (a GM-only authoring skill never enters a player's context), drawn from three sources:
 
 1. **Global skills** - Shipped with the product. General capabilities like `create-or-edit-preamble.md`, `draft-journal-entry.md`.
-2. **Template AI instructions** - Campaign-specific, per-template, GM-editable. Define what a specific template needs.
+2. **Campaign skills** - GM-authored, campaign-specific instruction stored as `skill`-kind pages (see **Skill**). Where "what this NPC template needs" or "how we name our taverns" lives.
 3. **(Future) System-specific skills** - Game-system knowledge from starter packs. Currently part of the global layer for Milestone 1.
 
-> See [AI Serialization & Editing Model](plans/2026-06-30-ai-serialization-and-editing-model.md) for how the instruction stack composes.
+Whether a given skill fires at the right time is a measurable, eval-tunable behavior, not a composition rule the engine enforces.
 
 ---
 

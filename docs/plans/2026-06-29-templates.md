@@ -60,9 +60,9 @@ A flat `tags: string[]` field is rejected for the same reason a separate `Templa
 
 ### What a template is, on disk
 
-A template is a **cloneable skeleton**: the ordered sections and the short placeholder prompts inside them (`{What do people notice first?}`). Cloning reproduces this structure as the new page's starting point.
+A template is a **cloneable skeleton**: the ordered sections and the short placeholder prompts inside them (a line like *What do people notice first?*). Cloning reproduces this structure as the new page's starting point.
 
-Authoring guidance ("how to write a good NPC") is deliberately **not** on the template. It belongs in a **skill** loaded when an entity is cloned, defined and localized once, rather than copied into every template and locale. Encyclopedic reference prose ("what an NPC is") moves to skills too. Skills are not a built `PageKind` yet, so v0 templates ship skeleton-only; the `OnCreate` skill reference that binds a template to its skill is a stated future goal (see [Deferrals](#deferrals)).
+Authoring guidance ("how to write a good NPC") is deliberately **not** on the template. It belongs in a **skill** the agent calls when it needs it, defined and localized once, rather than copied into every template and locale. Skills are self-triggered and role-gated (a GM-only authoring skill never enters a player's context), so there is no per-template binding and no clone-time load. The encyclopedic "what an NPC is" prose moves out too, but most of it is droppable: a capable model already knows it, so a skill carries only the actionable heuristics worth steering on. Skills are not a built `PageKind` yet, so v0 templates ship skeleton-only (see [Deferrals](#deferrals)).
 
 ### Localization: per-locale files
 
@@ -70,7 +70,7 @@ Localization is keyed at the **file**, not the string. A template is a set of ma
 
 The split follows one observation: **section structure is driven by the game system, not the language.** An NPC has the same sections in English or Finnish; only the words change.
 
-- **Locale-invariant** (canonical in `en`): the section structure, the `OnCreate` tag, the future `OnCreate` skill reference, the icon, the slug, and everything in `systems.yaml`.
+- **Locale-invariant** (canonical in `en`): the section structure, the `OnCreate` tag, the icon, the slug, and everything in `systems.yaml`.
 - **Per-locale prose:** the name, description, and placeholder prompts.
 
 Prose is localized because the placeholder prompts seed a page the GM and agent then fill in; in a Finnish campaign they should be Finnish, so the agent is not code-switching between Finnish content and English prompts (prompting in one language while generating in another measurably lowers quality and triggers off-target drift). The corollary holds in reverse: structured directives are not prose and are not translated. A structure-parity lint across a template's locale files is worth adding once a second locale exists; today everything is `en`, so it is deferred.
@@ -86,9 +86,10 @@ In scope:
 - Native `#` sections and nested headings, and paragraphs.
 - Visibility spans (`<player_visible>`), fail-closed (see [Visibility](#visibility)).
 - `#tags`.
-- `{placeholder}` prompt text, kept literal (a template ships prompts, not filled content).
 
 Excluded, because they are graph-coupled and depend on systems that are not built (the linker, the relationship graph): `{Name}` wiki-link resolution, `<relationships>` blocks, and suggestion marks (`<prior>`/`<suggestion>`).
+
+Placeholder prompts carry no special syntax: they are ordinary prose paragraphs that ship to be overwritten (a template ships prompts, not filled content). `{}` denotes an inline reference in the full dialect and is not used in templates.
 
 ### Frontmatter is the identity block
 
@@ -105,45 +106,53 @@ description: That one person you met. Or centaur. Or whatever.
 icon: contact
 onCreate:
     tag: NPC
-    # skill: npc-authoring   (future: ensure this skill is loaded on clone)
 ---
 
 <player_visible>
-{Who is this person? Their role, their affiliations, and what makes them matter if they come up unexpectedly. A paragraph or two, 1000 words or less, shorter is better.}
+Who is this person? Their role, their affiliations, and what makes them matter if they come up unexpectedly. A paragraph or two, 1000 words or less, shorter is better.
 </player_visible>
 
-{Any secret worth keeping off the public index card. Counts toward the word limit.}
+<gm_only>
+Any secret worth keeping off the public index card. Counts toward the word limit.
+</gm_only>
 
 <player_visible>
+
 # Appearance
 
-{What do people notice first?}
+What do people notice first?
 
 # Personality
 
-{How do they behave? What do they want?}
+How do they behave? What do they want?
 </player_visible>
+
+<gm_only>
 
 # Secrets
 
-{What the players do not know.}
+What the players do not know.
+</gm_only>
 
 <player_visible>
 # History
 
-{How they got here.}
+How they got here.
 
 ## Session 1
 
-{A sample session entry. Put session notes here.}
+Sample session entry. Put session notes here.
 </player_visible>
+
+<gm_only>
 
 # GM Notes
 
-{Running notes, plans, future hooks.}
+Running notes, plans, future hooks.
+</gm_only>
 ```
 
-The visible regions are wrapped in `<player_visible>`; the secret regions (the second preamble line, Secrets, GM Notes) carry no wrapper and are hidden by default. Nothing has to be marked secret: hidden is what unwrapped already means.
+Every region is wrapped: visible content in `<player_visible>`, secret content (the second preamble line, Secrets, GM Notes) in `<gm_only>`. A template labels both sides explicitly so a clone-many artifact reads unambiguously; the fail-closed default (an unwrapped block is `gm_only`) is the safety net behind that, not a license to leave secrets unmarked.
 
 ### Section mapping
 
@@ -166,9 +175,9 @@ Explicit section demarcation only becomes necessary for a kind with more than tw
 
 ### Spans are run-length encoding, not scope
 
-In markdown, visibility serializes as XML-like spans: `<player_visible>...</player_visible>` (and, on the agent's read view, `<gm_only>...</gm_only>`). A span is **run-length encoding over per-block status, not a stored scope.** Storage stays one status per block; the compiler coalesces a contiguous run of equal-status blocks into one span on the way out, and expands a span back to per-block status on the way in. The span lives only in the markdown. The instant it hits storage it is per-block again, and a block added later does not "fall into" a scope. If a span ever persisted as an inherited scope, that would silently rebuild the cascade this model exists to avoid.
+In markdown, visibility serializes as XML-like spans: `<player_visible>...</player_visible>` and `<gm_only>...</gm_only>`. A span is **run-length encoding over per-block status, not a stored scope.** Storage stays one status per block; the compiler coalesces a contiguous run of equal-status blocks into one span on the way out, and expands a span back to per-block status on the way in. The span lives only in the markdown. The instant it hits storage it is per-block again, and a block added later does not "fall into" a scope. If a span ever persisted as an inherited scope, that would silently rebuild the cascade this model exists to avoid.
 
-A span is chosen over a per-block suffix because it reads better to an LLM: a span boundary is one attention target, and a block's status is decodable from its enclosing tag rather than inferred from the absence of a mark. Human authoring (these template files) uses `<player_visible>` spans only, with bare gaps defaulting to `gm_only`; the agent's read and write views use total labeling (both tags). The full per-surface treatment is owned by [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md).
+A span is chosen over a per-block suffix because it reads better to an LLM: a span boundary is one attention target, and a block's status is decodable from its enclosing tag rather than inferred from the absence of a mark. Template authoring uses total labeling (both `<player_visible>` and `<gm_only>` spans), the same convention as the agent's read and write views, so a block's status is always explicit on the page rather than implied by a bare gap. The full per-surface treatment is owned by [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md).
 
 ### Vocabulary
 
@@ -193,7 +202,7 @@ Page genesis already has a single constructor that buckets `(Section, blob)` row
 
 ### Template instantiation (clone)
 
-Creating an entity from a template (`from_template_id`, currently a 501) clones the template page's blocks: deep-copy each block, mint a fresh block id, preserve its `section` and per-block visibility, reset per-section ordering, and set `template_id` on the new page for lineage. There is no guidance to clone (it lives in a skill); the clone path instead ensures the relevant authoring skill is loaded, once that binding exists.
+Creating an entity from a template (`from_template_id`, currently a 501) clones the template page's blocks: deep-copy each block, mint a fresh block id, preserve its `section` and per-block visibility, reset per-section ordering, and set `template_id` on the new page for lineage. There is no guidance to clone: authoring guidance lives in a skill the agent calls when it needs it, so the clone path only clones blocks and applies the `OnCreate` tag.
 
 ### Campaign creation
 
@@ -204,7 +213,7 @@ On a campaign's first checkout, the selected system's `bundle` is instantiated a
 ## Deferrals
 
 - **The `Status` code rename** (`Known` -> `PlayerVisible`, and propagating the new wire token across `StatusCol`, the Loro string, generated TS, and consumers). Vocabulary is settled here; the code change is tracked in `status.rs` and run after these docs land.
-- **Skills.** `Skill` is not a `PageKind` yet. Authoring guidance and reference prose belong in skills, and the `OnCreate` skill reference is a future goal, not a v0 requirement. Stripped reference prose is parked as `content/skills/` drafts in the meantime.
+- **Skills.** `Skill` is not a `PageKind` yet. Authoring guidance belongs in skills the agent calls (self-triggered, role-gated), not on the template; v0 templates ship skeleton-only. The distilled authoring heuristics worth keeping land in those skills once the kind exists.
 - **Rich marks in template prose.** Gated on the block codec's marks work; v0 is headings and plain paragraphs.
 - **Structure-parity lint** across a template's locale files. Add when a second locale exists.
 - **Template evolution.** When a GM updates a template, existing entities cloned from it are unaffected (snapshots). Opt-in sync or diff-and-suggest is a future product decision.

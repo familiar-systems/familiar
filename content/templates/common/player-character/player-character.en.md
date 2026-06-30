@@ -4,14 +4,15 @@ description: A brave protagonist, maybe.
 icon: user
 onCreate:
     tag: Player
-    # skill: pc-creation   (future: ensure this skill is loaded on clone)
 ---
 
 <player_visible>
 Who is this character? Name, concept, and the one-line pitch the rest of the table would give them. Ancestry, class or role, pronouns, whatever your system puts up front. A paragraph or two but shorter is better.
 </player_visible>
 
+<gm_only>
 Backstory the player keeps in their pocket: a hidden tie, a secret they're sitting on, the thing they want sprung on them later. Shared with the GM, not the table.
+</gm_only>
 
 <player_visible>
 # Appearance
@@ -31,6 +32,7 @@ Where they come from and how they ended up adventuring. The version the party kn
 Sample session entry. What this character did, learned, or became.
 </player_visible>
 
+<gm_only>
 # Arc
 
 The GM's read on this character's throughline: the wound, the change, the payoff being set up. Not shown to the player.
@@ -38,3 +40,4 @@ The GM's read on this character's throughline: the wound, the change, the payoff
 # GM Notes
 
 Hooks tied to this PC, secrets owed, the betrayal three sessions out.
+</gm_only>
