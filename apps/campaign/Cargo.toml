@@ -22,7 +22,7 @@ include_dir = "0.7"
 kameo = { workspace = true }
 libsqlite3-sys = "0.30"
 loro = { workspace = true }
-object_store = { version = "0.13", features = ["aws"] }
+object_store = { version = "0.14", features = ["aws"] }
 async-trait = "0.1"
 loro-protocol = "0.3.0"
 reqwest = { workspace = true }
