@@ -20,7 +20,7 @@ chrono = { version = "0.4.44", features = ["serde"] }
 futures-util = "0.3"
 fs-id = { path = "crates/fs-id" }
 fs-id-macros = { path = "crates/fs-id-macros" }
-kameo = "0.20"
+kameo = "0.21"
 # garde = { version = "0.22", features = ["derive", "email"] }
 # Not today but soon
 loro = "1"
@@ -43,7 +43,7 @@ subtle = "2.6"
 syn = { version = "2", features = ["full"] }
 thiserror = "2.0.18"
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["cors", "request-id", "trace", "util"] }
+tower-http = { version = "0.7", features = ["cors", "request-id", "trace", "util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 ts-rs = { version = "12.0.1", features = ["uuid-impl"] }
