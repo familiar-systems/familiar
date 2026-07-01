@@ -11,7 +11,7 @@ catalog:
   "@tailwindcss/vite": ^4.3.1
   "@types/react": ^19.2.17
   "@types/react-dom": ^19.2.3
-  lucide-react: ^1.18.0
+  lucide-react: ^1.21.0
   react: ^19.2.7
   react-dom: ^19.2.7
   tailwindcss: ^4.3.1
@@ -34,34 +34,34 @@ catalog:
   # Compiler-based i18n (apps/web). Messages compile to typed ESM functions, so a
   # missing key is a missing export (build error). Build-time only: the compiler
   # emits self-contained runtime into src/paraglide, so this is a devDependency.
-  "@inlang/paraglide-js": ^2.20.0
+  "@inlang/paraglide-js": ^2.20.1
   # Editor stack (shared between packages/editor and apps/web). The TipTap v3
   # packages pin each other exactly and release in lockstep, so a single caret
   # resolves them consistently. loro-crdt tracks the campaign server's loro
   # 1.x; prosemirror-* match what @tiptap/pm pulls (also forced via overrides
   # below) so there is exactly one ProseMirror instance in the bundle.
-  "@tiptap/core": ^3.26.1
-  "@tiptap/pm": ^3.26.1
-  "@tiptap/react": ^3.26.1
-  "@tiptap/extension-document": ^3.26.1
-  "@tiptap/extension-paragraph": ^3.26.1
-  "@tiptap/extension-heading": ^3.26.1
-  "@tiptap/extension-text": ^3.26.1
-  "@tiptap/extension-unique-id": ^3.26.1
-  loro-crdt: ~1.13.4
+  "@tiptap/core": ^3.27.1
+  "@tiptap/pm": ^3.27.1
+  "@tiptap/react": ^3.27.1
+  "@tiptap/extension-document": ^3.27.1
+  "@tiptap/extension-paragraph": ^3.27.1
+  "@tiptap/extension-heading": ^3.27.1
+  "@tiptap/extension-text": ^3.27.1
+  "@tiptap/extension-unique-id": ^3.27.1
+  loro-crdt: ~1.13.6
   loro-prosemirror: ^0.4.3
   loro-websocket: ^0.6.2
   loro-adaptors: ^0.6.1
-  prosemirror-model: ^1.25.8
+  prosemirror-model: ^1.25.9
   prosemirror-state: ^1.4.4
   prosemirror-view: ^1.41.9
   ulidx: ^2.4.1
   # @vitest/browser-playwright tracks vitest and @playwright/test tracks playwright;
   # a runner/companion version skew breaks browser-mode tests.
-  vitest: ^4.1.8
-  "@vitest/browser-playwright": ^4.1.8
-  playwright: ^1.60.0
-  "@playwright/test": ^1.60.0
+  vitest: ^4.1.9
+  "@vitest/browser-playwright": ^4.1.9
+  playwright: ^1.61.1
+  "@playwright/test": ^1.61.1
   zod: ^4.4.3
 minimumReleaseAge: 10080
 # loro-crdt 1.13.4 fixes an O(n^2) editing regression but published inside the
@@ -114,7 +114,7 @@ overrides:
   dompurify: 3.4.11
   # Force a single ProseMirror instance across @tiptap/pm and loro-prosemirror;
   # two copies of prosemirror-model silently break `instanceof` checks.
-  prosemirror-model: ^1.25.8
+  prosemirror-model: ^1.25.9
   prosemirror-state: ^1.4.4
   prosemirror-view: ^1.41.9
   "@tanstack/react-router": 1.170.15

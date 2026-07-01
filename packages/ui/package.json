@@ -25,11 +25,11 @@
   "devDependencies": {
     "@familiar-systems/tsconfig": "workspace:*",
     "@react-aria/test-utils": "catalog:",
-    "@storybook/react-vite": "^10.4.4",
+    "@storybook/react-vite": "^10.4.6",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "oxlint-tailwindcss": "catalog:",
-    "storybook": "^10.4.4",
+    "storybook": "^10.4.6",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
