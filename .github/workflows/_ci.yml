@@ -76,7 +76,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
           install_args: "node npm:pnpm"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -90,7 +90,7 @@ jobs:
             echo "pnpm=$(mise current 'npm:pnpm')"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           version: ${{ steps.versions.outputs.pnpm }}
 
@@ -129,7 +129,7 @@ jobs:
       # different rustc commit hashes, which invalidates every dep crate's cargo
       # fingerprint on cache restore. `mise current rust` still works here because
       # it reads mise.toml regardless of whether rust is installed.
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
           install_args: "node npm:pnpm github:bnjbvr/cargo-machete"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -156,7 +156,7 @@ jobs:
           # Cache transitive dep artifacts too, not just direct workspace deps.
           cache-all-crates: true
 
-      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           version: ${{ steps.versions.outputs.pnpm }}
 
@@ -200,7 +200,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
           install_args: "uv"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -210,7 +210,7 @@ jobs:
         shell: bash
         run: echo "uv=$(mise current uv)" >> "$GITHUB_OUTPUT"
 
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: ${{ steps.versions.outputs.uv }}
           enable-cache: true
@@ -242,7 +242,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
           install_args: "uv actionlint zizmor"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -252,7 +252,7 @@ jobs:
         shell: bash
         run: echo "uv=$(mise current uv)" >> "$GITHUB_OUTPUT"
 
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: ${{ steps.versions.outputs.uv }}
           enable-cache: true
@@ -287,7 +287,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
           install_args: "kubectl kubeconform"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -308,7 +308,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
           install_args: "uv pipx:check-jsonschema"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -333,7 +333,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
           install_args: "node npm:pnpm"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -347,7 +347,7 @@ jobs:
             echo "pnpm=$(mise current 'npm:pnpm')"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           version: ${{ steps.versions.outputs.pnpm }}
 
@@ -401,7 +401,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
           install_args: "node npm:pnpm caddy"
           cache_key: "mise-{{platform}}-{{install_args_hash}}-{{file_hash}}"
@@ -426,7 +426,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-all-crates: true
 
-      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           version: ${{ steps.versions.outputs.pnpm }}
 
