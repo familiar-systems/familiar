@@ -8,8 +8,10 @@ systems:
     color: "#FF0000"
     popular: true
     bundle:
-      - common/player
+      - common/player-character
       - common/npc
+      - common/region
+      - common/settlement
   - id: daggerheart
     name:
       en: Daggerheart
@@ -18,8 +20,10 @@ systems:
     color: "#52A4BC"
     popular: true
     bundle:
-      - common/player
+      - common/player-character
       - common/npc
+      - common/region
+      - common/settlement
   - id: blades-in-the-dark
     name:
       en: Blades in the Dark
@@ -28,7 +32,7 @@ systems:
     color: "#212227"
     popular: false
     bundle:
-      - common/player
+      - common/player-character
       - common/npc
       - blades-in-the-dark/crew
 
@@ -38,5 +42,5 @@ systems:
 # alongside the rest of its hardcoded strings, so it isn't repeated here.
 byo:
   bundle:
-    - common/player
+    - common/player-character
     - common/npc

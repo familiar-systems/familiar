@@ -4,4 +4,4 @@
  * One known predicate pair and its usage count, for the create modal's predicate
  * typeahead + reverse autofill. Wire form of the server-internal `PredicatePair`.
  */
-export type PredicatePairView = { forward: string; reverse: string; count: number };
+export type PredicatePairView = { forward: string, reverse: string, count: number, };

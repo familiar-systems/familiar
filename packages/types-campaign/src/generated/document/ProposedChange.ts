@@ -7,7 +7,4 @@ import type { Status } from "./Status";
  *
  * Note that _suggested_ changes in visibility are always only GM-viewable.
  */
-export type ProposedChange =
-  | { scope: "both"; title: string; visibility: Status }
-  | { scope: "title"; title: string }
-  | { scope: "visibility"; visibility: Status };
+export type ProposedChange = { "scope": "both", title: string, visibility: Status, } | { "scope": "title", title: string, } | { "scope": "visibility", visibility: Status, };

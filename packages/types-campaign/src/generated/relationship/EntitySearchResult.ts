@@ -5,4 +5,4 @@ import type { PageId } from "../id/PageId";
  * A matched entity page from `GET /campaign/{id}/entities?q=`, for the object
  * typeahead.
  */
-export type EntitySearchResult = { id: PageId; name: string };
+export type EntitySearchResult = { id: PageId, name: string, };

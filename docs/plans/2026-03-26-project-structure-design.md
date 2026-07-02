@@ -3,7 +3,7 @@
 **Status:** Implemented
 **Date:** 2026-03-26
 **Supersedes:** [Project Structure Design (SPA)](../archive/plans/2026-02-14-project-structure-spa-design.md) -- same SPA decision, fundamentally different backend architecture (TypeScript full-stack to Rust server + TypeScript frontend + Python ML workers)
-**Related decisions:** [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Infrastructure](./2026-05-23-infrastructure.md), [Deployment Architecture](./2026-03-30-deployment-architecture.md), [Public site design](./2026-02-20-public-site-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as Pages](./2026-02-20-templates-as-pages.md), [SQLite decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)
+**Related decisions:** [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md), [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [AI Serialization & Editing Model](./2026-06-30-ai-serialization-and-editing-model.md), [Infrastructure](./2026-05-23-infrastructure.md), [Deployment Architecture](./2026-03-30-deployment-architecture.md), [Public site design](./2026-02-20-public-site-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates](./2026-06-29-templates.md), [SQLite decision](../discovery/2026-03-09-sqlite-over-postgres-decision.md)
 
 ---
 
@@ -208,7 +208,7 @@ packages/editor/src/
     └── source-link.ts     # Source reference attribute
 ```
 
-The `helpers/` directory from the superseded design (doc-parser, doc-writer) is gone. Those were Yjs-specific utilities for server-side document manipulation. The Loro equivalents live in the campaign server's serialization compiler. See [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md).
+The `helpers/` directory from the superseded design (doc-parser, doc-writer) is gone. Those were Yjs-specific utilities for server-side document manipulation. The Loro equivalents live in the campaign server's serialization compiler. See [AI Serialization & Editing Model](./2026-06-30-ai-serialization-and-editing-model.md).
 
 **Depends on:** `@familiar-systems/types-campaign`, `@tiptap/core`, `loro-prosemirror`
 

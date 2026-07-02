@@ -8,6 +8,7 @@
 //! no subscribers and an idle timer fires, so a room that is never joined does
 //! not leak resident until campaign drain.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -129,6 +130,11 @@ pub enum PageInit {
         name: String,
         kind: DocumentPageKind,
         status: Status,
+        /// Content to seed the page with: a template's compiled blocks (and, in
+        /// future, a template-clone's blocks). Empty for a blank page, which
+        /// then opens with just the kind's seeded empty sections. Each block
+        /// carries its section and per-block visibility; see [`build_seeded_page`].
+        seed: Vec<NewBlock>,
         /// Genesis hands the committed `pages::Model` back to the spawner (the
         /// supervisor) here, so it builds the HTTP response from the write edge
         /// rather than re-reading the row on the reader pool. The sender lives
@@ -159,40 +165,54 @@ pub enum PageInitError {
     Genesis,
 }
 
-/// Build the seeded `NewPage` for a genesis path and its matching `LoroPageDoc`.
+/// Build a genesis `NewPage` and its matching `LoroPageDoc` from optional seed
+/// blocks.
 ///
-/// The doc's section layout - and the empty paragraph seeded into each section
-/// so it opens editable - comes from the `kind` inside `from_blocks`; the create
-/// path passes no rows. We then read the seeded doc back into `new_page.blocks`
-/// so the persisted rows are exactly what the doc contains, carrying the seeds'
-/// stable blockIds (a block keeps one identity from genesis onward). Shared by
-/// the entity (`NewEntity`), template (`NewTemplate`), and session
-/// (`NewSession`) genesis arms; a future template-clone path slots in the same
-/// way (its cloned blocks arriving as rows).
+/// `seed` is the imported content (a template's compiled blocks today, a
+/// template-clone's blocks in future); empty for a blank page. The doc is built
+/// from the seed's `(section, blob)` rows, and a declared section with no seed
+/// rows is seeded by `from_blocks` with one empty paragraph so it opens editable.
+/// We then read the doc back into `new_page.blocks`, so the persisted rows are
+/// exactly what the doc contains and each block keeps one stable blockId from
+/// genesis onward. Shared by the document-page (`NewDocumentPage`) and session
+/// (`NewSession`) genesis arms.
+///
+/// Per-block visibility comes from the seed, keyed by blockId; a block the seed
+/// did not supply (an empty-section paragraph `from_blocks` added) falls through
+/// to the fail-closed `gm_only`. The live Loro doc does not yet model per-block
+/// status, so this genesis write is the only place it is set until the editor
+/// round-trip lands - see `docs/plans/2026-06-29-templates.md` § Visibility.
 fn build_seeded_page(
     page_id: PageId,
     name: String,
     kind: PageKind,
     status: Status,
+    seed: Vec<NewBlock>,
 ) -> (NewPage, LoroPageDoc) {
     let mut new_page = build_new_page(page_id, name, kind, status);
+    let status_by_id: HashMap<BlockId, Status> =
+        seed.iter().map(|b| (b.id.clone(), b.status)).collect();
     let (doc, _) = LoroPageDoc::from_blocks(
         &new_page.name,
         &new_page.status,
         &new_page.kind,
-        std::iter::empty::<(Section, Vec<u8>)>(),
+        seed.into_iter().map(|b| (b.section, b.content)),
         BlockId::generate,
     );
+    let status_by_id = &status_by_id;
     new_page.blocks = doc
         .extract_sections()
         .into_iter()
         .flat_map(|(section, blocks)| {
-            blocks.into_iter().map(move |b| NewBlock {
-                id: b.id.unwrap_or_else(BlockId::generate),
-                section,
-                ordering: b.ordering,
-                content: b.content,
-                status: Status::GmOnly,
+            blocks.into_iter().map(move |b| {
+                let id = b.id.unwrap_or_else(BlockId::generate);
+                NewBlock {
+                    status: status_by_id.get(&id).copied().unwrap_or(Status::GmOnly),
+                    id,
+                    section,
+                    ordering: b.ordering,
+                    content: b.content,
+                }
             })
         })
         .collect();
@@ -257,16 +277,18 @@ impl Actor for PageActor {
                 name,
                 kind,
                 status,
+                seed,
                 reply,
             } => {
                 // The actor owns its own birth: build the seeded doc, then persist
                 // the genesis rows through the single-writer. Nothing writes a
                 // Page's rows around the actor that owns it. Entity and Template
                 // share this path (same `preamble` + `body` layout, same
-                // `DbCreatePage` write); only the stamped `kind` differs, so an
-                // entity later cloned from a template inherits the same sections.
+                // `DbCreatePage` write); only the stamped `kind` and any imported
+                // `seed` blocks differ, so an entity later cloned from a template
+                // inherits the same sections.
                 let (new_page, doc) =
-                    build_seeded_page(args.page_id.clone(), name, kind.into(), status);
+                    build_seeded_page(args.page_id.clone(), name, kind.into(), status, seed);
                 match args.db_writer.ask(DbCreatePage { new_page }).await {
                     // Hand the committed row to the spawner. There is no fallible
                     // step after this in `on_start`, so a started actor always
@@ -293,8 +315,13 @@ impl Actor for PageActor {
                 // which also mints the temporal `sessions` row (ordinal = max+1)
                 // in the one genesis transaction. The page comes first so the
                 // `sessions.page_id` FK resolves.
-                let (new_page, doc) =
-                    build_seeded_page(args.page_id.clone(), name, PageKind::Session, status);
+                let (new_page, doc) = build_seeded_page(
+                    args.page_id.clone(),
+                    name,
+                    PageKind::Session,
+                    status,
+                    Vec::new(),
+                );
                 match args.db_writer.ask(DbCreateSession { new_page }).await {
                     Ok(created) => {
                         let _ = reply.send(created);
@@ -660,5 +687,117 @@ impl Message<IdleEvict> for PageActor {
                 "idle evict fired but subscribers present, skipping"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use familiar_systems_campaign_shared::loro::prosemirror::{
+        ATTR_BLOCK_ID, ATTRIBUTES_KEY, CHILDREN_KEY, NODE_NAME_KEY,
+    };
+
+    fn paragraph(id: &BlockId, text: &str) -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({
+            NODE_NAME_KEY: "paragraph",
+            ATTRIBUTES_KEY: { ATTR_BLOCK_ID: id.to_string() },
+            CHILDREN_KEY: [text],
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn seeded_genesis_preserves_section_and_per_block_status() {
+        let preamble_id = BlockId::generate();
+        let body_id = BlockId::generate();
+        let seed = vec![
+            NewBlock {
+                id: preamble_id.clone(),
+                section: Section::Preamble,
+                ordering: 0,
+                content: paragraph(&preamble_id, "index card"),
+                status: Status::Known,
+            },
+            NewBlock {
+                id: body_id.clone(),
+                section: Section::Body,
+                ordering: 0,
+                content: paragraph(&body_id, "secret"),
+                status: Status::GmOnly,
+            },
+        ];
+
+        let (new_page, _doc) = build_seeded_page(
+            PageId::generate(),
+            "NPC".to_string(),
+            PageKind::Template,
+            Status::GmOnly,
+            seed,
+        );
+
+        // Both sections had a seed block, so nothing extra is seeded; each block
+        // keeps its section and the compiler-assigned visibility, keyed by blockId.
+        let find = |id: &BlockId| new_page.blocks.iter().find(|b| &b.id == id).unwrap();
+        assert_eq!(find(&preamble_id).section, Section::Preamble);
+        assert_eq!(find(&preamble_id).status, Status::Known);
+        assert_eq!(find(&body_id).section, Section::Body);
+        assert_eq!(find(&body_id).status, Status::GmOnly);
+    }
+
+    #[test]
+    fn empty_section_seed_falls_through_to_gm_only() {
+        // Only body content: preamble has no seed row, so `from_blocks` seeds it
+        // with an empty paragraph, which is absent from the status map and so
+        // fail-closes to gm_only.
+        let body_id = BlockId::generate();
+        let seed = vec![NewBlock {
+            id: body_id.clone(),
+            section: Section::Body,
+            ordering: 0,
+            content: paragraph(&body_id, "player fact"),
+            status: Status::Known,
+        }];
+
+        let (new_page, _doc) = build_seeded_page(
+            PageId::generate(),
+            "Region".to_string(),
+            PageKind::Template,
+            Status::GmOnly,
+            seed,
+        );
+
+        let preamble: Vec<_> = new_page
+            .blocks
+            .iter()
+            .filter(|b| b.section == Section::Preamble)
+            .collect();
+        assert_eq!(
+            preamble.len(),
+            1,
+            "empty preamble seeded with one paragraph"
+        );
+        assert_eq!(preamble[0].status, Status::GmOnly);
+
+        let body = new_page
+            .blocks
+            .iter()
+            .find(|b| b.section == Section::Body)
+            .unwrap();
+        assert_eq!(body.status, Status::Known);
+    }
+
+    #[test]
+    fn empty_seed_matches_legacy_blank_page() {
+        // No seed: every declared section gets one gm_only seed paragraph, the
+        // pre-import behavior for a blank page.
+        let (new_page, _doc) = build_seeded_page(
+            PageId::generate(),
+            "Blank".to_string(),
+            PageKind::Entity,
+            Status::GmOnly,
+            Vec::new(),
+        );
+        assert_eq!(new_page.blocks.len(), PageKind::Entity.sections().len());
+        assert!(new_page.blocks.iter().all(|b| b.status == Status::GmOnly));
     }
 }

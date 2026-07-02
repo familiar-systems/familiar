@@ -1,6 +1,6 @@
 # Campaign Creation Architecture
 
-**Status**: Built and functional as of 2026-05-22. The full creation flow works end-to-end: hub listing, campaign creation, 4-step wizard, metadata mirroring, idle eviction. The campaign editor (post-wizard) is a placeholder. WebSocket, SSE, and template instantiation (LoroDoc compilation from YAML) are not yet built. See [TODO](#todo) for the full list.
+**Status**: Built and functional as of 2026-05-22. The full creation flow works end-to-end: hub listing, campaign creation, 4-step wizard, metadata mirroring, idle eviction. The campaign editor (post-wizard) is a placeholder. WebSocket, SSE, and template instantiation (LoroDoc compilation from authored template content) are not yet built. See [TODO](#todo) for the full list.
 
 Supersedes [`docs/archive/plans/2026-05-11-new-campaign-onboarding.md`](../archive/plans/2026-05-11-new-campaign-onboarding.md).
 
@@ -138,16 +138,18 @@ CampaignRegistry (process-lifetime singleton)
 
 **CampaignDatabase**: WAL-mode SQLite. Read pool (16 connections, read-only) for concurrent reads. Write connection owned exclusively by DatabaseActor. Migrations run on checkout. `campaign_metadata` row seeded on first open.
 
+**Block storage and search** (designed, not built). A block's `content` blob is the lossless source of truth; the CRDT oplog is not persisted - the LoroDoc is reconstructed from these rows on checkout (see [Campaign Collaboration Architecture](2026-03-25-campaign-collaboration-architecture.md): "relational data is the data at rest"). The agent markdown and a per-block **search projection** (a derived markdown/text column, added with this work) are *derived* from that source and may be lossy - a node markdown cannot express renders a placeholder, and reconstruction is unaffected because it reads the JSON. The search projection is materialized on the debounced persist flush (`apps/campaign/src/actors/persist.rs`): a cheap, local per-block transform with no graph or ToC dependency. Grep over it is **cold scan ∪ live overlay** - bulk-scan the derived column for non-resident pages (no actor checkout), overlay a live compile for the small resident set; results are ToC-subtree-scoped and `status`-filtered (per-block RBAC). The compiler is owned by [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md); the grep *capability* by the [AI PRD](2026-02-22-ai-prd.md).
+
 ## Catalog system
 
 Game systems and templates live in `content/` at the repo root, embedded at build time via `include_dir!`. Parse failures fail the build.
 
 - `content/systems.yaml`: System definitions (id, name, tagline, color, popular, bundle of template slugs). Plus `byo:` sibling with its own default bundle.
-- `content/templates/{common,<system-id>}/*.yaml`: Template files with `meta` (name, description, icon as `LocalizedString`) and `body` (serde_yaml::Value, not yet compiled).
+- `content/templates/{common,<system-id>}/*.yaml`: Template files with `meta` (name, description, icon as `LocalizedString`) and `body` (serde_yaml::Value, not yet compiled). The authoring format is being reworked to per-locale markdown; see [Templates](2026-06-29-templates.md).
 
 `GET /catalog/systems` resolves `LocalizedString` fields per locale with fallback chain (requested locale -> `en` -> first available). Returns `CatalogResponse { systems, byo }` with resolved strings.
 
-Template body compilation to LoroDoc is not yet built. The catalog serves metadata only.
+Template body compilation to blocks is not yet built, and the selected system's `bundle` is not yet consumed at creation (a new campaign is born with one empty home page). Both are owned by [Templates](2026-06-29-templates.md).
 
 ## Heartbeat reconciliation
 
@@ -161,7 +163,7 @@ The `loaded` flag on `GET /api/campaigns` responses comes from this cache. It le
 
 - **campaign_metadata**: `id` (PK, check id=1), `campaign_id`, `owner_user_id`, `name`, `tagline`, `game_system`, `content_locale`, `wizard_completed_at`, `created_at`, `updated_at`
 - **pages**: `id` (Nanoid PK), `name`, `status`, `template_id` (nullable self-ref), `created_at`, `updated_at`
-- **blocks**: `id` (Nanoid PK), `page_id` (FK cascade), `status`, `ordering` (i64), `body`, `created_at`, `updated_at`
+- **blocks**: `id` (Nanoid PK), `page_id` (FK cascade), `status`, `ordering` (i64), `content` (Blob - the block's ProseMirror node tree as JSON, the lossless source of truth), `section`, `created_at`, `updated_at`
 - **block_embeddings_vec**: `id` (Nanoid PK), `block_id` (FK cascade), `embedding` (sqlite-vec vector), `created_at`
 
 ### Platform tier (single SQLite, `apps/platform`)
@@ -174,7 +176,7 @@ The `loaded` flag on `GET /api/campaigns` responses comes from this cache. It le
 
 - **WebSocket**: CRDT sync (Loro protocol), room multiplexing, presence. Supervisor uses connection count as activity signal for checkout/checkin lifecycle.
 - **Server-sent events**: Error notifications (persistence degraded, server restarting).
-- **Template instantiation**: Compile YAML body to ProseMirror-shaped LoroDoc. The compiler, instantiation route, and template hashes (`seeded_structure_hash`, `seeded_content_hash`) are designed but not built.
+- **Template instantiation**: compile a template's markdown body to blocks (the at-rest block JSON, per the block schema - a one-way parse that mints fresh block ids, *not* the stateful agent-edit round-trip), consume a system's `bundle` at campaign creation, and clone entities from templates (`from_template_id`). Owned by [Templates](2026-06-29-templates.md).
 - **PageActor, TocActor, AgentConversation actors**: Per-entity actors for CRDT rooms. Currently only the supervisor and database writer exist.
 - **Campaign editor UI**: Post-wizard view is a placeholder. Needs the editor surface, page navigation, ToC rendering.
 - **Starter template content**: Template YAML files are partially authored. System catalog entries exist but template coverage across systems is incomplete.

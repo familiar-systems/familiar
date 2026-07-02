@@ -14,8 +14,4 @@ import type { SessionStampPatch } from "./SessionStampPatch";
  * End-*with-successor* is not a patch - it goes through `POST /relationships` with
  * `supersedes` (the successor is a new row).
  */
-export type PatchRelationshipRequest = {
-  knowledge: KnowledgeInput | null;
-  superseded: SessionStampPatch | null;
-  retcon: SessionStampPatch | null;
-};
+export type PatchRelationshipRequest = { knowledge: KnowledgeInput | null, superseded: SessionStampPatch | null, retcon: SessionStampPatch | null, };

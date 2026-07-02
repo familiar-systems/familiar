@@ -467,3 +467,95 @@ async fn create_session_rejects_empty_name() {
     supervisor.stop_gracefully().await.unwrap();
     supervisor.wait_for_shutdown_with_result(|_| ()).await;
 }
+
+/// End-to-end template seeding through the supervisor: compile a real bundled
+/// template, seed it, and assert it lands as a `template`-kind Page with its
+/// per-block visibility preserved and nested under the `Templates` ToC folder.
+/// Exercises the compile -> genesis -> ToC-folder wiring the route drives on
+/// wizard completion.
+#[tokio::test]
+async fn seed_template_bundle_creates_template_pages_and_folder() {
+    use crate::entities::blocks;
+    use crate::entities::columns::{PageIdCol, PageKindCol};
+    use crate::entities::toc_entries;
+    use crate::starter_content::catalog::Catalog;
+    use crate::starter_content::compile::compile_template;
+
+    ensure_vec0();
+    let tmp = TempDir::new().unwrap();
+    let store = store_in(tmp.path());
+    let campaign_id = CampaignId::generate();
+    let db_path = tmp.path().join(format!("{}.db", campaign_id.0));
+    let supervisor =
+        CampaignSupervisor::spawn(fast_args(campaign_id.clone(), store, 60_000, 60_000));
+    supervisor.wait_for_startup().await;
+
+    // Compile a real bundled template exactly as the route does.
+    let raw = Catalog::load_from_embedded().unwrap();
+    let npc = compile_template(raw.template_markdown("common/npc", "en").unwrap()).unwrap();
+
+    // `SeedTemplateBundle` replies `()`, so `ask` returns only after genesis and
+    // ToC placement have run.
+    supervisor
+        .ask(SeedTemplateBundle {
+            folder_title: "Templates".to_string(),
+            templates: vec![npc],
+        })
+        .await
+        .unwrap();
+
+    // Page + blocks are persisted synchronously at genesis; read them live.
+    let conn = crate::db::connect_readonly(&db_path).await.unwrap();
+    let template_pages = pages::Entity::find()
+        .filter(pages::Column::Kind.eq(PageKindCol::Template))
+        .all(&conn)
+        .await
+        .unwrap();
+    assert_eq!(template_pages.len(), 1, "one template page seeded");
+    let npc_page = &template_pages[0];
+    assert_eq!(npc_page.name, "NPC");
+
+    let block_rows = blocks::Entity::find()
+        .filter(blocks::Column::PageId.eq(PageIdCol::from(PageId::from(npc_page.id.clone()))))
+        .all(&conn)
+        .await
+        .unwrap();
+    assert!(
+        block_rows.len() >= 2,
+        "template seeded with multiple blocks"
+    );
+    // Per-block visibility survives from the `<player_visible>` / `<gm_only>`
+    // spans through genesis (the whole point of threading status).
+    assert!(
+        block_rows
+            .iter()
+            .any(|b| Status::from(b.status) == Status::Known),
+        "a <player_visible> block persists as player-visible",
+    );
+    assert!(
+        block_rows
+            .iter()
+            .any(|b| Status::from(b.status) == Status::GmOnly),
+        "a <gm_only> block persists as gm-only",
+    );
+
+    // Stop the supervisor to drain the ToC actor (flushing the folder + nesting).
+    supervisor.stop_gracefully().await.unwrap();
+    supervisor.wait_for_shutdown_with_result(|_| ()).await;
+
+    let conn = crate::db::connect_readonly(&db_path).await.unwrap();
+    let toc = toc_entries::Entity::find().all(&conn).await.unwrap();
+    let folder = toc
+        .iter()
+        .find(|r| r.folder_title.as_deref() == Some("Templates"))
+        .expect("Templates folder persisted");
+    let npc_entry = toc
+        .iter()
+        .find(|r| r.page_id.clone().map(PageId::from) == Some(PageId::from(npc_page.id.clone())))
+        .expect("npc toc entry persisted");
+    assert_eq!(
+        npc_entry.parent_id.as_ref(),
+        Some(&folder.id),
+        "the template page nests under the Templates folder",
+    );
+}

@@ -1,13 +1,23 @@
 //! Catalog parsing: `content/systems.yaml` and the templates each system bundles.
 //!
 //! The `content/` directory is embedded at build time via [`include_dir!`]:
-//! a missing template referenced by `systems.yaml` fails the test that
-//! constructs the catalog (see [`Catalog::load_from_embedded`]); a
-//! malformed YAML fails likewise. There is no runtime path that returns
-//! "template not found"; by the time `axum::serve` runs, the catalog is
-//! either fully resolved or the binary aborted.
+//! a bundle slug that doesn't resolve to a `templates/<slug>/<leaf>.en.md`
+//! file, a template with malformed frontmatter, or a body that fails to compile
+//! to blocks all fail the test that constructs the catalog (see
+//! [`Catalog::load_from_embedded`]). There is no runtime path that returns
+//! "template not found" or "template won't compile"; by the time `axum::serve`
+//! runs, the catalog is either fully resolved or the binary aborted.
+//!
+//! A template is a single markdown file per locale (`<leaf>.<locale>.md`); its
+//! frontmatter carries the catalog-card metadata and its body is the block
+//! content the import compiler materializes. `systems.yaml` stays YAML: it is
+//! system config (slugs, colors, labels), not template content.
 
-use crate::starter_content::{localized::LocalizedString, template::Template};
+use crate::starter_content::{
+    compile,
+    localized::LocalizedString,
+    template::{Frontmatter, split_frontmatter},
+};
 use familiar_systems_campaign_shared::onboarding::catalog::{ByoEntry, SystemEntry, TemplateRef};
 use include_dir::{Dir, include_dir};
 use serde::Deserialize;
@@ -56,10 +66,46 @@ struct SystemsYaml {
     byo: ByoRowYaml,
 }
 
+/// One template's markdown files, keyed by locale. Frontmatter is parsed at
+/// load (fail-fast on malformed content); the raw body is compiled to blocks
+/// on demand at import time.
+#[derive(Debug, Clone)]
+struct RawTemplate {
+    by_locale: BTreeMap<String, LocaleTemplate>,
+}
+
+#[derive(Debug, Clone)]
+struct LocaleTemplate {
+    markdown: String,
+    frontmatter: Frontmatter,
+}
+
+impl RawTemplate {
+    /// The best locale match, falling back to `en` (guaranteed present at load).
+    fn resolve(&self, locale: &str) -> &LocaleTemplate {
+        resolve_locale(&self.by_locale, locale).expect("en locale guaranteed at load time")
+    }
+}
+
+/// BCP-47 locale lookup shared by templates: exact tag, then the language part
+/// of `xx-YY`, then the required `en` baseline.
+fn resolve_locale<'a, T>(map: &'a BTreeMap<String, T>, locale: &str) -> Option<&'a T> {
+    if let Some(v) = map.get(locale) {
+        return Some(v);
+    }
+    if let Some((lang, _)) = locale.split_once('-')
+        && let Some(v) = map.get(lang)
+    {
+        return Some(v);
+    }
+    map.get("en")
+}
+
 impl Catalog {
     /// Loads the embedded catalog. Returns an error string at startup time
     /// (and from tests) if `systems.yaml` references a slug that doesn't
-    /// resolve to a `content/templates/<slug>.yaml` file.
+    /// resolve to a `templates/<slug>/<leaf>.en.md` file or whose frontmatter
+    /// is malformed.
     pub fn load_from_embedded() -> Result<RawCatalog, String> {
         let systems_yaml = CONTENT_DIR
             .get_file("systems.yaml")
@@ -69,7 +115,7 @@ impl Catalog {
         let parsed: SystemsYaml =
             serde_yaml::from_str(systems_yaml).map_err(|e| format!("content/systems.yaml: {e}"))?;
 
-        let mut templates: BTreeMap<String, Template> = BTreeMap::new();
+        let mut templates: BTreeMap<String, RawTemplate> = BTreeMap::new();
 
         // Bundle slugs from real systems + the BYO bundle all share the
         // same `templates/` directory; one resolver walks both.
@@ -80,16 +126,7 @@ impl Catalog {
                 if templates.contains_key(slug) {
                     continue;
                 }
-                let path = format!("templates/{slug}.yaml");
-                let file = CONTENT_DIR.get_file(&path).ok_or_else(|| {
-                    format!("content/{path} not found (referenced by {origin} bundle)")
-                })?;
-                let raw = file
-                    .contents_utf8()
-                    .ok_or_else(|| format!("content/{path} is not valid UTF-8"))?;
-                let template: Template =
-                    serde_yaml::from_str(raw).map_err(|e| format!("content/{path}: {e}"))?;
-                templates.insert(slug.clone(), template);
+                templates.insert(slug.clone(), load_template(slug, origin)?);
             }
         }
 
@@ -101,7 +138,7 @@ impl Catalog {
     }
 
     /// Resolves a [`RawCatalog`] for `locale`, falling back to `en` per
-    /// [`LocalizedString::resolve`].
+    /// [`resolve_locale`] / [`LocalizedString::resolve`].
     pub fn from_raw(raw: &RawCatalog, locale: &str) -> Self {
         let systems = raw
             .systems
@@ -122,20 +159,76 @@ impl Catalog {
     }
 }
 
+/// Load a bundled template's per-locale markdown files from
+/// `templates/<slug>/<leaf>.<locale>.md`, parsing each file's frontmatter. The
+/// slug's last path segment is the `<leaf>` filename stem.
+fn load_template(slug: &str, origin: &str) -> Result<RawTemplate, String> {
+    let leaf = slug.rsplit('/').next().unwrap_or(slug);
+    let dir_path = format!("templates/{slug}");
+    let dir = CONTENT_DIR
+        .get_dir(&dir_path)
+        .ok_or_else(|| format!("content/{dir_path}/ not found (referenced by {origin} bundle)"))?;
+
+    let prefix = format!("{leaf}.");
+    let mut by_locale: BTreeMap<String, LocaleTemplate> = BTreeMap::new();
+    for file in dir.files() {
+        let Some(name) = file.path().file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        // `<leaf>.<locale>.md` -> locale.
+        let Some(locale) = name
+            .strip_prefix(&prefix)
+            .and_then(|rest| rest.strip_suffix(".md"))
+            .filter(|locale| !locale.is_empty())
+        else {
+            continue;
+        };
+        let markdown = file
+            .contents_utf8()
+            .ok_or_else(|| format!("content/{dir_path}/{name} is not valid UTF-8"))?;
+        let (frontmatter, _body) =
+            split_frontmatter(markdown).map_err(|e| format!("content/{dir_path}/{name}: {e}"))?;
+        by_locale.insert(
+            locale.to_string(),
+            LocaleTemplate {
+                markdown: markdown.to_string(),
+                frontmatter,
+            },
+        );
+    }
+
+    let Some(en) = by_locale.get("en") else {
+        return Err(format!(
+            "content/{dir_path}/ has no `{leaf}.en.md` (the required baseline, referenced by {origin} bundle)"
+        ));
+    };
+    // Fail-fast: a bundled template whose body can't compile aborts startup, not
+    // a campaign creation (where seeding is best-effort and would silently skip
+    // it). Upholds the module's "malformed fails the build" invariant.
+    compile::compile_template(&en.markdown)
+        .map_err(|e| format!("content/{dir_path}/{leaf}.en.md body: {e}"))?;
+
+    Ok(RawTemplate { by_locale })
+}
+
 fn resolve_bundle(
     slugs: &[String],
-    templates: &BTreeMap<String, Template>,
+    templates: &BTreeMap<String, RawTemplate>,
     locale: &str,
 ) -> Vec<TemplateRef> {
     slugs
         .iter()
         .map(|slug| {
-            let t = templates.get(slug).expect("validated at load time");
+            let fm = &templates
+                .get(slug)
+                .expect("validated at load time")
+                .resolve(locale)
+                .frontmatter;
             TemplateRef {
                 slug: slug.clone(),
-                name: t.meta.name.resolve(locale).to_string(),
-                description: t.meta.description.resolve(locale).to_string(),
-                icon: t.meta.icon.clone(),
+                name: fm.name.clone(),
+                description: fm.description.clone(),
+                icon: fm.icon.clone(),
             }
         })
         .collect()
@@ -146,7 +239,19 @@ fn resolve_bundle(
 pub struct RawCatalog {
     systems: Vec<SystemRowYaml>,
     byo: ByoRowYaml,
-    templates: BTreeMap<String, Template>,
+    templates: BTreeMap<String, RawTemplate>,
+}
+
+impl RawCatalog {
+    /// The raw markdown of a bundled template at `locale` (en fallback), for the
+    /// import compiler. `None` if the slug is not in any bundle (so was never
+    /// loaded). The slug space is closed at load time, so a `None` here is a
+    /// caller passing a slug the catalog never advertised.
+    pub fn template_markdown(&self, slug: &str, locale: &str) -> Option<&str> {
+        self.templates
+            .get(slug)
+            .map(|t| t.resolve(locale).markdown.as_str())
+    }
 }
 
 #[cfg(test)]
@@ -199,8 +304,9 @@ mod tests {
             .iter()
             .find(|t| t.slug == "common/npc")
             .expect("common/npc in dnd-5e bundle");
+        // Metadata now comes from the markdown frontmatter, not a sidecar YAML.
         assert_eq!(npc.name, "NPC");
-        assert_eq!(npc.icon, "person-standing");
+        assert_eq!(npc.icon, "contact");
 
         // BYO carries only the resolved bundle; its display copy lives in
         // the wizard frontend.
@@ -213,8 +319,24 @@ mod tests {
         let cat = Catalog::from_raw(&raw, "de");
         let dnd = cat.systems.iter().find(|s| s.id == "dnd-5e").unwrap();
         assert_eq!(dnd.name, "D&D 5e (2014)");
-        // BYO bundle templates carry the same locale fallback as the rest
-        // of the catalog.
+        // Template bundles carry the same locale fallback as the rest of the
+        // catalog: the `en` markdown resolves under an unknown locale.
+        let npc = dnd.bundle.iter().find(|t| t.slug == "common/npc").unwrap();
+        assert_eq!(npc.name, "NPC");
         assert!(!cat.byo.bundle.is_empty());
+    }
+
+    #[test]
+    fn template_markdown_available_for_bundled_slug() {
+        let raw = Catalog::load_from_embedded().unwrap();
+        let md = raw
+            .template_markdown("common/npc", "en")
+            .expect("common/npc markdown available for import");
+        assert!(md.contains("<player_visible>"), "body should be present");
+        assert!(
+            raw.template_markdown("common/does-not-exist", "en")
+                .is_none(),
+            "an unbundled slug has no markdown"
+        );
     }
 }

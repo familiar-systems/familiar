@@ -3,7 +3,7 @@
 **Status:** Draft
 **Date:** 2026-03-25
 **Supersedes:** [Document-Centric Campaign Architecture (Hocuspocus ADR)](../archive/plans/2026-03-14-hocuspocus-architecture.md) - validated its hypotheses, then replaced the implementation technology (Yjs/Hocuspocus/Node.js → Loro/kameo/Rust). The campaign model, scaling model, and operational invariants carry forward. The collaboration layer, persistence hooks, and AI interaction model change.
-**Related decisions:** [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md), [Suggestion Marks Spike](./2026-03-25-loro-tiptap-spike.md), [Project structure](./2026-03-26-project-structure-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates as Pages](./2026-02-20-templates-as-pages.md)
+**Related decisions:** [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), [AI Serialization & Editing Model](./2026-06-30-ai-serialization-and-editing-model.md), [Suggestion Marks Spike](./2026-03-25-loro-tiptap-spike.md), [Project structure](./2026-03-26-project-structure-design.md), [AI workflow unification](./2026-02-14-ai-workflow-unification-design.md), [Templates](./2026-06-29-templates.md)
 
 ---
 
@@ -155,7 +155,7 @@ Every block in a LoroDoc has a UUID (`BlockId`). Suggestions target a contiguous
 
 This solves a structural problem the tagged-block approach had: creating a suggestion modified the document tree (pulling original content into a SuggestionBlock node). A second suggestion targeting overlapping content couldn't find its target because the first suggestion had restructured the tree. With marks, the tree is stable. Multiple suggestions coexist on stable blocks.
 
-The full suggestion model - marks, blocking semantics, conversation-scoped visibility, supersession rules, outcomes table - is defined in the [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md).
+The suggestion model - marks on stable blocks, conversation-scoped serialization - is described in the [AI Serialization & Editing Model](./2026-06-30-ai-serialization-and-editing-model.md). Its detailed mechanism (the outcomes table, provenance, the compiler) is carried in the [Campaign Actor Domain Design](./2026-05-04-campaign-actor-domain-design.md), and the product-level lifecycle in the [AI PRD](./2026-02-22-ai-prd.md).
 
 ### AI agent interaction model
 

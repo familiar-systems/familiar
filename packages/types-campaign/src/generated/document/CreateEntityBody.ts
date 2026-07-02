@@ -6,17 +6,14 @@ import type { Status } from "./Status";
  * Body for creating an `entity` page (authored world content - an NPC, a
  * location, a bit of lore). `name` is required.
  */
-export type CreateEntityBody = {
-  name: string;
-  status: Status | null;
-  /**
-   * Parent Page to nest under in the table of contents. `None` => ToC root.
-   * FIXME this should probably the ID of the ToC block and not a `PageId`.
-   * This would let us nest pages under, say, a Folder.
-   */
-  parent: PageId | null;
-  /**
-   * Template to clone from. Not yet supported; a value here yields 501.
-   */
-  from_template_id: PageId | null;
-};
+export type CreateEntityBody = { name: string, status: Status | null, 
+/**
+ * Parent Page to nest under in the table of contents. `None` => ToC root.
+ * FIXME this should probably the ID of the ToC block and not a `PageId`.
+ * This would let us nest pages under, say, a Folder.
+ */
+parent: PageId | null, 
+/**
+ * Template to clone from. Not yet supported; a value here yields 501.
+ */
+from_template_id: PageId | null, };

@@ -6,4 +6,4 @@ import type { SessionRef } from "./SessionRef";
  * current (max-ordinal) one for the picker's default. `current` is `None` when the
  * campaign has no sessions yet (the picker then offers `Prior` only).
  */
-export type SessionsResponse = { sessions: Array<SessionRef>; current: SessionRef | null };
+export type SessionsResponse = { sessions: Array<SessionRef>, current: SessionRef | null, };

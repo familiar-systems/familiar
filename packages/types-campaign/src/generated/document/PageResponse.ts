@@ -7,7 +7,4 @@ import type { TemplateResponse } from "./TemplateResponse";
  * A created Page, returned with `201 Created`, discriminated by `kind`. The
  * wire shape mirrors the request: `{ "kind": "...", "content": { ... } }`.
  */
-export type PageResponse =
-  | { kind: "entity"; content: EntityResponse }
-  | { kind: "template"; content: TemplateResponse }
-  | { kind: "session"; content: SessionResponse };
+export type PageResponse = { "kind": "entity", "content": EntityResponse } | { "kind": "template", "content": TemplateResponse } | { "kind": "session", "content": SessionResponse };

@@ -6,7 +6,4 @@ import type { SessionId } from "../id/SessionId";
  * patch (the new state, set wholesale). The input analog of [`KnowledgeView`]: public,
  * secret (hidden), or secret and revealed at a session.
  */
-export type KnowledgeInput =
-  | { kind: "public" }
-  | { kind: "hidden" }
-  | { kind: "revealed"; content: SessionId };
+export type KnowledgeInput = { "kind": "public" } | { "kind": "hidden" } | { "kind": "revealed", "content": SessionId };

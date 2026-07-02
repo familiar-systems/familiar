@@ -2,9 +2,10 @@
 
 use crate::actors::database_writer::{GetMetadata, MetadataError, PatchCampaignError};
 use crate::actors::registry::{READY_WAIT_TIMEOUT, resolve};
-use crate::actors::supervisor::PatchCampaignMetadata;
+use crate::actors::supervisor::{CampaignSupervisor, PatchCampaignMetadata, SeedTemplateBundle};
 use crate::error::CampaignResolveError;
 use crate::middleware::auth::AuthenticatedUser;
+use crate::starter_content::compile::{CompiledTemplate, compile_template};
 use crate::state::AppState;
 use axum::{
     Json,
@@ -20,6 +21,7 @@ use familiar_systems_campaign_shared::onboarding::initialize::{
 };
 use familiar_systems_campaign_shared::onboarding::metadata::CampaignMetadataResponse;
 use fs_id::Nanoid;
+use kameo::actor::ActorRef;
 
 #[utoipa::path(
     get,
@@ -217,6 +219,18 @@ pub async fn patch_campaign(
         }
     };
 
+    // Capture the template-seeding inputs before the mirror moves `req` fields.
+    // The bundle is seeded only when the wizard has *just* completed (so a later
+    // metadata edit doesn't re-seed), using the campaign's content locale.
+    let seed = result.wizard_just_completed.then(|| {
+        let locale = req
+            .content_locale
+            .clone()
+            .or_else(|| existing.content_locale.clone())
+            .unwrap_or_else(|| "en".to_string());
+        (locale, req.template_slugs.clone().unwrap_or_default())
+    });
+
     let mirror = PatchCampaignMirror {
         name: req.name,
         tagline: req.tagline,
@@ -240,6 +254,10 @@ pub async fn patch_campaign(
         );
     }
 
+    if let Some((locale, slugs)) = seed {
+        seed_template_bundle(&state, &supervisor, &campaign_id, &locale, &slugs).await;
+    }
+
     let model = result.model;
     let resp = CampaignMetadataResponse {
         campaign_id,
@@ -254,6 +272,51 @@ pub async fn patch_campaign(
     };
 
     (StatusCode::OK, Json(resp)).into_response()
+}
+
+/// Compile the selected system's bundle from the embedded catalog and fire the
+/// supervisor's best-effort seeding (fire-and-forget: the client sees the pages
+/// via the live ToC broadcast). Compilation lives here because the route is the
+/// only tier holding `AppState.catalog`; a slug the catalog never advertised, or
+/// (defensively) one that won't compile, is logged and skipped rather than
+/// failing the completed wizard.
+async fn seed_template_bundle(
+    state: &AppState,
+    supervisor: &ActorRef<CampaignSupervisor>,
+    campaign_id: &str,
+    locale: &str,
+    slugs: &[String],
+) {
+    let templates: Vec<CompiledTemplate> = slugs
+        .iter()
+        .filter_map(|slug| {
+            let Some(md) = state.catalog.template_markdown(slug, locale) else {
+                tracing::warn!(slug = %slug, "wizard selected a template slug not in the catalog; skipping");
+                return None;
+            };
+            match compile_template(md) {
+                Ok(template) => Some(template),
+                Err(e) => {
+                    tracing::error!(slug = %slug, error = %e, "template failed to compile; skipping");
+                    None
+                }
+            }
+        })
+        .collect();
+
+    if templates.is_empty() {
+        return;
+    }
+
+    if let Err(e) = supervisor
+        .tell(SeedTemplateBundle {
+            folder_title: "Templates".to_string(),
+            templates,
+        })
+        .await
+    {
+        tracing::warn!(campaign_id = %campaign_id, error = %e, "failed to enqueue template seeding");
+    }
 }
 
 async fn report_failure(state: &AppState, campaign_id: &str, reason: &str) {

@@ -8,4 +8,4 @@ import type { SessionId } from "../id/SessionId";
  * it got from `GET /sessions`, so a raw `SessionId` crossing the wire as *input*
  * is fine (the no-raw-`SessionId` rule is about the read view's ordinals).
  */
-export type OriginInput = { kind: "prior" } | { kind: "session"; content: SessionId };
+export type OriginInput = { "kind": "prior" } | { "kind": "session", "content": SessionId };
