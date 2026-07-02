@@ -10,4 +10,4 @@ import type { ViewSessionOrdinal } from "./ViewSessionOrdinal";
  * (`{ "kind": "...", "content": { ... } }`) per the convention guard in
  * `crates/app-shared/tests/conventions.rs`.
  */
-export type ViewSessionPoint = { kind: "prior" } | { kind: "session"; content: ViewSessionOrdinal };
+export type ViewSessionPoint = { "kind": "prior" } | { "kind": "session", "content": ViewSessionOrdinal };

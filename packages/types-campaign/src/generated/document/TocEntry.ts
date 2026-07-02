@@ -19,24 +19,10 @@ import type { TocSuggestion } from "./TocSuggestion";
  * **Loro storage** uses variant-specific keys (`pageId`, `conversationId`).
  * Conversion between flat LoroMap fields and this enum happens in `LoroTocDoc`.
  */
-export type TocEntry =
-  | { kind: "folder"; title: string; visibility: Status; suggestions: Array<TocSuggestion> }
-  | {
-      kind: "page";
-      title: string;
-      pageId: PageId;
-      /**
-       * The page's kind and any kind-specific display data, denormalized from
-       * `pages.kind` (+ `sessions.ordinal`). A session carries its ordinal
-       * *inside* the variant, so a non-session ordinal is unrepresentable.
-       */
-      pageKind: TocPageKind;
-      visibility: Status;
-      suggestions: Array<TocSuggestion>;
-    }
-  | {
-      kind: "suggestion";
-      conversationId: ConversationId;
-      title: string | null;
-      visibility: Status;
-    };
+export type TocEntry = { "kind": "folder", title: string, visibility: Status, suggestions: Array<TocSuggestion>, } | { "kind": "page", title: string, pageId: PageId, 
+/**
+ * The page's kind and any kind-specific display data, denormalized from
+ * `pages.kind` (+ `sessions.ordinal`). A session carries its ordinal
+ * *inside* the variant, so a non-session ordinal is unrepresentable.
+ */
+pageKind: TocPageKind, visibility: Status, suggestions: Array<TocSuggestion>, } | { "kind": "suggestion", conversationId: ConversationId, title: string | null, visibility: Status, };

@@ -6,16 +6,12 @@ import type { Status } from "./Status";
  * A created `template` page. A template has no `template_id` lineage of its own
  * (it is the source, not a clone).
  */
-export type TemplateResponse = {
-  id: PageId;
-  name: string;
-  status: Status;
-  /**
-   * RFC 3339 timestamp.
-   */
-  created_at: string;
-  /**
-   * RFC 3339 timestamp.
-   */
-  updated_at: string;
-};
+export type TemplateResponse = { id: PageId, name: string, status: Status, 
+/**
+ * RFC 3339 timestamp.
+ */
+created_at: string, 
+/**
+ * RFC 3339 timestamp.
+ */
+updated_at: string, };

@@ -271,3 +271,105 @@ async fn update_page_node_refreshes_title_and_persists_only_on_visibility() {
     toc.stop_gracefully().await.unwrap();
     toc.wait_for_shutdown_with_result(|_| ()).await;
 }
+
+// -- Actor: SeedTocFolder --
+
+/// Template-bundle seeding: one folder at the root with the bundle's template
+/// pages nested under it, persisted in a single snapshot. Proves the folder
+/// gets a stable row id, each child is tracked in `known_pages` (so it survives
+/// `snapshot_toc`), and each child's `parent_id` points at the folder.
+#[tokio::test]
+async fn seed_toc_folder_nests_pages_under_a_persisted_folder() {
+    use crate::actors::database_writer::{DatabaseWriteActor, DatabaseWriteActorArgs, Ping};
+    use crate::db;
+    use crate::migrations::Migrator;
+    use chrono::Utc;
+    use kameo::actor::Spawn;
+    use sea_orm::{ActiveModelTrait, EntityTrait};
+    use sea_orm_migration::MigratorTrait;
+
+    db::register_sqlite_vec();
+    let conn = db::connect("sqlite::memory:").await.expect("sqlite");
+    Migrator::up(&conn, None).await.expect("migrate");
+
+    let campaign_id = CampaignId::generate();
+    let db_writer = DatabaseWriteActor::spawn(DatabaseWriteActorArgs {
+        campaign_id: campaign_id.clone(),
+        conn: conn.clone(),
+    });
+    let toc = TocActor::spawn(TocActorArgs {
+        campaign_id,
+        db_reader: conn.clone(),
+        db_writer: db_writer.clone(),
+        debounce_duration: Duration::from_secs(60), // don't fire mid-test
+    });
+    toc.wait_for_startup().await;
+
+    // Backing template pages so the toc_entries FK resolves, mirroring the
+    // create-time situation (the running actor didn't see them at startup).
+    let now = Utc::now();
+    let mut children = Vec::new();
+    for name in ["NPC", "Player Character"] {
+        let page_id = PageId::generate();
+        pages::ActiveModel {
+            id: Set(PageIdCol::from(page_id.clone())),
+            name: Set(name.into()),
+            status: Set(StatusCol::from(Status::GmOnly)),
+            kind: Set(PageKindCol::Template),
+            template_id: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&conn)
+        .await
+        .unwrap();
+        children.push(SeedTocChild {
+            page_id,
+            title: name.into(),
+            page_kind: TocPageKind::Template,
+            visibility: Status::GmOnly,
+        });
+    }
+    let child_ids: Vec<PageId> = children.iter().map(|c| c.page_id.clone()).collect();
+
+    toc.ask(SeedTocFolder {
+        folder_title: "Templates".into(),
+        folder_visibility: Status::GmOnly,
+        children,
+    })
+    .await
+    .expect("seed toc folder");
+
+    toc.stop_gracefully().await.unwrap();
+    toc.wait_for_shutdown_with_result(|_| ()).await;
+    // FIFO mailbox: Ping returns only after the snapshot write is processed.
+    db_writer.ask(Ping).await.unwrap();
+
+    let rows = toc_entries::Entity::find().all(&conn).await.unwrap();
+    let folder = rows
+        .iter()
+        .find(|r| r.folder_title.as_deref() == Some("Templates"))
+        .expect("folder row persisted");
+    assert!(folder.page_id.is_none(), "a folder backs no page");
+    assert!(folder.parent_id.is_none(), "folder sits at the root");
+
+    let page_rows: Vec<_> = rows.iter().filter(|r| r.page_id.is_some()).collect();
+    assert_eq!(page_rows.len(), 2, "both template pages persisted");
+    for r in &page_rows {
+        assert_eq!(
+            r.parent_id.as_ref(),
+            Some(&folder.id),
+            "each template page nests under the folder"
+        );
+    }
+    let persisted: std::collections::HashSet<PageId> = page_rows
+        .iter()
+        .filter_map(|r| r.page_id.clone().map(PageId::from))
+        .collect();
+    for id in child_ids {
+        assert!(
+            persisted.contains(&id),
+            "child {id:?} persisted under the folder"
+        );
+    }
+}

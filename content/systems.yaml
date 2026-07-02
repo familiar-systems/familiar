@@ -10,6 +10,8 @@ systems:
     bundle:
       - common/player-character
       - common/npc
+      - common/region
+      - common/settlement
   - id: daggerheart
     name:
       en: Daggerheart
@@ -20,6 +22,8 @@ systems:
     bundle:
       - common/player-character
       - common/npc
+      - common/region
+      - common/settlement
   - id: blades-in-the-dark
     name:
       en: Blades in the Dark

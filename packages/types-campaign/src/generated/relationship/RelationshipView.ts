@@ -11,34 +11,32 @@ import type { ViewSessionPoint } from "./ViewSessionPoint";
  * (forward *from the viewed page*) and `predicate_reverse` (back toward it) from
  * the stored undirected pair, and resolves session identities to ordinals.
  */
-export type RelationshipView = {
-  id: RelationshipId;
-  /**
-   * The page at the other end of the edge.
-   */
-  other: RelatedPage;
-  /**
-   * The predicate read forward, from the viewed page toward `other`.
-   */
-  predicate: string;
-  /**
-   * The predicate read back, from `other` toward the viewed page.
-   */
-  predicate_reverse: string;
-  /**
-   * Factuality start.
-   */
-  origin: ViewSessionPoint;
-  /**
-   * Factuality end: the session the fact stopped being true. `None` = still true.
-   */
-  superseded: ViewSessionOrdinal | null;
-  /**
-   * The session a retcon struck the fact. `None` = not retconned.
-   */
-  retcon: ViewSessionOrdinal | null;
-  /**
-   * Knowledge axis.
-   */
-  knowledge: KnowledgeView;
-};
+export type RelationshipView = { id: RelationshipId, 
+/**
+ * The page at the other end of the edge.
+ */
+other: RelatedPage, 
+/**
+ * The predicate read forward, from the viewed page toward `other`.
+ */
+predicate: string, 
+/**
+ * The predicate read back, from `other` toward the viewed page.
+ */
+predicate_reverse: string, 
+/**
+ * Factuality start.
+ */
+origin: ViewSessionPoint, 
+/**
+ * Factuality end: the session the fact stopped being true. `None` = still true.
+ */
+superseded: ViewSessionOrdinal | null, 
+/**
+ * The session a retcon struck the fact. `None` = not retconned.
+ */
+retcon: ViewSessionOrdinal | null, 
+/**
+ * Knowledge axis.
+ */
+knowledge: KnowledgeView, };

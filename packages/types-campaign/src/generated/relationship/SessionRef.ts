@@ -5,4 +5,4 @@ import type { SessionId } from "../id/SessionId";
  * A session by its durable id + curated ordinal, for the as-of pickers. The id is
  * what create/patch send back (ordinals can be renumbered; ids are stable).
  */
-export type SessionRef = { id: SessionId; ordinal: number };
+export type SessionRef = { id: SessionId, ordinal: number, };

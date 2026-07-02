@@ -7,4 +7,4 @@ import type { PageId } from "../id/PageId";
  * Used by CampaignVocabulary, ToC, RelationshipGraph, and anywhere
  * that needs to reference a Page without loading its full document.
  */
-export type PageHandle = { id: PageId; name: string };
+export type PageHandle = { id: PageId, name: string, };

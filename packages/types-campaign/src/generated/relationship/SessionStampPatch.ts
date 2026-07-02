@@ -7,4 +7,4 @@ import type { SessionId } from "../id/SessionId";
  * [`PatchRelationshipRequest`] leaves that axis unchanged; present-and-`Clear` is an
  * explicit un-set. Adjacent tagging per the convention guard.
  */
-export type SessionStampPatch = { kind: "set"; content: SessionId } | { kind: "clear" };
+export type SessionStampPatch = { "kind": "set", "content": SessionId } | { "kind": "clear" };

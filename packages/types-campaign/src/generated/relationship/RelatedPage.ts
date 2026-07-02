@@ -4,4 +4,4 @@ import type { PageId } from "../id/PageId";
 /**
  * The other endpoint of a relationship, as the viewer of one page sees it.
  */
-export type RelatedPage = { id: PageId; name: string };
+export type RelatedPage = { id: PageId, name: string, };

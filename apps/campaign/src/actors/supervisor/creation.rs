@@ -16,10 +16,11 @@ use tokio::sync::oneshot;
 use super::CampaignSupervisor;
 use crate::actors::database_writer::CreatedSession;
 use crate::actors::page::{PageActor, PageActorArgs, PageInit};
-use crate::actors::toc::{AddPageNode, ResolvePageNode};
+use crate::actors::toc::{AddPageNode, ResolvePageNode, SeedTocChild, SeedTocFolder};
 use crate::domain::page::DocumentPageKind;
 use crate::entities::columns::PageKindCol;
 use crate::entities::pages;
+use crate::starter_content::compile::CompiledTemplate;
 
 // ---------------------------------------------------------------------------
 // CreatePage
@@ -141,6 +142,9 @@ impl Message<CreatePage> for CampaignSupervisor {
             name: name.clone(),
             kind: msg.kind,
             status,
+            // A GM-created page starts blank; template seeding uses its own
+            // genesis path with compiled `seed` blocks.
+            seed: Vec::new(),
             reply: reply_tx,
         };
 
@@ -340,5 +344,115 @@ impl Message<CreateSession> for CampaignSupervisor {
         }
 
         Ok(created)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SeedTemplateBundle
+// ---------------------------------------------------------------------------
+
+/// Seed a system's template bundle at wizard completion: create each compiled
+/// template as a `template`-kind Page and nest them under a fresh ToC folder.
+///
+/// The route compiles the bundle (it alone reaches the catalog) and fires this
+/// best-effort; the client is not made to wait, since the seeded folder and pages
+/// reach it through the live ToC broadcast, and a failure self-heals like any
+/// create (an orphaned page re-surfaces at the ToC root on the next checkout).
+/// This reuses the `CreatePage` genesis-spawn shape but replaces the per-page
+/// `AddPageNode` with one `SeedTocFolder` at the end, so the single-writer
+/// invariant still holds: each Page persists its own birth row through its owning
+/// actor; nothing writes a Page's rows around it.
+#[derive(Debug)]
+pub struct SeedTemplateBundle {
+    pub folder_title: String,
+    pub templates: Vec<CompiledTemplate>,
+}
+
+impl Message<SeedTemplateBundle> for CampaignSupervisor {
+    // Best-effort: failures are logged, there is nothing for the caller to act on.
+    type Reply = ();
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, template_count = msg.templates.len()),
+    )]
+    async fn handle(
+        &mut self,
+        msg: SeedTemplateBundle,
+        ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        if msg.templates.is_empty() {
+            return;
+        }
+
+        let (db_reader, db_writer) = {
+            let db = self
+                .db
+                .as_ref()
+                .expect("db must be Some while actor is running");
+            (db.reader().clone(), db.writer().clone())
+        };
+
+        let mut children = Vec::with_capacity(msg.templates.len());
+        for template in msg.templates {
+            let page_id = PageId::generate();
+            // The genesis reply (the committed `pages::Model`) is unused here -- we
+            // already hold everything the ToC node needs -- so drop the receiver;
+            // genesis tolerates a gone receiver (`let _ = reply.send(..)`).
+            let (reply_tx, _) = oneshot::channel();
+            let actor = PageActor::spawn(PageActorArgs {
+                campaign_id: self.campaign_id.clone(),
+                page_id: page_id.clone(),
+                db_reader: db_reader.clone(),
+                db_writer: db_writer.clone(),
+                toc: self.toc.clone(),
+                init: PageInit::NewDocumentPage {
+                    name: template.name.clone(),
+                    kind: DocumentPageKind::Template,
+                    status: Status::GmOnly,
+                    seed: template.blocks,
+                    reply: reply_tx,
+                },
+                debounce_duration: Duration::from_secs(2),
+                idle_timeout: Duration::from_secs(30),
+            });
+            actor.wait_for_startup().await;
+            if !actor.is_alive() {
+                tracing::error!(name = %template.name, "template page genesis failed; skipping");
+                continue;
+            }
+            self.pages.insert(page_id.clone(), actor.clone());
+            // Link after insert so `on_link_died` prunes on idle self-eviction.
+            ctx.actor_ref().clone().link(&actor).await;
+
+            children.push(SeedTocChild {
+                page_id,
+                title: template.name,
+                page_kind: TocPageKind::Template,
+                visibility: Status::GmOnly,
+            });
+        }
+
+        if children.is_empty() {
+            return;
+        }
+
+        // One folder holding the whole bundle; the pages are already persisted, so
+        // a ToC failure just leaves them to re-surface at the root on checkout.
+        if let Err(e) = self
+            .toc
+            .ask(SeedTocFolder {
+                folder_title: msg.folder_title,
+                folder_visibility: Status::GmOnly,
+                children,
+            })
+            .await
+        {
+            tracing::error!(
+                error = %e,
+                "failed to place seeded templates in a toc folder; they self-heal at root on next checkout"
+            );
+        }
     }
 }

@@ -64,7 +64,9 @@ test("create a campaign, edit pages, navigate the ToC, and relate two entities",
   await expect(page.getByTestId("campaign-wizard")).toBeVisible();
   await page.getByTestId("wizard-name-input").fill("The Smoke Test Saga");
   await page.getByTestId("wizard-next").click();
-  // Picking Daggerheart auto-selects its template bundle, so the wizard lets us advance.
+  // Picking Daggerheart auto-selects its template bundle, so the wizard lets us
+  // advance. Sealing the wizard seeds that bundle as template pages under a
+  // "Templates" ToC folder; the harness's SQLite assertion checks they persisted.
   await page.getByTestId("system-card-daggerheart").click();
   await page.getByTestId("wizard-next").click();
   // Privacy: both choices are required before Continue enables.

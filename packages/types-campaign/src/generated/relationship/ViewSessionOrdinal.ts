@@ -5,10 +5,9 @@
  * for the session-only axes (superseded / retcon / reveal) and inside
  * [`ViewSessionPoint::Session`].
  */
-export type ViewSessionOrdinal = {
-  /**
-   * "Session N". Serialized as a JSON number (counts are small); `#[ts(type)]`
-   * keeps the TS type `number` rather than ts-rs's default `bigint` for `i64`.
-   */
-  ordinal: number;
-};
+export type ViewSessionOrdinal = { 
+/**
+ * "Session N". Serialized as a JSON number (counts are small); `#[ts(type)]`
+ * keeps the TS type `number` rather than ts-rs's default `bigint` for `i64`.
+ */
+ordinal: number, };

@@ -7,11 +7,8 @@ import type { Status } from "./Status";
  * from. A template never clones from another template, so it carries no
  * `from_template_id`. `name` is required.
  */
-export type CreateTemplateBody = {
-  name: string;
-  status: Status | null;
-  /**
-   * Parent Page to nest under in the table of contents. `None` => ToC root.
-   */
-  parent: PageId | null;
-};
+export type CreateTemplateBody = { name: string, status: Status | null, 
+/**
+ * Parent Page to nest under in the table of contents. `None` => ToC root.
+ */
+parent: PageId | null, };

@@ -7,7 +7,4 @@ import type { ViewSessionOrdinal } from "./ViewSessionOrdinal";
  * `Knowledge` sum; the secret bit is implicit in the variant (`Public` = not secret,
  * the others secret). Adjacent tagging per the convention guard.
  */
-export type KnowledgeView =
-  | { kind: "public" }
-  | { kind: "hidden" }
-  | { kind: "revealed"; content: ViewSessionOrdinal };
+export type KnowledgeView = { "kind": "public" } | { "kind": "hidden" } | { "kind": "revealed", "content": ViewSessionOrdinal };

@@ -7,4 +7,4 @@
  * retry of the same logical create call returns the same `CampaignId`
  * rather than allocating a new one.
  */
-export type CreateCampaignRequest = { idempotency_token: string };
+export type CreateCampaignRequest = { idempotency_token: string, };

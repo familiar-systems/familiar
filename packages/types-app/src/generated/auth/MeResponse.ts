@@ -6,4 +6,4 @@ import type { UserId } from "../id/UserId";
  *
  * `id` is the Hanko subject (= `users.id`).
  */
-export type MeResponse = { id: UserId; email: string };
+export type MeResponse = { id: UserId, email: string, };

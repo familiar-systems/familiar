@@ -10,11 +10,8 @@ import type { Status } from "./Status";
  * sessions ("The End of Perth"). The client renders `Session {ordinal}: {name}`
  * from the response's `ordinal` and `name`.
  */
-export type CreateSessionBody = {
-  name: string;
-  status: Status | null;
-  /**
-   * Parent to nest under in the table of contents. `None` => ToC root.
-   */
-  parent: PageId | null;
-};
+export type CreateSessionBody = { name: string, status: Status | null, 
+/**
+ * Parent to nest under in the table of contents. `None` => ToC root.
+ */
+parent: PageId | null, };

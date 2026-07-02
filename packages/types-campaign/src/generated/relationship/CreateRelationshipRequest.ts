@@ -12,22 +12,17 @@ import type { OriginInput } from "./OriginInput";
  * the same transaction at this create's origin session (so `origin` must be a
  * session, not `Prior`, when `supersedes` is set).
  */
-export type CreateRelationshipRequest = {
-  subject_page_id: PageId;
-  other_page_id: PageId;
-  /**
-   * Reads subject -> other.
-   */
-  predicate_forward: string;
-  /**
-   * Reads other -> subject.
-   */
-  predicate_reverse: string;
-  origin: OriginInput;
-  knowledge: KnowledgeInput;
-  /**
-   * The live relationship this one replaces, ended atomically. `None` for a
-   * plain create.
-   */
-  supersedes: RelationshipId | null;
-};
+export type CreateRelationshipRequest = { subject_page_id: PageId, other_page_id: PageId, 
+/**
+ * Reads subject -> other.
+ */
+predicate_forward: string, 
+/**
+ * Reads other -> subject.
+ */
+predicate_reverse: string, origin: OriginInput, knowledge: KnowledgeInput, 
+/**
+ * The live relationship this one replaces, ended atomically. `None` for a
+ * plain create.
+ */
+supersedes: RelationshipId | null, };

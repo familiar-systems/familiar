@@ -372,6 +372,87 @@ impl Message<AddPageNode> for TocActor {
     }
 }
 
+/// A page to place under the folder created by [`SeedTocFolder`].
+#[derive(Debug, Clone)]
+pub struct SeedTocChild {
+    pub page_id: PageId,
+    pub title: String,
+    pub page_kind: TocPageKind,
+    pub visibility: Status,
+}
+
+/// Server-initiated: create a folder at the ToC root and place a batch of pages
+/// under it in one shot. Used by template-bundle seeding at campaign creation.
+///
+/// The folder's `TreeID` never leaves the actor, so `AddPageNode`'s `parent`
+/// stays a `PageId` (a folder has none) rather than growing a folder-addressing
+/// variant for this one caller. Best-effort like [`AddPageNode`]: a failure
+/// leaves the already-persisted pages to re-surface at the root on the next
+/// checkout (the folder itself isn't persisted until the debounce flush, so a
+/// mid-batch failure simply doesn't schedule one).
+#[derive(Debug, Clone)]
+pub struct SeedTocFolder {
+    pub folder_title: String,
+    pub folder_visibility: Status,
+    pub children: Vec<SeedTocChild>,
+}
+
+impl Message<SeedTocFolder> for TocActor {
+    // `ask`-invoked and best-effort, like `AddPageNode`: a typed `Err` returns
+    // through the reply channel (not `on_panic`), so the seeder logs and the ToC
+    // self-heals on checkout.
+    type Reply = Result<(), DocError>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, child_count = msg.children.len()),
+    )]
+    async fn handle(
+        &mut self,
+        msg: SeedTocFolder,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let folder = TocEntry::Folder {
+            title: msg.folder_title,
+            visibility: msg.folder_visibility,
+            suggestions: Vec::new(),
+        };
+        let (folder_delta, folder_tree) = self.doc_room.doc_mut().add_entry(None, &folder)?;
+
+        let mut deltas = Vec::with_capacity(msg.children.len() + 1);
+        deltas.push(folder_delta);
+        for child in msg.children {
+            let entry = TocEntry::Page {
+                title: child.title,
+                page_id: child.page_id.clone(),
+                page_kind: child.page_kind,
+                visibility: child.visibility,
+                suggestions: Vec::new(),
+            };
+            let (delta, _) = self
+                .doc_room
+                .doc_mut()
+                .add_entry(Some(folder_tree), &entry)?;
+            deltas.push(delta);
+            // Track each new Page so `snapshot_toc` keeps its node instead of
+            // dropping it as a dangling reference on the next flush.
+            self.known_pages.insert(child.page_id);
+        }
+
+        let frames = encode_broadcast(
+            loro_protocol::CrdtType::Loro,
+            "toc",
+            &deltas,
+            &self.fragmenter,
+        );
+        self.doc_room.fan_out(&frames, None);
+
+        self.persist
+            .schedule(&self.self_ref, self.debounce_duration);
+        Ok(())
+    }
+}
+
 /// Whenever a [`PageActor`](crate::actors::page::PageActor) changes any of these
 /// fields, the ToC receives the update on a best-effort basis and broadcasts it
 /// to all clients.

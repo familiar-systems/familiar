@@ -5,20 +5,16 @@ import type { Status } from "./Status";
 /**
  * A created `entity` page.
  */
-export type EntityResponse = {
-  id: PageId;
-  name: string;
-  status: Status;
-  /**
-   * Lineage: the template this entity was cloned from, if any.
-   */
-  template_id: PageId | null;
-  /**
-   * RFC 3339 timestamp.
-   */
-  created_at: string;
-  /**
-   * RFC 3339 timestamp.
-   */
-  updated_at: string;
-};
+export type EntityResponse = { id: PageId, name: string, status: Status, 
+/**
+ * Lineage: the template this entity was cloned from, if any.
+ */
+template_id: PageId | null, 
+/**
+ * RFC 3339 timestamp.
+ */
+created_at: string, 
+/**
+ * RFC 3339 timestamp.
+ */
+updated_at: string, };
