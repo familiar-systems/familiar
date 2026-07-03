@@ -272,14 +272,15 @@ async fn update_page_node_refreshes_title_and_persists_only_on_visibility() {
     toc.wait_for_shutdown_with_result(|_| ()).await;
 }
 
-// -- Actor: SeedTocFolder --
+// -- Actor: CreateFolder + AddPageNode nesting --
 
-/// Template-bundle seeding: one folder at the root with the bundle's template
-/// pages nested under it, persisted in a single snapshot. Proves the folder
-/// gets a stable row id, each child is tracked in `known_pages` (so it survives
-/// `snapshot_toc`), and each child's `parent_id` points at the folder.
+/// The primitive composition behind template-bundle seeding: `CreateFolder` at the
+/// root, then an `AddPageNode` per page under the returned handle, persisted in a
+/// single snapshot. Proves the folder gets a stable row id, each child is tracked
+/// in `known_pages` (so it survives `snapshot_toc`), and each child's `parent_id`
+/// points at the folder.
 #[tokio::test]
-async fn seed_toc_folder_nests_pages_under_a_persisted_folder() {
+async fn create_folder_then_nest_pages_persists_the_tree() {
     use crate::actors::database_writer::{DatabaseWriteActor, DatabaseWriteActorArgs, Ping};
     use crate::db;
     use crate::migrations::Migrator;
@@ -323,22 +324,31 @@ async fn seed_toc_folder_nests_pages_under_a_persisted_folder() {
         .insert(&conn)
         .await
         .unwrap();
-        children.push(SeedTocChild {
+        children.push((page_id, name.to_string()));
+    }
+    let child_ids: Vec<PageId> = children.iter().map(|(id, _)| id.clone()).collect();
+
+    // Create the folder, then nest each page under the returned handle -- exactly
+    // what the supervisor's `SeedTemplateBundle` orchestrates.
+    let folder = toc
+        .ask(CreateFolder {
+            title: "Templates".into(),
+            visibility: Status::GmOnly,
+            parent: None,
+        })
+        .await
+        .expect("create folder");
+    for (page_id, title) in children {
+        toc.ask(AddPageNode {
             page_id,
-            title: name.into(),
+            title,
             page_kind: TocPageKind::Template,
             visibility: Status::GmOnly,
-        });
+            parent: Some(folder),
+        })
+        .await
+        .expect("nest page under folder");
     }
-    let child_ids: Vec<PageId> = children.iter().map(|c| c.page_id.clone()).collect();
-
-    toc.ask(SeedTocFolder {
-        folder_title: "Templates".into(),
-        folder_visibility: Status::GmOnly,
-        children,
-    })
-    .await
-    .expect("seed toc folder");
 
     toc.stop_gracefully().await.unwrap();
     toc.wait_for_shutdown_with_result(|_| ()).await;

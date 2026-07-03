@@ -16,7 +16,7 @@ use tokio::sync::oneshot;
 use super::CampaignSupervisor;
 use crate::actors::database_writer::CreatedSession;
 use crate::actors::page::{PageActor, PageActorArgs, PageInit};
-use crate::actors::toc::{AddPageNode, ResolvePageNode, SeedTocChild, SeedTocFolder};
+use crate::actors::toc::{AddPageNode, CreateFolder, ResolvePageNode};
 use crate::domain::page::DocumentPageKind;
 use crate::entities::columns::PageKindCol;
 use crate::entities::pages;
@@ -103,18 +103,19 @@ impl Message<CreatePage> for CampaignSupervisor {
             return Err(CreatePageError::EmptyName);
         }
 
-        // Validate placement before any write.
-        // Bad parent fails cleanly with nothing persisted.
-        if let Some(parent) = &msg.parent {
-            match self.toc.ask(ResolvePageNode(parent.clone())).await {
-                Ok(Some(_)) => {}
+        // Resolve placement before any write, keeping the handle we pass to
+        // `AddPageNode` below. Bad parent fails cleanly with nothing persisted.
+        let parent_node = match &msg.parent {
+            None => None,
+            Some(parent) => match self.toc.ask(ResolvePageNode(parent.clone())).await {
+                Ok(Some(handle)) => Some(handle),
                 Ok(None) => return Err(CreatePageError::ParentNotFound),
                 Err(e) => {
                     tracing::error!(error = %e, "toc unavailable while resolving parent");
                     return Err(CreatePageError::ActorUnavailable);
                 }
-            }
-        }
+            },
+        };
 
         let status = msg.status.unwrap_or(Status::GmOnly);
         let kind = PageKind::from(msg.kind);
@@ -182,7 +183,7 @@ impl Message<CreatePage> for CampaignSupervisor {
                 // Entity or Template here (Session has its own path).
                 page_kind: toc_page_kind,
                 visibility: status,
-                parent: msg.parent.clone(),
+                parent: parent_node,
             })
             .await
         {
@@ -258,17 +259,19 @@ impl Message<CreateSession> for CampaignSupervisor {
             return Err(CreateSessionError::EmptyName);
         }
 
-        // Validate placement before any write. Bad parent fails cleanly.
-        if let Some(parent) = &msg.parent {
-            match self.toc.ask(ResolvePageNode(parent.clone())).await {
-                Ok(Some(_)) => {}
+        // Resolve placement before any write, keeping the handle for `AddPageNode`
+        // below. Bad parent fails cleanly.
+        let parent_node = match &msg.parent {
+            None => None,
+            Some(parent) => match self.toc.ask(ResolvePageNode(parent.clone())).await {
+                Ok(Some(handle)) => Some(handle),
                 Ok(None) => return Err(CreateSessionError::ParentNotFound),
                 Err(e) => {
                     tracing::error!(error = %e, "toc unavailable while resolving parent");
                     return Err(CreateSessionError::ActorUnavailable);
                 }
-            }
-        }
+            },
+        };
 
         let status = msg.status.unwrap_or(Status::GmOnly);
 
@@ -333,7 +336,7 @@ impl Message<CreateSession> for CampaignSupervisor {
                     ordinal: created.session.ordinal,
                 },
                 visibility: status,
-                parent: msg.parent.clone(),
+                parent: parent_node,
             })
             .await
         {
@@ -358,10 +361,10 @@ impl Message<CreateSession> for CampaignSupervisor {
 /// best-effort; the client is not made to wait, since the seeded folder and pages
 /// reach it through the live ToC broadcast, and a failure self-heals like any
 /// create (an orphaned page re-surfaces at the ToC root on the next checkout).
-/// This reuses the `CreatePage` genesis-spawn shape but replaces the per-page
-/// `AddPageNode` with one `SeedTocFolder` at the end, so the single-writer
-/// invariant still holds: each Page persists its own birth row through its owning
-/// actor; nothing writes a Page's rows around it.
+/// It reuses the `CreatePage` genesis-spawn shape, then composes ToC primitives -
+/// one `CreateFolder`, then an `AddPageNode` per page under that folder - so the
+/// single-writer invariant still holds: each Page persists its own birth row
+/// through its owning actor; nothing writes a Page's rows around it.
 #[derive(Debug)]
 pub struct SeedTemplateBundle {
     pub folder_title: String,
@@ -394,7 +397,9 @@ impl Message<SeedTemplateBundle> for CampaignSupervisor {
             (db.reader().clone(), db.writer().clone())
         };
 
-        let mut children = Vec::with_capacity(msg.templates.len());
+        // Genesis each template through its owning actor, collecting the survivors
+        // to place in the ToC once the folder exists.
+        let mut placed: Vec<(PageId, String)> = Vec::with_capacity(msg.templates.len());
         for template in msg.templates {
             let page_id = PageId::generate();
             // The genesis reply (the committed `pages::Model`) is unused here -- we
@@ -426,33 +431,52 @@ impl Message<SeedTemplateBundle> for CampaignSupervisor {
             // Link after insert so `on_link_died` prunes on idle self-eviction.
             ctx.actor_ref().clone().link(&actor).await;
 
-            children.push(SeedTocChild {
-                page_id,
-                title: template.name,
-                page_kind: TocPageKind::Template,
-                visibility: Status::GmOnly,
-            });
+            placed.push((page_id, template.name));
         }
 
-        if children.is_empty() {
+        if placed.is_empty() {
             return;
         }
 
-        // One folder holding the whole bundle; the pages are already persisted, so
-        // a ToC failure just leaves them to re-surface at the root on checkout.
-        if let Err(e) = self
+        // Create the bundle's folder, then nest each page under it. On a folder
+        // failure the pages fall back to the root (`parent: None`); either way they
+        // are already persisted and re-surface on checkout if a ToC write is lost.
+        let folder = match self
             .toc
-            .ask(SeedTocFolder {
-                folder_title: msg.folder_title,
-                folder_visibility: Status::GmOnly,
-                children,
+            .ask(CreateFolder {
+                title: msg.folder_title,
+                visibility: Status::GmOnly,
+                parent: None,
             })
             .await
         {
-            tracing::error!(
-                error = %e,
-                "failed to place seeded templates in a toc folder; they self-heal at root on next checkout"
-            );
+            Ok(handle) => Some(handle),
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "failed to create the template folder; placing pages at the root"
+                );
+                None
+            }
+        };
+
+        for (page_id, title) in placed {
+            if let Err(e) = self
+                .toc
+                .ask(AddPageNode {
+                    page_id,
+                    title,
+                    page_kind: TocPageKind::Template,
+                    visibility: Status::GmOnly,
+                    parent: folder,
+                })
+                .await
+            {
+                tracing::error!(
+                    error = %e,
+                    "failed to place a seeded template in the toc; it self-heals at root on next checkout"
+                );
+            }
         }
     }
 }
