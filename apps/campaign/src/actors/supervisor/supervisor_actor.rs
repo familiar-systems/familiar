@@ -176,6 +176,7 @@ impl Actor for CampaignSupervisor {
                         status: Some(Status::Known),
                         parent: None,
                         kind: DocumentPageKind::Entity,
+                        from_template_id: None,
                     })
                     .await
                 {

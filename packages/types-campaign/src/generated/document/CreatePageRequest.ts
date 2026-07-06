@@ -11,4 +11,7 @@ import type { CreateTemplateBody } from "./CreateTemplateBody";
  * `parent` places the Page in the table of contents: omitted appends it at the
  * ToC root; `Some(id)` nests it as the last child of that Page's ToC node.
  */
-export type CreatePageRequest = { "kind": "entity", "content": CreateEntityBody } | { "kind": "template", "content": CreateTemplateBody } | { "kind": "session", "content": CreateSessionBody };
+export type CreatePageRequest =
+  | { kind: "entity"; content: CreateEntityBody }
+  | { kind: "template"; content: CreateTemplateBody }
+  | { kind: "session"; content: CreateSessionBody };

@@ -4,22 +4,23 @@
 
 use std::time::{Duration, Instant};
 
-use familiar_systems_campaign_shared::id::PageId;
+use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::loro::page::Section;
 use familiar_systems_campaign_shared::loro::toc::TocPageKind;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use kameo::actor::Spawn;
 use kameo::message::{Context, Message};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use tokio::sync::oneshot;
 
 use super::CampaignSupervisor;
 use crate::actors::database_writer::CreatedSession;
 use crate::actors::page::{PageActor, PageActorArgs, PageInit};
 use crate::actors::toc::{AddPageNode, CreateFolder, ResolvePageNode};
-use crate::domain::page::DocumentPageKind;
-use crate::entities::columns::PageKindCol;
-use crate::entities::pages;
+use crate::domain::page::{DocumentPageKind, clone_template_blocks};
+use crate::entities::columns::{PageIdCol, PageKindCol};
+use crate::entities::{blocks, pages};
 use crate::starter_content::compile::CompiledTemplate;
 
 // ---------------------------------------------------------------------------
@@ -43,6 +44,11 @@ pub struct CreatePage {
     pub parent: Option<PageId>,
     /// Which document-page kind to genesis (`Entity` or `Template`).
     pub kind: DocumentPageKind,
+    /// Clone this template's blocks into the new page and record it as
+    /// `template_id` lineage. `Some` only on the entity path (the route rejects a
+    /// clone request on any other kind); an id that is not a live template page
+    /// fails with [`CreatePageError::InvalidTemplate`].
+    pub from_template_id: Option<PageId>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -53,6 +59,8 @@ pub enum CreatePageError {
     EmptyName,
     #[error("a {0:?} page named {1:?} already exists")]
     NameTaken(PageKind, String),
+    #[error("from_template_id does not reference an existing template")]
+    InvalidTemplate,
     #[error("page genesis failed")]
     Genesis,
     #[error("a child actor was unavailable")]
@@ -133,6 +141,37 @@ impl Message<CreatePage> for CampaignSupervisor {
             return Err(CreatePageError::NameTaken(kind, name));
         }
 
+        // Cloning from a template: validate it, then deep-copy its blocks into the
+        // seed. This is a *read* of the template (via the reader pool, like the
+        // name check above) - the owning-actor invariant governs writes, and the
+        // new page's rows are still written by its own genesis below. A blank page
+        // seeds nothing and carries no lineage.
+        let (seed, template_id) = match &msg.from_template_id {
+            None => (Vec::new(), None),
+            Some(template_id) => {
+                let template = pages::Entity::find_by_id(PageIdCol::from(template_id.clone()))
+                    .one(&db_reader)
+                    .await?;
+                match template {
+                    Some(p) if PageKind::from(p.kind) == PageKind::Template => {}
+                    _ => return Err(CreatePageError::InvalidTemplate),
+                }
+                let block_rows = blocks::Entity::find()
+                    .filter(blocks::Column::PageId.eq(PageIdCol::from(template_id.clone())))
+                    .order_by_asc(blocks::Column::Section)
+                    .order_by_asc(blocks::Column::Ordering)
+                    .all(&db_reader)
+                    .await?;
+                let seed = clone_template_blocks(
+                    block_rows
+                        .into_iter()
+                        .map(|b| (Section::from(b.section), b.content, b.status.into())),
+                    BlockId::generate,
+                );
+                (seed, Some(template_id.clone()))
+            }
+        };
+
         // `DocumentPageKind::toc_page_kind` owns the kind -> ToC-node map, so this
         // path no longer restates it; document pages carry no ordinal.
         let toc_page_kind = msg.kind.toc_page_kind();
@@ -143,9 +182,8 @@ impl Message<CreatePage> for CampaignSupervisor {
             name: name.clone(),
             kind: msg.kind,
             status,
-            // A GM-created page starts blank; template seeding uses its own
-            // genesis path with compiled `seed` blocks.
-            seed: Vec::new(),
+            seed,
+            template_id,
             reply: reply_tx,
         };
 
@@ -417,6 +455,8 @@ impl Message<SeedTemplateBundle> for CampaignSupervisor {
                     kind: DocumentPageKind::Template,
                     status: Status::GmOnly,
                     seed: template.blocks,
+                    // A template page is the lineage root, not a clone of one.
+                    template_id: None,
                     reply: reply_tx,
                 },
                 debounce_duration: Duration::from_secs(2),

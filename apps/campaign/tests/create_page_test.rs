@@ -2,8 +2,13 @@ mod common;
 
 use familiar_systems_app_shared::id::CampaignId;
 use familiar_systems_campaign::actors::registry::{CreateCampaign, resolve};
-use familiar_systems_campaign_shared::id::PageId;
+use familiar_systems_campaign::db::connect_readonly;
+use familiar_systems_campaign::entities::blocks;
+use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::loro::page::Section;
+use sea_orm::{DatabaseConnection, EntityTrait};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::time::Duration;
 use wiremock::{
     Mock, ResponseTemplate,
@@ -254,25 +259,151 @@ async fn create_page_unknown_campaign_returns_404() {
     assert_eq!(resp.status().as_u16(), 404);
 }
 
+/// Read a page's persisted blocks straight from the campaign SQLite. Genesis
+/// commits synchronously before its HTTP 201, so a create's rows are readable the
+/// instant it returns - no flush needed.
+async fn page_blocks(db: &DatabaseConnection, page_id: &str) -> Vec<blocks::Model> {
+    blocks::Entity::find()
+        .all(db)
+        .await
+        .expect("query blocks")
+        .into_iter()
+        .filter(|b| PageId::from(b.page_id.clone()).to_string() == page_id)
+        .collect()
+}
+
+/// Cloning an entity from a template deep-copies the template's blocks with fresh
+/// ids and stamps the lineage. A template made via `POST` carries the two seeded
+/// (preamble + body) paragraphs, so the clone must carry two too, all new ids.
 #[tokio::test]
-async fn create_page_from_template_returns_501() {
+async fn create_entity_from_template_clones_blocks_with_fresh_ids() {
     let app = common::spawn_app().await;
     let campaign_id = CampaignId::generate();
     create_campaign(&app, &campaign_id).await;
+    mount_membership(&app, &campaign_id, "gm").await;
 
-    // `from_template_id` (entity clone) is refused before any other work, so no
-    // membership mock is needed.
-    let resp = reqwest::Client::new()
-        .post(format!("{}/campaign/{}/pages", app.base_url, campaign_id.0))
+    let client = reqwest::Client::new();
+    let url = format!("{}/campaign/{}/pages", app.base_url, campaign_id.0);
+
+    // A template to clone from.
+    let tmpl: Value = client
+        .post(&url)
+        .header("authorization", app.auth_header())
+        .json(&json!({ "kind": "template", "content": { "name": "NPC" } }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let template_id = tmpl["content"]["id"].as_str().unwrap().to_string();
+
+    // Clone it into an entity.
+    let resp = client
+        .post(&url)
         .header("authorization", app.auth_header())
         .json(&json!({
             "kind": "entity",
-            "content": { "name": "From Template", "from_template_id": PageId::generate().to_string() }
+            "content": { "name": "Grimhollow", "from_template_id": template_id }
         }))
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 501);
+    assert_eq!(resp.status().as_u16(), 201);
+    let entity: Value = resp.json().await.unwrap();
+    assert_eq!(
+        entity["content"]["template_id"], template_id,
+        "the response echoes the cloned-from lineage"
+    );
+    let entity_id = entity["content"]["id"].as_str().unwrap().to_string();
+
+    let db_path = app.data_dir.path().join(format!("{}.db", campaign_id.0));
+    let db = connect_readonly(&db_path).await.expect("open campaign db");
+    let template_blocks = page_blocks(&db, &template_id).await;
+    let entity_blocks = page_blocks(&db, &entity_id).await;
+
+    assert!(
+        !template_blocks.is_empty(),
+        "the template has seeded blocks to clone"
+    );
+    assert_eq!(
+        entity_blocks.len(),
+        template_blocks.len(),
+        "the clone has one block per template block"
+    );
+
+    // Sections carry over (as a multiset).
+    let sections = |bs: &[blocks::Model]| {
+        let mut s: Vec<Section> = bs.iter().map(|b| Section::from(b.section)).collect();
+        s.sort_by_key(|s| s.as_str());
+        s
+    };
+    assert_eq!(
+        sections(&entity_blocks),
+        sections(&template_blocks),
+        "cloned blocks keep their sections"
+    );
+
+    // Every cloned block id is fresh: none collides with a template block id.
+    let template_ids: HashSet<BlockId> = template_blocks
+        .iter()
+        .map(|b| BlockId::from(b.id.clone()))
+        .collect();
+    assert!(
+        entity_blocks
+            .iter()
+            .all(|b| !template_ids.contains(&BlockId::from(b.id.clone()))),
+        "cloned block ids are freshly minted, never shared with the template"
+    );
+}
+
+/// `from_template_id` must reference a real template. A random id (no such page)
+/// and a real *non-template* page id both fail with 422.
+#[tokio::test]
+async fn cloning_from_a_non_template_returns_422() {
+    let app = common::spawn_app().await;
+    let campaign_id = CampaignId::generate();
+    create_campaign(&app, &campaign_id).await;
+    mount_membership(&app, &campaign_id, "gm").await;
+
+    let client = reqwest::Client::new();
+    let url = format!("{}/campaign/{}/pages", app.base_url, campaign_id.0);
+
+    // Unknown id.
+    assert_eq!(
+        post_page(
+            &app,
+            &campaign_id,
+            json!({ "kind": "entity", "content": { "name": "Ghost", "from_template_id": PageId::generate().to_string() } }),
+        )
+        .await,
+        422,
+        "an unknown from_template_id is rejected"
+    );
+
+    // A real page that is an entity, not a template.
+    let entity: Value = client
+        .post(&url)
+        .header("authorization", app.auth_header())
+        .json(&json!({ "kind": "entity", "content": { "name": "Not A Template" } }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let entity_id = entity["content"]["id"].as_str().unwrap().to_string();
+
+    assert_eq!(
+        post_page(
+            &app,
+            &campaign_id,
+            json!({ "kind": "entity", "content": { "name": "Cloned", "from_template_id": entity_id } }),
+        )
+        .await,
+        422,
+        "cloning from a non-template page is rejected"
+    );
 }
 
 #[tokio::test]

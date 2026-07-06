@@ -20,7 +20,10 @@
 //!   - the picked system's template bundle seeded: the spec chooses Daggerheart,
 //!     whose bundle must land as `template`-kind pages ("NPC", "Player Character")
 //!     nested under a "Templates" ToC folder, with a `<player_visible>` block's
-//!     visibility surviving genesis - the wizard-completion seeding path end to end.
+//!     visibility surviving genesis - the wizard-completion seeding path end to end, and
+//!   - the spec clones the NPC template into an entity: exactly one `entity` page
+//!     carries a `template_id` pointing at a real `template` page, and its blocks
+//!     are freshly minted (no id shared with the template) - the clone path end to end.
 //!
 //! It deliberately reuses the campaign crate's own `db` helpers and sea-orm
 //! entities rather than a separate SQLite reader: same driver/WAL semantics the
@@ -33,12 +36,14 @@
 use std::path::PathBuf;
 use std::process::exit;
 
+use std::collections::HashSet;
+
 use familiar_systems_campaign::db::{connect_readonly, register_sqlite_vec};
 use familiar_systems_campaign::entities::{blocks, pages, relationships, toc_entries};
-use familiar_systems_campaign_shared::id::PageId;
+use familiar_systems_campaign_shared::id::{BlockId, PageId};
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 
 const MIN_PAGES: u64 = 2;
 const MIN_BODY_BLOCKS_PER_PAGE: u64 = 2;
@@ -234,6 +239,67 @@ async fn main() {
         }
     }
 
+    // --- Template instantiation: the spec clones the NPC template into an entity.
+    // The clone must carry the template's lineage and freshly minted block ids
+    // (never the template's own ids - a shared id would mean two pages collide). ---
+    let cloned: Vec<&pages::Model> = all_pages
+        .iter()
+        .filter(|p| PageKind::from(p.kind) == PageKind::Entity && p.template_id.is_some())
+        .collect();
+    match cloned.as_slice() {
+        [] => failures.push(
+            "expected one entity cloned from a template (kind=entity with template_id set)"
+                .to_string(),
+        ),
+        [entity] => {
+            let lineage = entity
+                .template_id
+                .clone()
+                .map(PageId::from)
+                .expect("filtered to template_id.is_some() just above");
+            match all_pages
+                .iter()
+                .find(|p| PageId::from(p.id.clone()) == lineage)
+            {
+                None => failures.push(format!(
+                    "cloned entity {:?} points at template_id {lineage:?} that is not a page",
+                    entity.name
+                )),
+                Some(t) if PageKind::from(t.kind) != PageKind::Template => failures.push(format!(
+                    "cloned entity {:?} lineage {:?} is not a template",
+                    entity.name, t.name
+                )),
+                Some(t) => {
+                    let entity_blocks = block_ids(&db, entity).await;
+                    let template_blocks = block_ids(&db, t).await;
+                    println!(
+                        "cloned entity {:?} from template {:?}: {} blocks",
+                        entity.name,
+                        t.name,
+                        entity_blocks.len()
+                    );
+                    if entity_blocks.is_empty() {
+                        failures.push(format!("cloned entity {:?} has no blocks", entity.name));
+                    }
+                    if entity_blocks
+                        .intersection(&template_blocks)
+                        .next()
+                        .is_some()
+                    {
+                        failures.push(format!(
+                            "cloned entity {:?} shares block ids with template {:?}; clones must mint fresh ids",
+                            entity.name, t.name
+                        ));
+                    }
+                }
+            }
+        }
+        many => failures.push(format!(
+            "expected exactly one cloned entity, found {}",
+            many.len()
+        )),
+    }
+
     if failures.is_empty() {
         println!(
             "OK: {page_count} pages, each with >= {MIN_BODY_BLOCKS_PER_PAGE} body blocks, one renamed to {RENAMED_PAGE:?}, one live concealed relationship with {REL_PREDICATES:?}, and the {EXPECTED_TEMPLATES:?} template bundle seeded under {TEMPLATES_FOLDER:?}"
@@ -244,6 +310,19 @@ async fn main() {
         eprintln!("FAIL: {f}");
     }
     exit(1);
+}
+
+/// The set of block ids persisted for a page. Used to prove a clone's ids are
+/// disjoint from its template's.
+async fn block_ids(db: &DatabaseConnection, page: &pages::Model) -> HashSet<BlockId> {
+    blocks::Entity::find()
+        .filter(blocks::Column::PageId.eq(page.id.clone()))
+        .all(db)
+        .await
+        .unwrap_or_else(|e| fatal(&format!("query blocks for {:?} failed: {e}", page.name)))
+        .into_iter()
+        .map(|b| BlockId::from(b.id))
+        .collect()
 }
 
 fn fatal(msg: &str) -> ! {

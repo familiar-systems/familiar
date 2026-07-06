@@ -215,6 +215,7 @@ async fn evicted_page_actor_is_pruned_from_map() {
             status: Some(Status::GmOnly),
             parent: None,
             kind: DocumentPageKind::Entity,
+            from_template_id: None,
         })
         .await
         .unwrap();
@@ -424,6 +425,7 @@ async fn create_page_rejects_empty_name() {
                 status: Some(Status::GmOnly),
                 parent: None,
                 kind: DocumentPageKind::Entity,
+                from_template_id: None,
             })
             .await
             .expect_err("empty name must be rejected");

@@ -20,13 +20,14 @@ export type CreatePage = (
   kind: PageKind,
   name: string | null,
   parent: PageId | null,
+  fromTemplateId: PageId | null,
 ) => Promise<void>;
 
 export function useCreatePage(campaignId: CampaignId): CreatePage {
   const navigate = useNavigate();
   return useCallback<CreatePage>(
-    async (kind, name, parent) => {
-      const pageId = await createByKind(campaignId, kind, name, parent);
+    async (kind, name, parent, fromTemplateId) => {
+      const pageId = await createByKind(campaignId, kind, name, parent, fromTemplateId);
       await navigate({
         to: "/c/$campaignId/p/$pageId",
         params: { campaignId, pageId },
@@ -46,10 +47,11 @@ export async function createByKind(
   kind: PageKind,
   name: string | null,
   parent: PageId | null,
+  fromTemplateId: PageId | null,
 ): Promise<PageId> {
   const { data, response } = await campaignClient.POST("/campaign/{id}/pages", {
     params: { path: { id: campaignId } },
-    body: bodyFor(kind, name, parent),
+    body: bodyFor(kind, name, parent, fromTemplateId),
   });
   if (!response.ok || data === undefined) {
     throw new Error(`Failed to create ${kind} (${response.status}).`);
@@ -65,15 +67,20 @@ export async function createByKind(
 // Compose the kind-tagged request body. Exhaustive over PageKind: a new variant
 // trips the `never` arm at compile time, mirroring the Rust `match`. Each kind
 // carries only the fields it actually has.
-function bodyFor(kind: PageKind, name: string | null, parent: PageId | null): CreatePageRequest {
+function bodyFor(
+  kind: PageKind,
+  name: string | null,
+  parent: PageId | null,
+  fromTemplateId: PageId | null,
+): CreatePageRequest {
   switch (kind) {
     case "entity":
       // Entity names are required; the modal gates an empty submit, so `name` is
-      // a real string here. Cloning from a template is unbuilt (from_template_id
-      // null; a value yields 501).
+      // a real string here. `fromTemplateId` (set only by the "Base on template"
+      // selector) clones that template's blocks server-side; null = a blank entity.
       return {
         kind: "entity",
-        content: { name: name ?? "", status: null, parent, from_template_id: null },
+        content: { name: name ?? "", status: null, parent, from_template_id: fromTemplateId },
       };
     case "template":
       // A template is named too (the modal gates it) and never clones from

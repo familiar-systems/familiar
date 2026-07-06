@@ -140,6 +140,28 @@ export function findTocPageEntry(nodes: TocTreeNode[], pageId: PageId): TocPageE
   return null;
 }
 
+/** A template page offered as a clone source in the New-entity modal. */
+export interface TemplateChoice {
+  pageId: PageId;
+  name: string;
+}
+
+/**
+ * Collect every template page in the tree (`pageKind.kind === "template"`),
+ * wherever it sits, in the tree's pre-order (the sidebar's order). Feeds the
+ * "Base on template" selector; empty when the campaign has no templates.
+ */
+export function collectTemplates(nodes: TocTreeNode[]): TemplateChoice[] {
+  const out: TemplateChoice[] = [];
+  for (const node of nodes) {
+    if (node.entry.kind === "page" && node.entry.pageKind.kind === "template") {
+      out.push({ pageId: node.entry.pageId, name: node.entry.title });
+    }
+    out.push(...collectTemplates(node.children));
+  }
+  return out;
+}
+
 /**
  * Move `node` to be the child of `parent` (or a root when `parent` is null) at
  * `index` among its siblings, then commit so the LoroAdaptor broadcasts the delta.

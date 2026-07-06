@@ -194,7 +194,7 @@ export const Navigates: Story = {
 
 // Clicking a page row's "Add sub-page" fires onAddChild with that page's id.
 // This is the seam the New-menu modal hangs off: TocSidebar turns the call into
-// `setNewMenu({ parent })`, which becomes `createPage(kind, name, parent)`. The
+// `setNewMenu({ parent })`, which becomes `createPage(kind, name, parent, ...)`. The
 // add-sub-page button renders for pages only, so flatten order
 // [Lore, King, Greymoor, Factions, Ashen, Notes] makes index 0 King's.
 export const AddsChild: Story = {

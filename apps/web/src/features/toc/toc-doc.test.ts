@@ -13,11 +13,12 @@ import { LoroDoc } from "loro-crdt";
 import type { TreeID } from "loro-crdt";
 import { describe, expect, it } from "vitest";
 
-import { getTocTree, moveTocNode, readTocTree } from "./toc-doc";
+import { collectTemplates, getTocTree, moveTocNode, readTocTree } from "./toc-doc";
 
 // Canonical 26-char ULIDs (accepted by pageIdSchema).
 const PAGE_A = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 const PAGE_B = "01BX5ZZKBKACTAV9WEVGEMMVRZ";
+const PAGE_C = "01CX5ZZKBKACTAV9WEVGEMMVRZ";
 
 function addFolder(doc: LoroDoc, parent: TreeID | undefined, title: string): TreeID {
   const node = getTocTree(doc).createNode(parent);
@@ -160,6 +161,30 @@ describe("readTocTree", () => {
     const tree = readTocTree(doc);
     expect(tree).toHaveLength(1);
     expect(tree[0]?.entry.kind).toBe("folder");
+  });
+});
+
+describe("collectTemplates", () => {
+  it("collects only template pages, wherever they sit, in pre-order", () => {
+    const doc = new LoroDoc();
+    const folder = addFolder(doc, undefined, "Templates");
+    addPage(doc, folder, "NPC", PAGE_A, { pageKind: "template" });
+    addPage(doc, folder, "Region", PAGE_C, { pageKind: "template" });
+    addPage(doc, undefined, "Korgath", PAGE_B); // an entity, excluded
+    doc.commit();
+
+    expect(collectTemplates(readTocTree(doc))).toEqual([
+      { pageId: PAGE_A, name: "NPC" },
+      { pageId: PAGE_C, name: "Region" },
+    ]);
+  });
+
+  it("is empty when the campaign has no templates", () => {
+    const doc = new LoroDoc();
+    addPage(doc, undefined, "Korgath", PAGE_A);
+    doc.commit();
+
+    expect(collectTemplates(readTocTree(doc))).toEqual([]);
   });
 });
 

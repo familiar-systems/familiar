@@ -138,7 +138,7 @@ impl Catalog {
     }
 
     /// Resolves a [`RawCatalog`] for `locale`, falling back to `en` per
-    /// [`resolve_locale`] / [`LocalizedString::resolve`].
+    /// `resolve_locale` / [`LocalizedString::resolve`].
     pub fn from_raw(raw: &RawCatalog, locale: &str) -> Self {
         let systems = raw
             .systems

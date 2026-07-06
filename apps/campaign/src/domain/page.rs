@@ -19,6 +19,8 @@ use familiar_systems_campaign_shared::loro::toc::TocPageKind;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 
+use crate::loro::block_codec;
+
 /// The subset of [`PageKind`] that genesis through the plain **document-page**
 /// path: `preamble` + `body`, persisted via `DbCreatePage`, with no temporal
 /// row. Threading this (rather than a full `PageKind`) through `CreatePage` makes
@@ -98,25 +100,64 @@ pub struct NewPage {
 /// contains. Keeping section layout out of this builder is deliberate: the create
 /// path never enumerates sections.
 ///
-/// TODO: (templates) when `from_template_id` is supported, the template's blocks
-/// are cloned in at the call edge — deep-copy each block's content, mint a fresh
-/// `BlockId`, preserve its `section`, reset the per-section `ordering` — and fed
-/// to `from_blocks` as the initial rows; this also sets `template_id` for lineage.
-pub fn build_new_page(id: PageId, name: String, kind: PageKind, status: Status) -> NewPage {
+/// `template_id` records lineage: `Some` when this entity was cloned from a
+/// template (its blocks come in as `seed` at the genesis edge via
+/// [`clone_template_blocks`]), `None` for a blank page or a template page itself.
+pub fn build_new_page(
+    id: PageId,
+    name: String,
+    kind: PageKind,
+    status: Status,
+    template_id: Option<PageId>,
+) -> NewPage {
     NewPage {
         id,
         name,
         status,
         kind,
-        // Template lineage is unset until template instantiation lands; it will
-        // be threaded here alongside `kind: Template`.
-        template_id: None,
+        template_id,
         blocks: Vec::new(),
     }
 }
 
+/// Clone a template's blocks into the seed rows for a new entity.
+///
+/// Pure: `mint` is the only effect, injected so tests stay deterministic. Each
+/// source block (arriving grouped by section, in `ordering` order) becomes a
+/// [`NewBlock`] with a **fresh** id — rewritten *inside* the content blob via
+/// [`block_codec::reid_block`], not just on the row — so the clone never shares
+/// the template's blockIds and genesis maps its per-block visibility correctly
+/// (see [`block_codec::reid_block`]). `section` and per-block `status` carry over;
+/// `ordering` resets to 0 at each section boundary.
+pub fn clone_template_blocks(
+    rows: impl IntoIterator<Item = (Section, Vec<u8>, Status)>,
+    mut mint: impl FnMut() -> BlockId,
+) -> Vec<NewBlock> {
+    let mut cloned = Vec::new();
+    let mut section_run: Option<Section> = None;
+    let mut ordering = 0i64;
+    for (section, content, status) in rows {
+        if section_run != Some(section) {
+            section_run = Some(section);
+            ordering = 0;
+        }
+        let id = mint();
+        cloned.push(NewBlock {
+            content: block_codec::reid_block(&content, &id),
+            id,
+            section,
+            ordering,
+            status,
+        });
+        ordering += 1;
+    }
+    cloned
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
 
     #[test]
@@ -130,6 +171,7 @@ mod tests {
             "Korgath".to_string(),
             PageKind::Entity,
             Status::GmOnly,
+            None,
         );
 
         assert_eq!(new_page.id, id);
@@ -148,6 +190,7 @@ mod tests {
                 "X".to_string(),
                 PageKind::Entity,
                 status,
+                None,
             );
             assert_eq!(nt.status, status);
         }
@@ -156,8 +199,63 @@ mod tests {
     #[test]
     fn kind_is_carried_through() {
         for kind in [PageKind::Entity, PageKind::Session] {
-            let nt = build_new_page(PageId::generate(), "X".to_string(), kind, Status::GmOnly);
+            let nt = build_new_page(
+                PageId::generate(),
+                "X".to_string(),
+                kind,
+                Status::GmOnly,
+                None,
+            );
             assert_eq!(nt.kind, kind);
         }
+    }
+
+    #[test]
+    fn template_lineage_is_carried_through() {
+        let template = PageId::generate();
+        let nt = build_new_page(
+            PageId::generate(),
+            "Grimhollow".to_string(),
+            PageKind::Entity,
+            Status::GmOnly,
+            Some(template.clone()),
+        );
+        assert_eq!(nt.template_id, Some(template));
+    }
+
+    #[test]
+    fn clone_template_blocks_mints_fresh_ids_and_preserves_section_status() {
+        // Source rows as they arrive from the template's blocks query: grouped by
+        // section, in ordering order. Same blob reused so the id-swap is visible.
+        let src_id = BlockId::generate();
+        let blob = block_codec::empty_paragraph_blob(&src_id);
+        let rows = vec![
+            (Section::Preamble, blob.clone(), Status::Known),
+            (Section::Body, blob.clone(), Status::GmOnly),
+            (Section::Body, blob.clone(), Status::Known),
+        ];
+
+        let cloned = clone_template_blocks(rows, BlockId::generate);
+
+        // Section + per-block status carry over; ordering resets per section.
+        assert_eq!(
+            cloned.iter().map(|b| b.section).collect::<Vec<_>>(),
+            vec![Section::Preamble, Section::Body, Section::Body],
+        );
+        assert_eq!(
+            cloned.iter().map(|b| b.status).collect::<Vec<_>>(),
+            vec![Status::Known, Status::GmOnly, Status::Known],
+        );
+        assert_eq!(
+            cloned.iter().map(|b| b.ordering).collect::<Vec<_>>(),
+            vec![0, 0, 1],
+        );
+
+        // Every clone has a fresh, unique id, none equal to the source's, and each
+        // content blob was actually re-id'd (so it differs from the shared source).
+        let ids: HashSet<&BlockId> = cloned.iter().map(|b| &b.id).collect();
+        assert_eq!(ids.len(), 3, "clone ids must be unique");
+        assert!(cloned.iter().all(|b| b.id != src_id));
+        assert!(cloned.iter().all(|b| b.content != blob));
     }
 }

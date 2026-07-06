@@ -107,7 +107,8 @@ export function useCreateRelationship(
 
   const createEntity = useCallback(
     async (name: string): Promise<{ id: PageId; name: string }> => {
-      const id = await createByKind(campaignId, "entity", name, null);
+      // A relationship target is a bare entity, never cloned from a template.
+      const id = await createByKind(campaignId, "entity", name, null, null);
       return { id, name };
     },
     [campaignId],

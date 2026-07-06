@@ -133,8 +133,12 @@ pub enum PageInit {
         /// Content to seed the page with: a template's compiled blocks (and, in
         /// future, a template-clone's blocks). Empty for a blank page, which
         /// then opens with just the kind's seeded empty sections. Each block
-        /// carries its section and per-block visibility; see [`build_seeded_page`].
+        /// carries its section and per-block visibility; see `build_seeded_page`.
         seed: Vec<NewBlock>,
+        /// Lineage: the template this entity was cloned from (`Some`), or `None`
+        /// for a blank page or a template page itself. Persisted to
+        /// `pages.template_id`; the `seed` above is that template's cloned blocks.
+        template_id: Option<PageId>,
         /// Genesis hands the committed `pages::Model` back to the spawner (the
         /// supervisor) here, so it builds the HTTP response from the write edge
         /// rather than re-reading the row on the reader pool. The sender lives
@@ -188,8 +192,9 @@ fn build_seeded_page(
     kind: PageKind,
     status: Status,
     seed: Vec<NewBlock>,
+    template_id: Option<PageId>,
 ) -> (NewPage, LoroPageDoc) {
-    let mut new_page = build_new_page(page_id, name, kind, status);
+    let mut new_page = build_new_page(page_id, name, kind, status, template_id);
     let status_by_id: HashMap<BlockId, Status> =
         seed.iter().map(|b| (b.id.clone(), b.status)).collect();
     let (doc, _) = LoroPageDoc::from_blocks(
@@ -278,17 +283,24 @@ impl Actor for PageActor {
                 kind,
                 status,
                 seed,
+                template_id,
                 reply,
             } => {
                 // The actor owns its own birth: build the seeded doc, then persist
                 // the genesis rows through the single-writer. Nothing writes a
                 // Page's rows around the actor that owns it. Entity and Template
                 // share this path (same `preamble` + `body` layout, same
-                // `DbCreatePage` write); only the stamped `kind` and any imported
-                // `seed` blocks differ, so an entity later cloned from a template
-                // inherits the same sections.
-                let (new_page, doc) =
-                    build_seeded_page(args.page_id.clone(), name, kind.into(), status, seed);
+                // `DbCreatePage` write); only the stamped `kind`, any imported
+                // `seed` blocks, and the `template_id` lineage differ, so an entity
+                // cloned from a template inherits the same sections.
+                let (new_page, doc) = build_seeded_page(
+                    args.page_id.clone(),
+                    name,
+                    kind.into(),
+                    status,
+                    seed,
+                    template_id,
+                );
                 match args.db_writer.ask(DbCreatePage { new_page }).await {
                     // Hand the committed row to the spawner. There is no fallible
                     // step after this in `on_start`, so a started actor always
@@ -321,6 +333,7 @@ impl Actor for PageActor {
                     PageKind::Session,
                     status,
                     Vec::new(),
+                    None,
                 );
                 match args.db_writer.ask(DbCreateSession { new_page }).await {
                     Ok(created) => {
@@ -733,6 +746,7 @@ mod tests {
             PageKind::Template,
             Status::GmOnly,
             seed,
+            None,
         );
 
         // Both sections had a seed block, so nothing extra is seeded; each block
@@ -764,6 +778,7 @@ mod tests {
             PageKind::Template,
             Status::GmOnly,
             seed,
+            None,
         );
 
         let preamble: Vec<_> = new_page
@@ -796,6 +811,7 @@ mod tests {
             PageKind::Entity,
             Status::GmOnly,
             Vec::new(),
+            None,
         );
         assert_eq!(new_page.blocks.len(), PageKind::Entity.sections().len());
         assert!(new_page.blocks.iter().all(|b| b.status == Status::GmOnly));

@@ -6,8 +6,8 @@
 //! are document pages, minted via the supervisor's `CreatePage`; `session` mints
 //! its temporal row too, via `CreateSession`. The supervisor spawns the owning
 //! `PageActor`, which persists the Page's genesis and places it in the table of
-//! contents. `from_template_id` (entity clone) is accepted but not yet
-//! implemented.
+//! contents. An entity's optional `from_template_id` clones that template's
+//! blocks into the new page (422 if it is not a live template).
 
 use axum::{
     Json,
@@ -43,8 +43,7 @@ use crate::state::AppState;
         (status = NOT_FOUND, description = "Campaign not on this shard"),
         (status = CONFLICT, description = "Another page of the same kind already uses this name"),
         // 5XX
-        (status = UNPROCESSABLE_ENTITY, description = "Parent page not found, or the page name is empty"),
-        (status = NOT_IMPLEMENTED, description = "Creating an entity from a template is not yet supported"),
+        (status = UNPROCESSABLE_ENTITY, description = "Parent page not found, the page name is empty, or from_template_id is not a template"),
         (status = SERVICE_UNAVAILABLE, description = "Server restarting or platform unreachable"),
         (status = INTERNAL_SERVER_ERROR, description = "Creation failed"),
     ),
@@ -55,20 +54,6 @@ pub async fn create_page(
     Path(campaign_id): Path<String>,
     Json(req): Json<CreatePageRequest>,
 ) -> impl IntoResponse {
-    // Cloning an entity from a template is unbuilt; refuse rather than store a
-    // dangling lineage. Body-shaped and route-specific, so it precedes
-    // authorization (as it always has) - the template clone is refused before
-    // the membership probe.
-    if let CreatePageRequest::Entity(body) = &req
-        && body.from_template_id.is_some()
-    {
-        return (
-            StatusCode::NOT_IMPLEMENTED,
-            "Creating a Page from a template is not yet supported.",
-        )
-            .into_response();
-    }
-
     let (_campaign_id, handle) = match authorize_gm(&state, campaign_id, &user).await {
         Ok(resolved) => resolved,
         Err(resp) => return resp,
@@ -86,6 +71,7 @@ pub async fn create_page(
                     status: body.status,
                     parent: body.parent,
                     kind: DocumentPageKind::Entity,
+                    from_template_id: body.from_template_id,
                 })
                 .await
             {
@@ -111,6 +97,8 @@ pub async fn create_page(
                     status: body.status,
                     parent: body.parent,
                     kind: DocumentPageKind::Template,
+                    // A template is never itself cloned from another template.
+                    from_template_id: None,
                 })
                 .await
             {
@@ -198,6 +186,10 @@ fn create_page_error(e: SendError<CreatePage, CreatePageError>) -> Response {
                 "Another {} already uses the name {name:?}.",
                 kind.as_loro_str()
             ),
+        )),
+        CreatePageError::InvalidTemplate => Some((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "from_template_id must reference an existing template page.".to_string(),
         )),
         CreatePageError::Genesis | CreatePageError::ActorUnavailable | CreatePageError::Db(_) => {
             None

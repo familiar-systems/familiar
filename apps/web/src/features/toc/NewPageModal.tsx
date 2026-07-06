@@ -10,12 +10,17 @@
 // open during an in-flight create via isDismissable/isKeyboardDismissDisabled so
 // a create is never orphaned with its UI gone.
 
-import type { PageKind } from "@familiar-systems/types-campaign";
-import { Button, Dialog, Modal, TextField } from "@familiar-systems/ui";
+import type { PageId, PageKind } from "@familiar-systems/types-campaign";
+import { Button, Dialog, Modal, Select, SelectItem, TextField } from "@familiar-systems/ui";
 import { ChevronLeft } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { NEW_MENU_ROWS, type NewMenuColor, type NewMenuEntry } from "./newMenu";
+import type { TemplateChoice } from "./toc-doc";
+
+// The "Blank entity" option's key in the template selector. Not a valid ULID, so
+// it can never collide with a real template's PageId.
+const BLANK_TEMPLATE_KEY = "__blank__";
 
 // Concrete picker classes per accent token (`NewMenuEntry.color`). Literal
 // strings so Tailwind can see them; newMenu.ts only chooses the token, so a new
@@ -36,19 +41,32 @@ const ROW_ACCENT: Record<NewMenuColor, { row: string; iconBox: string; label: st
 interface NewPageModalProps {
   /**
    * Create the chosen kind with the given name. Every kind requires a non-blank
-   * name (the modal gates an empty submit). Throws on failure so the modal can
-   * surface it; resolves once navigation is under way (the parent then unmounts
-   * this modal).
+   * name (the modal gates an empty submit). `fromTemplateId` is the template to
+   * clone from, set only on the entity step's selector (null = blank). Throws on
+   * failure so the modal can surface it; resolves once navigation is under way
+   * (the parent then unmounts this modal).
    */
-  onSubmit: (kind: PageKind, name: string | null) => Promise<void>;
+  onSubmit: (kind: PageKind, name: string | null, fromTemplateId: PageId | null) => Promise<void>;
   onClose: () => void;
+  /**
+   * Templates offered as clone sources on the entity step. Empty (a campaign with
+   * no templates) hides the selector, leaving the plain blank-entity flow.
+   */
+  templates: TemplateChoice[];
 }
 
 type Chosen = { kind: PageKind; entry: NewMenuEntry };
 
-export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.ReactElement {
+export function NewPageModal({
+  onSubmit,
+  onClose,
+  templates,
+}: NewPageModalProps): React.ReactElement {
   const [chosen, setChosen] = useState<Chosen | null>(null);
   const [name, setName] = useState("");
+  // The template the new entity clones from; null = blank. Meaningful only on the
+  // entity step (the selector renders there); reset whenever a kind is (re)chosen.
+  const [templateId, setTemplateId] = useState<PageId | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Synchronous double-submit guard: `busy` is async React state, so a same-tick
@@ -60,6 +78,7 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
   function choose(row: Chosen): void {
     setChosen(row);
     setName(row.entry.defaultName);
+    setTemplateId(null);
     setError(null);
   }
 
@@ -73,10 +92,12 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
     // `value` is the trimmed string; the per-kind `nameRequired` keeps the door
     // open for a future optional-name kind (which would send null when blank).
     const value = chosen.entry.nameRequired ? trimmed : trimmed || null;
+    // Only an entity clones from a template; other kinds ignore the selector.
+    const fromTemplateId = chosen.kind === "entity" ? templateId : null;
     setBusy(true);
     setError(null);
     try {
-      await onSubmit(chosen.kind, value);
+      await onSubmit(chosen.kind, value, fromTemplateId);
       // Success unmounts this modal (the parent clears its state); no reset.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create.");
@@ -157,6 +178,7 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
                 aria-label="Back"
                 onClick={() => {
                   setChosen(null);
+                  setTemplateId(null);
                   setError(null);
                 }}
                 disabled={busy}
@@ -172,6 +194,27 @@ export function NewPageModal({ onSubmit, onClose }: NewPageModalProps): React.Re
               </h2>
             </div>
             <div className="space-y-2">
+              {chosen.kind === "entity" && templates.length > 0 ? (
+                <Select
+                  label="Base on template"
+                  selectedKey={templateId ?? BLANK_TEMPLATE_KEY}
+                  onSelectionChange={(key) =>
+                    setTemplateId(
+                      key === BLANK_TEMPLATE_KEY
+                        ? null
+                        : (templates.find((t) => t.pageId === key)?.pageId ?? null),
+                    )
+                  }
+                  isDisabled={busy}
+                >
+                  <SelectItem id={BLANK_TEMPLATE_KEY}>Blank entity</SelectItem>
+                  {templates.map((t) => (
+                    <SelectItem key={t.pageId} id={t.pageId}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </Select>
+              ) : null}
               <TextField
                 label="Name"
                 hint={chosen.entry.nameRequired ? "Required" : "Optional"}

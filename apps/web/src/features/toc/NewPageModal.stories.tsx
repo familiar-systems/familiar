@@ -2,6 +2,7 @@
 // (spied with fn()) and renders through a portal to document.body, so queries go
 // through `screen` (document-scoped) rather than the story `canvas`.
 
+import type { PageId } from "@familiar-systems/types-campaign";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, screen, waitFor } from "storybook/test";
 
@@ -13,6 +14,8 @@ const meta = {
   args: {
     onSubmit: fn(),
     onClose: fn(),
+    // Most stories exercise the no-template flow; ClonesFromTemplate overrides this.
+    templates: [],
   },
 } satisfies Meta<typeof NewPageModal>;
 
@@ -43,7 +46,7 @@ export const SessionRequiresName: Story = {
     await userEvent.type(input, "The Fall of Perth");
     await expect(create).toBeEnabled();
     await userEvent.click(create);
-    await expect(args.onSubmit).toHaveBeenCalledWith("session", "The Fall of Perth");
+    await expect(args.onSubmit).toHaveBeenCalledWith("session", "The Fall of Perth", null);
   },
 };
 
@@ -56,7 +59,8 @@ export const EntityRequiresName: Story = {
     await userEvent.type(screen.getByLabelText("Name"), "Wren Aldwater");
     await expect(create).toBeEnabled();
     await userEvent.click(create);
-    await expect(args.onSubmit).toHaveBeenCalledWith("entity", "Wren Aldwater");
+    // No templates in this campaign, so no clone: fromTemplateId is null.
+    await expect(args.onSubmit).toHaveBeenCalledWith("entity", "Wren Aldwater", null);
   },
 };
 
@@ -69,6 +73,28 @@ export const TemplateRequiresName: Story = {
     await userEvent.type(screen.getByLabelText("Name"), "NPC");
     await expect(create).toBeEnabled();
     await userEvent.click(create);
-    await expect(args.onSubmit).toHaveBeenCalledWith("template", "NPC");
+    await expect(args.onSubmit).toHaveBeenCalledWith("template", "NPC", null);
+  },
+};
+
+// With templates available, the entity step gains a "Base on template" selector.
+// Picking one sends its PageId as `fromTemplateId` so the server clones it.
+const TEMPLATES = [
+  { pageId: "01ARZ3NDEKTSV4RRFFQ69G5FAV" as PageId, name: "NPC" },
+  { pageId: "01BX5ZZKBKACTAV9WEVGEMMVRZ" as PageId, name: "Region" },
+];
+
+export const ClonesFromTemplate: Story = {
+  args: { templates: TEMPLATES },
+  play: async ({ args, userEvent }) => {
+    await userEvent.click(screen.getByRole("button", { name: /New entity/ }));
+
+    // The selector opens on "Blank entity"; choose the NPC template.
+    await userEvent.click(screen.getByRole("button", { name: /Base on template/ }));
+    await userEvent.click(await screen.findByRole("option", { name: "NPC" }));
+
+    await userEvent.type(screen.getByLabelText("Name"), "Grimhollow");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    await expect(args.onSubmit).toHaveBeenCalledWith("entity", "Grimhollow", TEMPLATES[0]?.pageId);
   },
 };

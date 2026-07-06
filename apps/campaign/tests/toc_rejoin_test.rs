@@ -62,6 +62,7 @@ async fn toc_rejoin_after_leave_still_gets_full_snapshot() {
                 status: None,
                 parent: None,
                 kind: DocumentPageKind::Entity,
+                from_template_id: None,
             })
             .await
             .expect("create page");

@@ -9,7 +9,8 @@
 // spec is the browser flow.
 //
 // The happy path: create a Daggerheart campaign through the wizard, edit the
-// seeded home page, create and edit a second page, navigate between them via the
+// seeded home page, clone an entity from the bundled NPC template (asserting its
+// body scaffold rendered), create and edit a second page, navigate between them via the
 // table of contents and assert the content survived the server round-trip,
 // rename the page and assert the ToC updates live (which, because room actors
 // flush on last-subscriber-leave / on stop, also proves it reached the campaign
@@ -87,11 +88,29 @@ test("create a campaign, edit pages, navigate the ToC, and relate two entities",
     (window as unknown as { __smokeNoReload?: boolean }).__smokeNoReload = true;
   });
 
+  // The sidebar hosts the ToC and the "New page" entry point, used throughout.
+  const sidebar = page.locator("aside");
+
   // --- Edit the home page: two body paragraph blocks. ---
   await typeTwoLines(page, page.locator(BODY_EDITOR), "Home line one", "Home line two");
 
+  // --- Create an entity cloned from the seeded NPC template. The New-entity
+  // modal's "Base on template" selector (present because the bundle seeded
+  // templates) clones the template's block structure into the new page; the
+  // harness's SQLite assertion checks the lineage + fresh block ids persisted. ---
+  await sidebar.getByRole("button", { name: "New page" }).click();
+  await page.getByRole("button", { name: /New entity/ }).click();
+  await page.getByRole("button", { name: /Base on template/ }).click();
+  await page.getByRole("option", { name: "NPC" }).click();
+  const npcName = page.getByLabel("Name");
+  await npcName.fill("Sir Cloneworth");
+  await npcName.press("Enter");
+  await expect(sidebar.getByRole("button", { name: "Sir Cloneworth" })).toBeVisible();
+  // The clone carried the NPC template's body scaffold (a heading from its body),
+  // not the two blank paragraphs a from-scratch entity opens with.
+  await expect(page.locator(BODY_EDITOR)).toContainText("Appearance");
+
   // --- Create a second page ("Test page") via the New menu modal. ---
-  const sidebar = page.locator("aside");
   await sidebar.getByRole("button", { name: "New page" }).click();
   // Pick Entity, then name it. The modal is portaled to <body>, so query the
   // page (not the sidebar locator).

@@ -12,4 +12,7 @@
  * [`page_kind`](TocPageKind::page_kind) -> [`PageKind::as_loro_str`], the single
  * source of truth for the string, so the Loro/wire value can't drift.
  */
-export type TocPageKind = { "kind": "entity" } | { "kind": "template" } | { "kind": "session", ordinal: number, };
+export type TocPageKind =
+  | { kind: "entity" }
+  | { kind: "template" }
+  | { kind: "session"; ordinal: number };
