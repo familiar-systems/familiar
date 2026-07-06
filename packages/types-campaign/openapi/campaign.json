@@ -221,13 +221,10 @@
             "description": "Another page of the same kind already uses this name"
           },
           "422": {
-            "description": "Parent page not found, or the page name is empty"
+            "description": "Parent page not found, the page name is empty, or from_template_id is not a template"
           },
           "500": {
             "description": "Creation failed"
-          },
-          "501": {
-            "description": "Creating an entity from a template is not yet supported"
           },
           "503": {
             "description": "Server restarting or platform unreachable"
