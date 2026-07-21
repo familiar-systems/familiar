@@ -23,7 +23,7 @@
     "@familiar-systems/design": "workspace:*",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "catalog:",
-    "astro": "^6.4.6",
+    "astro": "^7.1.0",
     "astro-embed": "^0.13.0",
     "astro-mermaid": "^2.0.2",
     "clsx": "^2.1.1",
