@@ -8,18 +8,18 @@ catalog:
   "@dnd-kit/core": ^6.3.1
   "@dnd-kit/sortable": ^10.0.0
   "@dnd-kit/utilities": ^3.2.2
-  "@tailwindcss/vite": ^4.3.1
+  "@tailwindcss/vite": ^4.3.3
   "@types/react": ^19.2.17
   "@types/react-dom": ^19.2.3
-  lucide-react: ^1.18.0
-  react: ^19.2.7
-  react-dom: ^19.2.7
-  tailwindcss: ^4.3.1
+  lucide-react: ^1.26.0
+  react: ^19.2.8
+  react-dom: ^19.2.8
+  tailwindcss: ^4.3.3
   tailwindcss-animate: ^1.0.7
   # oxlint plugin enforcing logical (RTL-safe) properties + canonical classes.
   # Shared by apps/web and packages/ui so the primitives and the app hold the
   # same RTL guard.
-  oxlint-tailwindcss: ^1.3.3
+  oxlint-tailwindcss: ^1.3.5
   typescript: ^6.0.3
   # Accessible component primitives (packages/ui). React Aria provides the RTL +
   # locale-aware behavior the design requires; @react-aria/test-utils provides
@@ -34,34 +34,34 @@ catalog:
   # Compiler-based i18n (apps/web). Messages compile to typed ESM functions, so a
   # missing key is a missing export (build error). Build-time only: the compiler
   # emits self-contained runtime into src/paraglide, so this is a devDependency.
-  "@inlang/paraglide-js": ^2.20.0
+  "@inlang/paraglide-js": ^2.22.0
   # Editor stack (shared between packages/editor and apps/web). The TipTap v3
   # packages pin each other exactly and release in lockstep, so a single caret
   # resolves them consistently. loro-crdt tracks the campaign server's loro
   # 1.x; prosemirror-* match what @tiptap/pm pulls (also forced via overrides
   # below) so there is exactly one ProseMirror instance in the bundle.
-  "@tiptap/core": ^3.26.1
-  "@tiptap/pm": ^3.26.1
-  "@tiptap/react": ^3.26.1
-  "@tiptap/extension-document": ^3.26.1
-  "@tiptap/extension-paragraph": ^3.26.1
-  "@tiptap/extension-heading": ^3.26.1
-  "@tiptap/extension-text": ^3.26.1
-  "@tiptap/extension-unique-id": ^3.26.1
-  loro-crdt: ~1.13.4
+  "@tiptap/core": ^3.29.0
+  "@tiptap/pm": ^3.29.0
+  "@tiptap/react": ^3.29.0
+  "@tiptap/extension-document": ^3.29.0
+  "@tiptap/extension-paragraph": ^3.29.0
+  "@tiptap/extension-heading": ^3.29.0
+  "@tiptap/extension-text": ^3.29.0
+  "@tiptap/extension-unique-id": ^3.29.0
+  loro-crdt: ~1.13.8
   loro-prosemirror: ^0.4.3
   loro-websocket: ^0.6.2
   loro-adaptors: ^0.6.1
-  prosemirror-model: ^1.25.8
+  prosemirror-model: ^1.25.11
   prosemirror-state: ^1.4.4
-  prosemirror-view: ^1.41.9
+  prosemirror-view: ^1.42.2
   ulidx: ^2.4.1
   # @vitest/browser-playwright tracks vitest and @playwright/test tracks playwright;
   # a runner/companion version skew breaks browser-mode tests.
-  vitest: ^4.1.8
-  "@vitest/browser-playwright": ^4.1.8
-  playwright: ^1.60.0
-  "@playwright/test": ^1.60.0
+  vitest: ^4.1.10
+  "@vitest/browser-playwright": ^4.1.10
+  playwright: ^1.62.0
+  "@playwright/test": ^1.62.0
   zod: ^4.4.3
 minimumReleaseAge: 10080
 # loro-crdt 1.13.4 fixes an O(n^2) editing regression but published inside the
@@ -114,9 +114,9 @@ overrides:
   dompurify: 3.4.11
   # Force a single ProseMirror instance across @tiptap/pm and loro-prosemirror;
   # two copies of prosemirror-model silently break `instanceof` checks.
-  prosemirror-model: ^1.25.8
+  prosemirror-model: ^1.25.11
   prosemirror-state: ^1.4.4
-  prosemirror-view: ^1.41.9
+  prosemirror-view: ^1.42.2
   "@tanstack/react-router": 1.170.15
   "@tanstack/router-cli": 1.167.17
   "@tanstack/router-plugin": 1.168.18
