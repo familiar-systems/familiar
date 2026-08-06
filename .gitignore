@@ -1,6 +1,10 @@
 # === Application ===
 data/**/*
 
+# === Secrets ===
+**/.envrc
+**/.env
+
 # === Claude ===
 .claude/**/*
 !.claude/settings.json
