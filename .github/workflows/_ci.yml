@@ -144,7 +144,7 @@ jobs:
             echo "rust=$(mise current rust)"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-04-25
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master @ 2026-04-25
         with:
           toolchain: ${{ steps.versions.outputs.rust }}
           components: clippy, rustfmt
@@ -416,7 +416,7 @@ jobs:
             echo "rust=$(mise current rust)"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master @ 2026-04-25
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master @ 2026-04-25
         with:
           toolchain: ${{ steps.versions.outputs.rust }}
 
