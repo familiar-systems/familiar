@@ -2,9 +2,9 @@
 
 **Status:** Draft
 **Date:** 2026-06-07
-**Related:** [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md) · [Campaign Actor Domain Design](2026-05-04-campaign-actor-domain-design.md) · [Templates as Pages](2026-02-20-templates-as-pages.md) · [Glossary](../glossary.md)
+**Related:** [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md) · [Campaign Actor Domain Design](2026-05-04-campaign-actor-domain-design.md) · [Templates](2026-06-29-templates.md) · [Glossary](../glossary.md)
 
-> This is the **storage / CRDT structure** layer for pages. The agent-facing markdown format and retrieval tiers are owned by [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md); this doc describes how a page's LoroDoc is laid out underneath that format.
+> This is the **storage / CRDT structure** layer for pages. The agent-facing markdown format and retrieval tiers are owned by [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md); this doc describes how a page's LoroDoc is laid out underneath that format.
 
 ---
 
@@ -64,7 +64,7 @@ match kind {
 
 Three consequences:
 
-- **Structural vs editorial sections collapse into one idea.** There is no separate "structural section" type. Everything is a section; sections differ only by schema + rules. The GM's `## Appearance` / `## History` are **headings inside the permissive `body` section**, not sections themselves.
+- **Structural vs editorial sections collapse into one idea.** There is no separate "structural section" type. Everything is a section; sections differ only by schema + rules. The GM's `# Appearance` / `# History` are **headings inside the permissive `body` section**, not sections themselves.
 - **Schemas are editor contract.** The per-section block-type allowlists live in `@familiar-systems/editor` (the TipTap schema both browser and server agree on). Each section binds to its container via `containerId` on `LoroSyncPlugin`; "preamble: no headings" is a PM schema without the heading node. Enforcement is cooperative (editor schema + compiler warning), not a security boundary, consistent with the threat model. (`gm_only` writes are the only thing the server hard-guards.)
 - **Storage class is a property of a section, not a break in the abstraction.** Most sections are CRDT containers. A section *may* instead be backed by server-authoritative data (REST), e.g. a large worker-written transcript. Same "section with blocks and rules" interface; different backing store.
 
@@ -77,7 +77,7 @@ Two sections play the same role in different kinds:
 | Entity | `preamble`         | retrieval |
 | Skill  | `description`      | routing   |
 
-Both are bounded, dense, no-headings prose, **always loaded** as the cheap tier; the `body` loads on demand. This mirrors the [retrieval tiers](2026-03-25-ai-serialization-format-v2.md) and the Agent Skills loading model (name + description at startup, body on activation). Because the index card is its **own section**, "load every skill's routing card" is a single targeted read (`WHERE section = 'description'` across `kind = skill` pages), the same cheap fleet-wide projection shape planned for page names in `CampaignVocabulary` (a future actor, not yet built), with no per-skill doc woken up.
+Both are bounded, dense, no-headings prose, **always loaded** as the cheap tier; the `body` loads on demand. This mirrors the [retrieval tiers](2026-06-30-ai-serialization-and-editing-model.md) and the Agent Skills loading model (name + description at startup, body on activation). Because the index card is its **own section**, "load every skill's routing card" is a single targeted read (`WHERE section = 'description'` across `kind = skill` pages), the same cheap fleet-wide projection shape planned for page names in `CampaignVocabulary` (a future actor, not yet built), with no per-skill doc woken up.
 
 ---
 
@@ -87,7 +87,9 @@ Both are bounded, dense, no-headings prose, **always loaded** as the cheap tier;
 
 `meta` + `preamble` + `body`, and this is the **Now** work. Both kinds get the same two section containers: `preamble` is the bounded, no-headings index card; `body` is the permissive freeform section; `preamble` starts empty. This ships **greenfield**: there is no pre-existing `content` data to carry over, so nothing is migrated. (The mechanism that makes a section rename cheap in general still holds — the LoroDoc is rebuilt from the `blocks` rows on actor start, CRDT history is never the source of truth, so a rename is a row-level concern rather than CRDT-history surgery. But no `content`→`body` backfill runs, and a row whose `section` the page's kind does not declare is **dropped** on restore, not auto-renamed — see the orphan guard in `LoroPageDoc::from_blocks`. Were legacy `content` rows ever to exist, they would need an explicit `UPDATE blocks SET section='body'`.)
 
-Template is not a separate concern here. It is already a page kind alongside Entity (`PageKind::Template`, with `template_id` lineage per [Templates as Pages](2026-02-20-templates-as-pages.md)), and it carries the identical `preamble` + `body` layout so that cloning a template yields an entity with both sections.
+Template is not a separate concern here. It is already a page kind alongside Entity (`PageKind::Template`, with `template_id` lineage per [Templates](2026-06-29-templates.md)), and it carries the identical `preamble` + `body` layout so that cloning a template yields an entity with both sections.
+
+How templates are *authored* and imported into these sections is owned by [Templates](2026-06-29-templates.md). Note one consequence for this layout: the section structure is **locale-invariant** (driven by the game system, not the language), so a template clones to the same `preamble` + `body` shape in every locale; only the prose inside is translated.
 
 (The earlier "is the preamble worth its own container for Entity alone?" hedge is resolved by committing now: the two-editor split is the same machinery Session and Skill reuse, so it is paid once, here.)
 
@@ -121,7 +123,7 @@ Unlike Entity/Skill, a session is **two linked halves**: the `kind = session` pa
 
 ## Preamble Maintenance
 
-The preamble is the page's retrieval card (the [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md) Tier-1 index card), and it is **AI-authored by default**. It is kept faithful to the body by the same eventual-consistency pipeline that drives embeddings, not by a human curating it:
+The preamble is the page's retrieval card (the [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md) Tier-1 index card), and it is **AI-authored by default**. It is kept faithful to the body by the same eventual-consistency pipeline that drives embeddings, not by a human curating it:
 
 - **One pipeline for every derived-from-text artifact.** A body edit (debounced) enqueues an off-peak regeneration pass. Embeddings, the computed ToC, and page size ride this path; so does the preamble.
 - **Write-back splits by authorability.** Non-authored projections (ToC, size, embeddings) write back **silently**. Authorable artifacts (the preamble, relationships) write back as **suggestions**: a proposal the GM disposes of, never a silent overwrite. Silent regeneration of an authorable artifact would clobber a GM edit and violate "AI proposes, GM disposes"; the suggestion gate is what makes the preamble covenant-safe.
@@ -199,11 +201,11 @@ What looked relevant but is not the path (kept here so it is not re-litigated):
 
 To keep terminology single-valued (surface, do not silently apply):
 
-- **[AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md):**
+- **[AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md):**
   - "the GM can add, remove, or rename sections" should read as "add/rename **headings within the freeform body section**"; the *section list* is kind-declared.
   - `suggest_replace` gains a `reason` argument, **requires a prior full read** (the drift harness), and returns the registered *proposal* (the page is unchanged until the GM accepts; the conversation's own later reads show its pending suggestion inline).
   - The preamble is **AI-authored and maintained** via the pipeline in *Preamble Maintenance* above, alongside the `create-or-edit-preamble` skill; the markdown stays positional/no-wrapper ("Preamble as Implicit Position" is unaffected).
-  - **Visibility:** the stored default is fail closed (`gm_only`), per CLAUDE.md; the GM-facing markdown keeps marking the *hidden* (`[gm_only]` stays loud, since the serialization is a projection of computed visibility). The full model (one uniform axis at page/section/block, co-authored, per-role RAG) is owned by and now documented in that doc.
+  - **Visibility:** literal per block (each block's own status is the whole truth; nothing inherits down the heading tree), stored default fail closed (`gm_only`) per CLAUDE.md. In the agent markdown it serializes as `<player_visible>` / `<gm_only>` spans, run-length encoding over per-block status. The full model (per-surface labeling, co-authored, per-role RAG) is owned by and documented in that doc.
 - **[Glossary](../glossary.md):** when `session` / `skill` land in code, "section" should be defined as "a kind-declared, schema-bearing container", distinct from a `##` heading.
 
 ---
@@ -226,8 +228,8 @@ To keep terminology single-valued (surface, do not silently apply):
 - Agent Skills specification (`SKILL.md` format, startup vs activation loading): https://agentskills.io/specification
 
 **Internal**
-- [AI Serialization Format v2](2026-03-25-ai-serialization-format-v2.md) — agent markdown, retrieval tiers, preamble, suggestion model
+- [AI Serialization & Editing Model](2026-06-30-ai-serialization-and-editing-model.md) — agent markdown, retrieval tiers, preamble, suggestion model
 - [Campaign Actor Domain Design](2026-05-04-campaign-actor-domain-design.md) — single-doc-per-page, permission model, multi-doc rejection
-- [Templates as Pages](2026-02-20-templates-as-pages.md) — templates are pages; section structure cloning
+- [Templates](2026-06-29-templates.md) — templates are pages; section structure cloning
 - [Glossary](../glossary.md) — PageKind, Skill, Session sub-entities
 - [Testing With Full Effect (what-if)](../discovery/2026-06-04-testing-with-full-effect-whatif.md): client async-lifecycle and the Loro-fork posture, sibling of the Later cleanup

@@ -1,0 +1,21 @@
+{
+  // Template markdown uses a custom <player_visible>/<gm_only> visibility-span
+  // dialect that oxfmt reflows on save.
+  // Opt the content/ tree out of format-on-save.
+  // Per-language because the root .zed/settings.json sets format_on_save at the language level, which outranks a bare top-level off.
+  // "format_on_save": "off",
+  "languages": {
+    "Markdown": {
+      "format_on_save": "off"
+    }
+    // "YAML": {
+    //   "format_on_save": "off"
+    // },
+    // "JSON": {
+    //   "format_on_save": "off"
+    // },
+    // "JSONC": {
+    //   "format_on_save": "off"
+    // }
+  }
+}

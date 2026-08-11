@@ -29,7 +29,7 @@ async fn list_systems_returns_locale_resolved_catalog() {
         .find(|t| t["slug"] == "common/npc")
         .expect("common/npc in dnd-5e bundle");
     assert_eq!(npc["name"], "NPC");
-    assert_eq!(npc["icon"], "person-standing");
+    assert_eq!(npc["icon"], "contact");
 
     // BYO is a top-level sibling, not an entry in `systems`. Its UI copy
     // lives in the wizard frontend, so the wire only carries the bundle.

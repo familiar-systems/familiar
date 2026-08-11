@@ -43,6 +43,37 @@ pub fn empty_paragraph_blob(block_id: &BlockId) -> Vec<u8> {
     .expect("paragraph block is always serializable")
 }
 
+// ── Re-id: rewrite a blob's stable identity ─────────────────────────────────
+
+/// Return a copy of `blob` with its `attributes.blockId` set to `new_id`.
+///
+/// A block's identity lives *inside* its content (see [`ExtractedBlock::id`] /
+/// `read_block_id`), not just in the `blocks.id` row column. So deep-copying a
+/// block (cloning a template into an entity) has to rewrite the embedded id, or
+/// the copy keeps the source's id: two pages would carry the same blockId, and
+/// genesis (which keys per-block visibility off the id) would mis-map the clone's
+/// status. This is the codec-level primitive the clone path uses per block.
+///
+/// `expect` on parse is sound: the input is a blob our own [`serialize_block`] /
+/// [`empty_paragraph_blob`] produced and persisted, so it is always well-formed
+/// JSON - the same assumption `serialize_block` makes on the way out.
+pub fn reid_block(blob: &[u8], new_id: &BlockId) -> Vec<u8> {
+    let mut json: serde_json::Value =
+        serde_json::from_slice(blob).expect("a persisted block blob is well-formed JSON");
+    if let Some(obj) = json.as_object_mut() {
+        let attrs = obj
+            .entry(ATTRIBUTES_KEY)
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        if let Some(attrs) = attrs.as_object_mut() {
+            attrs.insert(
+                ATTR_BLOCK_ID.to_string(),
+                serde_json::Value::String(new_id.to_string()),
+            );
+        }
+    }
+    serde_json::to_vec(&json).expect("re-serializing parsed JSON cannot fail")
+}
+
 // ── Restore: JSON blob -> Loro ──────────────────────────────────────────────
 
 /// Why a block (or one of its children) could not be reconstructed.
@@ -435,6 +466,48 @@ mod tests {
         let blocks = extract_blocks(&content);
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].id, None);
+    }
+
+    // ── Re-id ────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn reid_block_swaps_the_embedded_id_and_preserves_the_rest() {
+        // A heading blob with a level, a blockId, and children: only the blockId
+        // changes; everything else (nodeName, level, text) survives verbatim.
+        let old_id = BlockId::generate();
+        let new_id = BlockId::generate();
+        let blob = serde_json::to_vec(&json!({
+            NODE_NAME_KEY: "heading",
+            ATTRIBUTES_KEY: { "level": 2, ATTR_BLOCK_ID: old_id.to_string() },
+            CHILDREN_KEY: ["Secrets"],
+        }))
+        .unwrap();
+
+        let out: serde_json::Value = serde_json::from_slice(&reid_block(&blob, &new_id)).unwrap();
+
+        assert_eq!(out[ATTRIBUTES_KEY][ATTR_BLOCK_ID], new_id.to_string());
+        assert_eq!(out[NODE_NAME_KEY], "heading");
+        assert_eq!(out[ATTRIBUTES_KEY]["level"], 2);
+        assert_eq!(out[CHILDREN_KEY], json!(["Secrets"]));
+    }
+
+    #[test]
+    fn reid_block_adds_the_id_when_attributes_are_absent() {
+        // A paragraph with no blockId (e.g. a plain-authored block): reid mints
+        // the attribute so the clone still carries a stable, unique id.
+        let new_id = BlockId::generate();
+        let blob = serde_json::to_vec(&json!({
+            NODE_NAME_KEY: "paragraph",
+            ATTRIBUTES_KEY: {},
+            CHILDREN_KEY: ["text"],
+        }))
+        .unwrap();
+
+        let doc = LoroDoc::new();
+        let content = doc.get_map("content");
+        restore_content(&content, &[reid_block(&blob, &new_id)]);
+        let blocks = extract_blocks(&content);
+        assert_eq!(blocks[0].id, Some(new_id));
     }
 
     // ── Restore hardening (REVIEW.md #3) ─────────────────────────────────────

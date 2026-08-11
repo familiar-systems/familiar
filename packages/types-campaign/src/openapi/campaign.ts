@@ -650,7 +650,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Parent page not found, or the page name is empty */
+      /** @description Parent page not found, the page name is empty, or from_template_id is not a template */
       422: {
         headers: {
           [name: string]: unknown;
@@ -659,13 +659,6 @@ export interface operations {
       };
       /** @description Creation failed */
       500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Creating an entity from a template is not yet supported */
-      501: {
         headers: {
           [name: string]: unknown;
         };

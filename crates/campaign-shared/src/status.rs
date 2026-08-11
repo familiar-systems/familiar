@@ -15,6 +15,15 @@ pub enum Status {
     /// Or it could be some piece of lore or background that the GM hasn't decided on yet.
     /// Regardless, only the GM is aware of it but AI treats it as fact.
     GmOnly,
+    // TODO(rename): docs now use `player_visible` as the canonical term for this
+    // variant (docs/plans/2026-06-29-templates.md; the Status glossary entry).
+    // Rename `Known` -> `PlayerVisible` and propagate the vocabulary to `StatusCol`
+    // (apps/campaign/src/entities/columns.rs), the generated `Status.ts`, and call
+    // sites. Decide the at-rest/wire token separately: keep `known` / `gmOnly`
+    // frozen via `#[serde(rename = "known")]` (and unchanged `as_loro_str` /
+    // `string_value`) for zero migration, or re-spell with a `blocks`/`pages`
+    // status migration if campaign data must be preserved. Do this after the docs
+    // land.
     /// This is known to players.
     /// It has either been revealed through play or the GM has explicitly shared it.
     Known,

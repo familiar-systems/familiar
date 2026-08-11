@@ -276,13 +276,38 @@ impl Message<room_actor::ClientUpdate> for TocActor {
 // Page-node mutations (server-initiated, from CampaignSupervisor::CreatePage)
 // ---------------------------------------------------------------------------
 
-/// Resolve a Page's ToC node, if present. The supervisor uses this to
-/// validate a requested parent placement before any write happens.
+/// An opaque handle to a live ToC node (folder or page). Returned by
+/// [`ResolvePageNode`] / [`CreateFolder`] and accepted by [`AddPageNode`] /
+/// [`CreateFolder`] as a placement parent, so callers address ToC nodes without
+/// touching Loro types. Valid only within the current actor incarnation: the tree
+/// is rebuilt from SQLite on each checkout with fresh `TreeID`s, so a handle must
+/// be resolved and consumed inside one orchestration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TocNodeId(TreeID);
+
+impl TocActor {
+    /// Resolve a placement-parent handle to a live `TreeID`, or `None` (the root).
+    /// A handle can go stale between resolve and placement (a concurrent delete);
+    /// falling back to the root keeps an already-persisted page from being lost and
+    /// matches the ToC's self-healing contract.
+    fn live_parent(&self, parent: Option<TocNodeId>) -> Option<TreeID> {
+        let TocNodeId(node) = parent?;
+        if self.doc_room.doc().is_live_node(node) {
+            Some(node)
+        } else {
+            tracing::warn!("toc placement parent no longer live; appending at root");
+            None
+        }
+    }
+}
+
+/// Resolve a Page's ToC node, if present. The supervisor uses this to validate a
+/// requested parent placement and to obtain the handle it passes to [`AddPageNode`].
 #[derive(Debug, Clone)]
 pub struct ResolvePageNode(pub PageId);
 
 impl Message<ResolvePageNode> for TocActor {
-    type Reply = Option<TreeID>;
+    type Reply = Option<TocNodeId>;
 
     #[tracing::instrument(
         skip_all,
@@ -293,16 +318,16 @@ impl Message<ResolvePageNode> for TocActor {
         msg: ResolvePageNode,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        self.doc_room.doc().find_page_node(&msg.0)
+        self.doc_room.doc().find_page_node(&msg.0).map(TocNodeId)
     }
 }
 
 /// Insert a Page node into the live ToC and broadcast the change. Sent once
 /// per Page creation, after the genesis row is committed. Appends at the ToC
-/// root when `parent` is `None`, otherwise as the last child of the parent
-/// Page's node. A `parent` that no longer resolves (a rare race after the
-/// supervisor's pre-check) falls back to the root with a warning, rather than
-/// failing a Page that is already persisted.
+/// root when `parent` is `None`, otherwise as the last child of the parent node
+/// (a page or a folder). A `parent` handle that no longer resolves (a rare race
+/// after the caller resolved it) falls back to the root with a warning, rather
+/// than failing a Page that is already persisted.
 #[derive(Debug, Clone)]
 pub struct AddPageNode {
     pub page_id: PageId,
@@ -311,7 +336,9 @@ pub struct AddPageNode {
     /// carries it for display composition.
     pub page_kind: TocPageKind,
     pub visibility: Status,
-    pub parent: Option<PageId>,
+    /// Placement parent, pre-resolved by the caller (a page via [`ResolvePageNode`]
+    /// or a folder via [`CreateFolder`]). `None` places at the ToC root.
+    pub parent: Option<TocNodeId>,
 }
 
 impl Message<AddPageNode> for TocActor {
@@ -330,19 +357,7 @@ impl Message<AddPageNode> for TocActor {
         msg: AddPageNode,
         _ctx: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        let parent_tree = match &msg.parent {
-            None => None,
-            Some(parent_id) => {
-                let resolved = self.doc_room.doc().find_page_node(parent_id);
-                if resolved.is_none() {
-                    tracing::warn!(
-                        parent = %parent_id.0,
-                        "parent page node not found in toc; appending at root"
-                    );
-                }
-                resolved
-            }
-        };
+        let parent_tree = self.live_parent(msg.parent);
 
         let entry = TocEntry::Page {
             title: msg.title,
@@ -369,6 +384,54 @@ impl Message<AddPageNode> for TocActor {
         self.persist
             .schedule(&self.self_ref, self.debounce_duration);
         Ok(())
+    }
+}
+
+/// Create a folder node in the live ToC and broadcast the change. Returns the new
+/// node's [`TocNodeId`] so the caller can nest pages under it via [`AddPageNode`].
+/// Best-effort like [`AddPageNode`]: `ask`-invoked, so a typed `Err` returns
+/// through the reply channel (not `on_panic`). The folder isn't persisted until the
+/// debounce flush, so a caller that fails mid-orchestration just leaves its pages to
+/// re-surface at the root on the next checkout.
+#[derive(Debug, Clone)]
+pub struct CreateFolder {
+    pub title: String,
+    pub visibility: Status,
+    /// Placement parent (another folder). `None` creates the folder at the root.
+    pub parent: Option<TocNodeId>,
+}
+
+impl Message<CreateFolder> for TocActor {
+    type Reply = Result<TocNodeId, DocError>;
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0),
+    )]
+    async fn handle(
+        &mut self,
+        msg: CreateFolder,
+        _ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let parent_tree = self.live_parent(msg.parent);
+        let folder = TocEntry::Folder {
+            title: msg.title,
+            visibility: msg.visibility,
+            suggestions: Vec::new(),
+        };
+        let (delta, tree_id) = self.doc_room.doc_mut().add_entry(parent_tree, &folder)?;
+
+        let frames = encode_broadcast(
+            loro_protocol::CrdtType::Loro,
+            "toc",
+            std::slice::from_ref(&delta),
+            &self.fragmenter,
+        );
+        self.doc_room.fan_out(&frames, None);
+
+        self.persist
+            .schedule(&self.self_ref, self.debounce_duration);
+        Ok(TocNodeId(tree_id))
     }
 }
 

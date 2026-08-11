@@ -16,7 +16,14 @@
 //!     create flow reached SQLite (the RelationshipGraph writes synchronously, so
 //!     this needs no flush), and
 //!   - that live row reads is_secret = true: the spec creates it public then conceals
-//!     it (a knowledge PATCH), proving the mutable knowledge axis persisted.
+//!     it (a knowledge PATCH), proving the mutable knowledge axis persisted, and
+//!   - the picked system's template bundle seeded: the spec chooses Daggerheart,
+//!     whose bundle must land as `template`-kind pages ("NPC", "Player Character")
+//!     nested under a "Templates" ToC folder, with a `<player_visible>` block's
+//!     visibility surviving genesis - the wizard-completion seeding path end to end, and
+//!   - the spec clones the NPC template into an entity: exactly one `entity` page
+//!     carries a `template_id` pointing at a real `template` page, and its blocks
+//!     are freshly minted (no id shared with the template) - the clone path end to end.
 //!
 //! It deliberately reuses the campaign crate's own `db` helpers and sea-orm
 //! entities rather than a separate SQLite reader: same driver/WAL semantics the
@@ -29,9 +36,14 @@
 use std::path::PathBuf;
 use std::process::exit;
 
+use std::collections::HashSet;
+
 use familiar_systems_campaign::db::{connect_readonly, register_sqlite_vec};
-use familiar_systems_campaign::entities::{blocks, pages, relationships};
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+use familiar_systems_campaign::entities::{blocks, pages, relationships, toc_entries};
+use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::page_kind::PageKind;
+use familiar_systems_campaign_shared::status::Status;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 
 const MIN_PAGES: u64 = 2;
 const MIN_BODY_BLOCKS_PER_PAGE: u64 = 2;
@@ -42,6 +54,10 @@ const RENAMED_PAGE: &str = "The Sunken Bastion";
 /// is stored canonically (page_a = smaller PageId, predicates assigned to match),
 /// so assert on the unordered pair, never which slot holds which.
 const REL_PREDICATES: [&str; 2] = ["is a resident of", "is the home of"];
+/// Daggerheart's template bundle (the system the spec picks). Wizard completion
+/// must seed one `template`-kind page per slug, nested under a folder.
+const EXPECTED_TEMPLATES: [&str; 2] = ["NPC", "Player Character"];
+const TEMPLATES_FOLDER: &str = "Templates";
 
 #[tokio::main]
 async fn main() {
@@ -142,9 +158,151 @@ async fn main() {
         failures.push("expected the live relationship concealed (is_secret = true)".to_string());
     }
 
+    // --- Template bundle seeding (the spec picks Daggerheart). ---
+    let template_pages: Vec<&pages::Model> = all_pages
+        .iter()
+        .filter(|p| PageKind::from(p.kind) == PageKind::Template)
+        .collect();
+    let template_names: Vec<&str> = template_pages.iter().map(|p| p.name.as_str()).collect();
+    println!(
+        "{} template pages: {template_names:?}",
+        template_pages.len()
+    );
+    for expected in EXPECTED_TEMPLATES {
+        if !template_names.contains(&expected) {
+            failures.push(format!(
+                "expected a seeded template page {expected:?} (Daggerheart bundle), found {template_names:?}"
+            ));
+        }
+    }
+
+    // Each seeded template carries its compiled scaffold, and per-block
+    // visibility survives genesis: at least one player-visible block from a
+    // `<player_visible>` span. A template is never opened in the spec, so its
+    // PageActor never flushes -- the genesis status is the persisted status.
+    let mut any_player_visible = false;
+    for t in &template_pages {
+        let template_blocks = blocks::Entity::find()
+            .filter(blocks::Column::PageId.eq(t.id.clone()))
+            .all(&db)
+            .await
+            .unwrap_or_else(|e| fatal(&format!("query blocks for {:?} failed: {e}", t.name)));
+        if template_blocks.is_empty() {
+            failures.push(format!("template page {:?} has no blocks", t.name));
+        }
+        if template_blocks
+            .iter()
+            .any(|b| Status::from(b.status) == Status::Known)
+        {
+            any_player_visible = true;
+        }
+    }
+    if !template_pages.is_empty() && !any_player_visible {
+        failures.push(
+            "expected >= 1 player-visible template block (a <player_visible> span must persist through genesis)".to_string(),
+        );
+    }
+
+    // The bundle lands in a "Templates" ToC folder that parents the template pages.
+    let toc = toc_entries::Entity::find()
+        .all(&db)
+        .await
+        .unwrap_or_else(|e| fatal(&format!("query toc_entries failed: {e}")));
+    match toc
+        .iter()
+        .find(|r| r.folder_title.as_deref() == Some(TEMPLATES_FOLDER))
+    {
+        None => failures.push(format!(
+            "expected a {TEMPLATES_FOLDER:?} ToC folder for the seeded bundle"
+        )),
+        Some(folder) => {
+            let template_ids: std::collections::HashSet<PageId> = template_pages
+                .iter()
+                .map(|p| PageId::from(p.id.clone()))
+                .collect();
+            let nested = toc
+                .iter()
+                .filter(|r| {
+                    r.parent_id.as_ref() == Some(&folder.id)
+                        && r.page_id
+                            .clone()
+                            .map(PageId::from)
+                            .is_some_and(|pid| template_ids.contains(&pid))
+                })
+                .count();
+            if nested < EXPECTED_TEMPLATES.len() {
+                failures.push(format!(
+                    "expected {} template pages nested under {TEMPLATES_FOLDER:?}, found {nested}",
+                    EXPECTED_TEMPLATES.len()
+                ));
+            }
+        }
+    }
+
+    // --- Template instantiation: the spec clones the NPC template into an entity.
+    // The clone must carry the template's lineage and freshly minted block ids
+    // (never the template's own ids - a shared id would mean two pages collide). ---
+    let cloned: Vec<&pages::Model> = all_pages
+        .iter()
+        .filter(|p| PageKind::from(p.kind) == PageKind::Entity && p.template_id.is_some())
+        .collect();
+    match cloned.as_slice() {
+        [] => failures.push(
+            "expected one entity cloned from a template (kind=entity with template_id set)"
+                .to_string(),
+        ),
+        [entity] => {
+            let lineage = entity
+                .template_id
+                .clone()
+                .map(PageId::from)
+                .expect("filtered to template_id.is_some() just above");
+            match all_pages
+                .iter()
+                .find(|p| PageId::from(p.id.clone()) == lineage)
+            {
+                None => failures.push(format!(
+                    "cloned entity {:?} points at template_id {lineage:?} that is not a page",
+                    entity.name
+                )),
+                Some(t) if PageKind::from(t.kind) != PageKind::Template => failures.push(format!(
+                    "cloned entity {:?} lineage {:?} is not a template",
+                    entity.name, t.name
+                )),
+                Some(t) => {
+                    let entity_blocks = block_ids(&db, entity).await;
+                    let template_blocks = block_ids(&db, t).await;
+                    println!(
+                        "cloned entity {:?} from template {:?}: {} blocks",
+                        entity.name,
+                        t.name,
+                        entity_blocks.len()
+                    );
+                    if entity_blocks.is_empty() {
+                        failures.push(format!("cloned entity {:?} has no blocks", entity.name));
+                    }
+                    if entity_blocks
+                        .intersection(&template_blocks)
+                        .next()
+                        .is_some()
+                    {
+                        failures.push(format!(
+                            "cloned entity {:?} shares block ids with template {:?}; clones must mint fresh ids",
+                            entity.name, t.name
+                        ));
+                    }
+                }
+            }
+        }
+        many => failures.push(format!(
+            "expected exactly one cloned entity, found {}",
+            many.len()
+        )),
+    }
+
     if failures.is_empty() {
         println!(
-            "OK: {page_count} pages, each with >= {MIN_BODY_BLOCKS_PER_PAGE} body blocks, one renamed to {RENAMED_PAGE:?}, one live concealed relationship with {REL_PREDICATES:?}"
+            "OK: {page_count} pages, each with >= {MIN_BODY_BLOCKS_PER_PAGE} body blocks, one renamed to {RENAMED_PAGE:?}, one live concealed relationship with {REL_PREDICATES:?}, and the {EXPECTED_TEMPLATES:?} template bundle seeded under {TEMPLATES_FOLDER:?}"
         );
         exit(0);
     }
@@ -152,6 +310,19 @@ async fn main() {
         eprintln!("FAIL: {f}");
     }
     exit(1);
+}
+
+/// The set of block ids persisted for a page. Used to prove a clone's ids are
+/// disjoint from its template's.
+async fn block_ids(db: &DatabaseConnection, page: &pages::Model) -> HashSet<BlockId> {
+    blocks::Entity::find()
+        .filter(blocks::Column::PageId.eq(page.id.clone()))
+        .all(db)
+        .await
+        .unwrap_or_else(|e| fatal(&format!("query blocks for {:?} failed: {e}", page.name)))
+        .into_iter()
+        .map(|b| BlockId::from(b.id))
+        .collect()
 }
 
 fn fatal(msg: &str) -> ! {

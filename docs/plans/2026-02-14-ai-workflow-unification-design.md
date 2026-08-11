@@ -6,7 +6,7 @@ familiar.systems's AI layer serves three distinct use cases: processing raw sess
 
 This document unifies them. The core insight: **all three workflows converge on the same product primitives**. They differ in how they start (batch vs interactive, system-initiated vs user-initiated) but produce the same outputs (suggestions to the campaign graph) and are consumed through the same interface (the agent window).
 
-**Related:** The [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md) described the original document write paths; now superseded by the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) (Rust/kameo/Loro actors). The AI agent writes via tool calls translated by the serialization compiler into suggestion marks on block UUID ranges (see [AI Serialization Format v2](./2026-03-25-ai-serialization-format-v2.md)). The AI workflows defined in this document remain valid -- the write mechanism changes, the workflow structure does not.
+**Related:** The [Hocuspocus Architecture ADR](../archive/plans/2026-03-14-hocuspocus-architecture.md) described the original document write paths; now superseded by the [Campaign Collaboration Architecture](./2026-03-25-campaign-collaboration-architecture.md) (Rust/kameo/Loro actors). The AI agent writes via tool calls translated by the serialization compiler into suggestion marks on block UUID ranges (see [AI Serialization & Editing Model](./2026-06-30-ai-serialization-and-editing-model.md)). The AI workflows defined in this document remain valid -- the write mechanism changes, the workflow structure does not.
 
 ---
 

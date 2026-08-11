@@ -4,22 +4,24 @@
 
 use std::time::{Duration, Instant};
 
-use familiar_systems_campaign_shared::id::PageId;
+use familiar_systems_campaign_shared::id::{BlockId, PageId};
+use familiar_systems_campaign_shared::loro::page::Section;
 use familiar_systems_campaign_shared::loro::toc::TocPageKind;
 use familiar_systems_campaign_shared::page_kind::PageKind;
 use familiar_systems_campaign_shared::status::Status;
 use kameo::actor::Spawn;
 use kameo::message::{Context, Message};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use tokio::sync::oneshot;
 
 use super::CampaignSupervisor;
 use crate::actors::database_writer::CreatedSession;
 use crate::actors::page::{PageActor, PageActorArgs, PageInit};
-use crate::actors::toc::{AddPageNode, ResolvePageNode};
-use crate::domain::page::DocumentPageKind;
-use crate::entities::columns::PageKindCol;
-use crate::entities::pages;
+use crate::actors::toc::{AddPageNode, CreateFolder, ResolvePageNode};
+use crate::domain::page::{DocumentPageKind, clone_template_blocks};
+use crate::entities::columns::{PageIdCol, PageKindCol};
+use crate::entities::{blocks, pages};
+use crate::starter_content::compile::CompiledTemplate;
 
 // ---------------------------------------------------------------------------
 // CreatePage
@@ -42,6 +44,11 @@ pub struct CreatePage {
     pub parent: Option<PageId>,
     /// Which document-page kind to genesis (`Entity` or `Template`).
     pub kind: DocumentPageKind,
+    /// Clone this template's blocks into the new page and record it as
+    /// `template_id` lineage. `Some` only on the entity path (the route rejects a
+    /// clone request on any other kind); an id that is not a live template page
+    /// fails with [`CreatePageError::InvalidTemplate`].
+    pub from_template_id: Option<PageId>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -52,6 +59,8 @@ pub enum CreatePageError {
     EmptyName,
     #[error("a {0:?} page named {1:?} already exists")]
     NameTaken(PageKind, String),
+    #[error("from_template_id does not reference an existing template")]
+    InvalidTemplate,
     #[error("page genesis failed")]
     Genesis,
     #[error("a child actor was unavailable")]
@@ -102,18 +111,19 @@ impl Message<CreatePage> for CampaignSupervisor {
             return Err(CreatePageError::EmptyName);
         }
 
-        // Validate placement before any write.
-        // Bad parent fails cleanly with nothing persisted.
-        if let Some(parent) = &msg.parent {
-            match self.toc.ask(ResolvePageNode(parent.clone())).await {
-                Ok(Some(_)) => {}
+        // Resolve placement before any write, keeping the handle we pass to
+        // `AddPageNode` below. Bad parent fails cleanly with nothing persisted.
+        let parent_node = match &msg.parent {
+            None => None,
+            Some(parent) => match self.toc.ask(ResolvePageNode(parent.clone())).await {
+                Ok(Some(handle)) => Some(handle),
                 Ok(None) => return Err(CreatePageError::ParentNotFound),
                 Err(e) => {
                     tracing::error!(error = %e, "toc unavailable while resolving parent");
                     return Err(CreatePageError::ActorUnavailable);
                 }
-            }
-        }
+            },
+        };
 
         let status = msg.status.unwrap_or(Status::GmOnly);
         let kind = PageKind::from(msg.kind);
@@ -131,6 +141,37 @@ impl Message<CreatePage> for CampaignSupervisor {
             return Err(CreatePageError::NameTaken(kind, name));
         }
 
+        // Cloning from a template: validate it, then deep-copy its blocks into the
+        // seed. This is a *read* of the template (via the reader pool, like the
+        // name check above) - the owning-actor invariant governs writes, and the
+        // new page's rows are still written by its own genesis below. A blank page
+        // seeds nothing and carries no lineage.
+        let (seed, template_id) = match &msg.from_template_id {
+            None => (Vec::new(), None),
+            Some(template_id) => {
+                let template = pages::Entity::find_by_id(PageIdCol::from(template_id.clone()))
+                    .one(&db_reader)
+                    .await?;
+                match template {
+                    Some(p) if PageKind::from(p.kind) == PageKind::Template => {}
+                    _ => return Err(CreatePageError::InvalidTemplate),
+                }
+                let block_rows = blocks::Entity::find()
+                    .filter(blocks::Column::PageId.eq(PageIdCol::from(template_id.clone())))
+                    .order_by_asc(blocks::Column::Section)
+                    .order_by_asc(blocks::Column::Ordering)
+                    .all(&db_reader)
+                    .await?;
+                let seed = clone_template_blocks(
+                    block_rows
+                        .into_iter()
+                        .map(|b| (Section::from(b.section), b.content, b.status.into())),
+                    BlockId::generate,
+                );
+                (seed, Some(template_id.clone()))
+            }
+        };
+
         // `DocumentPageKind::toc_page_kind` owns the kind -> ToC-node map, so this
         // path no longer restates it; document pages carry no ordinal.
         let toc_page_kind = msg.kind.toc_page_kind();
@@ -141,6 +182,8 @@ impl Message<CreatePage> for CampaignSupervisor {
             name: name.clone(),
             kind: msg.kind,
             status,
+            seed,
+            template_id,
             reply: reply_tx,
         };
 
@@ -178,7 +221,7 @@ impl Message<CreatePage> for CampaignSupervisor {
                 // Entity or Template here (Session has its own path).
                 page_kind: toc_page_kind,
                 visibility: status,
-                parent: msg.parent.clone(),
+                parent: parent_node,
             })
             .await
         {
@@ -254,17 +297,19 @@ impl Message<CreateSession> for CampaignSupervisor {
             return Err(CreateSessionError::EmptyName);
         }
 
-        // Validate placement before any write. Bad parent fails cleanly.
-        if let Some(parent) = &msg.parent {
-            match self.toc.ask(ResolvePageNode(parent.clone())).await {
-                Ok(Some(_)) => {}
+        // Resolve placement before any write, keeping the handle for `AddPageNode`
+        // below. Bad parent fails cleanly.
+        let parent_node = match &msg.parent {
+            None => None,
+            Some(parent) => match self.toc.ask(ResolvePageNode(parent.clone())).await {
+                Ok(Some(handle)) => Some(handle),
                 Ok(None) => return Err(CreateSessionError::ParentNotFound),
                 Err(e) => {
                     tracing::error!(error = %e, "toc unavailable while resolving parent");
                     return Err(CreateSessionError::ActorUnavailable);
                 }
-            }
-        }
+            },
+        };
 
         let status = msg.status.unwrap_or(Status::GmOnly);
 
@@ -329,7 +374,7 @@ impl Message<CreateSession> for CampaignSupervisor {
                     ordinal: created.session.ordinal,
                 },
                 visibility: status,
-                parent: msg.parent.clone(),
+                parent: parent_node,
             })
             .await
         {
@@ -340,5 +385,138 @@ impl Message<CreateSession> for CampaignSupervisor {
         }
 
         Ok(created)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SeedTemplateBundle
+// ---------------------------------------------------------------------------
+
+/// Seed a system's template bundle at wizard completion: create each compiled
+/// template as a `template`-kind Page and nest them under a fresh ToC folder.
+///
+/// The route compiles the bundle (it alone reaches the catalog) and fires this
+/// best-effort; the client is not made to wait, since the seeded folder and pages
+/// reach it through the live ToC broadcast, and a failure self-heals like any
+/// create (an orphaned page re-surfaces at the ToC root on the next checkout).
+/// It reuses the `CreatePage` genesis-spawn shape, then composes ToC primitives -
+/// one `CreateFolder`, then an `AddPageNode` per page under that folder - so the
+/// single-writer invariant still holds: each Page persists its own birth row
+/// through its owning actor; nothing writes a Page's rows around it.
+#[derive(Debug)]
+pub struct SeedTemplateBundle {
+    pub folder_title: String,
+    pub templates: Vec<CompiledTemplate>,
+}
+
+impl Message<SeedTemplateBundle> for CampaignSupervisor {
+    // Best-effort: failures are logged, there is nothing for the caller to act on.
+    type Reply = ();
+
+    #[tracing::instrument(
+        skip_all,
+        fields(campaign_id = %self.campaign_id.0, template_count = msg.templates.len()),
+    )]
+    async fn handle(
+        &mut self,
+        msg: SeedTemplateBundle,
+        ctx: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_activity = Instant::now();
+        if msg.templates.is_empty() {
+            return;
+        }
+
+        let (db_reader, db_writer) = {
+            let db = self
+                .db
+                .as_ref()
+                .expect("db must be Some while actor is running");
+            (db.reader().clone(), db.writer().clone())
+        };
+
+        // Genesis each template through its owning actor, collecting the survivors
+        // to place in the ToC once the folder exists.
+        let mut placed: Vec<(PageId, String)> = Vec::with_capacity(msg.templates.len());
+        for template in msg.templates {
+            let page_id = PageId::generate();
+            // The genesis reply (the committed `pages::Model`) is unused here -- we
+            // already hold everything the ToC node needs -- so drop the receiver;
+            // genesis tolerates a gone receiver (`let _ = reply.send(..)`).
+            let (reply_tx, _) = oneshot::channel();
+            let actor = PageActor::spawn(PageActorArgs {
+                campaign_id: self.campaign_id.clone(),
+                page_id: page_id.clone(),
+                db_reader: db_reader.clone(),
+                db_writer: db_writer.clone(),
+                toc: self.toc.clone(),
+                init: PageInit::NewDocumentPage {
+                    name: template.name.clone(),
+                    kind: DocumentPageKind::Template,
+                    status: Status::GmOnly,
+                    seed: template.blocks,
+                    // A template page is the lineage root, not a clone of one.
+                    template_id: None,
+                    reply: reply_tx,
+                },
+                debounce_duration: Duration::from_secs(2),
+                idle_timeout: Duration::from_secs(30),
+            });
+            actor.wait_for_startup().await;
+            if !actor.is_alive() {
+                tracing::error!(name = %template.name, "template page genesis failed; skipping");
+                continue;
+            }
+            self.pages.insert(page_id.clone(), actor.clone());
+            // Link after insert so `on_link_died` prunes on idle self-eviction.
+            ctx.actor_ref().clone().link(&actor).await;
+
+            placed.push((page_id, template.name));
+        }
+
+        if placed.is_empty() {
+            return;
+        }
+
+        // Create the bundle's folder, then nest each page under it. On a folder
+        // failure the pages fall back to the root (`parent: None`); either way they
+        // are already persisted and re-surface on checkout if a ToC write is lost.
+        let folder = match self
+            .toc
+            .ask(CreateFolder {
+                title: msg.folder_title,
+                visibility: Status::GmOnly,
+                parent: None,
+            })
+            .await
+        {
+            Ok(handle) => Some(handle),
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "failed to create the template folder; placing pages at the root"
+                );
+                None
+            }
+        };
+
+        for (page_id, title) in placed {
+            if let Err(e) = self
+                .toc
+                .ask(AddPageNode {
+                    page_id,
+                    title,
+                    page_kind: TocPageKind::Template,
+                    visibility: Status::GmOnly,
+                    parent: folder,
+                })
+                .await
+            {
+                tracing::error!(
+                    error = %e,
+                    "failed to place a seeded template in the toc; it self-heals at root on next checkout"
+                );
+            }
+        }
     }
 }

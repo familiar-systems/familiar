@@ -15,6 +15,7 @@ import { useCallback, useState } from "react";
 import { useLoroManager } from "../editor/LoroManagerProvider";
 import { roomErrorMessage } from "../editor/loro-manager";
 import { NewPageModal } from "./NewPageModal";
+import { collectTemplates } from "./toc-doc";
 import { TocTree } from "./TocTree";
 import { useToc } from "./useToc";
 import { useCreatePage } from "./useCreatePage";
@@ -35,6 +36,13 @@ export function TocSidebar({ campaignId }: TocSidebarProps): React.ReactElement 
   const params = useParams({ strict: false });
   const activePageId: PageId | null = (params.pageId ?? null) as PageId | null;
 
+  // Templates the New-entity modal offers as clone sources. Available only once
+  // the tree is synced; empty otherwise (and for a campaign with no templates).
+  const templates =
+    snapshot.status === "ready" || snapshot.status === "reconnecting"
+      ? collectTemplates(snapshot.tree)
+      : [];
+
   // null = the New menu modal is closed. Otherwise it carries the parent the new
   // page nests under: `null` = ToC root, a PageId = under that page.
   const [newMenu, setNewMenu] = useState<{ parent: PageId | null } | null>(null);
@@ -54,9 +62,9 @@ export function TocSidebar({ campaignId }: TocSidebarProps): React.ReactElement 
   // open, not on every sidebar re-render.
   const closeMenu = useCallback(() => setNewMenu(null), []);
   const handleCreate = useCallback(
-    async (kind: PageKind, name: string | null): Promise<void> => {
+    async (kind: PageKind, name: string | null, fromTemplateId: PageId | null): Promise<void> => {
       const parent = newMenu?.parent ?? null;
-      await createPage(kind, name, parent);
+      await createPage(kind, name, parent, fromTemplateId);
       setNewMenu(null);
     },
     [newMenu, createPage],
@@ -91,7 +99,9 @@ export function TocSidebar({ campaignId }: TocSidebarProps): React.ReactElement 
         </div>
       </aside>
 
-      {newMenu !== null ? <NewPageModal onSubmit={handleCreate} onClose={closeMenu} /> : null}
+      {newMenu !== null ? (
+        <NewPageModal onSubmit={handleCreate} onClose={closeMenu} templates={templates} />
+      ) : null}
     </>
   );
 }

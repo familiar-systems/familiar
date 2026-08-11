@@ -343,6 +343,14 @@ impl LoroTocDoc {
         let meta = tree.get_meta(node).ok()?;
         Self::read_entry_from_meta(&meta)
     }
+
+    /// Whether `node` still refers to a live (non-deleted) node in the tree.
+    /// `contains` reports deleted nodes too, so it is paired with `is_node_deleted`;
+    /// used to fall a stale placement parent back to the root instead of panicking.
+    pub fn is_live_node(&self, node: TreeID) -> bool {
+        let tree = self.tree();
+        tree.contains(node) && !tree.is_node_deleted(&node).unwrap_or(true)
+    }
 }
 
 impl CrdtDoc for LoroTocDoc {
