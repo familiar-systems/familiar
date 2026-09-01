@@ -107,7 +107,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           install_args: "npm:pnpm"
           # Production release path opts out of GHA cache because the cache
@@ -136,7 +136,7 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.changes.outputs.any_changed == 'true'
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Build and push site
         if: steps.changes.outputs.any_changed == 'true' && matrix.target == 'site'
@@ -223,7 +223,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           install_args: kubectl
           cache: false
