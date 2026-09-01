@@ -37,7 +37,7 @@ name = "emit-openapi"
 path = "src/bin/emit-openapi.rs"
 
 [dev-dependencies]
-serial_test = "3.4.0"
+serial_test = "4.0.1"
 tokio.workspace = true
 tower = { version = "0.5.3", features = ["util"] }
 tracing-subscriber.workspace = true
