@@ -40,7 +40,7 @@ catalog:
   # resolves them consistently. loro-crdt tracks the campaign server's loro
   # 1.x; prosemirror-* match what @tiptap/pm pulls (also forced via overrides
   # below) so there is exactly one ProseMirror instance in the bundle.
-  "@tiptap/core": ^3.26.1
+  "@tiptap/core": ^3.30.4
   "@tiptap/pm": ^3.26.1
   "@tiptap/react": ^3.26.1
   "@tiptap/extension-document": ^3.26.1
