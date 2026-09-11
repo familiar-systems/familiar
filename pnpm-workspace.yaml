@@ -58,7 +58,7 @@ catalog:
   ulidx: ^2.4.1
   # @vitest/browser-playwright tracks vitest and @playwright/test tracks playwright;
   # a runner/companion version skew breaks browser-mode tests.
-  vitest: ^4.1.8
+  vitest: ^5.0.0
   "@vitest/browser-playwright": ^4.1.8
   playwright: ^1.60.0
   "@playwright/test": ^1.60.0
